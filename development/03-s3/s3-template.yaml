@@ -1,0 +1,307 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK S3 Buckets for data lake storage'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod]
+  ProjectName:
+    Type: String
+    Default: frank
+  S3KeyArn:
+    Type: String
+    Description: ARN of the S3 KMS encryption key
+
+Resources:
+  # Raw Data Bucket
+  RawDataBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-raw-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref S3KeyArn
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: RawDataLifecycle
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 90
+                StorageClass: GLACIER
+              - TransitionInDays: 2555
+                StorageClass: DEEP_ARCHIVE
+            ExpirationInDays: 3653
+          - Id: IncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: s3:ObjectCreated:*
+            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:frank-write-persistence-${Environment}'
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-raw-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Raw Data Storage
+
+  # Raw Data Bucket Policy
+  RawDataBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref RawDataBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub '${RawDataBucket}/*'
+              - !Ref RawDataBucket
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+          - Sid: AllowLambdaAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub '${RawDataBucket}/*'
+          - Sid: AllowLambdaBucketAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !Ref RawDataBucket
+
+  # Artifacts Bucket
+  ArtifactsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-artifacts-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref S3KeyArn
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ArtifactsLifecycle
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 180
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 365
+                StorageClass: GLACIER
+          - Id: IncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-artifacts-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Artifacts Storage
+
+  # Artifacts Bucket Policy
+  ArtifactsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ArtifactsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub '${ArtifactsBucket}/*'
+              - !Ref ArtifactsBucket
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+          - Sid: AllowLambdaAndECSAccess
+            Effect: Allow
+            Principal:
+              AWS: 
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-ecs-*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub '${ArtifactsBucket}/*'
+          - Sid: AllowBucketAccess
+            Effect: Allow
+            Principal:
+              AWS: 
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-ecs-*'
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !Ref ArtifactsBucket
+
+  # Exports Bucket
+  ExportsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub '${ProjectName}-exports-${AWS::AccountId}-${Environment}'
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !Ref S3KeyArn
+            BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      LifecycleConfiguration:
+        Rules:
+          - Id: ExportsLifecycle
+            Status: Enabled
+            Transitions:
+              - TransitionInDays: 7
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 30
+                StorageClass: GLACIER
+            ExpirationInDays: 90
+          - Id: IncompleteMultipartUploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 7
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-exports-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Exports Storage
+
+  # Exports Bucket Policy
+  ExportsBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ExportsBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureConnections
+            Effect: Deny
+            Principal: '*'
+            Action: 's3:*'
+            Resource:
+              - !Sub '${ExportsBucket}/*'
+              - !Ref ExportsBucket
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+          - Sid: AllowLambdaAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub '${ExportsBucket}/*'
+          - Sid: AllowAthenaAccess
+            Effect: Allow
+            Principal:
+              Service: athena.amazonaws.com
+            Action:
+              - s3:GetObject
+              - s3:PutObject
+              - s3:DeleteObject
+            Resource: !Sub '${ExportsBucket}/athena-results/*'
+          - Sid: AllowBucketAccess
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - s3:ListBucket
+              - s3:GetBucketLocation
+            Resource: !Ref ExportsBucket
+
+Outputs:
+  RawDataBucketName:
+    Description: Raw Data S3 Bucket Name
+    Value: !Ref RawDataBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-raw-bucket'
+
+  RawDataBucketArn:
+    Description: Raw Data S3 Bucket ARN
+    Value: !GetAtt RawDataBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-raw-bucket-arn'
+
+  ArtifactsBucketName:
+    Description: Artifacts S3 Bucket Name
+    Value: !Ref ArtifactsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-artifacts-bucket'
+
+  ArtifactsBucketArn:
+    Description: Artifacts S3 Bucket ARN
+    Value: !GetAtt ArtifactsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-artifacts-bucket-arn'
+
+  ExportsBucketName:
+    Description: Exports S3 Bucket Name
+    Value: !Ref ExportsBucket
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-exports-bucket'
+
+  ExportsBucketArn:
+    Description: Exports S3 Bucket ARN
+    Value: !GetAtt ExportsBucket.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-exports-bucket-arn'

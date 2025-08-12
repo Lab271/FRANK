@@ -1,0 +1,285 @@
+{
+  "index_patterns": ["frank-indicators-*"],
+  "template": {
+    "settings": {
+      "number_of_shards": 1,
+      "number_of_replicas": 1,
+      "index.mapping.total_fields.limit": 1000,
+      "index.max_result_window": 10000,
+      "analysis": {
+        "analyzer": {
+          "indicator_analyzer": {
+            "type": "custom",
+            "tokenizer": "keyword",
+            "filter": ["lowercase", "indicator_normalizer"]
+          }
+        },
+        "filter": {
+          "indicator_normalizer": {
+            "type": "pattern_replace",
+            "pattern": "[\\[\\]\\(\\)\\{\\}\\\"\\']",
+            "replacement": ""
+          }
+        }
+      }
+    },
+    "mappings": {
+      "properties": {
+        "tenant_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "tenant_hash": {
+          "type": "keyword",
+          "index": true
+        },
+        "indicator_id": {
+          "type": "keyword",
+          "index": true
+        },
+        "indicator_hash": {
+          "type": "keyword",
+          "index": true
+        },
+        "type": {
+          "type": "keyword",
+          "index": true
+        },
+        "value": {
+          "type": "text",
+          "analyzer": "indicator_analyzer",
+          "fields": {
+            "keyword": {
+              "type": "keyword",
+              "ignore_above": 512
+            }
+          }
+        },
+        "value_hash": {
+          "type": "keyword",
+          "index": true
+        },
+        "pattern": {
+          "type": "text",
+          "analyzer": "standard"
+        },
+        "confidence": {
+          "type": "integer",
+          "index": true
+        },
+        "severity": {
+          "type": "keyword",
+          "index": true
+        },
+        "status": {
+          "type": "keyword",
+          "index": true
+        },
+        "first_seen": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "last_seen": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "created_at": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "updated_at": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "expires_at": {
+          "type": "date",
+          "format": "strict_date_optional_time||epoch_millis"
+        },
+        "tags": {
+          "type": "keyword",
+          "index": true
+        },
+        "labels": {
+          "type": "keyword",
+          "index": true
+        },
+        "source": {
+          "properties": {
+            "name": {
+              "type": "text",
+              "analyzer": "standard",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            },
+            "type": {
+              "type": "keyword",
+              "index": true
+            },
+            "reliability": {
+              "type": "keyword",
+              "index": true
+            },
+            "feed_id": {
+              "type": "keyword",
+              "index": true
+            }
+          }
+        },
+        "context": {
+          "properties": {
+            "malware_family": {
+              "type": "keyword",
+              "index": true
+            },
+            "campaign": {
+              "type": "keyword",
+              "index": true
+            },
+            "threat_actor": {
+              "type": "keyword",
+              "index": true
+            },
+            "mitre_technique": {
+              "type": "keyword",
+              "index": true
+            },
+            "kill_chain_phase": {
+              "type": "keyword",
+              "index": true
+            }
+          }
+        },
+        "network": {
+          "properties": {
+            "asn": {
+              "type": "integer"
+            },
+            "country": {
+              "type": "keyword",
+              "index": true
+            },
+            "organization": {
+              "type": "text",
+              "analyzer": "standard",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            }
+          }
+        },
+        "detection": {
+          "properties": {
+            "rule_name": {
+              "type": "text",
+              "analyzer": "standard",
+              "fields": {
+                "keyword": {
+                  "type": "keyword",
+                  "ignore_above": 256
+                }
+              }
+            },
+            "rule_id": {
+              "type": "keyword",
+              "index": true
+            },
+            "signature": {
+              "type": "text",
+              "analyzer": "standard"
+            },
+            "false_positive_rate": {
+              "type": "float"
+            }
+          }
+        },
+        "enrichment": {
+          "properties": {
+            "whois": {
+              "type": "object",
+              "enabled": false
+            },
+            "dns": {
+              "type": "nested",
+              "properties": {
+                "record_type": {
+                  "type": "keyword"
+                },
+                "value": {
+                  "type": "keyword"
+                }
+              }
+            },
+            "reputation": {
+              "properties": {
+                "score": {
+                  "type": "integer"
+                },
+                "verdict": {
+                  "type": "keyword"
+                },
+                "vendor": {
+                  "type": "keyword"
+                }
+              }
+            }
+          }
+        },
+        "relationships": {
+          "type": "nested",
+          "properties": {
+            "type": {
+              "type": "keyword"
+            },
+            "target_id": {
+              "type": "keyword"
+            },
+            "target_type": {
+              "type": "keyword"
+            },
+            "confidence": {
+              "type": "integer"
+            }
+          }
+        },
+        "external_references": {
+          "type": "nested",
+          "properties": {
+            "source_name": {
+              "type": "keyword"
+            },
+            "description": {
+              "type": "text"
+            },
+            "url": {
+              "type": "keyword"
+            },
+            "external_id": {
+              "type": "keyword"
+            }
+          }
+        },
+        "description": {
+          "type": "text",
+          "analyzer": "standard"
+        },
+        "raw_data": {
+          "type": "object",
+          "enabled": false
+        }
+      }
+    }
+  },
+  "priority": 200,
+  "composed_of": [],
+  "_meta": {
+    "description": "Index template for FRANK threat indicators",
+    "version": "1.0.0"
+  }
+}

@@ -1,0 +1,270 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK DynamoDB Tables'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod]
+  ProjectName:
+    Type: String
+    Default: frank
+  DynamoDBKeyArn:
+    Type: String
+    Description: ARN of the DynamoDB KMS encryption key
+
+Conditions:
+  IsProduction: !Equals [!Ref Environment, prod]
+
+Resources:
+  # Aggregates Table
+  AggregatesTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-aggregates-${Environment}'
+      BillingMode: !If [IsProduction, PROVISIONED, ON_DEMAND]
+      ProvisionedThroughput: !If
+        - IsProduction
+        - ReadCapacityUnits: 25
+          WriteCapacityUnits: 25
+        - !Ref AWS::NoValue
+      AttributeDefinitions:
+        - AttributeName: pk
+          AttributeType: S
+        - AttributeName: sk
+          AttributeType: S
+        - AttributeName: gsi1_pk
+          AttributeType: S
+        - AttributeName: gsi1_sk
+          AttributeType: S
+        - AttributeName: time_bucket
+          AttributeType: S
+        - AttributeName: ioc_type_sector
+          AttributeType: S
+      KeySchema:
+        - AttributeName: pk
+          KeyType: HASH
+        - AttributeName: sk
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: GSI1
+          KeySchema:
+            - AttributeName: gsi1_pk
+              KeyType: HASH
+            - AttributeName: gsi1_sk
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput: !If
+            - IsProduction
+            - ReadCapacityUnits: 10
+              WriteCapacityUnits: 10
+            - !Ref AWS::NoValue
+        - IndexName: GSI2-TimeIndex
+          KeySchema:
+            - AttributeName: time_bucket
+              KeyType: HASH
+            - AttributeName: ioc_type_sector
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+          ProvisionedThroughput: !If
+            - IsProduction
+            - ReadCapacityUnits: 5
+              WriteCapacityUnits: 5
+            - !Ref AWS::NoValue
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        KMSMasterKeyId: !Ref DynamoDBKeyArn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-aggregates-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Aggregated Statistics
+
+  # Auto Scaling for Aggregates Table (Production only)
+  AggregatesTableReadScalingRole:
+    Type: AWS::IAM::Role
+    Condition: IsProduction
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: application-autoscaling.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/DynamoDBAutoscaleRole
+
+  AggregatesTableReadScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Condition: IsProduction
+    Properties:
+      ServiceNamespace: dynamodb
+      ResourceId: !Sub 'table/${AggregatesTable}'
+      ScalableDimension: dynamodb:table:ReadCapacityUnits
+      MinCapacity: 5
+      MaxCapacity: 1000
+      RoleARN: !GetAtt AggregatesTableReadScalingRole.Arn
+
+  AggregatesTableReadScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Condition: IsProduction
+    Properties:
+      PolicyName: ReadAutoScalingPolicy
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref AggregatesTableReadScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        TargetValue: 70.0
+        ScaleInCooldown: 60
+        ScaleOutCooldown: 60
+        PredefinedMetricSpecification:
+          PredefinedMetricType: DynamoDBReadCapacityUtilization
+
+  # Tenants Table
+  TenantsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-tenants-${Environment}'
+      BillingMode: ON_DEMAND
+      AttributeDefinitions:
+        - AttributeName: tenant_id
+          AttributeType: S
+        - AttributeName: sector
+          AttributeType: S
+      KeySchema:
+        - AttributeName: tenant_id
+          KeyType: HASH
+      GlobalSecondaryIndexes:
+        - IndexName: SectorIndex
+          KeySchema:
+            - AttributeName: sector
+              KeyType: HASH
+            - AttributeName: tenant_id
+              KeyType: RANGE
+          Projection:
+            ProjectionType: ALL
+      SSESpecification:
+        SSEEnabled: true
+        KMSMasterKeyId: !Ref DynamoDBKeyArn
+      PointInTimeRecoverySpecification:
+        PointInTimeRecoveryEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-tenants-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Tenant Metadata
+
+  # Idempotency Table
+  IdempotencyTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub '${ProjectName}-idempotency-${Environment}'
+      BillingMode: ON_DEMAND
+      AttributeDefinitions:
+        - AttributeName: request_key
+          AttributeType: S
+      KeySchema:
+        - AttributeName: request_key
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: ttl
+        Enabled: true
+      SSESpecification:
+        SSEEnabled: true
+        KMSMasterKeyId: !Ref DynamoDBKeyArn
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-idempotency-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Request Idempotency
+
+  # CloudWatch Alarms
+  AggregatesReadThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-aggregates-read-throttle'
+      AlarmDescription: 'DynamoDB read throttle events on aggregates table'
+      MetricName: ReadThrottleEvents
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref AggregatesTable
+      TreatMissingData: notBreaching
+
+  AggregatesWriteThrottleAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-aggregates-write-throttle'
+      AlarmDescription: 'DynamoDB write throttle events on aggregates table'
+      MetricName: WriteThrottleEvents
+      Namespace: AWS/DynamoDB
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: TableName
+          Value: !Ref AggregatesTable
+      TreatMissingData: notBreaching
+
+Outputs:
+  AggregatesTableName:
+    Description: Aggregates Table Name
+    Value: !Ref AggregatesTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-aggregates-table'
+
+  AggregatesTableArn:
+    Description: Aggregates Table ARN
+    Value: !GetAtt AggregatesTable.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-aggregates-table-arn'
+
+  TenantsTableName:
+    Description: Tenants Table Name
+    Value: !Ref TenantsTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-tenants-table'
+
+  TenantsTableArn:
+    Description: Tenants Table ARN
+    Value: !GetAtt TenantsTable.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-tenants-table-arn'
+
+  IdempotencyTableName:
+    Description: Idempotency Table Name
+    Value: !Ref IdempotencyTable
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-idempotency-table'
+
+  IdempotencyTableArn:
+    Description: Idempotency Table ARN
+    Value: !GetAtt IdempotencyTable.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-idempotency-table-arn'

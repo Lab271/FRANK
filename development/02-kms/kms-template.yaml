@@ -1,0 +1,267 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK KMS Keys for encryption'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod]
+  ProjectName:
+    Type: String
+    Default: frank
+
+Resources:
+  # S3 Encryption Key
+  S3EncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'FRANK S3 encryption key for ${Environment}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Lambda Functions
+            Effect: Allow
+            Principal:
+              AWS: 
+                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:Project: !Ref ProjectName
+                kms:EncryptionContext:Environment: !Ref Environment
+          - Sid: Allow Step Functions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-stepfunctions-*'
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+            Resource: '*'
+      EnableKeyRotation: true
+      KeyRotationStatus: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-s3-key-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: S3 Encryption
+
+  # S3 Key Alias
+  S3KeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-s3-key-${Environment}'
+      TargetKeyId: !Ref S3EncryptionKey
+
+  # DynamoDB Encryption Key
+  DynamoDBEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'FRANK DynamoDB encryption key for ${Environment}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Lambda Functions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:Project: !Ref ProjectName
+                kms:EncryptionContext:Environment: !Ref Environment
+          - Sid: Allow DynamoDB Service
+            Effect: Allow
+            Principal:
+              Service: dynamodb.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:DescribeKey
+            Resource: '*'
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-ddb-key-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: DynamoDB Encryption
+
+  # DynamoDB Key Alias
+  DynamoDBKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-ddb-key-${Environment}'
+      TargetKeyId: !Ref DynamoDBEncryptionKey
+
+  # OpenSearch Encryption Key
+  OpenSearchEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'FRANK OpenSearch encryption key for ${Environment}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow OpenSearch Service
+            Effect: Allow
+            Principal:
+              Service: opensearch.amazonaws.com
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: '*'
+          - Sid: Allow Lambda Functions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:Project: !Ref ProjectName
+                kms:EncryptionContext:Environment: !Ref Environment
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-os-key-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: OpenSearch Encryption
+
+  # OpenSearch Key Alias
+  OpenSearchKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-os-key-${Environment}'
+      TargetKeyId: !Ref OpenSearchEncryptionKey
+
+  # Application Encryption Key (for HMAC seeds and secrets)
+  ApplicationEncryptionKey:
+    Type: AWS::KMS::Key
+    Properties:
+      Description: !Sub 'FRANK Application encryption key for ${Environment}'
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: Enable IAM User Permissions
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
+            Action: 'kms:*'
+            Resource: '*'
+          - Sid: Allow Lambda Functions Only
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+            Action:
+              - kms:Decrypt
+              - kms:GenerateDataKey
+              - kms:DescribeKey
+            Resource: '*'
+            Condition:
+              StringEquals:
+                kms:EncryptionContext:Project: !Ref ProjectName
+                kms:EncryptionContext:Environment: !Ref Environment
+      EnableKeyRotation: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-app-key-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+        - Key: Purpose
+          Value: Application Encryption
+
+  # Application Key Alias
+  ApplicationKeyAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: !Sub 'alias/${ProjectName}-app-key-${Environment}'
+      TargetKeyId: !Ref ApplicationEncryptionKey
+
+Outputs:
+  S3KeyId:
+    Description: S3 Encryption Key ID
+    Value: !Ref S3EncryptionKey
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-s3-key-id'
+
+  S3KeyArn:
+    Description: S3 Encryption Key ARN
+    Value: !GetAtt S3EncryptionKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-s3-key-arn'
+
+  DynamoDBKeyId:
+    Description: DynamoDB Encryption Key ID
+    Value: !Ref DynamoDBEncryptionKey
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ddb-key-id'
+
+  DynamoDBKeyArn:
+    Description: DynamoDB Encryption Key ARN
+    Value: !GetAtt DynamoDBEncryptionKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-ddb-key-arn'
+
+  OpenSearchKeyId:
+    Description: OpenSearch Encryption Key ID
+    Value: !Ref OpenSearchEncryptionKey
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-os-key-id'
+
+  OpenSearchKeyArn:
+    Description: OpenSearch Encryption Key ARN
+    Value: !GetAtt OpenSearchEncryptionKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-os-key-arn'
+
+  ApplicationKeyId:
+    Description: Application Encryption Key ID
+    Value: !Ref ApplicationEncryptionKey
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-app-key-id'
+
+  ApplicationKeyArn:
+    Description: Application Encryption Key ARN
+    Value: !GetAtt ApplicationEncryptionKey.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-app-key-arn'

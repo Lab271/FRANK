@@ -1,0 +1,520 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK Step Functions State Machines'
+
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues: [dev, test, prod]
+  ProjectName:
+    Type: String
+    Default: frank
+  StepFunctionsKeyArn:
+    Type: String
+    Description: ARN of the Step Functions KMS encryption key
+  LambdaRoleArn:
+    Type: String
+    Description: ARN of the Lambda execution role
+  SNSTopicArn:
+    Type: String
+    Description: ARN of the notification SNS topic
+
+Resources:
+  # IAM Role for Step Functions execution
+  StepFunctionsExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-stepfunctions-execution-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: states.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: StepFunctionsExecutionPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - lambda:InvokeFunction
+                Resource: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-*'
+              - Effect: Allow
+                Action:
+                  - dynamodb:GetItem
+                  - dynamodb:PutItem
+                  - dynamodb:UpdateItem
+                  - dynamodb:Query
+                  - dynamodb:Scan
+                Resource: !Sub 'arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/${ProjectName}-*'
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:PutObject
+                  - s3:DeleteObject
+                Resource: !Sub 'arn:aws:s3:::${ProjectName}-*/*'
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: !Ref SNSTopicArn
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !Sub 'arn:aws:logs:${AWS::Region}:${AWS::AccountId}:*'
+              - Effect: Allow
+                Action:
+                  - xray:PutTraceSegments
+                  - xray:PutTelemetryRecords
+                Resource: '*'
+
+  # SIGMA Processing State Machine
+  SigmaProcessingStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub '${ProjectName}-sigma-processing-${Environment}'
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+      TracingConfiguration:
+        Enabled: true
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt SigmaProcessingLogGroup.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "SIGMA rule processing workflow",
+          "StartAt": "ValidateInput",
+          "States": {
+            "ValidateInput": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-validate-input-${Environment}",
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "ValidationFailed",
+                  "ResultPath": "$.error"
+                }
+              ],
+              "Next": "CheckRuleType"
+            },
+            "CheckRuleType": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.ruleType",
+                  "StringEquals": "sigma",
+                  "Next": "ProcessSigmaRule"
+                },
+                {
+                  "Variable": "$.ruleType",
+                  "StringEquals": "yara",
+                  "Next": "ProcessYaraRule"
+                }
+              ],
+              "Default": "UnsupportedRule"
+            },
+            "ProcessSigmaRule": {
+              "Type": "Parallel",
+              "Branches": [
+                {
+                  "StartAt": "ExecuteSigmaRule",
+                  "States": {
+                    "ExecuteSigmaRule": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-sigma-executor-${Environment}",
+                      "Retry": [
+                        {
+                          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 3,
+                          "BackoffRate": 2.0
+                        }
+                      ],
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "PrepareAggregation",
+                  "States": {
+                    "PrepareAggregation": {
+                      "Type": "Pass",
+                      "Next": "AggregateResults"
+                    },
+                    "AggregateResults": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-result-aggregator-${Environment}",
+                      "Retry": [
+                        {
+                          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                          "IntervalSeconds": 2,
+                          "MaxAttempts": 3,
+                          "BackoffRate": 2.0
+                        }
+                      ],
+                      "End": true
+                    }
+                  }
+                }
+              ],
+              "Next": "StoreResults"
+            },
+            "ProcessYaraRule": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-yara-executor-${Environment}",
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Next": "StoreResults"
+            },
+            "StoreResults": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-store-results-${Environment}",
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Next": "SendNotification"
+            },
+            "SendNotification": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicArn}",
+                "Message.$": "$.notificationMessage",
+                "Subject": "SIGMA Processing Complete"
+              },
+              "End": true
+            },
+            "ValidationFailed": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicArn}",
+                "Message.$": "$.error",
+                "Subject": "SIGMA Processing Validation Failed"
+              },
+              "End": true
+            },
+            "UnsupportedRule": {
+              "Type": "Fail",
+              "Error": "UnsupportedRuleType",
+              "Cause": "The specified rule type is not supported"
+            }
+          }
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-sigma-processing-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Tenant Management State Machine
+  TenantManagementStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub '${ProjectName}-tenant-management-${Environment}'
+      StateMachineType: STANDARD
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+      TracingConfiguration:
+        Enabled: true
+      LoggingConfiguration:
+        Level: ALL
+        IncludeExecutionData: true
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt TenantManagementLogGroup.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Tenant lifecycle management workflow",
+          "StartAt": "ValidateTenantRequest",
+          "States": {
+            "ValidateTenantRequest": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-validate-tenant-${Environment}",
+              "Retry": [
+                {
+                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
+                  "IntervalSeconds": 2,
+                  "MaxAttempts": 3,
+                  "BackoffRate": 2.0
+                }
+              ],
+              "Catch": [
+                {
+                  "ErrorEquals": ["States.ALL"],
+                  "Next": "TenantValidationFailed",
+                  "ResultPath": "$.error"
+                }
+              ],
+              "Next": "CheckOperation"
+            },
+            "CheckOperation": {
+              "Type": "Choice",
+              "Choices": [
+                {
+                  "Variable": "$.operation",
+                  "StringEquals": "create",
+                  "Next": "CreateTenant"
+                },
+                {
+                  "Variable": "$.operation",
+                  "StringEquals": "update",
+                  "Next": "UpdateTenant"
+                },
+                {
+                  "Variable": "$.operation",
+                  "StringEquals": "delete",
+                  "Next": "DeleteTenant"
+                }
+              ],
+              "Default": "UnsupportedOperation"
+            },
+            "CreateTenant": {
+              "Type": "Parallel",
+              "Branches": [
+                {
+                  "StartAt": "ProvisionResources",
+                  "States": {
+                    "ProvisionResources": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-provision-tenant-${Environment}",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "SetupConfiguration",
+                  "States": {
+                    "SetupConfiguration": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-configure-tenant-${Environment}",
+                      "End": true
+                    }
+                  }
+                }
+              ],
+              "Next": "VerifyTenant"
+            },
+            "UpdateTenant": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-update-tenant-${Environment}",
+              "Next": "VerifyTenant"
+            },
+            "DeleteTenant": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-delete-tenant-${Environment}",
+              "Next": "NotifyTenantOperation"
+            },
+            "VerifyTenant": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-verify-tenant-${Environment}",
+              "Next": "NotifyTenantOperation"
+            },
+            "NotifyTenantOperation": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicArn}",
+                "Message.$": "$.notificationMessage",
+                "Subject": "Tenant Operation Complete"
+              },
+              "End": true
+            },
+            "TenantValidationFailed": {
+              "Type": "Task",
+              "Resource": "arn:aws:states:::sns:publish",
+              "Parameters": {
+                "TopicArn": "${SNSTopicArn}",
+                "Message.$": "$.error",
+                "Subject": "Tenant Validation Failed"
+              },
+              "End": true
+            },
+            "UnsupportedOperation": {
+              "Type": "Fail",
+              "Error": "UnsupportedOperation",
+              "Cause": "The specified tenant operation is not supported"
+            }
+          }
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-tenant-management-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # Data Pipeline State Machine
+  DataPipelineStateMachine:
+    Type: AWS::StepFunctions::StateMachine
+    Properties:
+      StateMachineName: !Sub '${ProjectName}-data-pipeline-${Environment}'
+      StateMachineType: EXPRESS
+      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
+      TracingConfiguration:
+        Enabled: true
+      LoggingConfiguration:
+        Level: ERROR
+        IncludeExecutionData: false
+        Destinations:
+          - CloudWatchLogsLogGroup:
+              LogGroupArn: !GetAtt DataPipelineLogGroup.Arn
+      DefinitionString: !Sub |
+        {
+          "Comment": "Fast data processing pipeline",
+          "StartAt": "ValidateData",
+          "States": {
+            "ValidateData": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-validate-data-${Environment}",
+              "Next": "TransformData"
+            },
+            "TransformData": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-transform-data-${Environment}",
+              "Next": "EnrichData"
+            },
+            "EnrichData": {
+              "Type": "Task",
+              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-enrich-data-${Environment}",
+              "Next": "StoreData"
+            },
+            "StoreData": {
+              "Type": "Parallel",
+              "Branches": [
+                {
+                  "StartAt": "StoreToDynamoDB",
+                  "States": {
+                    "StoreToDynamoDB": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-store-dynamodb-${Environment}",
+                      "End": true
+                    }
+                  }
+                },
+                {
+                  "StartAt": "IndexToOpenSearch",
+                  "States": {
+                    "IndexToOpenSearch": {
+                      "Type": "Task",
+                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-index-opensearch-${Environment}",
+                      "End": true
+                    }
+                  }
+                }
+              ],
+              "End": true
+            }
+          }
+        }
+      Tags:
+        - Key: Name
+          Value: !Sub '${ProjectName}-data-pipeline-${Environment}'
+        - Key: Project
+          Value: !Ref ProjectName
+        - Key: Environment
+          Value: !Ref Environment
+
+  # CloudWatch Log Groups
+  SigmaProcessingLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-sigma-processing-${Environment}'
+      RetentionInDays: 30
+
+  TenantManagementLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-tenant-management-${Environment}'
+      RetentionInDays: 30
+
+  DataPipelineLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-data-pipeline-${Environment}'
+      RetentionInDays: 14
+
+  # CloudWatch Alarms
+  SigmaProcessingFailureAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-sigma-processing-failures'
+      AlarmDescription: 'High failure rate for SIGMA processing workflow'
+      MetricName: 'ExecutionsFailed'
+      Namespace: 'AWS/States'
+      Statistic: Sum
+      Period: 300
+      EvaluationPeriods: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref SigmaProcessingStateMachine
+
+  TenantManagementDurationAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${ProjectName}-${Environment}-tenant-management-duration'
+      AlarmDescription: 'Long execution time for tenant management workflow'
+      MetricName: 'ExecutionTime'
+      Namespace: 'AWS/States'
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 1
+      Threshold: 300000  # 5 minutes
+      ComparisonOperator: GreaterThanThreshold
+      Dimensions:
+        - Name: StateMachineArn
+          Value: !Ref TenantManagementStateMachine
+
+Outputs:
+  SigmaProcessingStateMachineArn:
+    Description: ARN of the SIGMA processing state machine
+    Value: !Ref SigmaProcessingStateMachine
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-sigma-processing-sm-arn'
+
+  TenantManagementStateMachineArn:
+    Description: ARN of the tenant management state machine
+    Value: !Ref TenantManagementStateMachine
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-tenant-management-sm-arn'
+
+  DataPipelineStateMachineArn:
+    Description: ARN of the data pipeline state machine
+    Value: !Ref DataPipelineStateMachine
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-data-pipeline-sm-arn'
+
+  StepFunctionsExecutionRoleArn:
+    Description: ARN of the Step Functions execution role
+    Value: !GetAtt StepFunctionsExecutionRole.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-stepfunctions-role-arn'
