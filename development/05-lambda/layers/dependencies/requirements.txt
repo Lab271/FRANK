@@ -1,0 +1,2 @@
+# Placeholder requirements for FRANK Lambda layer
+# Add your dependencies here

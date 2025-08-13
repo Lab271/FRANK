@@ -1,0 +1,172 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: FRANK Lambda Functions for dev
+Parameters:
+  Environment:
+    Type: String
+    Default: dev
+    AllowedValues:
+    - dev
+    - test
+    - prod
+  ProjectName:
+    Type: String
+    Default: frank
+Globals:
+  Function:
+    Runtime: python3.12
+    MemorySize: 512
+    Timeout: 30
+    Tracing: Active
+    Environment:
+      Variables:
+        POWERTOOLS_SERVICE_NAME: frank
+        POWERTOOLS_LOG_LEVEL: INFO
+        POWERTOOLS_METRICS_NAMESPACE: FRANK
+        AWS_DEFAULT_REGION: eu-west-1
+    Tags:
+      Project: frank
+      Environment: '!Ref Environment'
+Resources:
+  DependenciesLayer:
+    Type: AWS::Serverless::LayerVersion
+    Properties:
+      LayerName: '!Sub frank-dependencies-${Environment}'
+      Description: FRANK Lambda dependencies
+      ContentUri: layers/dependencies/
+      CompatibleRuntimes:
+      - python3.12
+      RetentionPolicy: Delete
+  IngestSightingsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: '!Sub frank-ingest-sightings-${Environment}'
+      CodeUri: src/ingest_sightings/
+      Handler: index.handler
+      MemorySize: 512
+      Timeout: 30
+      Layers:
+      - arn:aws:lambda:eu-west-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:59
+      - '!Ref DependenciesLayer'
+      Environment:
+        Variables:
+          FRANK_TENANTS_TABLE: '!Sub frank-tenants-${Environment}'
+          FRANK_IDEMPOTENCY_TABLE: '!Sub frank-idempotency-${Environment}'
+          PROCESSING_QUEUE_URL: '!Ref ProcessingQueue'
+      Policies:
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - dynamodb:GetItem
+          - dynamodb:PutItem
+          - dynamodb:Query
+          Resource:
+          - '!Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/frank-tenants-${Environment}'
+          - '!Sub arn:aws:dynamodb:${AWS::Region}:${AWS::AccountId}:table/frank-idempotency-${Environment}'
+        - Effect: Allow
+          Action:
+          - kms:Decrypt
+          - kms:GenerateDataKey
+          Resource: '*'
+          Condition:
+            StringEquals:
+              kms:EncryptionContext:Project: frank
+        - Effect: Allow
+          Action:
+          - sqs:SendMessage
+          Resource: '!GetAtt ProcessingQueue.Arn'
+  WritePersistenceFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: '!Sub frank-write-persistence-${Environment}'
+      CodeUri: src/write_persistence/
+      Handler: index.handler
+      MemorySize: 1024
+      Timeout: 300
+      Layers:
+      - arn:aws:lambda:eu-west-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:59
+      - '!Ref DependenciesLayer'
+      Environment:
+        Variables:
+          FRANK_RAW_BUCKET: '!Sub frank-raw-${AWS::AccountId}-${Environment}'
+          FRANK_AGGREGATES_TABLE: '!Sub frank-aggregates-${Environment}'
+          OPENSEARCH_ENDPOINT: '!GetAtt OpenSearchDomain.DomainEndpoint'
+      Events:
+        SQSEvent:
+          Type: SQS
+          Properties:
+            Queue: '!GetAtt ProcessingQueue.Arn'
+            BatchSize: 10
+      Policies:
+      - S3WritePolicy:
+          BucketName: '!Sub frank-raw-${AWS::AccountId}-${Environment}'
+      - DynamoDBWritePolicy:
+          TableName: '!Sub frank-aggregates-${Environment}'
+  QueryStatsFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: '!Sub frank-query-stats-${Environment}'
+      CodeUri: src/query_stats/
+      Handler: index.handler
+      MemorySize: 256
+      Timeout: 30
+      Layers:
+      - arn:aws:lambda:eu-west-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:59
+      - '!Ref DependenciesLayer'
+      Environment:
+        Variables:
+          FRANK_AGGREGATES_TABLE: '!Sub frank-aggregates-${Environment}'
+          OPENSEARCH_ENDPOINT: '!GetAtt OpenSearchDomain.DomainEndpoint'
+      Policies:
+      - DynamoDBReadPolicy:
+          TableName: '!Sub frank-aggregates-${Environment}'
+  SigmaUpdateFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: '!Sub frank-sigma-update-${Environment}'
+      CodeUri: src/sigma_update/
+      Handler: index.handler
+      MemorySize: 512
+      Timeout: 120
+      Layers:
+      - arn:aws:lambda:eu-west-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:59
+      - '!Ref DependenciesLayer'
+      Environment:
+        Variables:
+          SIGMA_WORKFLOW_ARN: '!Ref SigmaTranslateStateMachine'
+      Policies:
+      - S3ReadPolicy:
+          BucketName: '!Sub frank-artifacts-${AWS::AccountId}-${Environment}'
+      - Version: '2012-10-17'
+        Statement:
+        - Effect: Allow
+          Action:
+          - states:StartExecution
+          Resource: '!Ref SigmaTranslateStateMachine'
+  ProcessingQueue:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: '!Sub frank-processing-${Environment}'
+      VisibilityTimeoutSeconds: 360
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+      RedrivePolicy:
+        deadLetterTargetArn: '!GetAtt ProcessingDLQ.Arn'
+        maxReceiveCount: 3
+  ProcessingDLQ:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: '!Sub frank-processing-dlq-${Environment}'
+      MessageRetentionPeriod: 1209600
+      KmsMasterKeyId: alias/aws/sqs
+Outputs:
+  IngestSightingsFunctionArn:
+    Description: Ingest Sightings Function ARN
+    Value: '!GetAtt IngestSightingsFunction.Arn'
+  WritePersistenceFunctionArn:
+    Description: Write Persistence Function ARN
+    Value: '!GetAtt WritePersistenceFunction.Arn'
+  QueryStatsFunctionArn:
+    Description: Query Stats Function ARN
+    Value: '!GetAtt QueryStatsFunction.Arn'

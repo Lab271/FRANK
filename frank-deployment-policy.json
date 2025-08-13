@@ -1,0 +1,35 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:*",
+        "iam:*",
+        "s3:*",
+        "dynamodb:*",
+        "lambda:*",
+        "apigateway:*",
+        "cognito-idp:*",
+        "cognito-identity:*",
+        "kms:*",
+        "logs:*",
+        "events:*",
+        "sqs:*",
+        "states:*",
+        "ecs:*",
+        "ecr:*",
+        "opensearch:*",
+        "es:*",
+        "xray:*",
+        "secretsmanager:*",
+        "ssm:*",
+        "organizations:DescribeOrganization",
+        "organizations:ListAccounts",
+        "sts:GetCallerIdentity",
+        "cloudwatch:*"
+      ],
+      "Resource": "*"
+    }
+  ]
+}

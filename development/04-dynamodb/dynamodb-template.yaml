@@ -22,7 +22,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub '${ProjectName}-aggregates-${Environment}'
-      BillingMode: !If [IsProduction, PROVISIONED, ON_DEMAND]
+      BillingMode: !If [IsProduction, PROVISIONED, PAY_PER_REQUEST]
       ProvisionedThroughput: !If
         - IsProduction
         - ReadCapacityUnits: 25
@@ -78,6 +78,7 @@ Resources:
         Enabled: true
       SSESpecification:
         SSEEnabled: true
+        SSEType: KMS
         KMSMasterKeyId: !Ref DynamoDBKeyArn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -136,7 +137,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub '${ProjectName}-tenants-${Environment}'
-      BillingMode: ON_DEMAND
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: tenant_id
           AttributeType: S
@@ -156,6 +157,7 @@ Resources:
             ProjectionType: ALL
       SSESpecification:
         SSEEnabled: true
+        SSEType: KMS
         KMSMasterKeyId: !Ref DynamoDBKeyArn
       PointInTimeRecoverySpecification:
         PointInTimeRecoveryEnabled: true
@@ -174,7 +176,7 @@ Resources:
     Type: AWS::DynamoDB::Table
     Properties:
       TableName: !Sub '${ProjectName}-idempotency-${Environment}'
-      BillingMode: ON_DEMAND
+      BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: request_key
           AttributeType: S
@@ -186,6 +188,7 @@ Resources:
         Enabled: true
       SSESpecification:
         SSEEnabled: true
+        SSEType: KMS
         KMSMasterKeyId: !Ref DynamoDBKeyArn
       Tags:
         - Key: Name

@@ -48,10 +48,7 @@ Resources:
             Status: Enabled
             AbortIncompleteMultipartUpload:
               DaysAfterInitiation: 7
-      NotificationConfiguration:
-        LambdaConfigurations:
-          - Event: s3:ObjectCreated:*
-            Function: !Sub 'arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:frank-write-persistence-${Environment}'
+# Notification configuration removed - will be added later when Lambda functions are deployed
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-raw-${Environment}'
@@ -62,41 +59,7 @@ Resources:
         - Key: Purpose
           Value: Raw Data Storage
 
-  # Raw Data Bucket Policy
-  RawDataBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref RawDataBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: DenyInsecureConnections
-            Effect: Deny
-            Principal: '*'
-            Action: 's3:*'
-            Resource:
-              - !Sub '${RawDataBucket}/*'
-              - !Ref RawDataBucket
-            Condition:
-              Bool:
-                aws:SecureTransport: false
-          - Sid: AllowLambdaAccess
-            Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-            Resource: !Sub '${RawDataBucket}/*'
-          - Sid: AllowLambdaBucketAccess
-            Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-            Action:
-              - s3:ListBucket
-              - s3:GetBucketLocation
-            Resource: !Ref RawDataBucket
+# Bucket policies will be added later after Lambda functions are deployed
 
   # Artifacts Bucket
   ArtifactsBucket:
@@ -142,45 +105,7 @@ Resources:
         - Key: Purpose
           Value: Artifacts Storage
 
-  # Artifacts Bucket Policy
-  ArtifactsBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref ArtifactsBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: DenyInsecureConnections
-            Effect: Deny
-            Principal: '*'
-            Action: 's3:*'
-            Resource:
-              - !Sub '${ArtifactsBucket}/*'
-              - !Ref ArtifactsBucket
-            Condition:
-              Bool:
-                aws:SecureTransport: false
-          - Sid: AllowLambdaAndECSAccess
-            Effect: Allow
-            Principal:
-              AWS: 
-                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-ecs-*'
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-            Resource: !Sub '${ArtifactsBucket}/*'
-          - Sid: AllowBucketAccess
-            Effect: Allow
-            Principal:
-              AWS: 
-                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-ecs-*'
-            Action:
-              - s3:ListBucket
-              - s3:GetBucketLocation
-            Resource: !Ref ArtifactsBucket
+# Artifacts Bucket Policy will be added later
 
   # Exports Bucket
   ExportsBucket:
@@ -205,9 +130,9 @@ Resources:
           - Id: ExportsLifecycle
             Status: Enabled
             Transitions:
-              - TransitionInDays: 7
-                StorageClass: STANDARD_IA
               - TransitionInDays: 30
+                StorageClass: STANDARD_IA
+              - TransitionInDays: 60
                 StorageClass: GLACIER
             ExpirationInDays: 90
           - Id: IncompleteMultipartUploads
@@ -224,50 +149,7 @@ Resources:
         - Key: Purpose
           Value: Exports Storage
 
-  # Exports Bucket Policy
-  ExportsBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref ExportsBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: DenyInsecureConnections
-            Effect: Deny
-            Principal: '*'
-            Action: 's3:*'
-            Resource:
-              - !Sub '${ExportsBucket}/*'
-              - !Ref ExportsBucket
-            Condition:
-              Bool:
-                aws:SecureTransport: false
-          - Sid: AllowLambdaAccess
-            Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-            Resource: !Sub '${ExportsBucket}/*'
-          - Sid: AllowAthenaAccess
-            Effect: Allow
-            Principal:
-              Service: athena.amazonaws.com
-            Action:
-              - s3:GetObject
-              - s3:PutObject
-              - s3:DeleteObject
-            Resource: !Sub '${ExportsBucket}/athena-results/*'
-          - Sid: AllowBucketAccess
-            Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-            Action:
-              - s3:ListBucket
-              - s3:GetBucketLocation
-            Resource: !Ref ExportsBucket
+# Exports Bucket Policy will be added later
 
 Outputs:
   RawDataBucketName:

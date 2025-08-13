@@ -123,7 +123,8 @@ deploy_cognito() {
     deploy_stack \
         "${PROJECT_NAME}-cognito-${ENVIRONMENT}" \
         "cognito-template.yaml" \
-        "Environment=${ENVIRONMENT} ProjectName=${PROJECT_NAME}"
+        "Environment=${ENVIRONMENT} ProjectName=${PROJECT_NAME}" \
+        "CAPABILITY_NAMED_IAM"
     
     cd - > /dev/null
 }
@@ -188,6 +189,13 @@ deploy_lambda() {
     log_info "Building SAM application..."
     sam build --template-file "lambda-template-${ENVIRONMENT}.yaml"
     
+    # Get artifacts bucket name
+    local artifacts_bucket=$(get_stack_output "${PROJECT_NAME}-s3-${ENVIRONMENT}" "ArtifactsBucketName")
+    if [ -z "$artifacts_bucket" ]; then
+        log_error "Could not retrieve artifacts bucket name"
+        exit 1
+    fi
+    
     # Deploy SAM application
     log_info "Deploying SAM application..."
     sam deploy \
@@ -195,6 +203,8 @@ deploy_lambda() {
         --stack-name "${PROJECT_NAME}-lambda-${ENVIRONMENT}" \
         --capabilities CAPABILITY_IAM \
         --region "$AWS_REGION" \
+        --s3-bucket "$artifacts_bucket" \
+        --s3-prefix "lambda-deployments" \
         --parameter-overrides \
             Environment="$ENVIRONMENT" \
             ProjectName="$PROJECT_NAME" \

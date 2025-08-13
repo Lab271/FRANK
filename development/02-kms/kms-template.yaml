@@ -25,30 +25,20 @@ Resources:
               AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
             Action: 'kms:*'
             Resource: '*'
-          - Sid: Allow Lambda Functions
+          - Sid: Allow AWS Services
             Effect: Allow
             Principal:
-              AWS: 
-                - !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+              Service:
+                - lambda.amazonaws.com
+                - s3.amazonaws.com
+                - dynamodb.amazonaws.com
+                - states.amazonaws.com
             Action:
               - kms:Decrypt
               - kms:GenerateDataKey
               - kms:DescribeKey
             Resource: '*'
-            Condition:
-              StringEquals:
-                kms:EncryptionContext:Project: !Ref ProjectName
-                kms:EncryptionContext:Environment: !Ref Environment
-          - Sid: Allow Step Functions
-            Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-stepfunctions-*'
-            Action:
-              - kms:Decrypt
-              - kms:GenerateDataKey
-            Resource: '*'
       EnableKeyRotation: true
-      KeyRotationStatus: Enabled
       Tags:
         - Key: Name
           Value: !Sub '${ProjectName}-s3-key-${Environment}'
@@ -80,25 +70,15 @@ Resources:
               AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
             Action: 'kms:*'
             Resource: '*'
-          - Sid: Allow Lambda Functions
+          - Sid: Allow AWS Services
             Effect: Allow
             Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+              Service:
+                - lambda.amazonaws.com
+                - dynamodb.amazonaws.com
             Action:
               - kms:Decrypt
               - kms:GenerateDataKey
-              - kms:DescribeKey
-            Resource: '*'
-            Condition:
-              StringEquals:
-                kms:EncryptionContext:Project: !Ref ProjectName
-                kms:EncryptionContext:Environment: !Ref Environment
-          - Sid: Allow DynamoDB Service
-            Effect: Allow
-            Principal:
-              Service: dynamodb.amazonaws.com
-            Action:
-              - kms:Decrypt
               - kms:DescribeKey
             Resource: '*'
       EnableKeyRotation: true
@@ -133,27 +113,17 @@ Resources:
               AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
             Action: 'kms:*'
             Resource: '*'
-          - Sid: Allow OpenSearch Service
+          - Sid: Allow AWS Services
             Effect: Allow
             Principal:
-              Service: opensearch.amazonaws.com
+              Service:
+                - opensearch.amazonaws.com
+                - lambda.amazonaws.com
             Action:
               - kms:Decrypt
               - kms:GenerateDataKey
               - kms:DescribeKey
             Resource: '*'
-          - Sid: Allow Lambda Functions
-            Effect: Allow
-            Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
-            Action:
-              - kms:Decrypt
-              - kms:GenerateDataKey
-            Resource: '*'
-            Condition:
-              StringEquals:
-                kms:EncryptionContext:Project: !Ref ProjectName
-                kms:EncryptionContext:Environment: !Ref Environment
       EnableKeyRotation: true
       Tags:
         - Key: Name
@@ -186,19 +156,17 @@ Resources:
               AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:root'
             Action: 'kms:*'
             Resource: '*'
-          - Sid: Allow Lambda Functions Only
+          - Sid: Allow AWS Services
             Effect: Allow
             Principal:
-              AWS: !Sub 'arn:aws:iam::${AWS::AccountId}:role/frank-lambda-*'
+              Service:
+                - lambda.amazonaws.com
+                - secretsmanager.amazonaws.com
             Action:
               - kms:Decrypt
               - kms:GenerateDataKey
               - kms:DescribeKey
             Resource: '*'
-            Condition:
-              StringEquals:
-                kms:EncryptionContext:Project: !Ref ProjectName
-                kms:EncryptionContext:Environment: !Ref Environment
       EnableKeyRotation: true
       Tags:
         - Key: Name

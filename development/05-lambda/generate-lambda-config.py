@@ -30,7 +30,7 @@ def generate_lambda_template(environment='dev'):
         
         'Globals': {
             'Function': {
-                'Runtime': 'python3.11',
+                'Runtime': 'python3.12',
                 'MemorySize': 512,
                 'Timeout': 30,
                 'Tracing': 'Active',
@@ -57,7 +57,7 @@ def generate_lambda_template(environment='dev'):
                     'LayerName': '!Sub frank-dependencies-${Environment}',
                     'Description': 'FRANK Lambda dependencies',
                     'ContentUri': 'layers/dependencies/',
-                    'CompatibleRuntimes': ['python3.11'],
+                    'CompatibleRuntimes': ['python3.12'],
                     'RetentionPolicy': 'Delete'
                 }
             },
@@ -68,7 +68,7 @@ def generate_lambda_template(environment='dev'):
                 'Properties': {
                     'FunctionName': '!Sub frank-ingest-sightings-${Environment}',
                     'CodeUri': 'src/ingest_sightings/',
-                    'Handler': 'lambda_function.lambda_handler',
+                    'Handler': 'index.handler',
                     'MemorySize': 512,
                     'Timeout': 30,
                     'Layers': [
@@ -128,7 +128,7 @@ def generate_lambda_template(environment='dev'):
                 'Properties': {
                     'FunctionName': '!Sub frank-write-persistence-${Environment}',
                     'CodeUri': 'src/write_persistence/',
-                    'Handler': 'lambda_function.lambda_handler',
+                    'Handler': 'index.handler',
                     'MemorySize': 1024,
                     'Timeout': 300,
                     'Layers': [
@@ -172,7 +172,7 @@ def generate_lambda_template(environment='dev'):
                 'Properties': {
                     'FunctionName': '!Sub frank-query-stats-${Environment}',
                     'CodeUri': 'src/query_stats/',
-                    'Handler': 'lambda_function.lambda_handler',
+                    'Handler': 'index.handler',
                     'MemorySize': 256,
                     'Timeout': 30,
                     'Layers': [
@@ -201,7 +201,7 @@ def generate_lambda_template(environment='dev'):
                 'Properties': {
                     'FunctionName': '!Sub frank-sigma-update-${Environment}',
                     'CodeUri': 'src/sigma_update/',
-                    'Handler': 'lambda_function.lambda_handler',
+                    'Handler': 'index.handler',
                     'MemorySize': 512,
                     'Timeout': 120,
                     'Layers': [
@@ -213,29 +213,7 @@ def generate_lambda_template(environment='dev'):
                             'SIGMA_WORKFLOW_ARN': '!Ref SigmaTranslateStateMachine'
                         }
                     },
-                    'Events': {
-                        'S3Event': {
-                            'Type': 'S3',
-                            'Properties': {
-                                'Bucket': '!Sub frank-artifacts-${AWS::AccountId}-${Environment}',
-                                'Events': 's3:ObjectCreated:*',
-                                'Filter': {
-                                    'S3Key': {
-                                        'Rules': [
-                                            {
-                                                'Name': 'prefix',
-                                                'Value': 'sigma-rules/'
-                                            },
-                                            {
-                                                'Name': 'suffix',
-                                                'Value': '.yml'
-                                            }
-                                        ]
-                                    }
-                                }
-                            }
-                        }
-                    },
+# S3 Event configuration removed - will be configured after deployment
                     'Policies': [
                         {
                             'S3ReadPolicy': {
@@ -286,23 +264,17 @@ def generate_lambda_template(environment='dev'):
             'IngestSightingsFunctionArn': {
                 'Description': 'Ingest Sightings Function ARN',
                 'Value': '!GetAtt IngestSightingsFunction.Arn',
-                'Export': {
-                    'Name': '!Sub ${ProjectName}-${Environment}-ingest-function-arn'
-                }
+# Export removed - can be added later if needed
             },
             'WritePersistenceFunctionArn': {
                 'Description': 'Write Persistence Function ARN',
                 'Value': '!GetAtt WritePersistenceFunction.Arn',
-                'Export': {
-                    'Name': '!Sub ${ProjectName}-${Environment}-persistence-function-arn'
-                }
+# Export removed - can be added later if needed
             },
             'QueryStatsFunctionArn': {
                 'Description': 'Query Stats Function ARN',
                 'Value': '!GetAtt QueryStatsFunction.Arn',
-                'Export': {
-                    'Name': '!Sub ${ProjectName}-${Environment}-query-function-arn'
-                }
+# Export removed - can be added later if needed
             }
         }
     }

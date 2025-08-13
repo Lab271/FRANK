@@ -11,9 +11,35 @@ Parameters:
     Default: frank
 
 Resources:
+  # IAM Role for SMS MFA (must be created before UserPool)
+  CognitoSMSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${ProjectName}-cognito-sms-role-${Environment}'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cognito-idp.amazonaws.com
+            Action: sts:AssumeRole
+            Condition:
+              StringEquals:
+                sts:ExternalId: !Sub '${ProjectName}-${Environment}'
+      Policies:
+        - PolicyName: CognitoSNSPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - sns:Publish
+                Resource: '*'
+
   # Cognito User Pool
   UserPool:
     Type: AWS::Cognito::UserPool
+    DependsOn: CognitoSMSRole
     Properties:
       UserPoolName: !Sub '${ProjectName}-user-pool-${Environment}'
       AliasAttributes:
@@ -34,8 +60,11 @@ Resources:
       EnabledMfas:
         - SMS_MFA
         - SOFTWARE_TOKEN_MFA
-      UserPoolAdvancedSecurityConfig:
-        Mode: ENFORCED
+      SmsConfiguration:
+        SnsCallerArn: !GetAtt CognitoSMSRole.Arn
+        ExternalId: !Sub '${ProjectName}-${Environment}'
+      UserPoolAddOns:
+        AdvancedSecurityMode: ENFORCED
       Schema:
         - Name: email
           AttributeDataType: String
@@ -97,24 +126,6 @@ Resources:
           ScopeDescription: Update SIGMA rules
         - ScopeName: admin:manage
           ScopeDescription: Administrative functions
-
-  # IAM Role for SMS MFA
-  CognitoSMSRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${ProjectName}-cognito-sms-role-${Environment}'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: cognito-idp.amazonaws.com
-            Action: sts:AssumeRole
-            Condition:
-              StringEquals:
-                sts:ExternalId: !Sub '${ProjectName}-${Environment}'
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonCognitoUserPoolSMSRole
 
   # User Groups
   PublishersGroup:

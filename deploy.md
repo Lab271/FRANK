@@ -62,7 +62,43 @@ brew install jq
 - **Region**: Choose a region that supports all required services (recommended: `eu-west-1`, `us-east-1`, `us-west-2`)
 - **Permissions**: Administrator access or specific IAM permissions (see below)
 
-### 2. Required AWS Permissions
+### 2. AWS Organizations Setup (Recommended)
+
+For better isolation and security, create a dedicated AWS account for FRANK:
+
+**Option A: Create New Member Account (Recommended)**
+```bash
+# Check organization status using your master account
+export AWS_PROFILE=bjenniskens@sbp-labs
+aws organizations describe-organization
+
+# Create dedicated account for FRANK
+aws organizations create-account \
+    --email frank-security@yourcompany.com \
+    --account-name "FRANK-CyberThreat-Platform" \
+    --role-name OrganizationAccountAccessRole
+
+# Get the new account ID
+aws organizations list-accounts --query 'Accounts[?Name==`FRANK-CyberThreat-Platform`].Id' --output text
+```
+
+**Option B: Use Existing Account with Master Profile**
+```bash
+# Use your master account for FRANK project
+export AWS_PROFILE=bjenniskens@sbp-labs
+
+# Verify your account access
+aws sts get-caller-identity
+```
+
+**Benefits of Dedicated Account:**
+- Complete resource isolation
+- Separate billing and cost tracking  
+- Enhanced security boundaries
+- Independent service quotas
+- Easier compliance auditing
+
+### 3. Required AWS Permissions
 
 Your AWS user/role must have the following permissions:
 
@@ -92,7 +128,8 @@ Your AWS user/role must have the following permissions:
         "es:*",
         "xray:*",
         "secretsmanager:*",
-        "ssm:*"
+        "ssm:*",
+        "organizations:*"
       ],
       "Resource": "*"
     }
@@ -102,29 +139,199 @@ Your AWS user/role must have the following permissions:
 
 **For Production**: Create a more restrictive policy based on specific resource ARNs.
 
-### 3. Configure AWS CLI
+**For Organizations Management**: Add these additional permissions if managing AWS Organizations:
+```json
+{
+  "Version": "2012-10-17", 
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "organizations:CreateAccount",
+        "organizations:DescribeOrganization", 
+        "organizations:ListAccounts",
+        "organizations:CreateOrganizationalUnit",
+        "organizations:MoveAccount"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+```
+
+### 4. Create Dedicated IAM User (Recommended)
+
+**Step 1: Create FRANK IAM User**
+```bash
+## Step 2: Create IAM User for Deployment ✅
+
+To ensure secure deployment, we'll create a dedicated IAM user with limited permissions:
 
 ```bash
-# Configure AWS credentials
-aws configure
+# Create the IAM user
+aws iam create-user --user-name frank-deployment-user --profile bjenniskens@sbp-labs
+
+# Create access keys (save these securely!)
+aws iam create-access-key --user-name frank-deployment-user --profile bjenniskens@sbp-labs
+```
+
+**✅ Completed**: 
+- IAM user `frank-deployment-user` created
+- Access keys generated and configured
+- User ID: `AIDAVC7S2ZPVIYEVV2OPP`
+
+## Step 3: Create and Attach IAM Policy ✅
+
+Create the deployment policy:
+
+```bash
+# Create the policy
+aws iam create-policy --policy-name FRANKDeploymentPolicy --policy-document file://frank-deployment-policy.json --profile bjenniskens@sbp-labs
+
+# Attach policy to user
+aws iam attach-user-policy --user-name frank-deployment-user --policy-arn "arn:aws:iam::350012230634:policy/FRANKDeploymentPolicy" --profile bjenniskens@sbp-labs
+```
+
+**✅ Completed**:
+- Policy `FRANKDeploymentPolicy` created
+- Policy attached to frank-deployment-user
+- Policy ARN: `arn:aws:iam::350012230634:policy/FRANKDeploymentPolicy`
+
+## Step 4: Configure AWS CLI Profile ✅
+
+Configure the new profile for deployment:
+
+```bash
+aws configure set aws_access_key_id AKIAVC7S2ZPVMO36FK5H --profile frank-deployment
+aws configure set aws_secret_access_key "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" --profile frank-deployment
+aws configure set region eu-central-1 --profile frank-deployment
+aws configure set output json --profile frank-deployment
+```
+
+Test the profile:
+```bash
+aws sts get-caller-identity --profile frank-deployment
+```
+
+**✅ Completed**: AWS CLI profile `frank-deployment` configured and tested
+```
+
+**Step 2: Create IAM Policy for FRANK**
+```bash
+# Create policy file (frank-deployment-policy.json)
+cat > frank-deployment-policy.json << 'EOF'
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "cloudformation:*",
+        "iam:*",
+        "s3:*",
+        "dynamodb:*",
+        "lambda:*",
+        "apigateway:*",
+        "cognito-idp:*",
+        "cognito-identity:*",
+        "kms:*",
+        "logs:*",
+        "events:*",
+        "sqs:*",
+        "states:*",
+        "ecs:*",
+        "ecr:*",
+        "opensearch:*",
+        "es:*",
+        "xray:*",
+        "secretsmanager:*",
+        "ssm:*",
+        "organizations:DescribeOrganization",
+        "organizations:ListAccounts",
+        "sts:GetCallerIdentity"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+EOF
+
+# Create the policy
+aws iam create-policy \
+    --policy-name FRANKDeploymentPolicy \
+    --policy-document file://frank-deployment-policy.json
+
+# Attach policy to user
+aws iam attach-user-policy \
+    --user-name frank-deployment-user \
+    --policy-arn "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):policy/FRANKDeploymentPolicy"
+```
+
+**Step 3: Configure AWS CLI with FRANK User**
+```bash
+# Configure AWS CLI with the new FRANK user
+aws configure --profile frank-project
 
 # When prompted, enter:
-# AWS Access Key ID: [Your access key]
-# AWS Secret Access Key: [Your secret key]
-# Default region name: eu-west-1  # or your preferred region
+# AWS Access Key ID: [AccessKeyId from step 1]
+# AWS Secret Access Key: [SecretAccessKey from step 1]  
+# Default region name: eu-central-1  # or your preferred region
 # Default output format: json
 
+# Set profile for FRANK deployment
+export AWS_PROFILE=frank-project
+
 # Verify configuration
-aws sts get-caller-identity
+aws sts get-caller-identity --profile frank-project
+```
+
+**Alternative: Use Existing Account (Less Secure)**
+```bash
+# If you prefer to use your existing user
+aws configure --profile frank-project
+# Use your existing credentials
 ```
 
 **Alternative: Using AWS SSO or IAM Roles**
 ```bash
 # For AWS SSO
-aws configure sso
+aws configure sso --profile frank-sso
 
 # For EC2 instance roles or other assumed roles
 # Ensure proper role assumption is configured
+```
+
+### 5. Security Considerations
+
+**Best Practices for IAM User:**
+- ✅ **Use dedicated IAM user** for FRANK project
+- ✅ **Rotate access keys** regularly (every 90 days)
+- ✅ **Enable MFA** on the IAM user account
+- ✅ **Limit permissions** to only what FRANK needs
+- ✅ **Monitor usage** through CloudTrail logs
+
+**Enable MFA for FRANK User:**
+```bash
+# Create virtual MFA device
+aws iam create-virtual-mfa-device \
+    --virtual-mfa-device-name frank-deployment-user-mfa \
+    --outfile QRCode.png \
+    --bootstrap-method QRCodePNG
+
+# Enable MFA (after scanning QR code)
+aws iam enable-mfa-device \
+    --user-name frank-deployment-user \
+    --serial-number "arn:aws:iam::$(aws sts get-caller-identity --query Account --output text):mfa/frank-deployment-user-mfa" \
+    --authentication-code-1 123456 \
+    --authentication-code-2 654321
+```
+
+**For Production: Additional Security Measures**
+```bash
+# Create more restrictive policy
+# Limit to specific resource ARNs
+# Use AWS IAM Access Analyzer
+# Enable AWS CloudTrail for auditing
 ```
 
 ## Environment Configuration
@@ -140,8 +347,8 @@ export PROJECT_NAME="frank"             # Project name (used in resource naming)
 export ENVIRONMENT="dev"                # Environment: dev, test, or prod
 
 # Optional but recommended
-export AWS_PROFILE="default"            # AWS CLI profile to use
-export AWS_DEFAULT_OUTPUT="json"        # AWS CLI output format
+export AWS_PROFILE="bjenniskens@sbp-labs"  # Your master AWS profile
+export AWS_DEFAULT_OUTPUT="json"           # AWS CLI output format
 ```
 
 **For persistent configuration, add to your shell profile:**
