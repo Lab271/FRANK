@@ -2,12 +2,11 @@
 
 ## Overview
 
-FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) is a serverless cybersecurity threat intelligence sharing platform built on AWS. The architecture enables secure ingestion, processing, and sharing of Indicators of Compromise (IoCs), SIGMA rules, and security sightings across multiple tenants while maintaining privacy through pseudonymization and aggregation.
+FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) is a serverless cybersecurity threat intelligence sharing platform built on AWS. The architecture enables secure ingestion, processing, and sharing of  security sightings between multiple parties while maintaining privacy through pseudonymization and aggregation.
 
 ## Architecture Principles
 
 - **Security-by-Default**: All data encrypted with KMS, no public S3 access, least privilege IAM
-- **Multi-tenant**: Tenant separation in data and policies with anonymous/aggregated output
 - **Serverless-First**: Leveraging managed AWS services for scalability and cost efficiency
 - **Privacy-Preserving**: Pseudonymization of sensitive data with aggregated analytics only
 
@@ -15,14 +14,14 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
 
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
-│   API Clients   │    │  SIGMA Updates  │    │   Dashboards    │
+│   API Clients   │    │  Management     │    │   Dashboards    │
 │  (Organizations)│    │   (Admins)      │    │   (Analysts)    │
 └─────────┬───────┘    └─────────┬───────┘    └─────────┬───────┘
           │                      │                      │
           │                      │                      │
 ┌─────────▼──────────────────────▼──────────────────────▼────────┐
 │                     API Gateway + WAF                          │
-│    /v1/sightings  /v1/sigma/*  /v1/stats                       │
+│    /v1/submissions   /v1/sighting   /v1/stats                  │
 └─────────┬──────────────────────────────────────────────────────┘
           │
 ┌─────────▼──────────┐
@@ -32,11 +31,11 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
           │
 ┌─────────▼──────────┐    ┌─────────────────┐    ┌─────────────────┐
 │  Lambda Functions  │    │ Step Functions  │    │  ECS Fargate    │
-│                    │    │   Workflows.    │    │  SIGMA Tools    │
-│ • ingest_sightings │    │                 │    │                 │
-│ • write_persistence│    │ • SigmaTranslate│    │ • sigma-cli     │
-│ • query_stats      │    │ • TenantOffboard│    │ • Validation    │
-│ • sigma_update_job │    │ • ReportGenerate│    │                 │
+│                    │    │   Workflows.    │    │                 │
+│ • ingest           │    │                 │    │                 │
+│ • details          │    │ • ReportGenerate│    │                 │
+│ • stats            │    │ •               │    │                 │
+│ • admin            │    │ •               │    │                 │
 └─────────┬──────────┘    └─────────────────┘    └─────────────────┘
           │
           ▼
@@ -47,8 +46,8 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
 │  │     S3      │  │  DynamoDB    │  │    OpenSearch Service  │  │
 │  │             │  │              │  │                        │  │
 │  │ • Raw Data  │  │ • Aggregates │  │ • Search & Analytics   │  │
-│  │ • Artifacts │  │ • Tenants    │  │ • Dashboards           │  │
-│  │ • Exports   │  │ • Idempotency│  │ • Multi-tenant Indices │  │
+│  │ • Artifacts │  │ •            │  │ • Dashboards           │  │
+│  │ • Exports   │  │ •            │  │ •                      │  │
 │  └─────────────┘  └──────────────┘  └────────────────────────┘  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -63,8 +62,6 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
 - REST API with multiple endpoints:
   - `POST /v1/sightings` - Ingest security sightings from participants
   - `GET /v1/stats` - Retrieve aggregated statistics (filterable)
-  - `GET /v1/sigma/{ruleId}` - Fetch SIGMA rules and versions
-  - `POST /v1/sigma/{ruleId}/update` - Admin updates to SIGMA rules
 
 **Security Features**:
 - Cognito JWT authorizer for authentication
@@ -77,7 +74,7 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
 ### 2. Authentication & Authorization
 
 **Amazon Cognito User Pool**:
-- JWT-based authentication with custom attributes (tenant_id, sector)
+- JWT-based authentication with custom attributes (submitter_id, sector)
 - Role-based access control with groups (publisher, reader)
 - Resource server with OAuth2 scopes
 - MFA and advanced security features enabled
@@ -94,7 +91,7 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
    - Applies pseudonymization using HMAC-SHA256
 
 2. **write_persistence**
-   - Stores raw data to S3 with tenant partitioning
+   - Stores raw data to S3 with submitter partitioning
    - Updates DynamoDB aggregates
    - Indexes data in OpenSearch for analytics
 
@@ -102,11 +99,6 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
    - Retrieves aggregated statistics from DynamoDB/OpenSearch
    - Ensures only anonymized data is returned
    - Supports filtering by IoC type, sector, and time
-
-4. **sigma_update_job**
-   - Validates and processes SIGMA rule updates
-   - Updates S3 artifacts
-   - Triggers downstream indexing and notifications
 
 **Configuration**:
 - Python/Node.js runtime with AWS Powertools
@@ -118,20 +110,15 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
 
 **AWS Step Functions**:
 
-1. **SigmaTranslate Workflow**
-   - S3 trigger → ECS Fargate task → validation → publish
-   - Orchestrates SIGMA rule processing pipeline
-
-2. **TenantOffboard Workflow**
+2. **Submitter Offboard Workflow**
    - Credential revocation → data purging → audit logging
-   - Ensures complete tenant data removal
+   - Ensures complete submitter data removal
 
 3. **ReportGenerate Workflow**
    - Athena queries → S3 exports → signed URL generation
    - Automated report generation process
 
 **AWS ECS Fargate**:
-- Containerized SIGMA processing tools
 - On-demand execution via Step Functions
 - Custom Docker images stored in Amazon ECR
 
@@ -142,12 +129,9 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling) 
 Bucket Structure:
 ```
 s3://frank-raw-<env>/
-├── tenant_id=org1/
+├── submitter_id=org1/
 │   └── date=2025/08/12/
-│       └── sightings.json
-s3://frank-artifacts-<env>/
-├── sigma-rules/
-│   └── rule-id-version.yml
+│       └── submission.json
 s3://frank-exports-<env>/
 ├── reports/
 └── athena-results/
@@ -156,20 +140,19 @@ s3://frank-exports-<env>/
 **Amazon DynamoDB Tables**:
 
 1. **frank-aggregates**
-   - PK: `ioc#type`, SK: `timebucket#sector#tenant`
+   - PK: `ioc#type`, SK: `timebucket#sector#submitter`
    - Stores hot aggregated statistics
    - GSIs for different query patterns
 
-2. **frank-tenants**
-   - PK: `tenant_id`
-   - Tenant metadata, configuration, and policies
+2. **frank-submitters**
+   - PK: `submitter_id`
+   - submitter metadata, configuration, and policies
 
 3. **frank-idempotency**
    - Request deduplication with TTL
 
 **Amazon OpenSearch Service**:
 - VPC-deployed for security
-- Multi-tenant index strategy: `frank-sightings-<tenant>-YYYY.MM`
 - Fine-grained access control (FGAC)
 - Index lifecycle management (ILM) policies
 - OpenSearch Dashboards for visualization
@@ -203,22 +186,22 @@ s3://frank-exports-<env>/
 
 ### 7. Data Governance
 
-**Multi-Tenant Data Isolation**:
-- S3 prefix-based partitioning: `tenant_id=<tenant>/`
-- DynamoDB partition key includes tenant_id
-- OpenSearch per-tenant indices
+**Multi-Submitter Data Isolation**:
+- S3 prefix-based partitioning: `submitter_id=<submitter>/`
+- DynamoDB partition key includes submitter_id
+- OpenSearch per-submitter indices
 - Cognito claims validation at API layer
 
 **Pseudonymization Process**:
 ```
-Original_ID + Tenant_Salt + KMS_Key → HMAC-SHA256 → Pseudonymized_ID
+Original_ID + Submitter_Salt + KMS_Key → HMAC-SHA256 → Pseudonymized_ID
 ```
 
 **Data Lifecycle**:
 - S3 lifecycle policies: Hot → IA → Glacier → Delete
 - DynamoDB TTL for temporary data
 - OpenSearch ILM for index management
-- Configurable retention per tenant
+- Configurable retention per submitter
 
 ### 8. Analytics & Query Layer
 
@@ -318,11 +301,11 @@ Original_ID + Tenant_Salt + KMS_Key → HMAC-SHA256 → Pseudonymized_ID
 - Aggregation before exposure
 - Regular data purging
 
-**Tenant Isolation**:
+**Submitter Isolation**:
 - Complete data segregation
 - Independent encryption keys
 - Separate IAM policies
-- Audit trails per tenant
+- Audit trails per submitter
 
 ### Regulatory Compliance
 
@@ -358,16 +341,14 @@ Based on the design analysis, this architecture **can work effectively** as desc
 
 1. **Security-First Design**: Comprehensive encryption, isolation, and monitoring
 2. **Scalable Architecture**: Serverless components that scale automatically
-3. **Multi-Tenant Ready**: Proper data isolation and tenant management
-4. **Privacy Preserving**: Strong pseudonymization and aggregation strategies
-5. **Operational Excellence**: Comprehensive monitoring, backup, and IaC
+3. **Privacy Preserving**: Strong pseudonymization and aggregation strategies
+4. **Operational Excellence**: Comprehensive monitoring, backup, and IaC
 
 ### ⚠️ **Considerations**
 
 1. **Complexity**: The architecture is comprehensive but may be complex to implement initially
 2. **Cost Management**: Multiple managed services require careful cost monitoring
 3. **Cold Start Latency**: Lambda cold starts may impact initial response times
-4. **OpenSearch Sizing**: Requires careful capacity planning for multi-tenant workloads
 
 ### 🔧 **Recommendations**
 

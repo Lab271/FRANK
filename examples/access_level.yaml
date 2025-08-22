@@ -1,0 +1,234 @@
+# FRANK Platform - Sighting Access Levels
+# Based on trust, reciprocity, and contribution levels
+
+access_levels:
+  
+  # Level 0: Public/Anonymous Access
+  public:
+    description: "Basic threat intelligence available to anyone"
+    authentication: "none"
+    rate_limit: "100 requests/day"
+    data_access:
+      - aggregated_counts: "weekly_summaries_only"
+      - geographic_data: "country_level"
+      - sector_data: "broad_categories_only"
+      - temporal_data: "monthly_trends"
+      - indicators: "hash_only"
+      - confidence: "ranges_only"
+    
+    query_example:
+      endpoint: "/api/v1/public/trends"
+      response:
+        threat_trends:
+          week_ending: "2025-01-15"
+          total_sightings: 1247
+          sectors_affected: ["financial", "healthcare", "manufacturing"]
+          top_threats: ["ransomware", "phishing", "malware"]
+          geographic_distribution:
+            europe: 45
+            north_america: 32
+            asia: 23
+        confidence_levels:
+          high: "40-60%"
+          medium: "30-40%"
+          low: "10-20%"
+
+  # Level 1: Registered Observer
+  observer:
+    description: "Non-contributing parties with legitimate security interest"
+    authentication: "api_key_required"
+    eligibility: ["academic_institutions", "government_csirts", "small_organizations"]
+    rate_limit: "500 requests/day"
+    data_access:
+      - aggregated_counts: "daily_summaries"
+      - geographic_data: "regional_level"
+      - sector_data: "specific_sectors"
+      - temporal_data: "weekly_trends"
+      - indicators: "obfuscated_values"
+      - sigma_rules: "rule_ids_only"
+      - confidence: "exact_ranges"
+    
+    query_example:
+      endpoint: "/api/v1/observer/sightings"
+      parameters:
+        sector: "financial"
+        timeframe: "last_7_days"
+        threat_type: "ransomware"
+      response:
+        sightings_summary:
+          total_count: 156
+          unique_organizations: "10-15"
+          first_seen: "2025-01-08T14:23:00Z"
+          last_seen: "2025-01-15T09:45:00Z"
+          severity_distribution:
+            critical: 12
+            high: 45
+            medium: 78
+            low: 21
+          detection_methods:
+            sigma_automated: 134
+            manual_hunting: 22
+          geographic_spread:
+            netherlands: 89
+            germany: 34
+            belgium: 33
+
+  # Level 2: Limited Contributor
+  contributor:
+    description: "Organizations sharing some threat data"
+    authentication: "mutual_tls_certificate"
+    eligibility: ["verified_msps", "security_vendors", "large_enterprises"]
+    contribution_requirement: "minimum_10_sightings_per_month"
+    rate_limit: "2000 requests/day"
+    data_access:
+      - aggregated_counts: "hourly_summaries"
+      - geographic_data: "city_level"
+      - sector_data: "detailed_subsectors"
+      - temporal_data: "daily_trends"
+      - indicators: "partial_iocs"
+      - sigma_rules: "rule_content_available"
+      - confidence: "exact_values"
+      - false_positive_rates: "available"
+    
+    query_example:
+      endpoint: "/api/v1/contributor/detailed_sightings"
+      parameters:
+        sigma_rule_id: "sigma_network_susp_download"
+        confidence_min: 75
+        timeframe: "last_24_hours"
+      response:
+        detailed_sightings:
+          - sighting_id: "sight_001"
+            count: 23
+            first_seen: "2025-01-15T08:15:00Z"
+            last_seen: "2025-01-15T14:22:00Z"
+            sector: "financial_banking"
+            region: "nl_north_holland"
+            confidence: 87
+            false_positive_likelihood: "low"
+            related_iocs:
+              - type: "ip_subnet"
+                value: "192.168.x.x/24"
+                role: "c2_server"
+              - type: "domain_pattern"
+                value: "*.suspicious-banking-[0-9].com"
+            mitre_techniques: ["T1566.001", "T1071.001"]
+            affected_systems: 5
+            blocked_attempts: 18
+            successful_connections: 5
+
+  # Level 3: Full Partner
+  partner:
+    description: "Trusted organizations with significant ongoing contributions"
+    authentication: "mutual_tls + identity_verification"
+    eligibility: ["major_msps", "cybersecurity_firms", "critical_infrastructure"]
+    contribution_requirement: "minimum_50_sightings_per_month + high_quality_data"
+    rate_limit: "10000 requests/day"
+    data_access:
+      - aggregated_counts: "real_time"
+      - geographic_data: "precise_location"
+      - sector_data: "organization_specific"
+      - temporal_data: "real_time_feeds"
+      - indicators: "full_iocs_with_context"
+      - sigma_rules: "full_access_including_drafts"
+      - confidence: "detailed_scoring"
+      - attribution_data: "available"
+      - threat_actor_intel: "available"
+    
+    query_example:
+      endpoint: "/api/v1/partner/real_time_intel"
+      parameters:
+        ioc_value: "sha256:a1b2c3..."
+        include_attribution: true
+        include_context: true
+      response:
+        comprehensive_intel:
+          - ioc_analysis:
+              hash: "sha256:a1b2c3d4e5f6..."
+              first_seen_network: "2025-01-10T12:00:00Z"
+              total_sightings: 847
+              contributing_orgs: 23
+              confidence_average: 94
+              malware_family: "ransomware_variant_xyz"
+              threat_actor: "group_apt_suspected"
+            
+            sighting_details:
+              - submitter_category: "financial_institution"
+                region: "amsterdam_metro"
+                timestamp: "2025-01-15T13:45:12Z"
+                context: "email_attachment_execution"
+                outcome: "blocked_by_edr"
+                additional_iocs: ["domain:evil.com", "ip:1.2.3.4"]
+            
+            predictive_analysis:
+              likely_targets: ["financial", "healthcare"]
+              attack_timeline: "initial_access_to_encryption: 4-8_hours"
+              recommended_actions: ["block_c2_domains", "hunt_for_persistence"]
+
+  # Level 4: Core Platform Member
+  core_member:
+    description: "Founding and strategic platform participants"
+    authentication: "mutual_tls + governance_participation"
+    eligibility: ["platform_founders", "major_contributors", "governance_participants"]
+    contribution_requirement: "significant_ongoing_contribution + platform_governance"
+    rate_limit: "unlimited"
+    data_access:
+      - all_partner_privileges: true
+      - platform_analytics: "full_access"
+      - governance_data: "participation_statistics"
+      - quality_metrics: "contributor_scoring"
+      - experimental_features: "beta_access"
+      - cross_platform_intel: "cyclotron_melissa_integration"
+    
+    additional_privileges:
+      - can_propose_new_sigma_rules: true
+      - can_flag_false_positives: true
+      - can_request_specific_hunts: true
+      - can_access_attribution_data: true
+      - can_participate_in_takedown_coordination: true
+
+# Trust and Reciprocity Mechanics
+trust_mechanics:
+  
+  contribution_scoring:
+    factors:
+      - volume_of_submissions: "weight: 30%"
+      - quality_of_submissions: "weight: 40%"
+      - timeliness_of_submissions: "weight: 15%"
+      - false_positive_rate: "weight: 15%"
+    
+    quality_indicators:
+      - validated_by_multiple_sources: "+10 points"
+      - led_to_successful_blocking: "+5 points"
+      - resulted_in_false_positive: "-5 points"
+      - contained_rich_context: "+3 points"
+  
+  access_degradation:
+    conditions:
+      - "no_contributions_30_days": "downgrade_one_level"
+      - "high_false_positive_rate": "temporary_suspension"
+      - "sharing_outside_platform": "permanent_ban"
+      - "quality_score_below_threshold": "probationary_status"
+
+# Anonymization by Access Level
+anonymization_levels:
+  public: "maximum_anonymization"
+  observer: "high_anonymization"
+  contributor: "moderate_anonymization"
+  partner: "minimal_anonymization"
+  core_member: "context_preserving_anonymization"
+
+# Rate Limiting and Fair Use
+fair_use_policies:
+  burst_allowances:
+    observer: "2x daily limit for 1 hour"
+    contributor: "3x daily limit for 2 hours"
+    partner: "5x daily limit for 4 hours"
+  
+  priority_queuing:
+    real_time_alerts: "core_members > partners > contributors"
+    bulk_queries: "fair_share_scheduling"
+    
+  abuse_detection:
+    patterns: ["excessive_querying", "data_scraping", "no_reciprocal_sharing"]
+    penalties: ["rate_limiting", "temporary_suspension", "access_revocation"]

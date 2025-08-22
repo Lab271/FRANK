@@ -1,0 +1,386 @@
+{
+  "api_endpoints_by_access_level": {
+    
+    "public_endpoints": {
+      "GET /api/v1/public/threat-landscape": {
+        "description": "General threat trends and statistics",
+        "authentication": "none",
+        "response_example": {
+          "period": "2025-01-01 to 2025-01-15",
+          "total_threats_detected": "5000+",
+          "trending_threats": [
+            {
+              "type": "ransomware",
+              "growth": "15% increase",
+              "severity": "high"
+            },
+            {
+              "type": "phishing",
+              "growth": "stable",
+              "severity": "medium"
+            }
+          ],
+          "affected_sectors": ["financial", "healthcare", "manufacturing"],
+          "geographic_hotspots": ["western_europe", "north_america"]
+        }
+      }
+    },
+
+    "observer_endpoints": {
+      "GET /api/v1/observer/sector-threats": {
+        "description": "Sector-specific threat intelligence",
+        "authentication": "api_key",
+        "parameters": {
+          "sector": "financial",
+          "timeframe": "7d",
+          "min_confidence": 50
+        },
+        "response_example": {
+          "sector": "financial",
+          "timeframe": "last_7_days",
+          "summary": {
+            "total_incidents": 156,
+            "unique_threats": 23,
+            "organizations_affected": "15-20",
+            "severity_breakdown": {
+              "critical": 12,
+              "high": 45,
+              "medium": 78,
+              "low": 21
+            }
+          },
+          "top_threats": [
+            {
+              "threat_id": "hash_abc123",
+              "type": "banking_trojan",
+              "frequency": 45,
+              "first_seen": "2025-01-09",
+              "targets": "online_banking_portals"
+            }
+          ],
+          "recommended_actions": [
+            "monitor_suspicious_banking_domains",
+            "increase_email_filtering_sensitivity"
+          ]
+        }
+      }
+    },
+
+    "contributor_endpoints": {
+      "GET /api/v1/contributor/detailed-sightings": {
+        "description": "Detailed sighting information with partial IOCs",
+        "authentication": "mutual_tls",
+        "parameters": {
+          "sigma_rule_id": "rule_banking_malware_001",
+          "timeframe": "24h",
+          "include_context": true
+        },
+        "response_example": {
+          "sigma_rule": {
+            "id": "rule_banking_malware_001",
+            "title": "Suspicious Banking Credential Harvesting",
+            "description": "Detects credential harvesting targeting banking sites"
+          },
+          "sightings": [
+            {
+              "sighting_id": "sight_789",
+              "timestamp": "2025-01-15T14:32:00Z",
+              "count": 8,
+              "confidence": 87,
+              "context": {
+                "sector": "financial_retail_banking",
+                "region": "netherlands_randstad",
+                "network_size": "medium",
+                "detection_method": "sigma_automated"
+              },
+              "partial_iocs": {
+                "suspicious_domains": [
+                  "*.bank-security-[0-9]{3}.com",
+                  "login-verify-*.nl"
+                ],
+                "ip_ranges": [
+                  "185.220.xxx.xxx/24",
+                  "192.168.xxx.xxx"
+                ],
+                "file_patterns": [
+                  "*.exe with size 2.3MB-2.5MB",
+                  "PDF files with embedded flash"
+                ]
+              },
+              "impact": {
+                "affected_endpoints": 3,
+                "blocked_attempts": 12,
+                "successful_connections": 2,
+                "data_potentially_compromised": false
+              }
+            }
+          ],
+          "analysis": {
+            "trend": "increasing",
+            "similar_campaigns": 4,
+            "likely_attribution": "cybercriminal_group",
+            "recommended_hunting": [
+              "search_for_similar_domain_patterns",
+              "check_email_attachments_matching_pattern"
+            ]
+          }
+        }
+      },
+
+      "POST /api/v1/contributor/validate-ioc": {
+        "description": "Validate an IOC against the platform database",
+        "authentication": "mutual_tls",
+        "request_example": {
+          "ioc": {
+            "type": "domain",
+            "value": "suspicious-banking-portal.com"
+          },
+          "context": {
+            "source": "email_attachment",
+            "urgency": "high"
+          }
+        },
+        "response_example": {
+          "validation_result": {
+            "known_malicious": true,
+            "confidence": 94,
+            "first_seen_platform": "2025-01-12T09:15:00Z",
+            "total_sightings": 23,
+            "contributing_organizations": 7,
+            "threat_classification": "banking_trojan_c2",
+            "recommended_action": "block_immediately",
+            "related_campaign": "operation_bank_harvest_2025"
+          },
+          "additional_context": {
+            "malware_family": "trickbot_variant",
+            "target_sectors": ["financial", "e_commerce"],
+            "geographic_focus": ["netherlands", "belgium", "germany"],
+            "attack_vectors": ["phishing_email", "malicious_pdf"]
+          }
+        }
+      }
+    },
+
+    "partner_endpoints": {
+      "GET /api/v1/partner/real-time-feed": {
+        "description": "Real-time threat intelligence feed",
+        "authentication": "mutual_tls + partner_certificate",
+        "parameters": {
+          "stream": "continuous",
+          "filter_confidence": 80,
+          "include_attribution": true
+        },
+        "response_example": {
+          "stream_id": "rt_feed_partner_001",
+          "events": [
+            {
+              "event_id": "evt_real_time_001",
+              "timestamp": "2025-01-15T15:47:23Z",
+              "priority": "high",
+              "threat_intel": {
+                "ioc": {
+                  "type": "ip",
+                  "value": "185.220.102.45",
+                  "confidence": 92
+                },
+                "context": {
+                  "threat_type": "ransomware_c2",
+                  "campaign": "darkside_resurgence_2025",
+                  "first_seen": "2025-01-15T14:23:00Z",
+                  "last_activity": "2025-01-15T15:45:00Z"
+                },
+                "attribution": {
+                  "threat_actor": "darkside_affiliate_7",
+                  "motivation": "financial",
+                  "target_profile": "mid_size_enterprises"
+                },
+                "technical_details": {
+                  "c2_protocol": "https_encrypted",
+                  "communication_pattern": "beacon_every_30_minutes",
+                  "payload_delivery": "email_phishing",
+                  "encryption_method": "chacha20_poly1305"
+                },
+                "impact_assessment": {
+                  "organizations_affected": 12,
+                  "estimated_damage": "high",
+                  "encryption_speed": "fast",
+                  "recovery_difficulty": "very_high"
+                }
+              },
+              "recommended_actions": {
+                "immediate": [
+                  "block_ip_at_perimeter",
+                  "hunt_for_beacon_traffic",
+                  "check_recent_email_attachments"
+                ],
+                "tactical": [
+                  "implement_application_whitelisting",
+                  "backup_verification",
+                  "incident_response_preparation"
+                ]
+              }
+            }
+          ]
+        }
+      },
+
+      "GET /api/v1/partner/campaign-analysis": {
+        "description": "Detailed campaign and threat actor analysis",
+        "authentication": "mutual_tls + partner_certificate",
+        "parameters": {
+          "campaign_id": "operation_bank_harvest_2025",
+          "include_predictions": true
+        },
+        "response_example": {
+          "campaign": {
+            "id": "operation_bank_harvest_2025",
+            "name": "Banking Credential Harvesting Campaign 2025",
+            "active_since": "2024-12-15",
+            "current_status": "active_escalating",
+            "attribution": {
+              "primary_group": "fin7_affiliate",
+              "confidence": 87,
+              "motive": "financial_gain",
+              "sophistication_level": "advanced"
+            }
+          },
+          "timeline": [
+            {
+              "phase": "reconnaissance",
+              "start_date": "2024-12-15",
+              "activities": ["target_identification", "infrastructure_setup"]
+            },
+            {
+              "phase": "initial_access",
+              "start_date": "2025-01-08",
+              "activities": ["phishing_campaigns", "malware_deployment"]
+            },
+            {
+              "phase": "credential_harvesting",
+              "start_date": "2025-01-12",
+              "activities": ["keylogging", "form_grabbing", "session_hijacking"]
+            }
+          ],
+          "infrastructure": {
+            "c2_servers": [
+              {
+                "ip": "185.220.102.45",
+                "domain": "secure-bank-verify.com",
+                "location": "netherlands",
+                "active_since": "2025-01-10"
+              }
+            ],
+            "compromised_sites": [
+              "legitimate-looking-bank-portal.nl",
+              "security-update-banking.com"
+            ],
+            "malware_samples": [
+              {
+                "sha256": "a1b2c3d4e5f6...",
+                "family": "trickbot_variant",
+                "capabilities": ["credential_theft", "screen_capture", "remote_access"]
+              }
+            ]
+          },
+          "predictions": {
+            "likely_next_targets": ["medium_regional_banks", "credit_unions"],
+            "expected_escalation": "deployment_of_ransomware_module",
+            "timeline_prediction": "7-14_days",
+            "recommended_preparation": [
+              "enhance_email_filtering",
+              "user_awareness_training",
+              "backup_verification"
+            ]
+          }
+        }
+      }
+    },
+
+    "core_member_endpoints": {
+      "GET /api/v1/core/platform-analytics": {
+        "description": "Platform health and contributor analytics",
+        "authentication": "mutual_tls + governance_token",
+        "response_example": {
+          "platform_health": {
+            "total_active_contributors": 47,
+            "data_quality_score": 0.89,
+            "coverage_metrics": {
+              "geographic": 0.85,
+              "sectoral": 0.92,
+              "threat_types": 0.78
+            },
+            "real_time_performance": {
+              "average_ingestion_delay": "3.2_seconds",
+              "query_response_time": "0.8_seconds",
+              "uptime": "99.97%"
+            }
+          },
+          "contributor_analytics": [
+            {
+              "contributor_id": "contrib_hash_001",
+              "organization_type": "major_msp",
+              "contribution_score": 94,
+              "data_quality": 0.92,
+              "specializations": ["ransomware", "apt_campaigns"],
+              "geographic_focus": ["western_europe"],
+              "monthly_contribution": 156
+            }
+          ],
+          "threat_landscape_insights": {
+            "emerging_threats": [
+              {
+                "threat_type": "ai_enhanced_phishing",
+                "growth_rate": "45%_monthly",
+                "early_indicators": 23,
+                "confidence": 0.76
+              }
+            ],
+            "prediction_accuracy": {
+              "short_term_7_days": 0.87,
+              "medium_term_30_days": 0.72,
+              "long_term_90_days": 0.56
+            }
+          }
+        }
+      },
+
+      "POST /api/v1/core/coordinate-response": {
+        "description": "Coordinate multi-organization response to active threats",
+        "authentication": "mutual_tls + governance_token",
+        "request_example": {
+          "threat_id": "active_ransomware_campaign_001",
+          "coordination_type": "takedown_operation",
+          "participating_orgs": ["msp_001", "msp_003", "csirt_nl"],
+          "timeline": "immediate",
+          "scope": "infrastructure_disruption"
+        },
+        "response_example": {
+          "coordination_id": "coord_op_001",
+          "status": "initiated",
+          "participants": [
+            {
+              "org_id": "msp_001",
+              "role": "infrastructure_blocking",
+              "confirmation": "confirmed"
+            },
+            {
+              "org_id": "csirt_nl",
+              "role": "law_enforcement_liaison",
+              "confirmation": "confirmed"
+            }
+          ],
+          "timeline": {
+            "phase_1_blocking": "2025-01-15T16:00:00Z",
+            "phase_2_attribution": "2025-01-15T18:00:00Z",
+            "phase_3_recovery": "2025-01-16T08:00:00Z"
+          },
+          "shared_intelligence": {
+            "iocs_to_block": 45,
+            "signatures_deployed": 12,
+            "affected_organizations": 8
+          }
+        }
+      }
+    }
+  }
+}

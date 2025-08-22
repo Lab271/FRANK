@@ -61,52 +61,6 @@ Resources:
 
 # Bucket policies will be added later after Lambda functions are deployed
 
-  # Artifacts Bucket
-  ArtifactsBucket:
-    Type: AWS::S3::Bucket
-    Properties:
-      BucketName: !Sub '${ProjectName}-artifacts-${AWS::AccountId}-${Environment}'
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault:
-              SSEAlgorithm: aws:kms
-              KMSMasterKeyID: !Ref S3KeyArn
-            BucketKeyEnabled: true
-      VersioningConfiguration:
-        Status: Enabled
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      LifecycleConfiguration:
-        Rules:
-          - Id: ArtifactsLifecycle
-            Status: Enabled
-            Transitions:
-              - TransitionInDays: 180
-                StorageClass: STANDARD_IA
-              - TransitionInDays: 365
-                StorageClass: GLACIER
-          - Id: IncompleteMultipartUploads
-            Status: Enabled
-            AbortIncompleteMultipartUpload:
-              DaysAfterInitiation: 7
-      NotificationConfiguration:
-        EventBridgeConfiguration:
-          EventBridgeEnabled: true
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-artifacts-${Environment}'
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-        - Key: Purpose
-          Value: Artifacts Storage
-
-# Artifacts Bucket Policy will be added later
-
   # Exports Bucket
   ExportsBucket:
     Type: AWS::S3::Bucket
@@ -163,18 +117,6 @@ Outputs:
     Value: !GetAtt RawDataBucket.Arn
     Export:
       Name: !Sub '${ProjectName}-${Environment}-raw-bucket-arn'
-
-  ArtifactsBucketName:
-    Description: Artifacts S3 Bucket Name
-    Value: !Ref ArtifactsBucket
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-artifacts-bucket'
-
-  ArtifactsBucketArn:
-    Description: Artifacts S3 Bucket ARN
-    Value: !GetAtt ArtifactsBucket.Arn
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-artifacts-bucket-arn'
 
   ExportsBucketName:
     Description: Exports S3 Bucket Name

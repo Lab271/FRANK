@@ -2,7 +2,7 @@
 
 ## Overview
 
-Amazon Elastic Container Service (ECS) provides containerized compute capacity for the FRANK platform, specifically for running SIGMA tools, batch processing workloads, and compute-intensive threat analysis tasks. This configuration includes ECS clusters, task definitions, and services for scalable threat intelligence processing.
+Amazon Elastic Container Service (ECS) provides containerized compute capacity for the FRANK platform, specifically for running batch processing workloads, and compute-intensive threat analysis tasks. This configuration includes ECS clusters, task definitions, and services for scalable threat intelligence processing.
 
 ## Components
 
@@ -19,7 +19,7 @@ Amazon Elastic Container Service (ECS) provides containerized compute capacity f
 Fargate:
   Use Case: Short-lived, stateless workloads
   Benefits: No server management, fast scaling
-  Examples: SIGMA rule execution, data validation
+  Examples: Data validation
 
 EC2:
   Use Case: Long-running, resource-intensive tasks

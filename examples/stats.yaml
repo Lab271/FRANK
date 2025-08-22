@@ -1,0 +1,261 @@
+# Query: GET /v1/threats?observable=185.220.102.45&type=ipv4
+# Three partners have submitted sightings for this IP address
+
+# ========================================
+# PUBLIC ACCESS RESPONSE
+# ========================================
+query_results:
+  total_sightings: 3
+  unique_submitters: 3
+  timeframe: "2025-01-15 to 2025-01-20"
+  threat_summary:
+    observable_type: "network_address"
+    observable_value: "hash_4a5b6c7d"
+    threat_classification: "malicious_activity"
+    confidence_range: "high"
+    sectors_affected: ["financial_services"]
+    geographic_distribution: ["netherlands"]
+    first_seen: "2025-01-15"
+    last_seen: "2025-01-20"
+
+# ========================================
+# OBSERVER ACCESS RESPONSE  
+# ========================================
+query_results:
+  total_sightings: 3
+  unique_submitters: 3
+  threat_intelligence:
+    observable_value: "185.220.x.x"
+    observable_type: "ipv4"
+    malware_family: "banking_trojan"
+    campaign_name: "hash_banking_2025"
+    target_sectors: ["financial_services"]
+    geographic_scope: ["nl_randstad"]
+    confidence_average: 89
+    
+  sightings_summary:
+    - submitter_hash: "hash_partner_001"
+      sector: "financial_services"
+      observation_date: "2025-01-15"
+      confidence: "high"
+      mitigation_status: "contained"
+      
+    - submitter_hash: "hash_partner_002"  
+      sector: "financial_services"
+      observation_date: "2025-01-18"
+      confidence: "high"
+      mitigation_status: "ongoing"
+      
+    - submitter_hash: "hash_partner_003"
+      sector: "cybersecurity_services"
+      observation_date: "2025-01-20"
+      confidence: "high"
+      mitigation_status: "contained"
+
+# ========================================
+# CONTRIBUTOR ACCESS RESPONSE
+# ========================================
+query_results:
+  total_sightings: 3
+  unique_submitters: 3
+  threat_intelligence:
+    observable_value: "185.220.102.45"
+    observable_type: "ipv4"
+    infrastructure:
+      hosting_provider: "eastern_europe"
+      asn: "AS12345"
+      geographic_location: "eastern_europe"
+    
+    threat_context:
+      malware_family: "trickbot_variant"
+      campaign: "banking_credential_harvest_2025_q1" 
+      threat_actor: "unknown_cybercriminal_group"
+      mitre_techniques: ["T1566.001", "T1071.001", "T1056.001"]
+      confidence: 89
+      
+  detailed_sightings:
+    - sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
+      submitter_tier: "partner"
+      submitter_sector: "cybersecurity_services"
+      hit_target_sector: "financial_services"
+      observation_date: "2025-01-15T13:15:00Z"
+      confidence: 87
+      affected_systems: 5
+      impact_level: "medium"
+      related_observables:
+        - "secure-bank-verify.nl"
+        - "banking_update.exe"
+      
+    - sighting_id: "sighting-aa11bb22-3344-5566-7788-99aabbccddee"
+      submitter_tier: "partner"
+      submitter_sector: "financial_services"
+      hit_target_sector: "financial_services"
+      observation_date: "2025-01-18T09:22:00Z"
+      confidence: 92
+      affected_systems: 8
+      impact_level: "high"
+      related_observables:
+        - "verify-account-security.com"
+        - "urgent_banking_notice.pdf"
+        
+    - sighting_id: "sighting-ff88dd77-9966-1122-3344-556677889900"
+      submitter_tier: "contributor"
+      submitter_sector: "cybersecurity_services"
+      hit_target_sector: "manufacturing"
+      observation_date: "2025-01-20T11:45:00Z"
+      confidence: 85
+      affected_systems: 2
+      impact_level: "low"
+      related_observables:
+        - "backup-security-portal.org"
+
+# ========================================
+# PARTNER ACCESS RESPONSE
+# ========================================
+query_results:
+  total_sightings: 3
+  unique_submitters: 3
+  threat_intelligence:
+    observable_value: "185.220.102.45"
+    observable_type: "ipv4"
+    infrastructure:
+      hosting_provider: "bulletproof_hosting_ltd"
+      asn: "AS12345"
+      geographic_location: "romania_bucharest"
+      registration_date: "2025-01-12T00:00:00Z"
+      shared_infrastructure: true
+      
+    attribution:
+      campaign: "banking_credential_harvest_2025_q1"
+      threat_actor: "fin7_affiliate_group"
+      confidence: 78
+      attack_vector: "phishing_email"
+      target_profile: "european_financial_institutions"
+      estimated_victims: 45
+      
+  complete_sightings:
+    - sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
+      submitter_id: "identity-hash-f431f809"
+      submitter_tier: "partner"
+      submitter_organization_type: "cyber_partner"
+      hit_target_id: "identity-hash-c9b5d123"
+      hit_target_sector: "financial_services"
+      hit_target_size: "medium"
+      
+      detection_details:
+        sigma_rule_id: "sigma-rule-01234567-89ab-cdef-0123-456789abcdef"
+        rule_name: "Suspicious Banking Communication Pattern"
+        detection_timestamp: "2025-01-15T13:17:22Z"
+        analyst_verified: true
+        
+      observables:
+        network:
+          - value: "185.220.102.45"
+            port: 443
+            protocol: "https"
+            connection_count: 15
+            first_seen: "2025-01-15T13:15:00Z"
+          - value: "secure-bank-verify.nl"
+            role: "phishing_domain"
+            first_registered: "2025-01-18T00:00:00Z"
+            
+      impact_assessment:
+        affected_systems: 5
+        financial_impact_eur: 15000
+        containment_time: "00:45:00"
+        mitigation_actions:
+          - action: "blocked_ip_at_perimeter"
+            timestamp: "2025-01-15T13:18:00Z"
+            effectiveness: "high"
+            
+    - sighting_id: "sighting-aa11bb22-3344-5566-7788-99aabbccddee"
+      submitter_id: "identity-hash-aa11bb22"
+      submitter_tier: "partner"
+      hit_target_id: "identity-hash-bb22cc33"
+      hit_target_sector: "financial_services"
+      
+      observables:
+        network:
+          - value: "185.220.102.45"
+            port: 8080
+            protocol: "http"
+            connection_count: 23
+            data_exfiltrated: true
+            exfiltration_size_mb: 12.5
+            
+      impact_assessment:
+        affected_systems: 8
+        compromised_accounts: 3
+        financial_impact_eur: 47000
+        containment_time: "02:15:00"
+        
+    - sighting_id: "sighting-ff88dd77-9966-1122-3344-556677889900"  
+      submitter_id: "identity-hash-ff88dd77"
+      submitter_tier: "contributor"
+      hit_target_id: "identity-hash-dd77ee88"
+      hit_target_sector: "manufacturing"
+      
+      observables:
+        network:
+          - value: "185.220.102.45"
+            port: 443
+            connection_count: 3
+            blocked_by_firewall: true
+            
+      impact_assessment:
+        affected_systems: 2
+        financial_impact_eur: 2500
+        containment_time: "00:15:00"
+
+# ========================================
+# CORE MEMBER ACCESS RESPONSE
+# ========================================
+query_results:
+  total_sightings: 3
+  unique_submitters: 3
+  platform_analytics:
+    query_timestamp: "2025-01-20T15:30:00Z"
+    requesting_user: "core-member-analytics-001"
+    data_sources: 3
+    cross_organizational_correlation: true
+    
+  threat_intelligence:
+    observable_value: "185.220.102.45"
+    infrastructure:
+      hosting_provider: "bulletproof_hosting_ltd"
+      hosting_cost_estimate: "500_usd_monthly"
+      provider_reputation: "known_cybercriminal_friendly"
+      takedown_difficulty: "high"
+      
+  complete_submissions:
+    - submission_id: "submission-550e8400-e29b-41d4-a716-446655440000"
+      submitter:
+        organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+        real_organization: "cyber_partner_alpha_bv"
+        contribution_score: 94
+        client_count: 47
+        
+      hit_target:
+        organization_id: "identity-c9b5d123-8877-4422-9966-112233445566"
+        real_organization: "regional_bank_beta"
+        customer_relationship:
+          msp_provider: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+          contract_value_eur: 180000
+          
+      sigma_detection:
+        sigma_yaml: |
+          title: Suspicious Banking Communication Pattern
+          detection:
+            selection_domain:
+              - dst_host|contains: 'bank'
+            selection_suspicious:
+              - dst_port: 443
+              - protocol: 'https'
+            condition: selection_domain and selection_suspicious
+        rule_effectiveness: 0.89
+        false_positive_rate: 0.03
+        
+      coordination_capabilities:
+        active_threat_response: true
+        cross_org_notification: true
+        joint_mitigation_available: true

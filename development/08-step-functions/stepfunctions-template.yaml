@@ -71,169 +71,6 @@ Resources:
                   - xray:PutTelemetryRecords
                 Resource: '*'
 
-  # SIGMA Processing State Machine
-  SigmaProcessingStateMachine:
-    Type: AWS::StepFunctions::StateMachine
-    Properties:
-      StateMachineName: !Sub '${ProjectName}-sigma-processing-${Environment}'
-      StateMachineType: STANDARD
-      RoleArn: !GetAtt StepFunctionsExecutionRole.Arn
-      TracingConfiguration:
-        Enabled: true
-      LoggingConfiguration:
-        Level: ALL
-        IncludeExecutionData: true
-        Destinations:
-          - CloudWatchLogsLogGroup:
-              LogGroupArn: !GetAtt SigmaProcessingLogGroup.Arn
-      DefinitionString: !Sub |
-        {
-          "Comment": "SIGMA rule processing workflow",
-          "StartAt": "ValidateInput",
-          "States": {
-            "ValidateInput": {
-              "Type": "Task",
-              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-validate-input-${Environment}",
-              "Retry": [
-                {
-                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"],
-                  "IntervalSeconds": 2,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2.0
-                }
-              ],
-              "Catch": [
-                {
-                  "ErrorEquals": ["States.ALL"],
-                  "Next": "ValidationFailed",
-                  "ResultPath": "$.error"
-                }
-              ],
-              "Next": "CheckRuleType"
-            },
-            "CheckRuleType": {
-              "Type": "Choice",
-              "Choices": [
-                {
-                  "Variable": "$.ruleType",
-                  "StringEquals": "sigma",
-                  "Next": "ProcessSigmaRule"
-                },
-                {
-                  "Variable": "$.ruleType",
-                  "StringEquals": "yara",
-                  "Next": "ProcessYaraRule"
-                }
-              ],
-              "Default": "UnsupportedRule"
-            },
-            "ProcessSigmaRule": {
-              "Type": "Parallel",
-              "Branches": [
-                {
-                  "StartAt": "ExecuteSigmaRule",
-                  "States": {
-                    "ExecuteSigmaRule": {
-                      "Type": "Task",
-                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-sigma-executor-${Environment}",
-                      "Retry": [
-                        {
-                          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                          "IntervalSeconds": 2,
-                          "MaxAttempts": 3,
-                          "BackoffRate": 2.0
-                        }
-                      ],
-                      "End": true
-                    }
-                  }
-                },
-                {
-                  "StartAt": "PrepareAggregation",
-                  "States": {
-                    "PrepareAggregation": {
-                      "Type": "Pass",
-                      "Next": "AggregateResults"
-                    },
-                    "AggregateResults": {
-                      "Type": "Task",
-                      "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-result-aggregator-${Environment}",
-                      "Retry": [
-                        {
-                          "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                          "IntervalSeconds": 2,
-                          "MaxAttempts": 3,
-                          "BackoffRate": 2.0
-                        }
-                      ],
-                      "End": true
-                    }
-                  }
-                }
-              ],
-              "Next": "StoreResults"
-            },
-            "ProcessYaraRule": {
-              "Type": "Task",
-              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-yara-executor-${Environment}",
-              "Retry": [
-                {
-                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                  "IntervalSeconds": 2,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2.0
-                }
-              ],
-              "Next": "StoreResults"
-            },
-            "StoreResults": {
-              "Type": "Task",
-              "Resource": "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${ProjectName}-store-results-${Environment}",
-              "Retry": [
-                {
-                  "ErrorEquals": ["Lambda.ServiceException", "Lambda.AWSLambdaException"],
-                  "IntervalSeconds": 2,
-                  "MaxAttempts": 3,
-                  "BackoffRate": 2.0
-                }
-              ],
-              "Next": "SendNotification"
-            },
-            "SendNotification": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::sns:publish",
-              "Parameters": {
-                "TopicArn": "${SNSTopicArn}",
-                "Message.$": "$.notificationMessage",
-                "Subject": "SIGMA Processing Complete"
-              },
-              "End": true
-            },
-            "ValidationFailed": {
-              "Type": "Task",
-              "Resource": "arn:aws:states:::sns:publish",
-              "Parameters": {
-                "TopicArn": "${SNSTopicArn}",
-                "Message.$": "$.error",
-                "Subject": "SIGMA Processing Validation Failed"
-              },
-              "End": true
-            },
-            "UnsupportedRule": {
-              "Type": "Fail",
-              "Error": "UnsupportedRuleType",
-              "Cause": "The specified rule type is not supported"
-            }
-          }
-        }
-      Tags:
-        - Key: Name
-          Value: !Sub '${ProjectName}-sigma-processing-${Environment}'
-        - Key: Project
-          Value: !Ref ProjectName
-        - Key: Environment
-          Value: !Ref Environment
-
   # Tenant Management State Machine
   TenantManagementStateMachine:
     Type: AWS::StepFunctions::StateMachine
@@ -443,12 +280,6 @@ Resources:
           Value: !Ref Environment
 
   # CloudWatch Log Groups
-  SigmaProcessingLogGroup:
-    Type: AWS::Logs::LogGroup
-    Properties:
-      LogGroupName: !Sub '/aws/stepfunctions/${ProjectName}-sigma-processing-${Environment}'
-      RetentionInDays: 30
-
   TenantManagementLogGroup:
     Type: AWS::Logs::LogGroup
     Properties:
@@ -462,22 +293,6 @@ Resources:
       RetentionInDays: 14
 
   # CloudWatch Alarms
-  SigmaProcessingFailureAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmName: !Sub '${ProjectName}-${Environment}-sigma-processing-failures'
-      AlarmDescription: 'High failure rate for SIGMA processing workflow'
-      MetricName: 'ExecutionsFailed'
-      Namespace: 'AWS/States'
-      Statistic: Sum
-      Period: 300
-      EvaluationPeriods: 2
-      Threshold: 5
-      ComparisonOperator: GreaterThanThreshold
-      Dimensions:
-        - Name: StateMachineArn
-          Value: !Ref SigmaProcessingStateMachine
-
   TenantManagementDurationAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -495,12 +310,6 @@ Resources:
           Value: !Ref TenantManagementStateMachine
 
 Outputs:
-  SigmaProcessingStateMachineArn:
-    Description: ARN of the SIGMA processing state machine
-    Value: !Ref SigmaProcessingStateMachine
-    Export:
-      Name: !Sub '${ProjectName}-${Environment}-sigma-processing-sm-arn'
-
   TenantManagementStateMachineArn:
     Description: ARN of the tenant management state machine
     Value: !Ref TenantManagementStateMachine
