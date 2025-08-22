@@ -1,7 +1,7 @@
 # Amazon S3 Configuration
 
 ## Overview
-S3 provides the data lake foundation for FRANK, storing raw sightings, SIGMA artifacts, and generated reports with strong security and lifecycle management.
+S3 provides the data lake foundation for FRANK, storing raw sightings, and generated reports with strong security and lifecycle management.
 
 ## Bucket Architecture
 
@@ -11,23 +11,8 @@ S3 provides the data lake foundation for FRANK, storing raw sightings, SIGMA art
 - **Partitioning**: `tenant_id={tenant}/date=YYYY/MM/DD/`
 - **Format**: JSON Lines (JSONL)
 
-### 2. Artifacts Bucket
-- **Name**: `frank-artifacts-{account}-{env}`
-- **Purpose**: Store SIGMA rules, IoC documents, CACAO playbooks
-- **Structure**:
-  ```
-  sigma-rules/
-  ├── rule-id/
-  │   ├── v1.0/rule.yml
-  │   └── v1.1/rule.yml
-  ioc-feeds/
-  ├── source/
-  │   └── date=YYYY-MM-DD/feed.json
-  cacao-playbooks/
-  └── playbook-id/version/playbook.json
-  ```
 
-### 3. Exports Bucket
+### 2. Exports Bucket
 - **Name**: `frank-exports-{account}-{env}`
 - **Purpose**: Store generated reports and query results
 - **Structure**:
@@ -66,7 +51,7 @@ Rules:
   - Id: RawDataLifecycle
     Status: Enabled
     Filter:
-      Prefix: "tenant_id="
+      Prefix: "submitter_id="
     Transitions:
       - Days: 30
         StorageClass: STANDARD_IA
@@ -76,19 +61,6 @@ Rules:
         StorageClass: DEEP_ARCHIVE
     Expiration:
       Days: 3653  # 10 years
-```
-
-### Artifacts Lifecycle
-```yaml
-Rules:
-  - Id: ArtifactsLifecycle
-    Status: Enabled
-    Transitions:
-      - Days: 180
-        StorageClass: STANDARD_IA
-      - Days: 365
-        StorageClass: GLACIER
-    # No expiration - keep artifacts indefinitely
 ```
 
 ### Exports Lifecycle
@@ -112,30 +84,6 @@ Rules:
 - **Raw Data Ingestion**: S3 → Lambda (write_persistence)
 - **Failed Uploads**: S3 → SNS → CloudWatch Alarms
 
-### EventBridge Rules
-```json
-{
-  "Rules": [
-    {
-      "Name": "SigmaArtifactUpdate",
-      "EventPattern": {
-        "source": ["aws.s3"],
-        "detail-type": ["Object Created"],
-        "detail": {
-          "bucket": {"name": ["frank-artifacts-*"]},
-          "object": {"key": [{"prefix": "sigma-rules/"}]}
-        }
-      },
-      "Targets": [
-        {
-          "Id": "SigmaTranslateWorkflow",
-          "Arn": "arn:aws:states:region:account:stateMachine:SigmaTranslate"
-        }
-      ]
-    }
-  ]
-}
-```
 
 ## Access Patterns
 
@@ -238,7 +186,6 @@ Alarms:
 ```bash
 # S3 Bucket Names
 FRANK_RAW_BUCKET=frank-raw-{account}-{env}
-FRANK_ARTIFACTS_BUCKET=frank-artifacts-{account}-{env}
 FRANK_EXPORTS_BUCKET=frank-exports-{account}-{env}
 
 # KMS Keys

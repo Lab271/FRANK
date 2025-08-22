@@ -1,0 +1,280 @@
+# FRANK Platform - Complete Sighting Submission with SIGMA
+# Format Version: 1.0
+
+submission:
+  metadata:
+    format_version: "1.0"
+    submission_id: "submission-550e8400-e29b-41d4-a716-446655440000"
+    timestamp: "2025-01-20T14:30:22Z"
+    
+  # Submitting Cyber Partner (the organization making the submission)
+  submitter:
+    organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+    organization_type: "cyber_partner"
+    tier: "partner"
+    sector: "cybersecurity_services"
+    region: "nl_north_holland"
+    submission_method: "automated_api"
+    client_count: 47
+      
+  # Hit Partner/Target (the customer organization that experienced the threat)
+  hit_target:
+    organization_id: "identity-c9b5d123-8877-4422-9966-112233445566"
+    organization_type: "customer"
+    sector: "financial_services"
+    organization_size: "medium"
+    region: "nl_north_holland"
+    anonymization_level: "high"
+    customer_relationship:
+      msp_provider: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+      service_type: "managed_detection_response"
+      contract_duration: "ongoing"
+      incident_sharing_consent: true
+    
+  sighting:
+    # Core sighting information
+    sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
+    first_observed: "2025-01-20T13:15:00Z"
+    last_observed: "2025-01-20T14:25:00Z"
+    observation_count: 23
+    confidence: 87
+    severity: "high"
+    
+    # SIGMA Detection Context
+    sigma_detection:
+      rule_id: "sigma-rule-01234567-89ab-cdef-0123-456789abcdef"
+      rule_name: "Suspicious Banking Communication Pattern"
+      rule_version: "2.1"
+      rule_status: "stable"
+      sigma_yaml: |
+        title: Suspicious Banking Communication Pattern
+        id: 01234567-89ab-cdef-0123-456789abcdef
+        status: stable
+        description: Detects suspicious HTTPS communication to banking-related domains with credential harvesting indicators
+        author: FRANK Community
+        date: 2025/01/15
+        modified: 2025/01/20
+        tags:
+          - attack.credential_access
+          - attack.t1056.001
+          - attack.t1071.001
+        logsource:
+          category: network
+          product: nids
+        detection:
+          selection_domain:
+            - dst_host|contains: 'bank'
+            - dst_host|contains: 'secure'
+            - dst_host|contains: 'login'
+          selection_suspicious:
+            - dst_port: 443
+            - protocol: 'https'
+            - user_agent|contains: 'banking'
+          condition: selection_domain and selection_suspicious
+        falsepositives:
+          - Legitimate banking applications
+          - Security tools accessing banking APIs
+        level: high
+        
+      detection_engine: "custom_nids"
+      trigger_timestamp: "2025-01-20T13:17:22Z"
+      rule_effectiveness: 0.89
+      false_positive_rate: 0.03
+      analyst_verified: true
+      verification_timestamp: "2025-01-20T14:28:00Z"
+    
+    # Observable artifacts
+    observables:
+      network:
+        - id: "ipv4-addr-c4e54321-1234-5678-9abc-def012345678"
+          type: "ipv4"
+          value: "185.220.102.45"
+          role: "c2_server"
+          port: 443
+          protocol: "https"
+          first_seen: "2025-01-20T13:15:00Z"
+          connection_count: 15
+          geographic_location: "eastern_europe"
+          asn: "AS12345"
+          hosting_provider: "bulletproof_hosting"
+        - id: "domain-name-d5f65432-2345-6789-abcd-ef0123456789"
+          type: "domain"
+          value: "secure-bank-verify.nl"
+          role: "phishing_domain"
+          resolution_ip: "185.220.102.45"
+          first_registered: "2025-01-18T00:00:00Z"
+          registrar: "suspicious_registrar"
+          registrar_suspicious: true
+          domain_age_days: 2
+          tld_reputation: "medium_risk"
+      
+      files:
+        - id: "file-a1b2c3d4-3456-789a-bcde-f01234567890"
+          type: "executable"
+          name: "banking_update.exe"
+          size_bytes: 2487296
+          hash_md5: "a1b2c3d4e5f6789012345678901234ab"
+          hash_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          hash_sha1: "aaf4c61ddcc5e8a2dabede0f3b482cd9aea9434d"
+          first_seen: "2025-01-20T13:20:00Z"
+          delivery_method: "email_attachment"
+          file_type: "pe32"
+          compilation_timestamp: "2025-01-17T09:30:00Z"
+          digital_signature: "invalid"
+          entropy: 7.8
+          packer_detected: "upx"
+      
+      email:
+        - id: "email-message-b2c3d4e5-4567-89ab-cdef-012345678901"
+          sender: "security@trusted-bank.nl" # spoofed
+          sender_ip: "185.220.102.45"
+          subject: "Urgent: Account Security Verification Required"
+          message_id: "<malicious123@fake-domain.com>"
+          attachment_count: 1
+          suspicious_links: 2
+          phishing_indicators: ["urgency", "credential_request", "suspicious_domain"]
+          dmarc_result: "fail"
+          spf_result: "fail"
+          dkim_result: "none"
+          received_timestamp: "2025-01-20T13:10:00Z"
+    
+    # Threat context
+    threat_context:
+      campaign:
+        id: "campaign-c3d4e5f6-5678-9abc-def0-123456789012"
+        name: "banking_credential_harvest_2025_q1"
+        confidence: 78
+        attribution: "unknown_cybercriminal_group"
+        target_sectors: ["financial", "fintech"]
+        attack_vector: "phishing_email"
+        payload_type: "credential_stealer"
+        campaign_start: "2024-12-15T00:00:00Z"
+        estimated_victims: 45
+      
+      mitre_attack:
+        techniques:
+          - id: "attack-pattern-2e34237d-8574-43f6-aace-ae2915de8597"
+            technique: "T1566.001"  # Spearphishing Attachment
+            description: "Malicious email attachment delivery"
+          - id: "attack-pattern-df8b2a25-8bdf-4856-953c-a04372b1c161"
+            technique: "T1071.001"  # Web Protocols
+            description: "HTTPS C2 communication"
+          - id: "attack-pattern-09a60ea3-a8d1-4ae5-976e-5783248b72a4"
+            technique: "T1056.001"  # Keylogging
+            description: "Banking credential capture"
+        tactics: ["initial_access", "credential_access", "command_and_control"]
+      
+      malware_family:
+        id: "malware-162d917e-766f-4611-b5d6-652791454fca"
+        name: "trickbot_variant"
+        variant: "banking_focused"
+        confidence: 82
+        capabilities: ["credential_theft", "screen_capture", "remote_access"]
+        first_seen_wild: "2024-11-15T00:00:00Z"
+        yara_rule_matches: ["trickbot_config", "banking_module"]
+    
+    # Impact assessment
+    impact:
+      affected_systems: 5
+      compromised_accounts: 0
+      credentials_harvested: 3
+      data_exfiltrated: false
+      estimated_damage: "medium"
+      business_disruption: "minimal"
+      containment_time: "00:45:00"
+      recovery_time: "02:15:00"
+      financial_impact_eur: 15000
+      
+      mitigation_actions:
+        immediate:
+          - action: "blocked_ip_at_perimeter"
+            timestamp: "2025-01-20T13:18:00Z"
+            effectiveness: "high"
+          - action: "quarantined_email_attachments"
+            timestamp: "2025-01-20T13:20:00Z"
+            effectiveness: "high"
+          - action: "disabled_affected_user_accounts"
+            timestamp: "2025-01-20T13:25:00Z"
+            effectiveness: "medium"
+        tactical:
+          - action: "updated_email_filters"
+            timestamp: "2025-01-20T14:00:00Z"
+            effectiveness: "high"
+          - action: "deployed_additional_monitoring"
+            timestamp: "2025-01-20T14:15:00Z"
+            effectiveness: "medium"
+          - action: "conducted_user_awareness_briefing"
+            timestamp: "2025-01-20T15:00:00Z"
+            effectiveness: "low"
+    
+    # Technical details
+    technical_details:
+      network_behavior:
+        beacon_interval: "30_minutes"
+        beacon_jitter: "15_percent"
+        data_exfiltration_attempt: false
+        c2_protocol: "https_encrypted"
+        persistence_mechanisms: ["registry_run_key", "scheduled_task"]
+        communication_encryption: "aes256"
+        obfuscation_methods: ["domain_fronting", "certificate_pinning"]
+      
+      evasion_techniques:
+        - technique: "process_hollowing"
+          mitre_id: "T1055.012"
+        - technique: "certificate_spoofing"
+          mitre_id: "T1553.002"
+        - technique: "domain_generation_algorithm"
+          mitre_id: "T1568.002"
+      
+      infrastructure:
+        hosting_provider: "bulletproof_hosting"
+        geographic_location: "eastern_europe"
+        infrastructure_age: "3_days"
+        shared_infrastructure: true
+        hosting_history: ["provider_a", "provider_b"]
+        infrastructure_cost_estimate: "500_usd_monthly"
+    
+    # False positive assessment
+    false_positive:
+      likelihood: "low"
+      reasoning: "multiple_behavioral_indicators_confirmed"
+      validation_sources: ["network_logs", "endpoint_telemetry", "email_analysis"]
+      community_validation_requested: true
+      peer_confirmations: 3
+      contradicting_reports: 0
+    
+    # Sharing preferences
+    sharing:
+      distribution_level: "community_partners"
+      anonymization_level: "moderate"
+      retention_period: "90_days"
+      external_sharing_allowed: false
+      attribution_sharing: "anonymized_only"
+      sigma_rule_sharing: true
+      yara_rule_sharing: false
+    
+    # Platform-specific metadata
+    frank_metadata:
+      contribution_score_impact: 15
+      quality_indicators:
+        - "multiple_artifact_types"
+        - "analyst_verification"
+        - "detailed_context"
+        - "mitigation_documented"
+        - "sigma_rule_included"
+        - "impact_quantified"
+      
+      community_value:
+        sector_relevance: "high"
+        geographic_relevance: "high"
+        temporal_relevance: "critical"
+        threat_novelty: "medium"
+        sigma_rule_quality: "high"
+      
+      processing_flags:
+        auto_validate: true
+        require_review: false
+        high_confidence: true
+        fast_track_distribution: true
+        sigma_rule_approved: true
+        community_review_requested: false

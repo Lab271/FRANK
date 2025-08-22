@@ -122,50 +122,7 @@ def generate_lambda_template(environment='dev'):
                 }
             },
             
-            # Write Persistence Function
-            'WritePersistenceFunction': {
-                'Type': 'AWS::Serverless::Function',
-                'Properties': {
-                    'FunctionName': '!Sub frank-write-persistence-${Environment}',
-                    'CodeUri': 'src/write_persistence/',
-                    'Handler': 'index.handler',
-                    'MemorySize': 1024,
-                    'Timeout': 300,
-                    'Layers': [
-                        'arn:aws:lambda:eu-west-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:59',
-                        '!Ref DependenciesLayer'
-                    ],
-                    'Environment': {
-                        'Variables': {
-                            'FRANK_RAW_BUCKET': '!Sub frank-raw-${AWS::AccountId}-${Environment}',
-                            'FRANK_AGGREGATES_TABLE': '!Sub frank-aggregates-${Environment}',
-                            'OPENSEARCH_ENDPOINT': '!GetAtt OpenSearchDomain.DomainEndpoint'
-                        }
-                    },
-                    'Events': {
-                        'SQSEvent': {
-                            'Type': 'SQS',
-                            'Properties': {
-                                'Queue': '!GetAtt ProcessingQueue.Arn',
-                                'BatchSize': 10
-                            }
-                        }
-                    },
-                    'Policies': [
-                        {
-                            'S3WritePolicy': {
-                                'BucketName': '!Sub frank-raw-${AWS::AccountId}-${Environment}'
-                            }
-                        },
-                        {
-                            'DynamoDBWritePolicy': {
-                                'TableName': '!Sub frank-aggregates-${Environment}'
-                            }
-                        }
-                    ]
-                }
-            },
-            
+           
             # Query Stats Function
             'QueryStatsFunction': {
                 'Type': 'AWS::Serverless::Function',
@@ -195,44 +152,6 @@ def generate_lambda_template(environment='dev'):
                 }
             },
             
-            # SIGMA Update Function
-            'SigmaUpdateFunction': {
-                'Type': 'AWS::Serverless::Function',
-                'Properties': {
-                    'FunctionName': '!Sub frank-sigma-update-${Environment}',
-                    'CodeUri': 'src/sigma_update/',
-                    'Handler': 'index.handler',
-                    'MemorySize': 512,
-                    'Timeout': 120,
-                    'Layers': [
-                        'arn:aws:lambda:eu-west-1:017000801446:layer:AWSLambdaPowertoolsPythonV2:59',
-                        '!Ref DependenciesLayer'
-                    ],
-                    'Environment': {
-                        'Variables': {
-                            'SIGMA_WORKFLOW_ARN': '!Ref SigmaTranslateStateMachine'
-                        }
-                    },
-# S3 Event configuration removed - will be configured after deployment
-                    'Policies': [
-                        {
-                            'S3ReadPolicy': {
-                                'BucketName': '!Sub frank-artifacts-${AWS::AccountId}-${Environment}'
-                            }
-                        },
-                        {
-                            'Version': '2012-10-17',
-                            'Statement': [
-                                {
-                                    'Effect': 'Allow',
-                                    'Action': ['states:StartExecution'],
-                                    'Resource': '!Ref SigmaTranslateStateMachine'
-                                }
-                            ]
-                        }
-                    ]
-                }
-            },
             
             # SQS Queue for processing
             'ProcessingQueue': {

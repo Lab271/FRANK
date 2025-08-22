@@ -145,27 +145,6 @@ GET /v1/stats
 }
 ```
 
-### 3. SIGMA Rules Endpoints
-```
-GET /v1/sigma/{ruleId}
-POST /v1/sigma/{ruleId}/update
-GET /v1/sigma/catalog
-```
-
-#### GET /v1/sigma/{ruleId}
-- **Authorization**: `sigma:read` scope
-- **Response**: SIGMA rule YAML content
-- **Caching**: 1 hour client-side cache
-
-#### POST /v1/sigma/{ruleId}/update
-- **Authorization**: `sigma:write` scope (admin only)
-- **Content-Type**: `application/x-yaml` or `text/yaml`
-- **Validation**: SIGMA syntax validation
-
-#### GET /v1/sigma/catalog
-- **Authorization**: `sigma:read` scope
-- **Response**: List of available SIGMA rules with metadata
-
 ## Authentication and Authorization
 
 ### Cognito Authorizer Configuration

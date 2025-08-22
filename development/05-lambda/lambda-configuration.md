@@ -1,7 +1,7 @@
 # AWS Lambda Configuration
 
 ## Overview
-Lambda functions provide serverless compute for FRANK's core processing logic, handling sighting ingestion, data persistence, statistics queries, and SIGMA rule updates.
+Lambda functions provide serverless compute for FRANK's core processing logic, handling sighting ingestion, data persistence, and statistics queries.
 
 ## Function Architecture
 

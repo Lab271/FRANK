@@ -622,7 +622,7 @@ aws cognito-idp admin-create-user \
   --username testuser@example.com \
   --user-attributes \
     Name=email,Value=testuser@example.com \
-    Name=custom:tenant_id,Value=test-org \
+    Name=custom:submitter_id,Value=test-org \
     Name=custom:sector,Value=finance \
   --temporary-password TempPass123! \
   --message-action SUPPRESS \

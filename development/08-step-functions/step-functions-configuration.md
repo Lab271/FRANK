@@ -2,21 +2,16 @@
 
 ## Overview
 
-AWS Step Functions provides serverless orchestration for the FRANK platform, managing complex workflows for threat intelligence processing, data validation, and multi-tenant operations. This configuration includes state machines for SIGMA rule processing, tenant management, and data pipeline orchestration.
+AWS Step Functions provides serverless orchestration for the FRANK platform, managing complex workflows for threat intelligence processing, data validation. This configuration includes state machines for submitter management, and data pipeline orchestration.
 
 ## Components
 
 ### 1. State Machines
 
-#### SIGMA Processing Workflow
-- **Purpose**: Orchestrates SIGMA rule execution against threat data
-- **Triggers**: S3 events, scheduled processing, manual execution
-- **Flow**: Data validation → Rule execution → Result aggregation → Notification
-
-#### Tenant Management Workflow  
-- **Purpose**: Manages tenant lifecycle operations
+#### Submitter Management Workflow  
+- **Purpose**: Manages submitter lifecycle operations
 - **Triggers**: API Gateway requests, scheduled maintenance
-- **Flow**: Tenant validation → Resource provisioning → Configuration → Verification
+- **Flow**: Submitter validation → Resource provisioning → Configuration → Verification
 
 #### Data Pipeline Orchestration
 - **Purpose**: Coordinates data ingestion and processing
@@ -38,104 +33,20 @@ Policies:
 
 #### State Machine Specific Roles
 ```yaml
-SIGMA Processing Role:
-  - Lambda: sigma-executor, result-aggregator
-  - DynamoDB: sightings, indicators tables
-  - S3: raw-data, processed-data buckets
-
-Tenant Management Role:
-  - Lambda: tenant-manager, resource-provisioner
-  - DynamoDB: tenants table
-  - S3: tenant-specific buckets
+Submitter Management Role:
+  - Lambda: submitter-manager, resource-provisioner
+  - DynamoDB: submitters table
+  - S3: submitter-specific buckets
 ```
 
 ### 3. State Machine Definitions
 
-#### SIGMA Processing State Machine
-```json
-{
-  "Comment": "SIGMA rule processing workflow",
-  "StartAt": "ValidateInput",
-  "States": {
-    "ValidateInput": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:{region}:{account}:function:frank-validate-input-{env}",
-      "Next": "CheckRuleType"
-    },
-    "CheckRuleType": {
-      "Type": "Choice",
-      "Choices": [
-        {
-          "Variable": "$.ruleType",
-          "StringEquals": "sigma",
-          "Next": "ProcessSigmaRule"
-        },
-        {
-          "Variable": "$.ruleType",
-          "StringEquals": "yara",
-          "Next": "ProcessYaraRule"
-        }
-      ],
-      "Default": "UnsupportedRule"
-    },
-    "ProcessSigmaRule": {
-      "Type": "Parallel",
-      "Branches": [
-        {
-          "StartAt": "ExecuteSigmaRule",
-          "States": {
-            "ExecuteSigmaRule": {
-              "Type": "Task",
-              "Resource": "arn:aws:lambda:{region}:{account}:function:frank-sigma-executor-{env}",
-              "End": true
-            }
-          }
-        },
-        {
-          "StartAt": "AggregateResults",
-          "States": {
-            "AggregateResults": {
-              "Type": "Task",
-              "Resource": "arn:aws:lambda:{region}:{account}:function:frank-result-aggregator-{env}",
-              "End": true
-            }
-          }
-        }
-      ],
-      "Next": "StoreResults"
-    },
-    "StoreResults": {
-      "Type": "Task",
-      "Resource": "arn:aws:lambda:{region}:{account}:function:frank-store-results-{env}",
-      "Next": "SendNotification"
-    },
-    "SendNotification": {
-      "Type": "Task",
-      "Resource": "arn:aws:states:::sns:publish",
-      "Parameters": {
-        "TopicArn": "arn:aws:sns:{region}:{account}:frank-notifications-{env}",
-        "Message.$": "$.notificationMessage"
-      },
-      "End": true
-    },
-    "UnsupportedRule": {
-      "Type": "Fail",
-      "Error": "UnsupportedRuleType",
-      "Cause": "The specified rule type is not supported"
-    }
-  }
-}
-```
+
 
 ### 4. Event Integration
 
 #### CloudWatch Events Rules
 ```yaml
-ScheduledProcessing:
-  ScheduleExpression: "rate(1 hour)"
-  Target: SIGMA Processing State Machine
-  Input: { "trigger": "scheduled", "batchSize": 1000 }
-
 S3DataUpload:
   EventPattern:
     source: ["aws.s3"]
@@ -148,15 +59,10 @@ S3DataUpload:
 #### API Gateway Integration
 ```yaml
 Endpoints:
-  /workflows/sigma/execute:
+  /workflows/submitter/provision:
     Method: POST
     Integration: StartExecution
-    StateMachine: SIGMA Processing
-    
-  /workflows/tenant/provision:
-    Method: POST
-    Integration: StartExecution
-    StateMachine: Tenant Management
+    StateMachine: Submitter Management
 ```
 
 ### 5. Error Handling and Retry Logic
@@ -239,7 +145,6 @@ VPCConfiguration:
 #### Express vs Standard Workflows
 ```yaml
 WorkflowTypes:
-  SIGMA Processing: "STANDARD"  # Long-running, complex logic
   Data Validation: "EXPRESS"    # Short, frequent executions
   Notifications: "EXPRESS"      # Simple, fast operations
 ```
@@ -274,11 +179,6 @@ aws cloudformation deploy \
 
 ### Testing
 ```bash
-# Start execution
-aws stepfunctions start-execution \
-  --state-machine-arn arn:aws:states:{region}:{account}:stateMachine:frank-sigma-processing-{env} \
-  --input '{"ruleType": "sigma", "ruleId": "test-rule", "dataSource": "s3://frank-raw-data/test/"}'
-
 # Check execution status
 aws stepfunctions describe-execution \
   --execution-arn {execution-arn}

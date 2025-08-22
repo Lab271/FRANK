@@ -1,12 +1,11 @@
 # FRANK – AWS MVP Implementatiehandleiding
 
-Dit document beschrijft per AWS-onderdeel wat je moet inrichten om het FRANK‑MVP (IoC/sightings delen, SIGMA‑updates, anonieme statistieken) werkend te krijgen. Het is geschreven voor een overwegend serverless architectuur.
+Dit document beschrijft per AWS-onderdeel wat je moet inrichten om het FRANK‑MVP (sightings delen, (anonieme) statistieken) werkend te krijgen. Het is geschreven voor een overwegend serverless architectuur.
 
 Assumpties
-- Doel: ingest van sightings en IoC/SIGMA‑artefacten, pseudonimisering, opslag, aggregatie en query/rapportage.
+- Doel: ingest van sightings, pseudonimisering, opslag, aggregatie en query/rapportage.
 - Security-by-default: alles versleuteld met KMS, geen publieke S3‑toegang, least privilege IAM.
-- Multi-tenant: scheiding per tenant in data en policies; anonieme/aggregated output.
-- Fase 1/2 scope: géén automatische generatie van nieuwe SIGMA‑regels; wél updates en distributie.
+- Gefaseerde aanpak
 
 Inhoud
 - MVP core services
@@ -16,7 +15,6 @@ Inhoud
 - Integraties & respons (optioneel)
 - Schaalbaarheid (optioneel of latere fase)
 - DevOps & IaC
-- Tenant governance & offboarding
 - Kostenbewaking
 
 ------------------------------------------------------------
@@ -26,10 +24,8 @@ Inhoud
 ### Amazon API Gateway (REST)
 Doel: Ingest van sightings, query van statistieken, distributie van SIGMA‑artefacten.
 - Endpoints
-  - POST /v1/sightings (push door deelnemers)
-  - GET /v1/stats (geaggregeerde statistieken, filterbaar op IoC/sector/tijd)
-  - GET /v1/sigma/{ruleId} (ophalen rule/versie)
-  - POST /v1/sigma/{ruleId}/update (push update door beheer)
+  - POST /v1/submissions (push door deelnemers van sightings)
+  - GET /v1/stats (geaggregeerde statistieken, filterbaar)
 - Configuratie
   - Authorizer: Cognito JWT authorizer (User Pool).
   - Request/response models en schema‑validatie (JSON Schema).
@@ -42,8 +38,8 @@ Doel: Ingest van sightings, query van statistieken, distributie van SIGMA‑arte
 ### Amazon Cognito
 Doel: Authenticatie/authorisatie van klanten en service‑clients.
 - User Pool + App Client (no secret, JWT).
-- Custom attributes: tenant_id, sector.
-- Groepen/rollen per tenant of rol (publisher, reader).
+- Custom attributes: submitter_id, sector.
+- Groepen/rollen per submitter of rol (publisher, reader).
 - Resource Server + scopes (bijv. stats.read, sightings.write).
 - Policies: API Gateway method mapping op scopes/claims.
 - Beveiliging: MFA aan, password policy, risicodetectie.
@@ -52,12 +48,11 @@ Doel: Authenticatie/authorisatie van klanten en service‑clients.
 ### AWS Lambda
 Doel: Serverless verwerking.
 - Functies (minimaal)
-  - ingest_sightings: validatie, normalisatie (schema), deduplicatie (idempotency), pseudonimisering.
+  - ingest_submissions (van sightings): validatie, normalisatie (schema), deduplicatie (idempotency), pseudonimisering.
   - write_persistence: schrijf naar S3 (raw) + update DynamoDB aggregaten + indexeer in OpenSearch.
   - query_stats: lees aggregaten (DynamoDB/OpenSearch) en geef geanonimiseerde statistieken terug.
-  - sigma_update_job: valideer/update SIGMA‑artefact in S3 en trigger downstream index/notify.
 - Techniek
-  - Runtime: Python/Node (met AWS Powertools voor logging/metrics/tracing).
+  - Runtime: Python (met AWS Powertools voor logging/metrics/tracing).
   - Timeouts bewust (ingest < 10s), memory tunen, provisioned/RC indien nodig.
   - DLQ (SQS) en retry policy.
   - IAM‑rol per functie (least privilege).
@@ -79,8 +74,7 @@ Doel: Sleutelbeheer voor data‑encryptie en HMAC‑pseudonimisering.
 ### Amazon S3
 Doel: Data lake en artefactopslag.
 - Buckets (voorbeeldnamen)
-  - s3://frank-raw-<env> (raw sightings; partitionering: tenant_id=…/date=YYYY/MM/DD/)
-  - s3://frank-artefacts-<env> (SIGMA YAML, IoC documenten, CACAO later)
+  - s3://frank-raw-<env> (raw submissions; partitionering: submitter_id=…/date=YYYY/MM/DD/)
   - s3://frank-exports-<env> (rapporten/exports)
 - Config
   - Block Public Access: aan.
@@ -91,10 +85,10 @@ Doel: Data lake en artefactopslag.
   - Event notifications (S3→EventBridge of S3→Lambda) bij artefact updates.
 
 ### Amazon DynamoDB
-Doel: Hot aggregaten, tenant‑metadata, idempotency.
+Doel: Hot aggregaten, submitter, idempotency.
 - Tabellen
-  - frank-aggregates: PK = ioc#type (of composite), SK = timebucket#sector#tenant (naar behoefte). GSIs voor andere query‑paden.
-  - frank-tenants: PK = tenant_id; metadata (sector, status, retentie, beleid).
+  - frank-aggregates: PK = ioc#type (of composite), SK = timebucket#sector#submitter (naar behoefte). GSIs voor andere query‑paden.
+  - frank-submitters: PK = submitter_id; metadata (sector, status, retentie, beleid).
   - frank-idempotency: request_key TTL.
 - Config
   - On‑Demand (start) of autoscaling; WCU/RCU alarms.
@@ -113,7 +107,7 @@ Doel: Interactieve zoek/visualisatie van sightings en context.
   - Master user via IAM of internal user db; IAM‑policies per rol.
   - Audit/slow logs aan naar CloudWatch.
 - Indices en lifecycle
-  - Index per env en eventueel per tenant (frank-sightings-<tenant>-YYYY.MM).
+  - Index per env en eventueel per submitter (frank-sightings-<submitter>-YYYY.MM).
   - ISM/ILM policies (rollover op grootte/tijd, retentie).
   - Index templates en mappings (IoC velden, sector, tijd).
 - Dashboards
@@ -122,8 +116,7 @@ Doel: Interactieve zoek/visualisatie van sightings en context.
 ### AWS Step Functions
 Doel: Orkestratie van jobs en beheerflows.
 - State machines
-  - SigmaTranslate: S3 put → ECS Fargate taak → validatie → publiceer/notify.
-  - TenantOffboard: revoke creds → purge S3 prefixes → delete OS‑indices → invalideren aggregaten → audit log.
+  - SubmitterOffboard: revoke creds → purge S3 prefixes → delete OS‑indices → invalideren aggregaten → audit log.
   - ReportGenerate: Athena query → S3 export → sign URL return.
 - Instellen
   - Logging (level: all) en X‑Ray tracing.
@@ -158,7 +151,7 @@ Doel: Containerized taken (sigma‑tools e.d.).
 
 ### IAM
 - Least privilege: aparte rollen per Lambda/ECS.
-- Condition keys gebruiken (bijv. aws:ResourceTag/tenant_id).
+- Condition keys gebruiken (bijv. aws:ResourceTag/submitter_id).
 - Service‑linked roles voor OS, WAF, etc.
 - Access Analyzer en IAM Access Advisor periodiek nalopen.
 
@@ -205,17 +198,17 @@ Doel: Containerized taken (sigma‑tools e.d.).
 ## Data governance & lifecycle
 
 ### AWS Glue + Amazon Athena
-- Glue Data Catalog: tabellen op s3://frank-raw-*/ (partitions: tenant_id, datum).
+- Glue Data Catalog: tabellen op s3://frank-raw-*/ (partitions: submitter_id, datum).
 - Crawlers of handmatige schema’s (voorkomen van schema drift).
 - Athena workgroup met query resultaten in s3://frank-exports-*/athena/.
 - Toegang via Lake Formation (row/column‑level policies indien nodig).
 
 ### Lake Formation (optioneel, maar aanbevolen)
 - Centraal rechtenbeheer voor S3 data lake.
-- Toegang per tenant/rol naar tabellen/kolommen.
+- Toegang per submitter/rol naar tabellen/kolommen.
 
 ### Retentie en verwijdering
-- S3 lifecycle per dataset, conform beleid per tenant.
+- S3 lifecycle per dataset, conform beleid per submitter.
 - DynamoDB TTL voor tijdelijke items; periodieke jobs voor “hard delete” waar vereist.
 - OpenSearch ILM: cold/warm/force delete na afgesproken termijn.
 
@@ -224,7 +217,7 @@ Doel: Containerized taken (sigma‑tools e.d.).
 ## Integraties & respons (optioneel/fase 2)
 
 ### Amazon EventBridge
-- Event bus voor interne events (sigma.updated, tenant.revoked, sighting.ingested).
+- Event bus voor interne events (submitter.revoked, sighting.ingested).
 - Scheduler rules voor periodieke MISP/TAXII pulls.
 
 ### MISP/TAXII ingest (Lambda)
@@ -248,7 +241,7 @@ Doel: Containerized taken (sigma‑tools e.d.).
 - Flink jobs voor sliding‑window aggregaties (counts per IoC/sector/tijd).
 
 ### Caching
-- API Gateway caching op lees‑API’s met zorg (multi‑tenant isolatie).
+- API Gateway caching op lees‑API’s met zorg (multi‑submitter isolatie).
 - CloudFront voor statische dashboards/artefact downloads (indien publiek gedeeld, anders liever niet).
 
 ### Datastores
@@ -266,26 +259,22 @@ Doel: Containerized taken (sigma‑tools e.d.).
 
 ### Infrastructure as Code
 - CloudFormation (SAM/CDK) of Terraform (met staat in S3 + DynamoDB lock).
-- Service Catalog voor herbruikbare stacks (bijv. “frank-tenant-onboard”).
+- Service Catalog voor herbruikbare stacks (bijv. “frank-submitter-onboard”).
 
 ### Container registry
 - Amazon ECR voor ECS images; immutability en scan on push.
 
 ------------------------------------------------------------
 
-## Tenant governance & offboarding
-
-### Multi-tenant ontwerp
-- Data segmentatie: S3 prefixes (tenant_id=…), OpenSearch per‑tenant indices, DynamoDB keys met tenant_id.
-- Claims in Cognito (tenant_id) valideren in API‑laag.
+## submitter governance & offboarding
 
 ### Pseudonimisering/anonymisering
-- Deterministische HMAC‑SHA256 over bronidentifiers met tenant‑specifieke salt/secret (beschermd door KMS).
+- Deterministische HMAC‑SHA256 over bronidentifiers met submitter‑specifieke salt/secret (beschermd door KMS).
 - Alleen geaggregeerde/anonieme data beschikbaar via publieke query‑API.
 
 ### Offboarding flow (Step Functions)
 - Revoke credentials (Cognito/Keys) → Purge S3 prefixes → Delete OS indices → Markeer/regenereer aggregaten → Auditlog.
-- Verwijder alle tenant‑gebonden metadata in DynamoDB (behoud referentie‑audit waar wettelijk geoorloofd).
+- Verwijder alle submitter‑gebonden metadata in DynamoDB (behoud referentie‑audit waar wettelijk geoorloofd).
 
 ------------------------------------------------------------
 
@@ -293,7 +282,7 @@ Doel: Containerized taken (sigma‑tools e.d.).
 
 ### Budgetten en tagging
 - AWS Budgets met e‑mail/Slack alerts.
-- Cost Allocation Tags (project=frank, env, tenant).
+- Cost Allocation Tags (project=frank, env, submitter).
 - Cost Explorer dashboards per service.
 
 ### Optimalisaties
@@ -308,7 +297,7 @@ Doel: Containerized taken (sigma‑tools e.d.).
 1) Cognito (User Pool, app client, groepen, claims).  
 2) KMS keys (S3, DDB, OS, app/HMAC).  
 3) S3 buckets (raw, artefacts, exports) met SSE‑KMS, versioning, lifecycle.  
-4) DynamoDB (aggregates, tenants, idempotency) met TTL, PITR.  
+4) DynamoDB (aggregates, submitters, idempotency) met TTL, PITR.  
 5) OpenSearch domain (VPC, FGAC, ILM, dashboards).  
 6) Lambda functies (ingest, write, query, sigma_update) + roles + logs.  
 7) API Gateway (routes, models, authorizer, throttling, logs) + WAF.  

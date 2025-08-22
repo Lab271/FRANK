@@ -1,0 +1,20 @@
+# FRANK Platform - Minimal Sighting Submission
+
+submission:
+  submitter:
+    organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+    tier: "partner"
+      
+  sighting:
+    sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
+    timestamp: "2025-01-20T14:30:22Z"
+    confidence: 87 # 69 is default
+    
+    observables:
+      network:
+        - id: "ipv4-addr-c4e54321-1234-5678-9abc-def012345678"
+          type: "ipv4"
+          value: "185.220.102.45"
+        - id: "domain-name-d5f65432-2345-6789-abcd-ef0123456789"
+          type: "domain"
+          value: "secure-bank-verify.nl"
