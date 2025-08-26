@@ -3,37 +3,155 @@
 FRANK Platform - Submission Generation and Parsing Library
 Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-This module provides core functionality for generating, parsing, and validating
+This module provides core functionality for generating, parsing, serializing and validating
 FRANK threat intelligence submissions following the "be forgiving on what you 
 receive and strong on what you return" principle.
 """
 
 import yaml
 import json
-import uuid
-import hashlib
-from datetime import datetime, timezone
-# from typing import Dict, Any, List, Optional, Tuple, Union
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional
 import logging
-# from pathlib import Path
+from dataclasses import dataclass, field
 
-from frank.core.exceptions import FRANKFormatError, FRANKValidationError
+from .exceptions import FRANKFormatError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
 
+def _safe_get(obj:Any, key:str, default: Any=None) -> Any:
+    """Get value from dict if it's a dict, otherwise return None."""
+    if isinstance(obj, dict):
+        return obj.get(key, default)
+    return default
+
+
+@dataclass
 class FRANKSubmission:
     """
-    Handles FRANK threat intelligence submissions with minimal required fields
-    and graceful handling of optional extended data.
+    Pure dataclass container for FRANK threat intelligence submissions.
     
-    Implements the "be forgiving on what you receive, strong on what you return" principle.
+    Represents the structure and data of a submission without business logic.
+    Core data must be set deliberately. Don't like empty strings
     """
     
-    # Required fields for minimal submission
+    # Core submission data
+    submitter_org_id: Optional[str] = None
+    submitter_tier: Optional[str] = None
+    sighting_id: Optional[str] = None
+    timestamp: Optional[str] = None
+    observables: Optional[Dict[str, List[Dict[str, Any]]]] = None
+    confidence: int = 69
+    
+    # Optional metadata
+    metadata: Optional[Dict[str, Any]] = None
+    hit_target: Optional[Dict[str, Any]] = None
+    severity: Optional[str] = None
+    first_observed: Optional[str] = None
+    last_observed: Optional[str] = None
+    observation_count: Optional[int] = None
+    sigma_detection: Optional[Dict[str, Any]] = None
+    threat_context: Optional[Dict[str, Any]] = None
+    impact: Optional[Dict[str, Any]] = None
+    sharing: Optional[Dict[str, Any]] = None
+    
+    # Additional fields can be stored here
+    extra_fields: Dict[str, Any] = field(default_factory=dict)
+    
+    @classmethod
+    def from_dict(cls, data: Dict[str, Any]) -> 'FRANKSubmission':
+        """Create FRANKSubmission from dictionary."""
+        submission_data = _safe_get(data, 'submission')
+        submitter = _safe_get(submission_data, 'submitter')
+        sighting = _safe_get(submission_data, 'sighting')
+        
+        return cls(
+            submitter_org_id=_safe_get(submitter, 'organization_id'),
+            submitter_tier=_safe_get(submitter, 'tier'),
+            sighting_id=_safe_get(sighting, 'sighting_id'),
+            timestamp=_safe_get(sighting, 'timestamp'),
+            observables=_safe_get(sighting, 'observables'),
+            confidence=_safe_get(sighting, 'confidence', 69),
+            metadata=_safe_get(submission_data, 'metadata'),
+            hit_target=_safe_get(submission_data, 'hit_target'),
+            severity=_safe_get(sighting, 'severity'),
+            first_observed=_safe_get(sighting, 'first_observed'),
+            last_observed=_safe_get(sighting, 'last_observed'),
+            observation_count=_safe_get(sighting, 'observation_count'),
+            sigma_detection=_safe_get(sighting, 'sigma_detection'),
+            threat_context=_safe_get(sighting, 'threat_context'),
+            impact=_safe_get(sighting, 'impact'),
+            sharing=_safe_get(submission_data, 'sharing'),
+            extra_fields=_safe_get(data, 'extra_fields')
+        )
+    
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert FRANKSubmission to dictionary format."""
+        submission = {}
+        
+        submitter = {}
+        if self.submitter_tier:
+            submitter['tier'] = self.submitter_tier
+        if self.submitter_org_id:
+            submitter['organization_id'] = self.submitter_org_id   
+
+        # Add optional fields if they exist
+        if self.metadata:
+            submission["metadata"] = self.metadata
+        if self.hit_target:
+            submission["hit_target"] = self.hit_target
+        if self.sharing:
+            submission["sharing"] = self.sharing
+
+        if submitter:
+            submission['submitter'] = submitter
+
+        
+        sighting = {}
+
+        if self.sighting_id:
+            sighting["sighting_id"] = self.sighting_id
+        if self.timestamp:
+            sighting["timestamp"] = self.timestamp
+        if self.timestamp:
+            sighting["observables"] = self.observables
+        if self.severity:
+            sighting["severity"] = self.severity
+        if self.first_observed:
+            sighting["first_observed"] = self.first_observed
+        if self.last_observed:
+            sighting["last_observed"] = self.last_observed
+        if self.observation_count:
+            sighting["observation_count"] = self.observation_count
+        if self.sigma_detection:
+            sighting["sigma_detection"] = self.sigma_detection
+        if self.threat_context:
+            sighting["threat_context"] = self.threat_context
+        if self.impact:
+            sighting["impact"] = self.impact
+        if sighting:
+            sighting["confidence"] = self.confidence
+
+        if sighting:    
+            submission["sighting"] = sighting
+
+        # Add any extra fields
+        if self.extra_fields:
+            submission.update(self.extra_fields)
+            
+        return {'submission': submission}
+
+
+class FRANKValidator:
+    """
+    Handles validation of FRANK submissions following "be forgiving" principle.
+    
+    Separated validation logic from data representation.
+    """
+    
+    # Constants moved here from original class
     REQUIRED_FIELDS = {
         'submission.submitter.organization_id',
         'submission.submitter.tier', 
@@ -42,221 +160,47 @@ class FRANKSubmission:
         'submission.sighting.observables'
     }
     
-    # Default values following "be forgiving" principle
-    DEFAULTS = {
-        'confidence': 69,  # Default confidence as specified
-        'format_version': '1.0',
-        'submission_method': 'manual',
-        'anonymization_level': 'moderate',
-        'severity': 'medium',
-        'observation_count': 1,
-        'tlp_level': 'AMBER'
-    }
-    
-    # Valid enumeration values
     VALID_TIERS = {'public', 'observer', 'contributor', 'partner', 'core_member'}
     VALID_SEVERITIES = {'low', 'medium', 'high', 'critical'}
     VALID_TLP_LEVELS = {'RED', 'AMBER+', 'AMBER', 'GREEN', 'CLEAR'}
     VALID_OBSERVABLE_TYPES = {'ipv4', 'ipv6', 'domain', 'url', 'file_hash', 'email', 'registry_key'}
     
-    def __init__(self):
-        self.logger = logging.getLogger(self.__class__.__name__)
+    def validate_submission(self, submission: FRANKSubmission) -> Tuple[bool, List[str]]:
+        """Validate a FRANKSubmission instance."""
+        return self.validate_dict(submission.to_dict())
     
-    def generate_minimal_submission(self, 
-                                  org_id: str = None,
-                                  tier: str = "partner",
-                                  observables: List[Dict] = None,
-                                  confidence: int = None) -> Dict[str, Any]:
-        """
-        Generate a minimal FRANK submission with only required fields.
-        
-        Args:
-            org_id: Organization identifier (generated if None)
-            tier: Organization tier level
-            observables: List of observable objects (default generated if None)
-            confidence: Confidence level 0-100 (uses default if None)
-            
-        Returns:
-            Dict containing minimal valid submission
-            
-        Raises:
-            FRANKValidationError: If invalid values provided
-        """
-        
-        # Validate inputs
-        if tier not in self.VALID_TIERS:
-            raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {self.VALID_TIERS}")
-        
-        if confidence is not None and not (0 <= confidence <= 100):
-            raise FRANKValidationError(f"Confidence {confidence} out of range [0-100]")
-        
-        # Generate default values if not provided
-        if org_id is None:
-            org_id = f"identity-{uuid.uuid4()}"
-            
-        if observables is None:
-            observables = [
-                {
-                    "id": f"ipv4-addr-{uuid.uuid4()}",
-                    "type": "ipv4",
-                    "value": "185.220.102.45"
-                },
-                {
-                    "id": f"domain-name-{uuid.uuid4()}",
-                    "type": "domain", 
-                    "value": "secure-bank-verify.nl"
-                }
-            ]
-        
-        # Validate observables
-        for obs in observables:
-            if 'type' in obs and obs['type'] not in self.VALID_OBSERVABLE_TYPES:
-                raise FRANKValidationError(f"Invalid observable type '{obs['type']}'. Must be one of: {self.VALID_OBSERVABLE_TYPES}")
-        
-        submission = {
-            "submission": {
-                "submitter": {
-                    "organization_id": org_id,
-                    "tier": tier
-                },
-                "sighting": {
-                    "sighting_id": f"sighting-{uuid.uuid4()}",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "confidence": confidence if confidence is not None else self.DEFAULTS['confidence'],
-                    "observables": {
-                        "network": observables
-                    }
-                }
-            }
-        }
-        
-        self.logger.info(f"Generated minimal submission for org {org_id}")
-        return submission
-    
-    def generate_comprehensive_submission(self,
-                                        org_id: str,
-                                        tier: str = "partner",
-                                        hit_target_org: str = None,
-                                        observables: List[Dict] = None,
-                                        severity: str = "medium",
-                                        confidence: int = 85,
-                                        campaign_context: Dict = None,
-                                        sigma_detection: Dict = None,
-                                        impact_data: Dict = None) -> Dict[str, Any]:
-        """
-        Generate a comprehensive FRANK submission with extended metadata.
-        
-        Args:
-            org_id: Submitting organization ID
-            tier: Organization tier
-            hit_target_org: Organization that was targeted (optional)
-            observables: List of observables
-            severity: Threat severity level
-            confidence: Confidence level 0-100
-            campaign_context: Campaign attribution information
-            sigma_detection: SIGMA rule detection context
-            impact_data: Impact assessment data
-            
-        Returns:
-            Dict containing comprehensive submission
-        """
-        
-        # Start with minimal submission
-        submission = self.generate_minimal_submission(org_id, tier, observables, confidence)
-        
-        # Add comprehensive metadata
-        metadata = {
-            "format_version": self.DEFAULTS['format_version'],
-            "submission_id": f"submission-{uuid.uuid4()}",
-            "timestamp": datetime.now(timezone.utc).isoformat()
-        }
-        submission["submission"]["metadata"] = metadata
-        
-        # Add hit target if provided
-        if hit_target_org:
-            submission["submission"]["hit_target"] = {
-                "organization_id": hit_target_org,
-                "organization_type": "customer"
-            }
-        
-        # Enhance sighting data
-        sighting = submission["submission"]["sighting"]
-        sighting["severity"] = severity
-        sighting["first_observed"] = datetime.now(timezone.utc).isoformat()
-        sighting["last_observed"] = datetime.now(timezone.utc).isoformat()
-        sighting["observation_count"] = len(observables) if observables else 1
-        
-        # Add SIGMA detection context if provided
-        if sigma_detection:
-            sighting["sigma_detection"] = sigma_detection
-        
-        # Add threat context if campaign provided
-        if campaign_context:
-            sighting["threat_context"] = {"campaign": campaign_context}
-        
-        # Add impact assessment if provided
-        if impact_data:
-            sighting["impact"] = impact_data
-        
-        # Add sharing preferences
-        submission["submission"]["sharing"] = {
-            "distribution_level": self.DEFAULTS['tlp_level'],
-            "anonymization_level": self.DEFAULTS['anonymization_level']
-        }
-        
-        self.logger.info(f"Generated comprehensive submission for org {org_id}")
-        return submission
-    
-    def validate_submission(self, submission: Dict[str, Any]) -> Tuple[bool, List[str]]:
-        """
-        Validate submission following "be forgiving" principle.
-        
-        Args:
-            submission: Submission dictionary to validate
-            
-        Returns:
-            Tuple of (is_valid, list_of_issues)
-        """
+    def validate_dict(self, submission_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
+        """Validate submission dictionary following "be forgiving" principle."""
         issues = []
         
         try:
-            # Check required fields with graceful path traversal
+            # Check required fields
             for field_path in self.REQUIRED_FIELDS:
-                if not self._check_nested_field(submission, field_path):
+                if not self._check_nested_field(submission_dict, field_path):
                     issues.append(f"Missing required field: {field_path}")
             
-            # Validate tier if present
-            tier = self._get_nested_field(submission, 'submission.submitter.tier')
+            # Validate tier
+            tier = self._get_nested_field(submission_dict, 'submission.submitter.tier')
             if tier and tier not in self.VALID_TIERS:
                 issues.append(f"Invalid tier '{tier}'. Must be one of: {self.VALID_TIERS}")
             
-            # Validate severity if present
-            severity = self._get_nested_field(submission, 'submission.sighting.severity')
+            # Validate severity
+            severity = self._get_nested_field(submission_dict, 'submission.sighting.severity')
             if severity and severity not in self.VALID_SEVERITIES:
                 issues.append(f"Invalid severity '{severity}'. Must be one of: {self.VALID_SEVERITIES}")
             
-            # Validate observables structure if present
-            observables = self._get_nested_field(submission, 'submission.sighting.observables')
+            # Validate observables
+            observables = self._get_nested_field(submission_dict, 'submission.sighting.observables')
             if observables:
-                if not any(observables.values()):
-                    issues.append("Observables section present but empty")
-                else:
-                    # Validate individual observables
-                    for category, obs_list in observables.items():
-                        if isinstance(obs_list, list):
-                            for i, obs in enumerate(obs_list):
-                                if 'type' in obs and obs['type'] not in self.VALID_OBSERVABLE_TYPES:
-                                    issues.append(f"Invalid observable type '{obs['type']}' in {category}[{i}]")
-                                if 'value' not in obs:
-                                    issues.append(f"Missing 'value' in observable {category}[{i}]")
+                issues.extend(self._validate_observables(observables))
             
-            # Validate confidence range if present
-            confidence = self._get_nested_field(submission, 'submission.sighting.confidence')
+            # Validate confidence range
+            confidence = self._get_nested_field(submission_dict, 'submission.sighting.confidence')
             if confidence is not None and not (0 <= confidence <= 100):
                 issues.append(f"Confidence {confidence} out of range [0-100]")
             
-            # Validate TLP level if present in sharing
-            tlp_level = self._get_nested_field(submission, 'submission.sharing.distribution_level')
+            # Validate TLP level
+            tlp_level = self._get_nested_field(submission_dict, 'submission.sharing.distribution_level')
             if tlp_level and tlp_level not in self.VALID_TLP_LEVELS:
                 issues.append(f"Invalid TLP level '{tlp_level}'. Must be one of: {self.VALID_TLP_LEVELS}")
                 
@@ -265,34 +209,34 @@ class FRANKSubmission:
         
         is_valid = len(issues) == 0
         level = "PASSED" if is_valid else "FAILED"
-        self.logger.info(f"Validation result: {level} with {len(issues)} issues")
+        logger.info(f"Validation result: {level} with {len(issues)} issues")
         
         return is_valid, issues
     
-    def _check_nested_field(self, data: Dict, field_path: str) -> bool:
-        """
-        Check if a nested field exists using dot notation.
+    def _validate_observables(self, observables: Dict) -> List[str]:
+        """Validate observables structure."""
+        issues = []
         
-        Args:
-            data: Dictionary to check
-            field_path: Dot-separated field path
-            
-        Returns:
-            True if field exists and is not None
-        """
+        if not any(observables.values()):
+            issues.append("Observables section present but empty")
+            return issues
+        
+        for category, obs_list in observables.items():
+            if isinstance(obs_list, list):
+                for i, obs in enumerate(obs_list):
+                    if 'type' in obs and obs['type'] not in self.VALID_OBSERVABLE_TYPES:
+                        issues.append(f"Invalid observable type '{obs['type']}' in {category}[{i}]")
+                    if 'value' not in obs:
+                        issues.append(f"Missing 'value' in observable {category}[{i}]")
+        
+        return issues
+    
+    def _check_nested_field(self, data: Dict, field_path: str) -> bool:
+        """Check if a nested field exists using dot notation."""
         return self._get_nested_field(data, field_path) is not None
     
     def _get_nested_field(self, data: Dict, field_path: str) -> Any:
-        """
-        Get value from nested field using dot notation.
-        
-        Args:
-            data: Dictionary to traverse
-            field_path: Dot-separated field path
-            
-        Returns:
-            Field value or None if not found
-        """
+        """Get value from nested field using dot notation."""
         keys = field_path.split('.')
         current = data
         
@@ -305,283 +249,53 @@ class FRANKSubmission:
             return current
         except:
             return None
-    
-    def enhance_submission(self, minimal_submission: Dict[str, Any], 
-                          enhancements: Dict[str, Any] = None) -> Dict[str, Any]:
-        """
-        Enhance a minimal submission with additional data following "strong on return" principle.
-        
-        Args:
-            minimal_submission: Base submission to enhance
-            enhancements: Additional data to merge in
-            
-        Returns:
-            Enhanced submission dictionary
-        """
-        if enhancements is None:
-            enhancements = {}
-        
-        enhanced = self._deep_copy(minimal_submission)
-        
-        # Add format version if not present
-        if not self._check_nested_field(enhanced, 'submission.metadata.format_version'):
-            enhanced.setdefault('submission', {}).setdefault('metadata', {})['format_version'] = self.DEFAULTS['format_version']
-        
-        # Add metadata section with defaults
-        metadata = enhanced['submission'].setdefault('metadata', {})
-        metadata.setdefault('submission_id', f"submission-{uuid.uuid4()}")
-        metadata.setdefault('format_version', self.DEFAULTS['format_version'])
-        metadata.setdefault('timestamp', datetime.now(timezone.utc).isoformat())
-        
-        # Enhance submitter information
-        submitter = enhanced['submission']['submitter']
-        submitter.setdefault('submission_method', self.DEFAULTS['submission_method'])
-        
-        # Enhance sighting information
-        sighting = enhanced['submission']['sighting']
-        sighting.setdefault('severity', self.DEFAULTS['severity'])
-        sighting.setdefault('observation_count', self.DEFAULTS['observation_count'])
-        
-        # Apply any custom enhancements
-        self._deep_merge(enhanced, enhancements)
-        
-        self.logger.info("Enhanced submission with additional metadata")
-        return enhanced
-    
-    def _deep_copy(self, obj: Any) -> Any:
-        """Create a deep copy of an object."""
-        if isinstance(obj, dict):
-            return {k: self._deep_copy(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._deep_copy(item) for item in obj]
-        else:
-            return obj
-    
-    def _deep_merge(self, base: Dict, overlay: Dict) -> None:
-        """
-        Deep merge overlay dictionary into base dictionary.
-        
-        Args:
-            base: Base dictionary to modify
-            overlay: Dictionary to merge in
-        """
-        for key, value in overlay.items():
-            if key in base and isinstance(base[key], dict) and isinstance(value, dict):
-                self._deep_merge(base[key], value)
-            else:
-                base[key] = value
-    
-    def hash_observable(self, observable_type: str, observable_value: str) -> str:
-        """
-        Create a hash for observable deduplication and quick lookups.
-        
-        Args:
-            observable_type: Type of observable (ipv4, domain, etc.)
-            observable_value: Value of the observable
-            
-        Returns:
-            SHA256 hash string
-        """
-        combined = f"{observable_type}:{observable_value}".lower()
-        return hashlib.sha256(combined.encode()).hexdigest()
-    
-    def extract_observables(self, submission: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """
-        Extract all observables from a submission with normalized structure.
-        
-        Args:
-            submission: FRANK submission dictionary
-            
-        Returns:
-            List of observables with standardized fields
-        """
-        observables = []
-        submission_observables = self._get_nested_field(submission, 'submission.sighting.observables')
-        
-        if not submission_observables:
-            return observables
-        
-        for category, obs_list in submission_observables.items():
-            if isinstance(obs_list, list):
-                for obs in obs_list:
-                    if 'type' in obs and 'value' in obs:
-                        normalized = {
-                            'id': obs.get('id', f"{obs['type']}-{uuid.uuid4()}"),
-                            'type': obs['type'],
-                            'value': obs['value'],
-                            'category': category,
-                            'hash': self.hash_observable(obs['type'], obs['value']),
-                            'role': obs.get('role'),
-                            'first_seen': obs.get('first_seen'),
-                            'port': obs.get('port'),
-                            'protocol': obs.get('protocol')
-                        }
-                        observables.append(normalized)
-        
-        return observables
-    
-    def to_yaml(self, submission: Dict[str, Any]) -> str:
-        """
-        Convert submission to YAML format for storage/transmission.
-        
-        Args:
-            submission: Submission dictionary
-            
-        Returns:
-            YAML string representation
-        """
-        try:
-            return yaml.dump(submission, default_flow_style=False, sort_keys=False)
-        except Exception as e:
-            raise FRANKFormatError(f"Failed to convert to YAML: {e}")
-    
-    def from_yaml(self, yaml_str: str) -> Dict[str, Any]:
-        """
-        Parse submission from YAML format with error handling.
-        
-        Args:
-            yaml_str: YAML string to parse
-            
-        Returns:
-            Parsed submission dictionary
-            
-        Raises:
-            FRANKFormatError: If YAML parsing fails
-        """
-        try:
-            return yaml.safe_load(yaml_str)
-        except yaml.YAMLError as e:
-            raise FRANKFormatError(f"Invalid YAML format: {e}")
-    
-    def to_json(self, submission: Dict[str, Any]) -> str:
-        """
-        Convert submission to JSON format for API transmission.
-        
-        Args:
-            submission: Submission dictionary
-            
-        Returns:
-            JSON string representation
-        """
-        try:
-            return json.dumps(submission, indent=2, default=str)
-        except Exception as e:
-            raise FRANKFormatError(f"Failed to convert to JSON: {e}")
-    
-    def from_json(self, json_str: str) -> Dict[str, Any]:
-        """
-        Parse submission from JSON format with error handling.
-        
-        Args:
-            json_str: JSON string to parse
-            
-        Returns:
-            Parsed submission dictionary
-            
-        Raises:
-            FRANKFormatError: If JSON parsing fails
-        """
-        try:
-            return json.loads(json_str)
-        except json.JSONDecodeError as e:
-            raise FRANKFormatError(f"Invalid JSON format: {e}")
-    
-    def normalize_submission(self, submission: Dict[str, Any]) -> Dict[str, Any]:
-        """
-        Normalize a submission to ensure consistent structure and fill in defaults.
-        
-        Args:
-            submission: Raw submission dictionary
-            
-        Returns:
-            Normalized submission with consistent structure
-        """
-        # Validate first
-        is_valid, issues = self.validate_submission(submission)
-        if not is_valid:
-            raise FRANKValidationError(f"Cannot normalize invalid submission: {issues}")
-        
-        # Create normalized copy
-        normalized = self._deep_copy(submission)
-        
-        # Ensure all default fields are present
-        sighting = normalized['submission']['sighting']
-        sighting.setdefault('confidence', self.DEFAULTS['confidence'])
-        sighting.setdefault('severity', self.DEFAULTS['severity'])
-        sighting.setdefault('observation_count', self.DEFAULTS['observation_count'])
-        
-        # Normalize timestamps
-        if 'timestamp' in sighting:
-            try:
-                # Ensure ISO format
-                dt = datetime.fromisoformat(sighting['timestamp'].replace('Z', '+00:00'))
-                sighting['timestamp'] = dt.isoformat()
-            except:
-                sighting['timestamp'] = datetime.now(timezone.utc).isoformat()
-        
-        # Add metadata if missing
-        normalized['submission'].setdefault('metadata', {})
-        metadata = normalized['submission']['metadata']
-        metadata.setdefault('format_version', self.DEFAULTS['format_version'])
-        metadata.setdefault('submission_id', f"submission-{uuid.uuid4()}")
-        
-        # Normalize observables
-        observables = normalized['submission']['sighting'].get('observables', {})
-        for category, obs_list in observables.items():
-            if isinstance(obs_list, list):
-                for obs in obs_list:
-                    if 'id' not in obs:
-                        obs['id'] = f"{obs.get('type', 'unknown')}-{uuid.uuid4()}"
-        
-        self.logger.info("Normalized submission structure")
-        return normalized
 
 
-# Factory function for easy instantiation
-def create_frank_submission() -> FRANKSubmission:
-    """
-    Factory function to create a FRANKSubmission instance.
-    
-    Returns:
-        Configured FRANKSubmission instance
-    """
-    return FRANKSubmission()
+
+# Factory functions for easy instantiation
+def create_validator() -> FRANKValidator:
+    """Factory function to create a FRANKValidator."""
+    return FRANKValidator()
 
 
-# Convenience functions for common operations
-def generate_minimal(org_id: str = None, **kwargs) -> Dict[str, Any]:
-    """Generate a minimal submission quickly."""
-    frank = create_frank_submission()
-    return frank.generate_minimal_submission(org_id=org_id, **kwargs)
-
-
-def validate_submission(submission: Dict[str, Any]) -> Tuple[bool, List[str]]:
+# Support functions
+def validate_submission(submission : FRANKSubmission) -> Tuple[bool, List[str]]:
     """Validate a submission quickly."""
-    frank = create_frank_submission()
-    return frank.validate_submission(submission)
+    validator = create_validator()
+    return validator.validate_submission(submission)
+
+def validate_submission_dict(submission_dict: Dict[str, Any]) -> Tuple[bool, List[str]]:
+    """Validate a submission quickly."""
+    validator = create_validator()
+    return validator.validate_dict(submission_dict)
 
 
-def to_yaml(submission: Dict[str, Any]) -> str:
-    """Convert submission to YAML quickly."""
-    frank = create_frank_submission()
-    return frank.to_yaml(submission)
+def to_yaml(submission: FRANKSubmission) -> str:
+    """Convert submission to YAML format."""
+    try:
+        return yaml.dump(submission.to_dict(), default_flow_style=False, sort_keys=False)
+    except Exception as e:
+        raise FRANKFormatError(f"Failed to convert to YAML: {e}")
 
+def from_yaml(yaml_str: str) -> FRANKSubmission:
+    """Parse submission from YAML format."""
+    try:
+        data = yaml.safe_load(yaml_str)
+        return FRANKSubmission.from_dict(data)
+    except yaml.YAMLError as e:
+        raise FRANKFormatError(f"Invalid YAML format: {e}")
 
-def from_yaml(yaml_str: str) -> Dict[str, Any]:
-    """Parse submission from YAML quickly."""
-    frank = create_frank_submission()
-    return frank.from_yaml(yaml_str)
+def to_json(submission: FRANKSubmission) -> str:
+    """Convert submission to JSON format."""
+    try:
+        return json.dumps(submission.to_dict(), indent=2, default=str)
+    except Exception as e:
+        raise FRANKFormatError(f"Failed to convert to JSON: {e}")
 
-
-def to_json(submission: Dict[str, Any]) -> str:
-    """Convert submission to JSON quickly."""
-    frank = create_frank_submission()
-    return frank.to_json(submission)
-
-
-def from_json(json_str: str) -> Dict[str, Any]:
-    """Parse submission from JSON quickly."""
-    frank = create_frank_submission()
-    return frank.from_json(json_str)
-
-
+def from_json(json_str: str) -> FRANKSubmission:
+    """Parse submission from JSON format."""
+    try:
+        data = json.loads(json_str)
+        return FRANKSubmission.from_dict(data)
+    except json.JSONDecodeError as e:
+        raise FRANKFormatError(f"Invalid JSON format: {e}")

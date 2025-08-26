@@ -6,5 +6,5 @@ from .submission import FRANKSubmission
 from .exceptions import *
 
 __all__ = [
-    'FRANKSubmission'
+    'FRANKSubmission',
 ]

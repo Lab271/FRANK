@@ -5,7 +5,7 @@ A threat intelligence sharing platform that enables anonymous and secure exchang
 of cybersecurity information between organizations following a tiered access model.
 """
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 __author__ = "Schuberg Philis"
 __description__ = "FRANK Platform - Cybersecurity Threat Intelligence Sharing"
 
@@ -19,8 +19,8 @@ from frank.core.exceptions import (
 
 # Convenience functions for quick operations
 from frank.core.submission import (
-    generate_minimal,
     validate_submission,
+    validate_submission_dict,
     to_yaml,
     from_yaml,
     to_json,
@@ -33,15 +33,15 @@ from frank.core.submission import (
 __all__ = [
     # Main classes
     'FRANKSubmission',
-    
+
     # Exceptions
     'FRANKError',
     'FRANKValidationError', 
     'FRANKFormatError',
     
     # Convenience functions
-    'generate_minimal',
     'validate_submission',
+    'validate_submission_dict',
     'to_yaml',
     'from_yaml',
     'to_json',
