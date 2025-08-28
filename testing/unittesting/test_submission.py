@@ -10,6 +10,7 @@ and related convenience functions.
 import unittest
 import json
 import yaml
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -22,50 +23,54 @@ from frank.core.submission import (
     to_yaml,
     from_yaml,
     to_json,
-    from_json
+    from_json,
+    _check_nested_field,
+    _get_nested_field
 )
 from frank.core.exceptions import FRANKValidationError, FRANKFormatError
 
+MINIMAL = {
+    "submission": {
+        "submitter": {
+            "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+            "tier": "partner"
+        },
+        "sighting": {
+            "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
+            "timestamp": "2025-01-20T14:30:22Z",
+            #"confidence": 87,
+            "observables": {
+                "network": [
+                    {
+                        "id": "ipv4-addr-c4e54321-1234-5678-9abc-def012345678",
+                        "type": "ipv4",
+                        "value": "185.220.102.45"
+                    },
+                    {
+                        "id": "domain-name-d5f65432-2345-6789-abcd-ef0123456789",
+                        "type": "domain",
+                        "value": "secure-bank-verify.nl"
+                    }
+                ]
+            }
+        }
+    }
+}
 
-
+def _generate_minimal_submission(observables: Dict[str, List[Dict[str, Any]]] = None):
+    """Return a minimal valid FRANKSubmission instance for tests."""
+    submission = FRANKSubmission.from_dict(MINIMAL)
+    if observables:
+        submission.observables = observables
+    return submission
 
 class TestFRANKSubmission(unittest.TestCase):
     """Test cases for the FRANKSubmission class."""
     
     def setUp(self):
         """Set up test fixtures before each test method."""
-        self.minimal = {
-            "submission": {
-                "submitter": {
-                    "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-                    "tier": "partner"
-                },
-                "sighting": {
-                    "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
-                    "timestamp": "2025-01-20T14:30:22Z",
-                    #"confidence": 87,
-                    "observables": {
-                        "network": [
-                            {
-                                "id": "ipv4-addr-c4e54321-1234-5678-9abc-def012345678",
-                                "type": "ipv4",
-                                "value": "185.220.102.45"
-                            },
-                            {
-                                "id": "domain-name-d5f65432-2345-6789-abcd-ef0123456789",
-                                "type": "domain",
-                                "value": "secure-bank-verify.nl"
-                            }
-                        ]
-                    }
-                }
-            }
-        }
-
-    def _generate_minimal_submission(self):
-        """Return a minimal valid FRANKSubmission instance for tests."""
-        return FRANKSubmission.from_dict(self.minimal)
-    
+        pass
+        
     def test_empty_submission(self):
         """Test empty FRANKSubmission initialization"""
         submission = FRANKSubmission.from_dict({})
@@ -76,14 +81,21 @@ class TestFRANKSubmission(unittest.TestCase):
 
     def test_init_from_dict(self):
         """Test FRANKSubmission initialization."""       
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         self.assertEqual(submission.confidence, 69)
-        self.assertEqual(submission.submitter_org_id, self.minimal['submission']['submitter']['organization_id'])
-        self.assertEqual(submission.submitter_tier, self.minimal['submission']['submitter']['tier'])
+        self.assertEqual(submission.submitter_org_id, MINIMAL['submission']['submitter']['organization_id'])
+        self.assertEqual(submission.submitter_tier, MINIMAL['submission']['submitter']['tier'])
+
+class TestFRANKValidator(unittest.TestCase):
+    """Test cases for the FRANKValidator."""
     
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        pass
+
     def test_validate_submission_valid(self):
         """Test validation of valid submission."""
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         is_valid, issues = validate_submission(submission)
         
         self.assertTrue(is_valid)
@@ -113,7 +125,7 @@ class TestFRANKSubmission(unittest.TestCase):
     
     def test_validate_submission_invalid_enums(self):
         """Test validation catches invalid enumerated values."""
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         
         # Make it invalid
         submission.submitter_tier = 'invalid_tier'
@@ -136,7 +148,7 @@ class TestFRANKSubmission(unittest.TestCase):
     
     def test_validate_submission_empty_observables(self):
         """Test validation catches empty observables."""
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         submission.observables = {'network': []}
         
         is_valid, issues = validate_submission(submission)
@@ -146,7 +158,7 @@ class TestFRANKSubmission(unittest.TestCase):
     
     def test_validate_submission_malformed_observables(self):
         """Test validation catches malformed observables."""
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         submission.observables = {
             'network': [
                 {'type': 'ipv4'},  # Missing value
@@ -185,20 +197,20 @@ class TestFRANKSubmission(unittest.TestCase):
         }
         
         # Existing field
-        self.assertTrue(validator._check_nested_field(data, 'level1.level2.level3'))
+        self.assertTrue(_check_nested_field(data, 'level1.level2.level3'))
         
         # Non-existing field
-        self.assertFalse(validator._check_nested_field(data, 'level1.nonexistent'))
+        self.assertFalse(_check_nested_field(data, 'level1.nonexistent'))
         
         # Deeper non-existing field
-        self.assertFalse(validator._check_nested_field(data, 'level1.level2.level3.level4'))
+        self.assertFalse(_check_nested_field(data, 'level1.level2.level3.level4'))
         
         # None value should return False
-        self.assertFalse(validator._check_nested_field(data, 'empty_value'))
+        self.assertFalse(_check_nested_field(data, 'empty_value'))
         
         # Edge cases
-        self.assertFalse(validator._check_nested_field({}, 'any.field'))
-        self.assertFalse(validator._check_nested_field(data, 'level1.level2.level3.nonexistent'))
+        self.assertFalse(_check_nested_field({}, 'any.field'))
+        self.assertFalse(_check_nested_field(data, 'level1.level2.level3.nonexistent'))
     
     def test_get_nested_field(self):
         """Test nested field getter utility method."""
@@ -213,23 +225,25 @@ class TestFRANKSubmission(unittest.TestCase):
         }
         
         # Existing field
-        self.assertEqual(validator._get_nested_field(data, 'level1.level2.level3'), 'value')
+        self.assertEqual(_get_nested_field(data, 'level1.level2.level3'), 'value')
         
         # Non-existing field
-        self.assertIsNone(validator._get_nested_field(data, 'level1.nonexistent'))
+        self.assertIsNone(_get_nested_field(data, 'level1.nonexistent'))
         
         # Partial path exists
-        result = validator._get_nested_field(data, 'level1.level2')
+        result = _get_nested_field(data, 'level1.level2')
         self.assertEqual(result, {'level3': 'value'})
         
         # List field
-        self.assertEqual(validator._get_nested_field(data, 'list_field'), [1, 2, 3])
+        self.assertEqual(_get_nested_field(data, 'list_field'), [1, 2, 3])
     
+class TestFRANKSerialization(unittest.TestCase):
+    """Test cases for the FRANKSubmission serializers."""
 
-    
+        
     def test_to_yaml(self):
         """Test YAML conversion functionality."""
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         yaml_str = to_yaml(submission)
         
         self.assertIsInstance(yaml_str, str)
@@ -275,7 +289,7 @@ submission:
     
     def test_to_json(self):
         """Test JSON conversion functionality."""
-        submission = self._generate_minimal_submission()
+        submission = _generate_minimal_submission()
         json_str = to_json(submission)
         
         self.assertIsInstance(json_str, str)
@@ -327,61 +341,11 @@ submission:
     
 
 
-
-# class TestFRANKSubmissionFactory(unittest.TestCase):
-#     """Test cases for factory function and convenience functions."""
-    
-#     def test_create_frank_submission(self):
-#         """Test factory function creates proper instance."""
-#         frank = create_frank_submission()
-#         self.assertIsInstance(frank, FRANKSubmission)
-    
-#     def test_generate_minimal_convenience(self):
-#         """Test convenience function for generating minimal submission."""
-#         submission = generate_minimal("test-org-123", tier="partner")
-        
-#         self.assertIn('submission', submission)
-#         self.assertEqual(submission['submission']['submitter']['organization_id'], "test-org-123")
-#         self.assertEqual(submission['submission']['submitter']['tier'], "partner")
-    
-#     def test_validate_submission_convenience(self):
-#         """Test convenience function for validation."""
-#         submission = generate_minimal()
-#         is_valid, issues = validate_submission(submission)
-        
-#         self.assertTrue(is_valid)
-#         self.assertEqual(len(issues), 0)
-    
-#     def test_yaml_conversion_convenience(self):
-#         """Test convenience functions for YAML conversion."""
-#         submission = generate_minimal()
-        
-#         # Convert to YAML
-#         yaml_str = to_yaml(submission)
-#         self.assertIsInstance(yaml_str, str)
-        
-#         # Parse back from YAML
-#         parsed = from_yaml(yaml_str)
-#         self.assertEqual(parsed['submission']['submitter']['tier'], 'partner')
-    
-#     def test_json_conversion_convenience(self):
-#         """Test convenience functions for JSON conversion."""
-#         submission = generate_minimal()
-        
-#         # Convert to JSON
-#         json_str = to_json(submission)
-#         self.assertIsInstance(json_str, str)
-        
-#         # Parse back from JSON
-#         parsed = from_json(json_str)
-#         self.assertEqual(parsed['submission']['submitter']['tier'], 'partner')
-
-
 # class TestFRANKSubmissionEdgeCases(unittest.TestCase):
 #     """Test edge cases and error conditions."""
     
-#     def setUp(self):
-#         self.frank = FRANKSubmission()
+#     def setUp(self) -> None:
+#         self.validator = FRANKValidator()
     
 #     def test_very_large_submission(self):
 #         """Test handling of submissions with many observables."""
@@ -394,14 +358,14 @@ submission:
 #                 "value": f"192.168.{i//256}.{i%256}"
 #             })
         
-#         submission = self.frank.generate_minimal_submission(observables=many_observables)
+#         submission = _generate_minimal_submission(observables=many_observables)
         
 #         # Should handle large submissions
-#         is_valid, issues = self.frank.validate_submission(submission)
+#         is_valid, issues = self.validator.validate_submission(submission)
 #         self.assertTrue(is_valid)
         
 #         # Should extract all observables
-#         extracted = self.frank.extract_observables(submission)
+#         extracted = submission.observables
 #         self.assertEqual(len(extracted), 1000)
     
 #     def test_unicode_and_special_characters(self):
@@ -495,10 +459,10 @@ submission:
 #         self.assertEqual(categories, {'network'})
 
 
-# if __name__ == '__main__':
-#     # Configure test runner
-#     unittest.main(
-#         verbosity=2,
-#         failfast=False,
-#         buffer=True
-#     )
+if __name__ == '__main__':
+    # Configure test runner
+    unittest.main(
+        verbosity=2,
+        failfast=False,
+        buffer=True
+    )

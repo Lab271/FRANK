@@ -27,6 +27,25 @@ def _safe_get(obj:Any, key:str, default: Any=None) -> Any:
         return obj.get(key, default)
     return default
 
+def _check_nested_field(data: Dict, field_path: str) -> bool:
+    """Check if a nested field exists using dot notation."""
+    return _get_nested_field(data, field_path) is not None
+
+def _get_nested_field(data: Dict, field_path: str) -> Any:
+    """Get value from nested field using dot notation."""
+    keys = field_path.split('.')
+    current = data
+    
+    try:
+        for key in keys:
+            if isinstance(current, dict) and key in current:
+                current = current[key]
+            else:
+                return None
+        return current
+    except:
+        return None
+    
 
 @dataclass
 class FRANKSubmission:
@@ -176,31 +195,31 @@ class FRANKValidator:
         try:
             # Check required fields
             for field_path in self.REQUIRED_FIELDS:
-                if not self._check_nested_field(submission_dict, field_path):
+                if not _check_nested_field(submission_dict, field_path):
                     issues.append(f"Missing required field: {field_path}")
             
             # Validate tier
-            tier = self._get_nested_field(submission_dict, 'submission.submitter.tier')
+            tier = _get_nested_field(submission_dict, 'submission.submitter.tier')
             if tier and tier not in self.VALID_TIERS:
                 issues.append(f"Invalid tier '{tier}'. Must be one of: {self.VALID_TIERS}")
             
             # Validate severity
-            severity = self._get_nested_field(submission_dict, 'submission.sighting.severity')
+            severity = _get_nested_field(submission_dict, 'submission.sighting.severity')
             if severity and severity not in self.VALID_SEVERITIES:
                 issues.append(f"Invalid severity '{severity}'. Must be one of: {self.VALID_SEVERITIES}")
             
             # Validate observables
-            observables = self._get_nested_field(submission_dict, 'submission.sighting.observables')
+            observables = _get_nested_field(submission_dict, 'submission.sighting.observables')
             if observables:
                 issues.extend(self._validate_observables(observables))
             
             # Validate confidence range
-            confidence = self._get_nested_field(submission_dict, 'submission.sighting.confidence')
+            confidence = _get_nested_field(submission_dict, 'submission.sighting.confidence')
             if confidence is not None and not (0 <= confidence <= 100):
                 issues.append(f"Confidence {confidence} out of range [0-100]")
             
             # Validate TLP level
-            tlp_level = self._get_nested_field(submission_dict, 'submission.sharing.distribution_level')
+            tlp_level = _get_nested_field(submission_dict, 'submission.sharing.distribution_level')
             if tlp_level and tlp_level not in self.VALID_TLP_LEVELS:
                 issues.append(f"Invalid TLP level '{tlp_level}'. Must be one of: {self.VALID_TLP_LEVELS}")
                 
@@ -231,24 +250,7 @@ class FRANKValidator:
         
         return issues
     
-    def _check_nested_field(self, data: Dict, field_path: str) -> bool:
-        """Check if a nested field exists using dot notation."""
-        return self._get_nested_field(data, field_path) is not None
-    
-    def _get_nested_field(self, data: Dict, field_path: str) -> Any:
-        """Get value from nested field using dot notation."""
-        keys = field_path.split('.')
-        current = data
-        
-        try:
-            for key in keys:
-                if isinstance(current, dict) and key in current:
-                    current = current[key]
-                else:
-                    return None
-            return current
-        except:
-            return None
+
 
 
 

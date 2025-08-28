@@ -332,15 +332,15 @@ if __name__ == "__main__":
     
     print("\nSaving sample files...")
     
-    with open('frank_minimal_sample.yaml', 'w') as f:
+    with open('/tmp/frank_minimal_sample.yaml', 'w') as f:
         f.write(results['yaml_format'])
     print("✓ Saved frank_minimal_sample.yaml")
     
-    with open('frank_enhanced_sample.yaml', 'w') as f:
+    with open('/tmp/frank_enhanced_sample.yaml', 'w') as f:
         f.write(frank.to_yaml(results['enhanced_submission']))
     print("✓ Saved frank_enhanced_sample.yaml")
     
-    with open('frank_minimal_sample.json', 'w') as f:
+    with open('/tmp/frank_minimal_sample.json', 'w') as f:
         f.write(results['json_format'])
     print("✓ Saved frank_minimal_sample.json")
     

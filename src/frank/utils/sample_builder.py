@@ -13,7 +13,7 @@ from typing import Dict, Any, List
 import logging
 from datetime import datetime, timezone
 
-from frank.core.submission import FRANKSubmission
+from frank.core.submission import FRANKSubmission, FRANKValidator
 from frank.core.exceptions import FRANKFormatError, FRANKValidationError
 
 # Set up logging
@@ -90,7 +90,7 @@ def get_observables_by_category(cls, category: str) -> List[Dict[str, Any]]:
     generator = category_map.get(category, get_default_observables)
     return generator()
 
-def generate_minimal_submission(org_id: str = None,
+def generate_minimal_submission_dict(org_id: str = None,
                                 tier: str = "partner",
                                 observables: List[Dict] = None,
                                 confidence: int = None) -> Dict[str, Any]:
@@ -109,11 +109,11 @@ def generate_minimal_submission(org_id: str = None,
     Raises:
         FRANKValidationError: If invalid values provided
     """
-    
+    validator = FRANKValidator()
     
     # Validate inputs
-    if tier not in self.VALID_TIERS:
-        raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {self.VALID_TIERS}")
+    if tier not in validator.VALID_TIERS:
+        raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {validator.VALID_TIERS}")
     
     if confidence is not None and not (0 <= confidence <= 100):
         raise FRANKValidationError(f"Confidence {confidence} out of range [0-100]")
@@ -138,7 +138,7 @@ def generate_minimal_submission(org_id: str = None,
     
     # Validate observables
     for obs in observables:
-        if 'type' in obs and obs['type'] not in self.VALID_OBSERVABLE_TYPES:
+        if 'type' in obs and obs['type'] not in validator.VALID_OBSERVABLE_TYPES:
             raise FRANKValidationError(f"Invalid observable type '{obs['type']}'. Must be one of: {self.VALID_OBSERVABLE_TYPES}")
     
     submission = {
@@ -150,7 +150,7 @@ def generate_minimal_submission(org_id: str = None,
             "sighting": {
                 "sighting_id": f"sighting-{uuid.uuid4()}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "confidence": confidence if confidence is not None else self.DEFAULTS['confidence'],
+                "confidence": confidence if confidence is not None else 65,
                 "observables": {
                     "network": observables
                 }
@@ -161,31 +161,10 @@ def generate_minimal_submission(org_id: str = None,
     logger.info(f"Generated minimal submission for org {org_id}")
     return submission
     
-
-# Updated convenience functions
-def create_minimal(org_id: str, tier: str, observables: List[Dict[str, Any]], **kwargs) -> Dict[str, Any]:
-    """Create a minimal submission with real data."""
-    frank = FRANKSubmission()
-    return frank.create_minimal_submission(org_id=org_id, tier=tier, observables=observables, **kwargs)
-
-
-def generate_sample(org_id: str = None, sample_type: str = "default", **kwargs) -> Dict[str, Any]:
-    """Generate a sample submission for testing/demo purposes."""
-    frank = FRANKSubmission()
-    return frank.generate_sample_submission(org_id=org_id, sample_type=sample_type, **kwargs)
-
-
-# Keep old function for backward compatibility
-def generate_minimal(org_id: str = None, **kwargs) -> Dict[str, Any]:
+def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> FRANKSubmission:
     """
-    DEPRECATED: Use create_minimal() or generate_sample() instead.
-    Generate a minimal submission quickly.
+    Generate a sample FRANKSubmission object for testing/demo purposes.
     """
-    import warnings
-    warnings.warn(
-        "generate_minimal is deprecated. Use create_minimal() for real data or generate_sample() for test data.",
-        DeprecationWarning,
-        stacklevel=2
-    )
-    frank = FRANKSubmission()
-    return frank.generate_minimal_submission(org_id=org_id, **kwargs)
+    sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
+    return FRANKSubmission(**sample_dict)
+
