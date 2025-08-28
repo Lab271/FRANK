@@ -139,7 +139,7 @@ def generate_minimal_submission_dict(org_id: str = None,
     # Validate observables
     for obs in observables:
         if 'type' in obs and obs['type'] not in validator.VALID_OBSERVABLE_TYPES:
-            raise FRANKValidationError(f"Invalid observable type '{obs['type']}'. Must be one of: {self.VALID_OBSERVABLE_TYPES}")
+            raise FRANKValidationError(f"Invalid observable type '{obs['type']}'. Must be one of: {validator.VALID_OBSERVABLE_TYPES}")
     
     submission = {
         "submission": {
@@ -150,7 +150,7 @@ def generate_minimal_submission_dict(org_id: str = None,
             "sighting": {
                 "sighting_id": f"sighting-{uuid.uuid4()}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "confidence": confidence if confidence is not None else 65,
+                "confidence": confidence if confidence is not None else 69,
                 "observables": {
                     "network": observables
                 }
@@ -161,10 +161,97 @@ def generate_minimal_submission_dict(org_id: str = None,
     logger.info(f"Generated minimal submission for org {org_id}")
     return submission
     
+
+def generate_minimal_submission(org_id: str = None, tier: str = "partner", observables: list = None, confidence: int = None) -> FRANKSubmission:
+    """
+    Generate a minimal FRANKSubmission instance with only required fields.
+    Args:
+        org_id: Organization identifier (generated if None)
+        tier: Organization tier level
+        observables: List of observable objects (default generated if None)
+        confidence: Confidence level 0-100 (uses default if None)
+    Returns:
+        FRANKSubmission instance containing minimal valid submission
+    Raises:
+        FRANKValidationError: If invalid values provided
+    """
+    submission_dict = generate_minimal_submission_dict(org_id=org_id, tier=tier, observables=observables, confidence=confidence)
+    return FRANKSubmission.from_dict(submission_dict)
+
+def generate_comprehensive_submission(
+    org_id: str = None,
+    tier: str = "partner",
+    hit_target_org: str = None,
+    observables: list = None,
+    severity: str = "high",
+    confidence: int = 92,
+    campaign_context: dict = None,
+    sigma_detection: dict = None,
+    impact_data: dict = None,
+    sharing: dict = None
+) -> FRANKSubmission:
+    """
+    Generate a comprehensive FRANKSubmission instance with all major fields populated.
+    Args:
+        org_id: Organization identifier (generated if None)
+        tier: Organization tier level
+        hit_target_org: Organization ID of the target (optional)
+        observables: List of observable objects (default generated if None)
+        severity: Sighting severity (default 'high')
+        confidence: Confidence level 0-100 (default 92)
+        campaign_context: Dict with campaign/actor context (optional)
+        sigma_detection: Dict with sigma rule detection info (optional)
+        impact_data: Dict with impact/severity/affected systems (optional)
+        sharing: Dict with sharing preferences (optional)
+    Returns:
+        FRANKSubmission instance containing a comprehensive valid submission
+    """
+    validator = FRANKValidator()
+    if org_id is None:
+        org_id = f"identity-{uuid.uuid4()}"
+    if observables is None:
+        observables = get_default_observables()
+    now = datetime.now(timezone.utc)
+    submission = {
+        "submission": {
+            "submitter": {
+                "organization_id": org_id,
+                "tier": tier
+            },
+            "sighting": {
+                "sighting_id": f"sighting-{uuid.uuid4()}",
+                "timestamp": now.isoformat(),
+                "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
+                "last_observed": now.isoformat(),
+                "confidence": confidence,
+                "severity": severity,
+                "observables": {
+                    "network": observables
+                }
+            },
+            "metadata": {
+                "submission_id": f"submission-{uuid.uuid4()}",
+                "format_version": "1.0"
+            }
+        }
+    }
+    if hit_target_org:
+        submission["submission"]["hit_target"] = {"organization_id": hit_target_org}
+    if campaign_context:
+        submission["submission"]["sighting"]["threat_context"] = campaign_context
+    if sigma_detection:
+        submission["submission"]["sighting"]["sigma_detection"] = sigma_detection
+    if impact_data:
+        submission["submission"]["sighting"]["impact"] = impact_data
+    if sharing:
+        submission["submission"]["sharing"] = sharing
+    logger.info(f"Generated comprehensive submission for org {org_id}")
+    return FRANKSubmission.from_dict(submission)
+
 def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> FRANKSubmission:
     """
     Generate a sample FRANKSubmission object for testing/demo purposes.
     """
     sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
-    return FRANKSubmission(**sample_dict)
+    return FRANKSubmission().from_dict(sample_dict)
 
