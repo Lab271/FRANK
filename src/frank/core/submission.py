@@ -10,11 +10,13 @@ receive and strong on what you return" principle.
 
 import yaml
 import json
+from datetime import datetime, timezone
+import uuid
 from typing import Dict, Any, List, Tuple, Optional
 import logging
 from dataclasses import dataclass, field
 
-from .exceptions import FRANKFormatError
+from .exceptions import FRANKFormatError, FRANKValidationError
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -45,6 +47,15 @@ def _get_nested_field(data: Dict, field_path: str) -> Any:
         return current
     except:
         return None
+    
+def _deep_copy(obj: Any) -> Any:
+    """Create a deep copy of an object."""
+    if isinstance(obj, dict):
+        return {k: _deep_copy(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_deep_copy(item) for item in obj]
+    else:
+        return obj
     
 
 @dataclass
@@ -178,6 +189,17 @@ class FRANKValidator:
         'submission.sighting.timestamp',
         'submission.sighting.observables'
     }
+
+    # Default values following "be forgiving" principle
+    DEFAULTS = {
+        'confidence': 69,  # Default confidence as specified
+        'format_version': '1.0',
+        'submission_method': 'manual',
+        'anonymization_level': 'moderate',
+        'severity': 'medium',
+        'observation_count': 1,
+        'tlp_level': 'AMBER'
+    }
     
     VALID_TIERS = {'public', 'observer', 'contributor', 'partner', 'core_member'}
     VALID_SEVERITIES = {'low', 'medium', 'high', 'critical'}
@@ -250,7 +272,70 @@ class FRANKValidator:
         
         return issues
     
+    def normalize_submission(self, submission: FRANKSubmission) -> Dict[str, Any]:
+        """
+        Normalize a FRANKSubmission object to ensure consistent structure and fill in default values.
 
+        Args:
+            submission (FRANKSubmission): The submission object to normalize.
+
+        Returns:
+            Dict[str, Any]: A normalized submission dictionary with consistent structure and defaults.
+
+        Raises:
+            FRANKValidationError: If the submission is invalid and cannot be normalized.
+        """
+        return self.normalize_submission_dict(submission.to_dict())
+    
+    def normalize_submission_dict(self, submission: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Normalize a submission to ensure consistent structure and fill in defaults.
+        
+        Args:
+            submission: Raw submission dictionary
+            
+        Returns:
+            Normalized submission with consistent structure
+        """
+        # Validate first
+        is_valid, issues = self.validate_dict(submission)
+        if not is_valid:
+            raise FRANKValidationError(f"Cannot normalize invalid submission: {issues}")
+        
+        # Create normalized copy
+        normalized = _deep_copy(submission)
+        
+        # Ensure all default fields are present
+        sighting = normalized['submission']['sighting']
+        sighting.setdefault('confidence', self.DEFAULTS['confidence'])
+        sighting.setdefault('severity', self.DEFAULTS['severity'])
+        sighting.setdefault('observation_count', self.DEFAULTS['observation_count'])
+        
+        # Normalize timestamps
+        if 'timestamp' in sighting:
+            try:
+                # Ensure ISO format
+                dt = datetime.fromisoformat(sighting['timestamp'].replace('Z', '+00:00'))
+                sighting['timestamp'] = dt.isoformat()
+            except:
+                sighting['timestamp'] = datetime.now(timezone.utc).isoformat()
+        
+        # Add metadata if missing
+        normalized['submission'].setdefault('metadata', {})
+        metadata = normalized['submission']['metadata']
+        metadata.setdefault('format_version', self.DEFAULTS['format_version'])
+        metadata.setdefault('submission_id', f"submission-{uuid.uuid4()}")
+        
+        # Normalize observables
+        observables = normalized['submission']['sighting'].get('observables', {})
+        for category, obs_list in observables.items():
+            if isinstance(obs_list, list):
+                for obs in obs_list:
+                    if 'id' not in obs:
+                        obs['id'] = f"{obs.get('type', 'unknown')}-{uuid.uuid4()}"
+        
+        logger.info("Normalized submission structure")
+        return normalized
 
 
 

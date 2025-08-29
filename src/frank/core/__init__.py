@@ -1,5 +1,5 @@
 """
-Core FRANK functionality - submission handling, database abstraction, and client.
+Core FRANK functionality - submission handling and validation
 """
 
 from .submission import FRANKSubmission

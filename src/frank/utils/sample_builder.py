@@ -165,11 +165,13 @@ def generate_minimal_submission_dict(org_id: str = None,
 def generate_minimal_submission(org_id: str = None, tier: str = "partner", observables: list = None, confidence: int = None) -> FRANKSubmission:
     """
     Generate a minimal FRANKSubmission instance with only required fields.
+
     Args:
         org_id: Organization identifier (generated if None)
         tier: Organization tier level
         observables: List of observable objects (default generated if None)
         confidence: Confidence level 0-100 (uses default if None)
+
     Returns:
         FRANKSubmission instance containing minimal valid submission
     Raises:
@@ -177,6 +179,7 @@ def generate_minimal_submission(org_id: str = None, tier: str = "partner", obser
     """
     submission_dict = generate_minimal_submission_dict(org_id=org_id, tier=tier, observables=observables, confidence=confidence)
     return FRANKSubmission.from_dict(submission_dict)
+
 
 def generate_comprehensive_submission(
     org_id: str = None,
@@ -192,21 +195,22 @@ def generate_comprehensive_submission(
 ) -> FRANKSubmission:
     """
     Generate a comprehensive FRANKSubmission instance with all major fields populated.
+
     Args:
-        org_id: Organization identifier (generated if None)
-        tier: Organization tier level
-        hit_target_org: Organization ID of the target (optional)
-        observables: List of observable objects (default generated if None)
-        severity: Sighting severity (default 'high')
-        confidence: Confidence level 0-100 (default 92)
-        campaign_context: Dict with campaign/actor context (optional)
-        sigma_detection: Dict with sigma rule detection info (optional)
-        impact_data: Dict with impact/severity/affected systems (optional)
-        sharing: Dict with sharing preferences (optional)
+        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+        tier (str, optional): Organization tier level. Defaults to "partner".
+        hit_target_org (str, optional): Organization ID of the target (if applicable).
+        observables (list, optional): List of observable objects. If None, default observables are generated.
+        severity (str, optional): Sighting severity. Defaults to "high".
+        confidence (int, optional): Confidence level 0-100. Defaults to 92.
+        campaign_context (dict, optional): Dictionary with campaign/actor context.
+        sigma_detection (dict, optional): Dictionary with sigma rule detection info.
+        impact_data (dict, optional): Dictionary with impact/severity/affected systems.
+        sharing (dict, optional): Dictionary with sharing preferences (e.g., distribution_level, anonymization_level).
+
     Returns:
         FRANKSubmission instance containing a comprehensive valid submission
     """
-    validator = FRANKValidator()
     if org_id is None:
         org_id = f"identity-{uuid.uuid4()}"
     if observables is None:
@@ -245,13 +249,25 @@ def generate_comprehensive_submission(
         submission["submission"]["sighting"]["impact"] = impact_data
     if sharing:
         submission["submission"]["sharing"] = sharing
+
     logger.info(f"Generated comprehensive submission for org {org_id}")
     return FRANKSubmission.from_dict(submission)
 
+
 def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> FRANKSubmission:
     """
-    Generate a sample FRANKSubmission object for testing/demo purposes.
+    Generate a sample FRANKSubmission object for testing or demonstration purposes.
+
+    Args:
+        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+        sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
+        **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
+
+    Returns:
+        FRANKSubmission: Instance containing a sample valid submission.
+
     """
     sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
+    logger.info(f"Generated sample submission for org {org_id} with sample_type '{sample_type}'")
     return FRANKSubmission().from_dict(sample_dict)
 
