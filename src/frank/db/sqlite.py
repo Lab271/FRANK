@@ -564,11 +564,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 params = []
                 
                 if observable_type:
-                    where_clauses.append("os.observable_type = ?")
+                    where_clauses.append("COALESCE(os.observable_type, \"\") = ?")
                     params.append(observable_type)
                 
                 if min_confidence:
-                    where_clauses.append("os.avg_confidence >= ?")
+                    logger.info(f"finding min_confidence: {min_confidence}")
+                    where_clauses.append("COALESCE(os.avg_confidence, 0) >= ?")
                     params.append(min_confidence)
                 
                 if days_back:
@@ -578,7 +579,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     # This is a simplified sector filter - in production would use JSON functions
                     sector_conditions = []
                     for sector in sectors:
-                        sector_conditions.append("os.sectors_json LIKE ?")
+                        sector_conditions.append("COALESCE(os.sectors_json, \"\") LIKE ?")
                         params.append(f'%"{sector}"%')
                     where_clauses.append(f"({' OR '.join(sector_conditions)})")
                 
