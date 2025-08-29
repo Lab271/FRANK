@@ -1,0 +1,15 @@
+Feature: FRANK Platform Threat Intelligence API # features/frank_api.feature:1
+  As a cybersecurity professional
+  I want to submit and query threat intelligence
+  So that I can contribute to and benefit from collective defense
+  Feature: FRANK Platform Threat Intelligence API  # features/frank_api.feature:1
+
+  Scenario: Observer cannot submit threat intelligence               # features/frank_api.feature:22
+    Given the FRANK API is running                                   # features/steps/frank_api.steps.py:44
+    And the database is initialized with demo data                   # features/steps/frank_api.steps.py:53
+    Given I am authenticated as an observer user                     # features/steps/frank_api.steps.py:62
+    When I attempt to submit a threat intelligence sighting          # features/steps/frank_api.steps.py:115
+    Then the submission should be rejected                           # features/steps/frank_api.steps.py:188
+    And I should receive a "403" error                               # features/steps/frank_api.steps.py:213
+    And the error message should contain "Insufficient access level" # features/steps/frank_api.steps.py:218
+

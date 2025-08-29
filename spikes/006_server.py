@@ -17,7 +17,7 @@ from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, validator, field_serializer
 import uvicorn
 
 # Import our FRANK database
@@ -43,7 +43,7 @@ app.add_middleware(
 )
 
 # Security
-security = HTTPBearer()
+security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 
 # Database instance (global for spike)
 db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_spike.db")
@@ -78,6 +78,7 @@ class TLPLevel(str, Enum):
     AMBER = "AMBER"
     GREEN = "GREEN"
     CLEAR = "CLEAR"
+
 
 # Pydantic models for request/response validation
 class Observable(BaseModel):
@@ -147,6 +148,11 @@ class Sighting(BaseModel):
     threat_context: Optional[ThreatContext] = Field(None, description="Threat context")
     impact: Optional[Impact] = Field(None, description="Impact assessment")
 
+    @field_serializer('timestamp', 'first_observed', 'last_observed')
+    def serialize_datetime(self, value: datetime) -> str:
+        return value.isoformat() if value else None
+
+
 class SubmissionData(BaseModel):
     submitter: Submitter = Field(..., description="Submitting organization data")
     hit_target: Optional[Dict[str, Any]] = Field(None, description="Target organization data")
@@ -185,6 +191,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     In a real implementation, this would validate the JWT and extract claims.
     For this spike, we'll mock the user data.
     """
+    # Check if credentials were provided
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
+
     # Mock user data for spike - in production, decode and validate JWT
     token = credentials.credentials
     

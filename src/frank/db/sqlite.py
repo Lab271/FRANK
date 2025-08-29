@@ -293,8 +293,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     sighting.get('observation_count', 1),
                     sighting.get('confidence'),
                     sighting.get('severity'),
-                    sighting.get('sigma_detection', {}).get('rule_id'),
-                    sighting.get('threat_context', {}).get('campaign', {}).get('id')
+                    sighting.get('sigma_detection', {}).get('rule_id') if sighting.get('sigma_detection') else None,
+                    sighting.get('threat_context', {}).get('campaign', {}).get('id') if sighting.get('threat_context') else None
                 ))
                 
                 # Store observables and update statistics
@@ -379,7 +379,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     
     def _store_campaign(self, conn: sqlite3.Connection, sighting: Dict[str, Any]) -> None:
         """Store campaign information if present."""
-        threat_context = sighting.get('threat_context', {})
+        threat_context = sighting.get('threat_context', {}) or {}
         campaign = threat_context.get('campaign')
         
         if not campaign:
