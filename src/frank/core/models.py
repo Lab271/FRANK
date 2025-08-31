@@ -133,8 +133,8 @@ class Submitter(BaseModel):
     organization_id: Optional[str] = Field(None, description="STIX identity for organization")
     tier: TierLevel = Field(..., description="Access tier level")
     organization_type: str = Field(default="cyber_partner", description="Organization type")
-    sector: Optional[str] = Field(..., description="Industry sector") 
-    region: Optional[str] = Field(..., description="Geographic region")
+    sector: Optional[str] = Field(None, description="Industry sector") 
+    region: Optional[str] = Field(None, description="Geographic region")
     submission_method: Optional[str] = Field(default="api", description="How submission was made")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
     
