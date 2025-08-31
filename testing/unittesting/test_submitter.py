@@ -5,12 +5,11 @@ Tests the "be forgiving on what you receive, strong on what you return" principl
 """
 
 import unittest
-from unittest.mock import patch
 import uuid
-from datetime import datetime
 
 # Import the models (adjust import path as needed)
-from frank.core.models import Submitter, TierLevel
+from frank.core.models import Submitter
+from frank.core.enum import TierLevel
 from pydantic import ValidationError
 
 

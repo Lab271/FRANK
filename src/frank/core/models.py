@@ -6,7 +6,7 @@ Implements "be forgiving on what you receive, strong on what you return" princip
 """
 
 from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
-from typing import Dict, List, Optional, Any, Union
+from typing import Dict, List, Optional, Any
 from datetime import datetime
 import uuid
 import re
@@ -133,9 +133,9 @@ class Submitter(BaseModel):
     organization_id: Optional[str] = Field(None, description="STIX identity for organization")
     tier: TierLevel = Field(..., description="Access tier level")
     organization_type: str = Field(default="cyber_partner", description="Organization type")
-    sector: Optional[str] = Field(None, description="Industry sector") 
-    region: Optional[str] = Field(None, description="Geographic region")
-    submission_method: str = Field(default="api", description="How submission was made")
+    sector: Optional[str] = Field(..., description="Industry sector") 
+    region: Optional[str] = Field(..., description="Geographic region")
+    submission_method: Optional[str] = Field(default="api", description="How submission was made")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
     
     @field_validator('organization_id', mode='before')
@@ -195,7 +195,7 @@ class HitTarget(BaseModel):
     )
     
     organization_id: Optional[str] = Field(None, description="STIX identity for affected organization") 
-    sector: Optional[str] = Field(..., description="Industry sector of target")
+    sector: str = Field(..., min_length=1, description="Industry sector of target")
     organization_type: Optional[str] = Field(default="customer", description="Organization type")
     organization_size: Optional[str] = Field(None, description="Organization size category")
     region: Optional[str] = Field(None, description="Geographic region")
@@ -203,12 +203,19 @@ class HitTarget(BaseModel):
     
     @field_validator('organization_id', mode='before')
     @classmethod
-    def generate_organization_id(cls, v):
+    def generate_org_id(cls, v):
         """Generate target identity if not provided"""
         if v is None or v == "":
             return f"identity--{uuid.uuid4()}"
         return v
-    
+
+    @model_validator(mode='after') 
+    def ensure_org_id(self):
+        """Ensure organization ID is always set"""
+        if not self.organization_id:
+            self.organization_id = f"identity--{uuid.uuid4()}"
+        return self
+
     @field_validator('organization_size')
     @classmethod
     def normalize_org_size(cls, v):

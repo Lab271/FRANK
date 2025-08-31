@@ -5,7 +5,6 @@ Tests the "be forgiving on what you receive, strong on what you return" principl
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
 import uuid
 import json
 
