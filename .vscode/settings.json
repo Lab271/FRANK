@@ -3,5 +3,14 @@
         "testing"
     ],
     "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true
+    "python.testing.pytestEnabled": true,
+    "cucumber.features": [
+        "features/**/*.feature"
+    ],
+    "cucumber.glue": [
+        "features/step_definitions/**/*.js"
+    ],
+    "files.associations": {
+        "*.feature": "gherkin"
+    }
 }
