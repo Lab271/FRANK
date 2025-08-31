@@ -7,10 +7,8 @@ using FastAPI and the SQLite database backend.
 
 import os
 import uuid
-import yaml
-import json
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any, Union
+from typing import Optional, List, Dict, Any
 from enum import Enum
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
@@ -660,7 +658,7 @@ async def startup_event():
     # Create some demo submissions
     for i in range(5):
         demo_submission = generate_minimal_submission_dict(
-            org_id=f"demo-partner-org",
+            org_id="demo-partner-org",
             tier="partner",
             confidence=70 + i * 5
         )
