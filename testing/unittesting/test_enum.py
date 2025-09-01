@@ -405,11 +405,12 @@ class TestEnumAccessTierFiltering(unittest.TestCase):
             ObservableType.IPV6,
             ObservableType.DOMAIN,
             ObservableType.URL,
-            ObservableType.EMAIL
+            ObservableType.EMAIL,
+            ObservableType.FILE_HASH
         ]
         
         # Test that all expected network indicators are covered
-        expected_network_values = ["ipv4", "ipv6", "domain", "url", "email"]
+        expected_network_values = ["ipv4", "ipv6", "domain", "url", "email", "file-hash"]
         actual_values = [obs_type.value for obs_type in network_types]
         
         self.assertEqual(set(actual_values), set(expected_network_values))
@@ -647,7 +648,7 @@ class TestEnumCompatibility(unittest.TestCase):
         
         # Test ObservableType iteration
         obs_values = [obs.value for obs in ObservableType]
-        expected_obs = ["ipv4", "ipv6", "domain", "url", "email"]
+        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file-hash"]
         self.assertEqual(obs_values, expected_obs)
         
         # Test SeverityLevel iteration

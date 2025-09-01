@@ -5,11 +5,13 @@ Tests the "be forgiving on what you receive, strong on what you return" principl
 """
 
 import unittest
+from unittest.mock import patch, MagicMock
 import uuid
 import json
 
 # Import the models (adjust import path as needed)
 from frank.core.models import HitTarget
+from frank.core.enum import *
 from pydantic import ValidationError
 
 

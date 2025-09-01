@@ -21,6 +21,7 @@ class ObservableType(str, Enum):
     DOMAIN = "domain"
     URL = "url"
     EMAIL = "email"
+    FILE_HASH = 'file-hash'
 
 
 class SeverityLevel(str, Enum):

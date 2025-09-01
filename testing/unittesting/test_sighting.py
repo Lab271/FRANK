@@ -457,7 +457,7 @@ class TestSightingIntegration(unittest.TestCase):
         self.assertIsNotNone(sighting.sighting_id)
         self.assertIsNotNone(sighting.timestamp)
         self.assertIsInstance(sighting.confidence, int)
-        self.assertEquals(sighting.severity, SeverityLevel.HIGH)
+        self.assertEqual(sighting.severity, SeverityLevel.HIGH)
 
     def test_multiple_sightings_unique_ids(self):
         """Test that multiple sightings get unique IDs"""

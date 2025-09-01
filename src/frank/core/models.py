@@ -5,14 +5,13 @@ Replaces dataclass implementation with robust validation for cybersecurity data.
 Implements "be forgiving on what you receive, strong on what you return" principle.
 """
 
-from pydantic import BaseModel, Field, field_validator, model_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_validator, field_serializer, ConfigDict
 from typing import Dict, List, Optional, Any
 from datetime import datetime
 import uuid
-import re
-import ipaddress
 
 from .enum import *
+from frank import __version__
 
 class NetworkObservable(BaseModel):
     """
@@ -43,8 +42,10 @@ class NetworkObservable(BaseModel):
             else:
                 observable_type = 'unknown'
                 
-            if observable_type in ['ipv4', 'ipv6']:
+            if observable_type == 'ipv4':
                 return f"ipv4-addr--{uuid.uuid4()}"
+            elif observable_type == 'ipv6':
+                return f"ipv6-addr--{uuid.uuid4()}"
             elif observable_type == 'domain':
                 return f"domain-name--{uuid.uuid4()}"
             elif observable_type == 'url':
@@ -57,8 +58,10 @@ class NetworkObservable(BaseModel):
     def ensure_id_generated(self):
         """Ensure ID is always generated after all fields are set"""
         if not self.id:
-            if self.type in [ObservableType.IPV4, ObservableType.IPV6]:
+            if self.type == ObservableType.IPV4:
                 self.id = f"ipv4-addr--{uuid.uuid4()}"
+            elif self.type == ObservableType.IPV6:
+                self.id = f"ipv6-addr--{uuid.uuid4()}"
             elif self.type == ObservableType.DOMAIN:
                 self.id = f"domain-name--{uuid.uuid4()}"
             elif self.type == ObservableType.URL:
@@ -66,40 +69,25 @@ class NetworkObservable(BaseModel):
             else:
                 self.id = f"observable--{uuid.uuid4()}"
         return self
-    
-    @field_validator('value')
-    @classmethod
-    def validate_observable_value(cls, v, info=None):
-        """Validate observable value based on type - 'be forgiving' principle"""
-        if not info or not info.data:
-            return v.strip()
-            
-        obs_type = info.data.get('type')
-        
-        if obs_type == ObservableType.IPV4:
-            try:
-                ipaddress.IPv4Address(v)
-            except ipaddress.AddressValueError:
-                raise ValueError(f"Invalid IPv4 address: {v}")
-                
-        elif obs_type == ObservableType.IPV6:
-            try:
-                ipaddress.IPv6Address(v)
-            except ipaddress.AddressValueError:
-                raise ValueError(f"Invalid IPv6 address: {v}")
-                
-        elif obs_type == ObservableType.DOMAIN:
-            # Be forgiving - allow various domain formats
-            domain_pattern = r'^[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?(\.[a-zA-Z0-9]([a-zA-Z0-9\-]{0,61}[a-zA-Z0-9])?)*$'
-            if not re.match(domain_pattern, v):
-                raise ValueError(f"Invalid domain format: {v}")
-                
-        elif obs_type == ObservableType.URL:
-            # Be forgiving - basic URL validation
-            if not (v.startswith('http://') or v.startswith('https://') or v.startswith('ftp://')):
-                raise ValueError(f"URL must include protocol: {v}")
-        
-        return v.strip().lower() if obs_type != ObservableType.URL else v.strip()
+
+    @model_validator(mode='after')
+    def normalize_values(self):
+        """Normalize values based on type after all fields are processed."""
+        if self.type == ObservableType.DOMAIN:
+            self.value = self.value.strip().lower()
+        elif self.type in [ObservableType.IPV4, ObservableType.IPV6]:
+            self.value = self.value.strip().lower()
+        elif self.type == ObservableType.URL:
+            self.value = self.value.strip()  # Preserve case for URLs
+        else:
+            self.value = self.value.strip().lower()
+        return self
+
+    @field_serializer('first_seen', when_used='json')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.isoformat() + "Z"
 
     @classmethod
     def create_ipv4(cls, value: str, role: str = None, port: int = None):
@@ -253,10 +241,7 @@ class Sighting(BaseModel):
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
-        use_enum_values=True,
-        json_encoders={
-            datetime: lambda v: v.isoformat() + "Z"
-        }
+        use_enum_values=True
     )
     
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
@@ -307,6 +292,12 @@ class Sighting(BaseModel):
             raise ValueError("first_observed cannot be after last_observed")
         return self
 
+    @field_serializer('timestamp', 'first_observed', 'last_observed', when_used='json')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        if value is None:
+            return None
+        return value.isoformat() + "Z"
+    
     @classmethod
     def create(cls, confidence: int = 69, severity: SeverityLevel = None, observation_count: int = 1):
         """Factory method for creating sightings"""
@@ -339,26 +330,23 @@ class Observables(BaseModel):
         return v
 
 
-class FRANKSubmission(BaseModel):
+class Submission(BaseModel):
     """
     Complete FRANK threat intelligence submission with comprehensive validation.
     Implements both 'be forgiving' (input) and 'strong on return' (output) principles.
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
-        use_enum_values=True,
-        json_encoders={
-            datetime: lambda v: v.isoformat() + "Z"
-        }
+        use_enum_values=True
     )
     
     submitter: Submitter = Field(..., description="Submitting organization")
-    hit_target: Optional[HitTarget] = Field(..., description="Affected organization")  
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organization")  
     sighting: Sighting = Field(..., description="Sighting details")
     observables: Observables = Field(..., description="Threat observables")
     
     # Optional metadata - be forgiving on input
-    format_version: Optional[str] = Field(default="1.0", description="FRANK format version")
+    format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
     submission_method: Optional[str] = Field(default="api", description="Submission method")
     processing_notes: Optional[str] = Field(None, description="Processing notes")
 
@@ -376,13 +364,12 @@ class FRANKSubmission(BaseModel):
             raise ValueError("Submitter and hit_target cannot be the same organization")
         
         return self
-
+    
     def to_api_format(self) -> Dict[str, Any]:
         """Convert to API format - 'strong on what you return'"""
         submission = {
             "submission": {
                 "submitter": self.submitter.model_dump(),
-                # "hit_target": self.hit_target.model_dump(),
                 "sighting": self.sighting.model_dump(),
                 "observables": self.observables.model_dump()
             }
@@ -418,7 +405,7 @@ class FRANKSubmission(BaseModel):
         
         return iocs
 
-    def anonymize_for_tier(self, access_tier: TierLevel) -> 'FRANKSubmission':
+    def anonymize_for_tier(self, access_tier: TierLevel) -> 'Submission':
         """Anonymize submission based on access tier - 'strong on return'"""
         import copy
         anonymized = copy.deepcopy(self)
@@ -445,8 +432,8 @@ class FRANKSubmission(BaseModel):
     @classmethod
     def create_minimal(cls, 
                       submitter_tier: TierLevel = TierLevel.PARTNER,
-                      target_sector: str = "financial",
-                      threat_ips: List[str] = None) -> 'FRANKSubmission':
+                      target_sector: str = None,
+                      threat_ips: List[str] = None) -> 'Submission':
         """
         Factory method for creating minimal valid submissions.
         Implements 'be forgiving' by providing sensible defaults.
@@ -460,15 +447,17 @@ class FRANKSubmission(BaseModel):
             for ip in threat_ips
         ]
         
+        hit_target = HitTarget.create(sector=target_sector) if target_sector else None
+
         return cls(
             submitter=Submitter.create(tier=submitter_tier),
-            # hit_target=HitTarget.create(sector=target_sector),
+            hit_target=hit_target,
             sighting=Sighting.create(),
             observables=Observables(network=network_obs)
         )
 
     @classmethod 
-    def from_legacy_dict(cls, data: Dict[str, Any]) -> 'FRANKSubmission':
+    def from_legacy_dict(cls, data: Dict[str, Any]) -> 'Submission':
         """
         Parse from legacy format - handles your current dataclass format.
         Implements 'be forgiving on what you receive' principle.
@@ -525,18 +514,15 @@ class FRANKSubmission(BaseModel):
             raise ValueError(f"Failed to parse legacy submission format: {e}")
 
 
-class FRANKSubmissionWrapper(BaseModel):
+class SubmissionWrapper(BaseModel):
     """
     API wrapper that handles the nested 'submission' format your API expects.
     """
     model_config = ConfigDict(
-        extra="ignore",
-        json_encoders={
-            datetime: lambda v: v.isoformat() + "Z"
-        }
+        extra="ignore"
     )
     
-    submission: FRANKSubmission = Field(..., description="The actual FRANK submission")
+    submission: Submission = Field(..., description="The actual FRANK submission")
 
 
 # Validation schemas for different use cases
@@ -546,7 +532,7 @@ class MinimalSubmissionRequest(BaseModel):
     
     submitter_tier: TierLevel
     target_sector: str = Field(..., min_length=1)
-    threat_indicators: List[str] = Field(..., min_items=1)
+    threat_indicators: List[str] = Field(..., min_length=1)
     confidence: Optional[int] = Field(69, ge=0, le=100)
 
 
@@ -569,7 +555,7 @@ def example_usage():
     
     # 1. Create minimal submission using factory method
     print("1. Creating minimal submission...")
-    minimal = FRANKSubmission.create_minimal(
+    minimal = Submission.create_minimal(
         submitter_tier=TierLevel.PARTNER,
         target_sector="financial", 
         threat_ips=["192.168.1.100", "malicious.example.com"]
