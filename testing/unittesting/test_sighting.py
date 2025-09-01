@@ -11,7 +11,7 @@ from datetime import datetime, timezone, timedelta
 import json
 
 # Import the models (adjust import path as needed)
-from frank.core.models import Sighting, SeverityLevel
+from frank.core.models import Sighting, SeverityLevel, Observables
 from pydantic import ValidationError
 
 
@@ -26,10 +26,14 @@ class TestSighting(unittest.TestCase):
             "severity": SeverityLevel.HIGH,
             "observation_count": 3
         }
+        self.valid_network_observables = [
+            NetworkObservable.create_ipv4("192.168.1.100", role="c2"),
+            NetworkObservable.create_domain("malicious.example.com", role="phishing")
+        ]
 
     def test_create_minimal_sighting(self):
         """Test creating a sighting with minimal required fields"""
-        sighting = Sighting()
+        sighting = Sighting(observables=Observables(network=self.valid_network_observables))
         
         # Check that default values are set
         self.assertEqual(sighting.confidence, 69)  # Default confidence

@@ -22,6 +22,7 @@ class ObservableType(str, Enum):
     URL = "url"
     EMAIL = "email"
     FILE_HASH = 'file-hash'
+    REGISTRY_KEY = "registry_key"
 
 
 class SeverityLevel(str, Enum):
@@ -30,3 +31,10 @@ class SeverityLevel(str, Enum):
     MEDIUM = "medium"  
     HIGH = "high"
     CRITICAL = "critical"
+
+class TLPLevel(str, Enum):
+    RED = "RED"
+    AMBER_PLUS = "AMBER+"
+    AMBER = "AMBER"
+    GREEN = "GREEN"
+    CLEAR = "CLEAR"

@@ -39,6 +39,7 @@ class TestSubmission(unittest.TestCase):
         self.valid_sighting = Sighting.create(
             confidence=85,
             severity=SeverityLevel.HIGH,
+            observables=Observables(network=self.valid_network_observables),
             observation_count=2
         )
         
@@ -50,27 +51,20 @@ class TestSubmission(unittest.TestCase):
         """Test 1: Create a minimal valid Submission with all required components"""
         submission = Submission(
             submitter=self.valid_submitter,
-            sighting=self.valid_sighting,
-            observables=self.valid_observables
+            sighting=self.valid_sighting
         )
         
         # Verify all required components are present
         self.assertIsInstance(submission.submitter, Submitter)
         self.assertIsInstance(submission.sighting, Sighting)
-        self.assertIsInstance(submission.observables, Observables)
+        self.assertIsInstance(submission.sighting.observables, Observables)
         
         # Verify submitter properties
         self.assertEqual(submission.submitter.tier, TierLevel.PARTNER)
         self.assertEqual(submission.submitter.sector, "financial")
         self.assertIsNotNone(submission.submitter.organization_id)
         self.assertTrue(submission.submitter.organization_id.startswith("identity--"))
-        
-        # # Verify hit_target properties
-        # self.assertEqual(submission.hit_target.sector, "healthcare")
-        # self.assertEqual(submission.hit_target.organization_size, "large")
-        # self.assertIsNotNone(submission.hit_target.organization_id)
-        # self.assertTrue(submission.hit_target.organization_id.startswith("identity--"))
-        
+              
         # Verify sighting properties
         self.assertEqual(submission.sighting.confidence, 85)
         self.assertEqual(submission.sighting.severity, SeverityLevel.HIGH)
@@ -80,12 +74,12 @@ class TestSubmission(unittest.TestCase):
         self.assertIsNotNone(submission.sighting.timestamp)
         
         # Verify observables properties
-        self.assertEqual(len(submission.observables.network), 2)
-        self.assertIsInstance(submission.observables.network[0], NetworkObservable)
-        self.assertEqual(submission.observables.network[0].type, ObservableType.IPV4)
-        self.assertEqual(submission.observables.network[0].value, "192.168.1.100")
-        self.assertEqual(submission.observables.network[1].type, ObservableType.DOMAIN)
-        self.assertEqual(submission.observables.network[1].value, "malicious.example.com")
+        self.assertEqual(len(submission.sighting.observables.network), 2)
+        self.assertIsInstance(submission.sighting.observables.network[0], NetworkObservable)
+        self.assertEqual(submission.sighting.observables.network[0].type, ObservableType.IPV4)
+        self.assertEqual(submission.sighting.observables.network[0].value, "192.168.1.100")
+        self.assertEqual(submission.sighting.observables.network[1].type, ObservableType.DOMAIN)
+        self.assertEqual(submission.sighting.observables.network[1].value, "malicious.example.com")
         
         # Verify default values
         self.assertEqual(submission.format_version, __version__)
@@ -97,15 +91,14 @@ class TestSubmission(unittest.TestCase):
         submission = Submission(
             submitter=self.valid_submitter,
             hit_target=self.valid_hit_target,
-            sighting=self.valid_sighting,
-            observables=self.valid_observables
+            sighting=self.valid_sighting
         )
         
         # Verify all required components are present
         self.assertIsInstance(submission.submitter, Submitter)
         self.assertIsInstance(submission.hit_target, HitTarget)
         self.assertIsInstance(submission.sighting, Sighting)
-        self.assertIsInstance(submission.observables, Observables)
+        self.assertIsInstance(submission.sighting.observables, Observables)
         
         
         # # Verify hit_target properties
@@ -123,21 +116,21 @@ class TestSubmission(unittest.TestCase):
         self.assertIsInstance(submission, Submission)
         self.assertIsInstance(submission.submitter, Submitter)
         self.assertIsInstance(submission.sighting, Sighting)
-        self.assertIsInstance(submission.observables, Observables)
+        self.assertIsInstance(submission.sighting.observables, Observables)
         self.assertIsNone(submission.hit_target)
         
         # Verify default values from factory method
         self.assertEqual(submission.submitter.tier, TierLevel.PARTNER)  # Default from factory
         self.assertEqual(submission.sighting.confidence, 69)            # Default from Sighting
-        self.assertEqual(len(submission.observables.network), 2)        # Default IPs from factory
+        self.assertEqual(len(submission.sighting.observables.network), 2)        # Default IPs from factory
         
         # Verify default threat IPs are created
         expected_ips = ["185.220.102.45", "203.0.113.42"]
-        actual_ips = [obs.value for obs in submission.observables.network]
+        actual_ips = [obs.value for obs in submission.sighting.observables.network]
         self.assertEqual(actual_ips, expected_ips)
         
         # All network observables should have c2 role
-        for obs in submission.observables.network:
+        for obs in submission.sighting.observables.network:
             self.assertEqual(obs.role, "c2")
             self.assertEqual(obs.type, ObservableType.IPV4)
         
@@ -150,9 +143,9 @@ class TestSubmission(unittest.TestCase):
         
         # Verify custom values
         self.assertEqual(custom_submission.submitter.tier, TierLevel.CORE_MEMBER)
-        self.assertEqual(len(custom_submission.observables.network), 3)
+        self.assertEqual(len(custom_submission.sighting.observables.network), 3)
         
-        custom_ips = [obs.value for obs in custom_submission.observables.network]
+        custom_ips = [obs.value for obs in custom_submission.sighting.observables.network]
         expected_custom_ips = ["198.51.100.1", "203.0.113.50", "192.0.2.100"]
         self.assertEqual(custom_ips, expected_custom_ips)
 
@@ -162,8 +155,7 @@ class TestSubmission(unittest.TestCase):
         valid_submission = Submission(
             submitter=self.valid_submitter,
             hit_target=self.valid_hit_target,
-            sighting=self.valid_sighting,
-            observables=self.valid_observables
+            sighting=self.valid_sighting
         )
         
         # Should be valid - different organizations
@@ -191,8 +183,7 @@ class TestSubmission(unittest.TestCase):
             Submission(
                 submitter=same_org_submitter,
                 hit_target=same_org_target,
-                sighting=self.valid_sighting,
-                observables=self.valid_observables
+                sighting=self.valid_sighting
             )
         
         # Verify the error message mentions the validation rule

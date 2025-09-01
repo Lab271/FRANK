@@ -235,6 +235,20 @@ class HitTarget(BaseModel):
         )
 
 
+class Observables(BaseModel):
+    """
+    Container for all observables with validation.
+    """
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True
+    )
+    
+    network: List[NetworkObservable] = Field(default_factory=list, description="Network observables")
+    file: Optional[List[Dict]] = Field(default_factory=list, description="File observables")
+    process: Optional[List[Dict]] = Field(default_factory=list, description="Process observables")
+
+
 class Sighting(BaseModel):
     """
     Core sighting information with automatic timestamp generation.
@@ -245,6 +259,8 @@ class Sighting(BaseModel):
     )
     
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
+    observables: Observables = Field(..., description="Threat observables")
+
     timestamp: Optional[datetime] = Field(None, description="When threat was observed")
     confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
     first_observed: Optional[datetime] = Field(None, description="First observation time")
@@ -299,36 +315,15 @@ class Sighting(BaseModel):
         return value.isoformat() + "Z"
     
     @classmethod
-    def create(cls, confidence: int = 69, severity: SeverityLevel = None, observation_count: int = 1):
+    def create(cls, observables: Observables = None, confidence: int = 69, severity: SeverityLevel = None, observation_count: int = 1):
         """Factory method for creating sightings"""
         return cls(
             confidence=confidence,
+            observables=observables,
             severity=severity,
             observation_count=observation_count
         )
-
-
-class Observables(BaseModel):
-    """
-    Container for all observables with validation.
-    """
-    model_config = ConfigDict(
-        extra="ignore",  # Be forgiving on input
-        use_enum_values=True
-    )
     
-    network: List[NetworkObservable] = Field(default_factory=list, description="Network observables")
-    file: Optional[List[Dict]] = Field(default_factory=list, description="File observables")
-    process: Optional[List[Dict]] = Field(default_factory=list, description="Process observables")
-    
-    @field_validator('network')
-    @classmethod
-    def validate_network_observables(cls, v):
-        """Ensure at least one network observable for threat intel"""
-        if not v or len(v) == 0:
-            raise ValueError("At least one network observable is required")
-        return v
-
 
 class Submission(BaseModel):
     """
@@ -343,7 +338,6 @@ class Submission(BaseModel):
     submitter: Submitter = Field(..., description="Submitting organization")
     hit_target: Optional[HitTarget] = Field(None, description="Affected organization")  
     sighting: Sighting = Field(..., description="Sighting details")
-    observables: Observables = Field(..., description="Threat observables")
     
     # Optional metadata - be forgiving on input
     format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
@@ -442,18 +436,17 @@ class Submission(BaseModel):
             threat_ips = ["185.220.102.45", "203.0.113.42"]
         
         # Create network observables
-        network_obs = [
+        network_obs = Observables(network=[
             NetworkObservable.create_ipv4(ip, role="c2") 
             for ip in threat_ips
-        ]
+        ])
         
         hit_target = HitTarget.create(sector=target_sector) if target_sector else None
 
         return cls(
             submitter=Submitter.create(tier=submitter_tier),
             hit_target=hit_target,
-            sighting=Sighting.create(),
-            observables=Observables(network=network_obs)
+            sighting=Sighting.create(observables=network_obs),
         )
 
     @classmethod 
