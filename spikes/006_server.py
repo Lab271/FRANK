@@ -9,7 +9,6 @@ import os
 import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
-from enum import Enum
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -17,6 +16,11 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field, validator, field_serializer
 import uvicorn
+
+# Import enums from FRANK core 
+from frank.core.enum import ObservableType, SeverityLevel, TierLevel, TLPLevel
+from frank.core.models import Observables, Submitter
+from frank.core.models import SubmissionRequest, SubmissionData, SubmissionResponse
 
 # Import our FRANK database
 from frank.db.sqlite import SQLiteFRANKDatabase
@@ -47,65 +51,8 @@ security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_spike.db")
 db = SQLiteFRANKDatabase(db_path)
 
-# Enums for validation
-class AccessTier(str, Enum):
-    public = "public"
-    observer = "observer"
-    contributor = "contributor"
-    partner = "partner"
-    core_member = "core_member"
-
-class ObservableType(str, Enum):
-    ipv4 = "ipv4"
-    ipv6 = "ipv6"
-    domain = "domain"
-    url = "url"
-    file_hash = "file_hash"
-    email = "email"
-    registry_key = "registry_key"
-
-class Severity(str, Enum):
-    low = "low"
-    medium = "medium"
-    high = "high"
-    critical = "critical"
-
-class TLPLevel(str, Enum):
-    RED = "RED"
-    AMBER_PLUS = "AMBER+"
-    AMBER = "AMBER"
-    GREEN = "GREEN"
-    CLEAR = "CLEAR"
-
 
 # Pydantic models for request/response validation
-class Observable(BaseModel):
-    id: Optional[str] = Field(None, description="Observable identifier")
-    type: ObservableType = Field(..., description="Type of observable")
-    value: str = Field(..., description="Observable value")
-    role: Optional[str] = Field(None, description="Role in the threat context")
-    port: Optional[int] = Field(None, description="Associated port number")
-    protocol: Optional[str] = Field(None, description="Network protocol")
-    first_seen: Optional[datetime] = Field(None, description="First observation timestamp")
-
-    @validator('id', pre=True, always=True)
-    def generate_id_if_missing(cls, v, values):
-        if v is None:
-            obs_type = values.get('type', 'unknown')
-            return f"{obs_type}-{uuid.uuid4()}"
-        return v
-
-class Observables(BaseModel):
-    network: Optional[List[Observable]] = Field(default=[], description="Network observables")
-    files: Optional[List[Observable]] = Field(default=[], description="File observables")
-    email: Optional[List[Observable]] = Field(default=[], description="Email observables")
-
-class Submitter(BaseModel):
-    organization_id: str = Field(..., description="Submitting organization identifier")
-    tier: AccessTier = Field(..., description="Organization access tier")
-    sector: Optional[str] = Field(None, description="Organization sector")
-    region: Optional[str] = Field(None, description="Organization region")
-
 class SigmaDetection(BaseModel):
     rule_id: Optional[str] = Field(None, description="SIGMA rule identifier")
     rule_name: Optional[str] = Field(None, description="SIGMA rule name")
@@ -137,7 +84,7 @@ class Sighting(BaseModel):
     sighting_id: str = Field(..., description="Unique sighting identifier")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     confidence: int = Field(..., ge=0, le=100, description="Confidence score (0-100)")
-    severity: Optional[Severity] = Field(None, description="Threat severity")
+    severity: Optional[SeverityLevel] = Field(None, description="Threat severity")
     first_observed: Optional[datetime] = Field(None, description="First observation time")
     last_observed: Optional[datetime] = Field(None, description="Last observation time")
     observation_count: Optional[int] = Field(default=1, description="Number of observations")
@@ -151,26 +98,7 @@ class Sighting(BaseModel):
         return value.isoformat() if value else None
 
 
-class SubmissionData(BaseModel):
-    submitter: Submitter = Field(..., description="Submitting organization data")
-    hit_target: Optional[Dict[str, Any]] = Field(None, description="Target organization data")
-    sighting: Sighting = Field(..., description="Threat sighting data")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Submission metadata")
-    sharing: Optional[Dict[str, Any]] = Field(None, description="Sharing preferences")
-
-class SubmissionRequest(BaseModel):
-    submission: SubmissionData = Field(..., description="Submission data")
-
 # Response models
-class SubmissionResponse(BaseModel):
-    status: str = Field(..., description="Processing status")
-    submission_id: str = Field(..., description="Unique submission identifier")
-    contribution_score_impact: Optional[int] = Field(None, description="Contribution score impact")
-    processing_status: str = Field(..., description="Current processing state")
-    validation_required: bool = Field(False, description="Whether validation is required")
-    errors: Optional[List[str]] = Field(None, description="Validation errors")
-    estimated_processing_time: Optional[str] = Field(None, description="Processing time estimate")
-
 class SightingSearchResponse(BaseModel):
     total_results: int = Field(..., description="Total matching results")
     returned_results: int = Field(..., description="Results in this response")

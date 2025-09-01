@@ -21,7 +21,7 @@ class ObservableType(str, Enum):
     DOMAIN = "domain"
     URL = "url"
     EMAIL = "email"
-    FILE_HASH = 'file-hash'
+    FILE_HASH = 'file_hash'
     REGISTRY_KEY = "registry_key"
 
 

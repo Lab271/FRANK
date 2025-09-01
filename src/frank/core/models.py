@@ -13,9 +13,9 @@ import uuid
 from .enum import *
 from frank import __version__
 
-class NetworkObservable(BaseModel):
+class Observable(BaseModel):
     """
-    Network observable with automatic validation and STIX-compliant IDs.
+    Observable with automatic validation and STIX-compliant IDs.
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
@@ -244,7 +244,7 @@ class Observables(BaseModel):
         use_enum_values=True
     )
     
-    network: List[NetworkObservable] = Field(default_factory=list, description="Network observables")
+    network: List[Observable] = Field(default_factory=list, description="Network observables")
     file: Optional[List[Dict]] = Field(default_factory=list, description="File observables")
     process: Optional[List[Dict]] = Field(default_factory=list, description="Process observables")
 
@@ -437,7 +437,7 @@ class Submission(BaseModel):
         
         # Create network observables
         network_obs = Observables(network=[
-            NetworkObservable.create_ipv4(ip, role="c2") 
+            Observable.create_ipv4(ip, role="c2") 
             for ip in threat_ips
         ])
         
@@ -488,7 +488,7 @@ class Submission(BaseModel):
             if observables_data.get("network"):
                 for obs_data in observables_data["network"]:
                     try:
-                        network_obs.append(NetworkObservable(**obs_data))
+                        network_obs.append(Observable(**obs_data))
                     except Exception as e:
                         # Log warning but continue - be forgiving
                         print(f"Warning: Skipping invalid observable: {e}")
@@ -507,38 +507,30 @@ class Submission(BaseModel):
             raise ValueError(f"Failed to parse legacy submission format: {e}")
 
 
-class SubmissionWrapper(BaseModel):
-    """
-    API wrapper that handles the nested 'submission' format your API expects.
-    """
-    model_config = ConfigDict(
-        extra="ignore"
-    )
-    
-    submission: Submission = Field(..., description="The actual FRANK submission")
 
 
 # Validation schemas for different use cases
-class MinimalSubmissionRequest(BaseModel):
-    """Minimal required fields for quick submissions"""
-    model_config = ConfigDict(extra="forbid")  # Strict on input for requests
-    
-    submitter_tier: TierLevel
-    target_sector: str = Field(..., min_length=1)
-    threat_indicators: List[str] = Field(..., min_length=1)
-    confidence: Optional[int] = Field(69, ge=0, le=100)
+class SubmissionData(BaseModel):
+    submitter: Submitter = Field(..., description="Submitting organization data")
+    hit_target: Optional[Dict[str, Any]] = Field(None, description="Target organization data")
+    sighting: Sighting = Field(..., description="Threat sighting data")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Submission metadata")
+    sharing: Optional[Dict[str, Any]] = Field(None, description="Sharing preferences")
 
+class SubmissionRequest(BaseModel):
+    submission: SubmissionData = Field(..., description="Submission data")
 
 class SubmissionResponse(BaseModel):
     """Standardized response format - 'strong on what you return'"""
     model_config = ConfigDict(extra="forbid")  # Strict on output
     
-    success: bool
-    submission_id: str
-    message: str
-    validation_warnings: Optional[List[str]] = Field(default_factory=list)
-    processing_time_ms: Optional[float] = None
-
+    status: str = Field(..., description="Processing status")
+    submission_id: str = Field(..., description="Unique submission identifier")
+    contribution_score_impact: Optional[int] = Field(None, description="Contribution score impact")
+    processing_status: str = Field(..., description="Current processing state")
+    validation_required: bool = Field(False, description="Whether validation is required")
+    errors: Optional[List[str]] = Field(None, description="Validation errors")
+    estimated_processing_time: Optional[str] = Field(None, description="Processing time estimate")
 
 # Example usage and testing functions
 def example_usage():
@@ -559,7 +551,7 @@ def example_usage():
     # print("\n2. Testing validation...")
     # try:
     #     # This should fail validation
-    #     invalid = NetworkObservable(
+    #     invalid = Observable(
     #         type=ObservableType.IPV4,
     #         value="not.an.ip.address"  # Invalid IP
     #     )

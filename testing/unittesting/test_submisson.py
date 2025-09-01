@@ -11,7 +11,7 @@ import json
 
 from frank import __version__
 from frank.core.enum import TierLevel, ObservableType, SeverityLevel
-from frank.core.models import Submission, Submitter, NetworkObservable, HitTarget, Sighting, Observables
+from frank.core.models import Submission, Submitter, Observable, HitTarget, Sighting, Observables
 
 from pydantic import ValidationError
 
@@ -22,8 +22,8 @@ class TestSubmission(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.valid_network_observables = [
-            NetworkObservable.create_ipv4("192.168.1.100", role="c2"),
-            NetworkObservable.create_domain("malicious.example.com", role="phishing")
+            Observable.create_ipv4("192.168.1.100", role="c2"),
+            Observable.create_domain("malicious.example.com", role="phishing")
         ]
         
         self.valid_submitter = Submitter.create(
@@ -75,7 +75,7 @@ class TestSubmission(unittest.TestCase):
         
         # Verify observables properties
         self.assertEqual(len(submission.sighting.observables.network), 2)
-        self.assertIsInstance(submission.sighting.observables.network[0], NetworkObservable)
+        self.assertIsInstance(submission.sighting.observables.network[0], Observable)
         self.assertEqual(submission.sighting.observables.network[0].type, ObservableType.IPV4)
         self.assertEqual(submission.sighting.observables.network[0].value, "192.168.1.100")
         self.assertEqual(submission.sighting.observables.network[1].type, ObservableType.DOMAIN)

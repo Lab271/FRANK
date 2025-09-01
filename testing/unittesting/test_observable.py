@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - NetworkObservable Unit Tests
-Comprehensive testing for the NetworkObservable Pydantic model using unittest framework.
+FRANK Platform - Observable Unit Tests
+Comprehensive testing for the Observable Pydantic model using unittest framework.
 Tests validation, serialization, factory methods, and "be forgiving" principles.
 """
 
@@ -14,16 +14,16 @@ from unittest.mock import patch
 from pydantic import ValidationError
 import ipaddress
 
-from frank.core.models import NetworkObservable
+from frank.core.models import Observable
 from frank.core.enum import ObservableType
 
 
-class TestNetworkObservableValidation(unittest.TestCase):
-    """Test NetworkObservable validation and 'be forgiving' principles."""
+class TestObservableValidation(unittest.TestCase):
+    """Test Observable validation and 'be forgiving' principles."""
 
     def test_create_ipv4_observable_minimal(self):
         """Test creating IPv4 observable with minimal required fields."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="192.168.1.1"
         )
@@ -36,7 +36,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
     def test_create_ipv4_observable_full(self):
         """Test creating IPv4 observable with all fields."""
         test_time = datetime.now()
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="203.0.113.42",
             role="c2_server",
@@ -56,7 +56,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_ipv6_observable(self):
         """Test creating IPv6 observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV6,
             value="2001:db8::1"
         )
@@ -68,7 +68,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_domain_observable(self):
         """Test creating domain observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.DOMAIN,
             value="malicious-site.com",
             role="phishing_domain"
@@ -81,7 +81,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_url_observable(self):
         """Test creating URL observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.URL,
             value="https://malicious-site.com/payload.exe"
         )
@@ -92,7 +92,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_email_observable(self):
         """Test creating email observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.EMAIL,
             value="malicious@example.com"
         )
@@ -103,7 +103,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_stix_id_generation(self):
         """Test STIX-compliant ID generation."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="192.168.1.1"
         )
@@ -116,12 +116,12 @@ class TestNetworkObservableValidation(unittest.TestCase):
         uuid.UUID(uuid_part)  # Should not raise exception
 
 
-class TestNetworkObservableValidation(unittest.TestCase):
-    """Test NetworkObservable validation and 'be forgiving' principles."""
+class TestObservableValidation(unittest.TestCase):
+    """Test Observable validation and 'be forgiving' principles."""
 
     def test_create_ipv4_observable_minimal(self):
         """Test creating IPv4 observable with minimal required fields."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="192.168.1.1"
         )
@@ -134,7 +134,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
     def test_create_ipv4_observable_full(self):
         """Test creating IPv4 observable with all fields."""
         test_time = datetime.now()
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="203.0.113.42",
             role="c2_server",
@@ -154,7 +154,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_ipv6_observable(self):
         """Test creating IPv6 observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV6,
             value="2001:db8::1"
         )
@@ -166,7 +166,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_domain_observable(self):
         """Test creating domain observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.DOMAIN,
             value="malicious-site.com",
             role="phishing_domain"
@@ -179,7 +179,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_url_observable(self):
         """Test creating URL observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.URL,
             value="https://malicious-site.com/payload.exe"
         )
@@ -190,7 +190,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_create_email_observable(self):
         """Test creating email observable."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.EMAIL,
             value="malicious@example.com"
         )
@@ -201,7 +201,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
 
     def test_stix_id_generation(self):
         """Test STIX-compliant ID generation."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="192.168.1.1"
         )
@@ -213,7 +213,7 @@ class TestNetworkObservableValidation(unittest.TestCase):
         uuid_part = observable.id.split("--")[1]
         uuid.UUID(uuid_part)  # Should not raise exception
 
-class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
+class TestObservableBeForgivingPrinciple(unittest.TestCase):
     """Test 'be forgiving on what you receive' principle."""
 
     def test_extra_fields_ignored(self):
@@ -225,7 +225,7 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
             "another_extra": 12345
         }
         
-        observable = NetworkObservable(**observable_data)
+        observable = Observable(**observable_data)
         self.assertFalse(hasattr(observable, 'unexpected_field'))
         self.assertFalse(hasattr(observable, 'another_extra'))
         self.assertEqual(observable.type, ObservableType.IPV4)
@@ -233,7 +233,7 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
 
     def test_whitespace_trimming(self):
         """Test that values are trimmed of whitespace."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.DOMAIN,
             value="  example.com  "
         )
@@ -242,7 +242,7 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
 
     def test_case_normalization_domains(self):
         """Test that domains are normalized to lowercase."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.DOMAIN,
             value="EXAMPLE.COM"
         )
@@ -251,7 +251,7 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
 
     def test_case_normalization_ipv4(self):
         """Test that IPv4 addresses are normalized to lowercase."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="192.168.1.1"  # Already lowercase, but test the logic
         )
@@ -260,7 +260,7 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
 
     def test_url_case_preservation(self):
         """Test that URLs preserve case (unlike domains)."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.URL,
             value="  https://Example.com/Path  "
         )
@@ -270,7 +270,7 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
 
     def test_empty_optional_fields(self):
         """Test handling of None/empty optional fields."""
-        observable = NetworkObservable(
+        observable = Observable(
             type=ObservableType.IPV4,
             value="192.168.1.1",
             role=None,
@@ -286,12 +286,12 @@ class TestNetworkObservableBeForgivingPrinciple(unittest.TestCase):
         self.assertIsNone(observable.first_seen)
         self.assertIsNone(observable.connection_count)
 
-class TestNetworkObservableFactoryMethods(unittest.TestCase):
+class TestObservableFactoryMethods(unittest.TestCase):
     """Test factory methods for creating observables."""
 
     def test_create_ipv4_factory_minimal(self):
         """Test create_ipv4 factory method with minimal parameters."""
-        observable = NetworkObservable.create_ipv4("203.0.113.10")
+        observable = Observable.create_ipv4("203.0.113.10")
         
         self.assertEqual(observable.type, ObservableType.IPV4)
         self.assertEqual(observable.value, "203.0.113.10")
@@ -300,7 +300,7 @@ class TestNetworkObservableFactoryMethods(unittest.TestCase):
 
     def test_create_ipv4_factory_with_role_and_port(self):
         """Test create_ipv4 factory method with role and port."""
-        observable = NetworkObservable.create_ipv4(
+        observable = Observable.create_ipv4(
             value="203.0.113.10",
             role="malware_c2",
             port=8080
@@ -313,7 +313,7 @@ class TestNetworkObservableFactoryMethods(unittest.TestCase):
 
     def test_create_domain_factory_minimal(self):
         """Test create_domain factory method with minimal parameters."""
-        observable = NetworkObservable.create_domain("malware-site.net")
+        observable = Observable.create_domain("malware-site.net")
         
         self.assertEqual(observable.type, ObservableType.DOMAIN)
         self.assertEqual(observable.value, "malware-site.net")
@@ -321,7 +321,7 @@ class TestNetworkObservableFactoryMethods(unittest.TestCase):
 
     def test_create_domain_factory_with_role(self):
         """Test create_domain factory method with role."""
-        observable = NetworkObservable.create_domain(
+        observable = Observable.create_domain(
             value="phishing-bank.com",
             role="phishing_domain"
         )
@@ -332,8 +332,8 @@ class TestNetworkObservableFactoryMethods(unittest.TestCase):
 
     def test_factory_methods_generate_ids(self):
         """Test that factory methods generate proper STIX IDs."""
-        ipv4_obs = NetworkObservable.create_ipv4("192.168.1.1")
-        domain_obs = NetworkObservable.create_domain("example.com")
+        ipv4_obs = Observable.create_ipv4("192.168.1.1")
+        domain_obs = Observable.create_domain("example.com")
         
         self.assertTrue(ipv4_obs.id.startswith("ipv4-addr-"))
         self.assertTrue(domain_obs.id.startswith("domain-name-"))

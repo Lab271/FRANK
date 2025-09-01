@@ -10,7 +10,31 @@ from typing import Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 # Import the enums (adjust import path as needed)
-from frank.core.enum import TierLevel, ObservableType, SeverityLevel
+from frank.core.enum import TierLevel, ObservableType, SeverityLevel, TLPLevel
+
+
+class TestTLPLevel(unittest.TestCase):
+    """Test TLPLevel enumeration"""
+
+    def test_tlp_level_values(self):
+        """Test all TLPLevel enum values"""
+        expected_values = {
+            TLPLevel.RED: "RED",
+            TLPLevel.AMBER_PLUS: "AMBER+",
+            TLPLevel.AMBER: "AMBER",
+            TLPLevel.GREEN: "GREEN",
+            TLPLevel.CLEAR: "CLEAR"
+        }
+        for tlp_enum, expected_str in expected_values.items():
+            with self.subTest(tlp=tlp_enum):
+                self.assertEqual(tlp_enum.value, expected_str)
+                self.assertIsInstance(tlp_enum, TLPLevel)
+
+    def test_tlp_level_string_comparison(self):
+        """Test that enum values can be compared with strings"""
+        self.assertEqual(TLPLevel.RED, "RED")
+        self.assertEqual(TLPLevel.AMBER_PLUS, "AMBER+")
+        self.assertNotEqual(TLPLevel.GREEN, "YELLOW")
 
 
 class TestTierLevel(unittest.TestCase):
@@ -406,11 +430,12 @@ class TestEnumAccessTierFiltering(unittest.TestCase):
             ObservableType.DOMAIN,
             ObservableType.URL,
             ObservableType.EMAIL,
-            ObservableType.FILE_HASH
+            ObservableType.FILE_HASH,
+            ObservableType.REGISTRY_KEY
         ]
         
         # Test that all expected network indicators are covered
-        expected_network_values = ["ipv4", "ipv6", "domain", "url", "email", "file-hash"]
+        expected_network_values = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key"]
         actual_values = [obs_type.value for obs_type in network_types]
         
         self.assertEqual(set(actual_values), set(expected_network_values))
@@ -648,7 +673,7 @@ class TestEnumCompatibility(unittest.TestCase):
         
         # Test ObservableType iteration
         obs_values = [obs.value for obs in ObservableType]
-        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file-hash"]
+        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key"]
         self.assertEqual(obs_values, expected_obs)
         
         # Test SeverityLevel iteration
