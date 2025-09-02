@@ -19,18 +19,19 @@ import uvicorn
 
 # Import enums from FRANK core 
 from frank.core.enum import ObservableType, SeverityLevel, TierLevel, TLPLevel
-from frank.core.models import Observables, Submitter
-from frank.core.models import SubmissionRequest, SubmissionData, SubmissionResponse
+from frank.core.models import Observables, Submitter, Sighting
 
 # Import our FRANK database
 from frank.db.sqlite import SQLiteFRANKDatabase
 from frank.utils.sample_builder import generate_minimal_submission_dict
+from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
+from frank import __version__
 
 # Initialize FastAPI app
 app = FastAPI(
     title="FRANK Platform API",
     description="Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling",
-    version="0.1.0",
+    version=__version__,
     docs_url="/docs",
     redoc_url="/redoc"
 )
@@ -51,61 +52,6 @@ security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_spike.db")
 db = SQLiteFRANKDatabase(db_path)
 
-
-# Pydantic models for request/response validation
-class SigmaDetection(BaseModel):
-    rule_id: Optional[str] = Field(None, description="SIGMA rule identifier")
-    rule_name: Optional[str] = Field(None, description="SIGMA rule name")
-    rule_version: Optional[str] = Field(None, description="Rule version")
-    rule_status: Optional[str] = Field(None, description="Rule status")
-    sigma_yaml: Optional[str] = Field(None, description="SIGMA rule YAML content")
-    rule_effectiveness: Optional[float] = Field(None, description="Rule effectiveness score")
-    false_positive_rate: Optional[float] = Field(None, description="False positive rate")
-
-class Campaign(BaseModel):
-    id: Optional[str] = Field(None, description="Campaign identifier")
-    name: Optional[str] = Field(None, description="Campaign name")
-    attribution: Optional[str] = Field(None, description="Attributed threat actor")
-    target_sectors: Optional[List[str]] = Field(None, description="Targeted sectors")
-    confidence: Optional[int] = Field(None, description="Attribution confidence")
-
-class ThreatContext(BaseModel):
-    campaign: Optional[Campaign] = Field(None, description="Campaign information")
-    mitre_attack: Optional[Dict[str, Any]] = Field(None, description="MITRE ATT&CK mapping")
-    malware_family: Optional[Dict[str, Any]] = Field(None, description="Malware family data")
-
-class Impact(BaseModel):
-    affected_systems: Optional[int] = Field(None, description="Number of affected systems")
-    compromised_accounts: Optional[int] = Field(None, description="Compromised accounts")
-    containment_time: Optional[str] = Field(None, description="Time to containment")
-    financial_impact_eur: Optional[int] = Field(None, description="Financial impact in EUR")
-
-class Sighting(BaseModel):
-    sighting_id: str = Field(..., description="Unique sighting identifier")
-    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    confidence: int = Field(..., ge=0, le=100, description="Confidence score (0-100)")
-    severity: Optional[SeverityLevel] = Field(None, description="Threat severity")
-    first_observed: Optional[datetime] = Field(None, description="First observation time")
-    last_observed: Optional[datetime] = Field(None, description="Last observation time")
-    observation_count: Optional[int] = Field(default=1, description="Number of observations")
-    observables: Observables = Field(..., description="Threat observables")
-    sigma_detection: Optional[SigmaDetection] = Field(None, description="SIGMA detection data")
-    threat_context: Optional[ThreatContext] = Field(None, description="Threat context")
-    impact: Optional[Impact] = Field(None, description="Impact assessment")
-
-    @field_serializer('timestamp', 'first_observed', 'last_observed')
-    def serialize_datetime(self, value: datetime) -> str:
-        return value.isoformat() if value else None
-
-
-# Response models
-class SightingSearchResponse(BaseModel):
-    total_results: int = Field(..., description="Total matching results")
-    returned_results: int = Field(..., description="Results in this response")
-    sightings: List[Dict[str, Any]] = Field(..., description="Array of sighting objects")
-    aggregations: Optional[Dict[str, Any]] = Field(None, description="Statistical summaries")
-    threat_context: Optional[Dict[str, Any]] = Field(None, description="Threat context data")
-    pagination: Optional[Dict[str, Any]] = Field(None, description="Pagination information")
 
 class ErrorResponse(BaseModel):
     error: Dict[str, Any] = Field(..., description="Error details")

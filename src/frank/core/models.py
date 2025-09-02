@@ -248,6 +248,33 @@ class Observables(BaseModel):
     file: Optional[List[Dict]] = Field(default_factory=list, description="File observables")
     process: Optional[List[Dict]] = Field(default_factory=list, description="Process observables")
 
+# Pydantic models for request/response validation
+class SigmaDetection(BaseModel):
+    rule_id: Optional[str] = Field(None, description="SIGMA rule identifier")
+    rule_name: Optional[str] = Field(None, description="SIGMA rule name")
+    rule_version: Optional[str] = Field(None, description="Rule version")
+    rule_status: Optional[str] = Field(None, description="Rule status")
+    sigma_yaml: Optional[str] = Field(None, description="SIGMA rule YAML content")
+    rule_effectiveness: Optional[float] = Field(None, description="Rule effectiveness score")
+    false_positive_rate: Optional[float] = Field(None, description="False positive rate")
+
+class Campaign(BaseModel):
+    id: Optional[str] = Field(None, description="Campaign identifier")
+    name: Optional[str] = Field(None, description="Campaign name")
+    attribution: Optional[str] = Field(None, description="Attributed threat actor")
+    target_sectors: Optional[List[str]] = Field(None, description="Targeted sectors")
+    confidence: Optional[int] = Field(None, description="Attribution confidence")
+
+class ThreatContext(BaseModel):
+    campaign: Optional[Campaign] = Field(None, description="Campaign information")
+    mitre_attack: Optional[Dict[str, Any]] = Field(None, description="MITRE ATT&CK mapping")
+    malware_family: Optional[Dict[str, Any]] = Field(None, description="Malware family data")
+
+class Impact(BaseModel):
+    affected_systems: Optional[int] = Field(None, description="Number of affected systems")
+    compromised_accounts: Optional[int] = Field(None, description="Compromised accounts")
+    containment_time: Optional[str] = Field(None, description="Time to containment")
+    financial_impact_eur: Optional[int] = Field(None, description="Financial impact in EUR")
 
 class Sighting(BaseModel):
     """
@@ -261,13 +288,16 @@ class Sighting(BaseModel):
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
     observables: Observables = Field(..., description="Threat observables")
 
-    timestamp: Optional[datetime] = Field(None, description="When threat was observed")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When threat was observed")
     confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
+    severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
     first_observed: Optional[datetime] = Field(None, description="First observation time")
     last_observed: Optional[datetime] = Field(None, description="Last observation time") 
     observation_count: int = Field(default=1, ge=1, description="Number of observations")
-    severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
-    
+    sigma_detection: Optional[SigmaDetection] = Field(None, description="SIGMA detection data")
+    threat_context: Optional[ThreatContext] = Field(None, description="Threat context")
+    impact: Optional[Impact] = Field(None, description="Impact assessment")
+
     @field_validator('sighting_id', mode='before')
     @classmethod
     def generate_sighting_id(cls, v):
@@ -310,9 +340,7 @@ class Sighting(BaseModel):
 
     @field_serializer('timestamp', 'first_observed', 'last_observed', when_used='json')
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        return value.isoformat() + "Z"
+        return value.isoformat() + "Z" if value else None
     
     @classmethod
     def create(cls, observables: Observables = None, confidence: int = 69, severity: SeverityLevel = None, observation_count: int = 1):
@@ -506,31 +534,6 @@ class Submission(BaseModel):
         except Exception as e:
             raise ValueError(f"Failed to parse legacy submission format: {e}")
 
-
-
-
-# Validation schemas for different use cases
-class SubmissionData(BaseModel):
-    submitter: Submitter = Field(..., description="Submitting organization data")
-    hit_target: Optional[Dict[str, Any]] = Field(None, description="Target organization data")
-    sighting: Sighting = Field(..., description="Threat sighting data")
-    metadata: Optional[Dict[str, Any]] = Field(None, description="Submission metadata")
-    sharing: Optional[Dict[str, Any]] = Field(None, description="Sharing preferences")
-
-class SubmissionRequest(BaseModel):
-    submission: SubmissionData = Field(..., description="Submission data")
-
-class SubmissionResponse(BaseModel):
-    """Standardized response format - 'strong on what you return'"""
-    model_config = ConfigDict(extra="forbid")  # Strict on output
-    
-    status: str = Field(..., description="Processing status")
-    submission_id: str = Field(..., description="Unique submission identifier")
-    contribution_score_impact: Optional[int] = Field(None, description="Contribution score impact")
-    processing_status: str = Field(..., description="Current processing state")
-    validation_required: bool = Field(False, description="Whether validation is required")
-    errors: Optional[List[str]] = Field(None, description="Validation errors")
-    estimated_processing_time: Optional[str] = Field(None, description="Processing time estimate")
 
 # Example usage and testing functions
 def example_usage():
