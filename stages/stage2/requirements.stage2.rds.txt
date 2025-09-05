@@ -1,0 +1,26 @@
+
+# ================================
+# requirements.txt - Stage 2 RDS (Python 3.11 Compatible)
+# ================================
+
+# Core web framework
+fastapi>=0.104.0
+uvicorn[standard]>=0.24.0
+
+# Data validation
+pydantic>=2.5.0
+
+# Database connectivity  
+pymysql>=1.1.0
+
+# HTTP utilities
+requests>=2.31.0
+python-multipart>=0.0.6
+
+# AWS SDK (minimal, for future stages)
+boto3>=1.34.0
+
+# Development and testing
+pytest>=7.4.0
+pytest-asyncio>=0.21.0
+httpx>=0.25.0

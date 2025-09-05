@@ -1,0 +1,46 @@
+# ================================
+# Dockerfile.stage2.simple - Simplified Application Container
+# ================================
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies for MySQL
+RUN apt-get update && apt-get install -y \
+    gcc \
+    default-libmysqlclient-dev \
+    pkg-config \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+
+# Copy the current stage2 files
+COPY src/ /app/src/           
+COPY stages/stage2/ /app/stage2/
+
+# Install Python dependencies
+RUN pip install --upgrade pip
+
+WORKDIR /app/stage2
+RUN pip install --no-cache-dir -r requirements.stage2.rds.txt
+
+# This is a bit weird, but need to copy this so we can get the package
+COPY ./stages/stage2/setup.py ../src
+# Install the src package in development mode
+RUN pip install -e ../src/
+
+# Create logs directory
+RUN mkdir -p /app/logs
+
+# Expose port
+EXPOSE 8000
+
+WORKDIR /app/stage2
+
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+  CMD curl -f http://localhost:8000/health || exit 1
+
+# Default command
+CMD ["python", "frank_stage2.py"]

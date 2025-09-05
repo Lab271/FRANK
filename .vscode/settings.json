@@ -11,6 +11,6 @@
         "features/step_definitions/**/*.js"
     ],
     "files.associations": {
-        "*.feature": "gherkin"
+        "*.feature": "cucumber"
     }
 }
