@@ -37,8 +37,6 @@ dev:$(VIRTUALENV)/bin/python  ## Install this for development
 	@$(PYTHON) -m pip install ruff
 	@$(PYTHON) -m pip install pytest
 	@$(PYTHON) -m pip install coverage
-	@$(PYTHON) -m pip install fastapi uvicorn pydantic
-	@$(PYTHON) -m pip install behave requests PyHamcrest
 
 test:  ## Run all tests
 	@pytest
@@ -51,7 +49,7 @@ coverage: ## Code coverage
 	@coverage report -m 
 
 env: $(VIRTUALENV)/bin/python ## create the virtualenv
-	@$(PYTHON) -m pip install PyYAML
+	@$(PYTHON) -m pip install -r requirements.txt
 
 $(VIRTUALENV)/bin/python: # create the local virtualenv
 	virtualenv $(VIRTUALENV)
