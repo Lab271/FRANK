@@ -1,49 +1,69 @@
 import json
-import os
 import boto3
+import os
 from datetime import datetime, timezone
+import uuid
 
 def lambda_handler(event, context):
-    """Simple ingest handler for testing"""
+    """
+    Lambda handler that actually stores submissions in DynamoDB
+    """
+    print(f"Received event: {json.dumps(event, default=str)}")
+    
     try:
-        print(f"Received event: {json.dumps(event, default=str)}")
-        
-        # Parse request body
-        body = event.get('body', '{}')
-        if isinstance(body, str):
-            submission_data = json.loads(body)
+        # Parse the request body
+        if 'body' in event:
+            if isinstance(event['body'], str):
+                body = json.loads(event['body'])
+            else:
+                body = event['body']
         else:
-            submission_data = body
+            body = event
         
-        # Generate response
-        submission_id = f"sub-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{hash(str(submission_data)) % 10000}"
+        # Generate submission ID
+        submission_id = f"sub-{datetime.now().strftime('%Y%m%d-%H%M%S')}-{str(uuid.uuid4())[:8]}"
+        timestamp = datetime.now(timezone.utc).isoformat()
         
-        response = {
-            'status': 'accepted',
+        # Initialize DynamoDB client for LocalStack with internal networking
+        dynamodb = boto3.resource(
+            'dynamodb',
+            endpoint_url='http://localstack:4566',  # Use internal container name
+            region_name='eu-west-1',
+            aws_access_key_id='test',
+            aws_secret_access_key='test'
+        )
+        
+        # Get table
+        table = dynamodb.Table(os.environ.get('SUBMISSIONS_TABLE', 'frank-submissions-local'))
+        
+        # Store in DynamoDB
+        item = {
             'submission_id': submission_id,
-            'timestamp': datetime.now(timezone.utc).isoformat(),
-            'message': 'Submission processed successfully'
+            'timestamp': timestamp,
+            'data': body,
+            'status': 'processed'
         }
+        
+        table.put_item(Item=item)
+        print(f"Successfully stored submission {submission_id}")
         
         return {
             'statusCode': 200,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
-            'body': json.dumps(response)
+            'headers': {'Content-Type': 'application/json'},
+            'body': json.dumps({
+                'submission_id': submission_id,
+                'status': 'received',
+                'timestamp': timestamp
+            })
         }
         
     except Exception as e:
-        print(f"Error: {str(e)}")
+        print(f"Error processing submission: {str(e)}")
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json',
-                'Access-Control-Allow-Origin': '*'
-            },
+            'headers': {'Content-Type': 'application/json'},
             'body': json.dumps({
-                'error': 'internal_error',
-                'message': str(e)
+                'error': 'Failed to process submission',
+                'details': str(e)
             })
         }
