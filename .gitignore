@@ -3,6 +3,30 @@
 # virtualenv
 .frank
 
+# Development infrastructure - LocalStack and Terraform
+development/localstack/terraform/.terraform/
+development/localstack/terraform/terraform.tfstate*
+development/localstack/terraform/.terraform.lock.hcl
+development/localstack/data/
+development/localstack/logs/
+
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfplan
+.terraform/
+.terraform.lock.hcl
+
+# LocalStack
+.localstack/
+localstack_data/
+
+# Build artifacts
+/tmp/frank-*.zip
+build/
+dist/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[codz]
