@@ -38,8 +38,8 @@ dev:$(VIRTUALENV)/bin/python  ## Install this for development
 	@$(PYTHON) -m pip install pytest
 	@$(PYTHON) -m pip install coverage
 
-test:  ## Run all tests
-	@pytest
+unittests:  ## Run all unittests
+	@pytest tests
 
 lint: test ## Static code checking
 	@ruff check .
