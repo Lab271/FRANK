@@ -7,7 +7,7 @@ Implements "be forgiving on what you receive, strong on what you return" princip
 
 from pydantic import BaseModel, Field, field_validator, model_validator, field_serializer, ConfigDict
 from typing import Dict, List, Optional, Any
-from datetime import datetime
+from datetime import datetime, timezone
 import uuid
 
 from .enum import *
@@ -140,7 +140,7 @@ class Submitter(BaseModel):
         if not self.organization_id:
             self.organization_id = f"identity--{uuid.uuid4()}"
         return self
-    
+        
     @field_validator('sector')
     @classmethod
     def normalize_sector(cls, v):
@@ -338,7 +338,7 @@ class Sighting(BaseModel):
             raise ValueError("first_observed cannot be after last_observed")
         return self
 
-    @field_serializer('timestamp', 'first_observed', 'last_observed', when_used='json')
+    @field_serializer('timestamp', 'first_observed', 'last_observed')
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
         return value.isoformat() + "Z" if value else None
     

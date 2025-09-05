@@ -366,7 +366,7 @@ class TestSighting(unittest.TestCase):
         self.assertEqual(data["confidence"], 85)
         self.assertEqual(data["severity"], "high")  # Enum value
         self.assertEqual(data["observation_count"], 2)
-        self.assertIsInstance(data["timestamp"], datetime)
+        self.assertIsInstance(data["timestamp"], str)
 
     def test_model_dump_exclude_none(self):
         """Test serialization excluding None values"""
