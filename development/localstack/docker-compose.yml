@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  localstack:
+    container_name: frank-localstack
+    image: localstack/localstack:3.8
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=apigateway,lambda,dynamodb,s3,iam,logs,cloudformation
+      - DEBUG=1
+      - LAMBDA_EXECUTOR=local
+      - DOCKER_HOST=unix:///var/run/docker.sock
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+      - "../lambdas:/tmp/lambdas"
+      - "./terraform:/tmp/terraform"
+    networks:
+      - frank-network
+
+networks:
+  frank-network:
+    driver: bridge
