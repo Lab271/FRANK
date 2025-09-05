@@ -210,3 +210,55 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# FRANK Project Specific
+
+# Terraform
+.terraform/
+terraform.tfstate
+terraform.tfstate.backup
+*.tfvars
+*.tfvars.json
+.terraform.lock.hcl
+terraform.tfplan
+terraform.tfplan.json
+
+# LocalStack/Development build artifacts
+development/build/
+/tmp/frank-*.zip
+
+# Docker volumes and data
+docker-data/
+.localstack/
+
+# AWS credentials and config (if accidentally placed in project)
+.aws/
+aws-credentials.json
+
+# IDE and editor files
+.vscode/settings.json
+.vscode/launch.json
+.idea/
+*.swp
+*.swo
+*~
+
+# OS generated files
+Thumbs.db
+ehthumbs.db
+
+# Application logs
+*.log
+logs/
+
+# Local environment files
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+.temp/
