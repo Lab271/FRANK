@@ -1,7 +1,7 @@
+#!/bin/bash
 # ================================
 # localstack_init/01-setup-rds.sh - LocalStack RDS Initialization
 # ================================
-#!/bin/bash
 
 echo "Initializing LocalStack RDS for FRANK Stage 2..."
 
@@ -10,8 +10,9 @@ sleep 15
 
 # Create RDS MySQL instance
 echo "Creating RDS MySQL instance..."
+
 awslocal rds create-db-instance \
-    --db-instance-identifier frank-dev \
+    --db-instance-identifier frank-db \
     --db-instance-class db.t3.micro \
     --engine mysql \
     --engine-version 8.0.28 \
@@ -25,10 +26,10 @@ awslocal rds create-db-instance \
 
 # Wait for RDS instance to be available
 echo "Waiting for RDS instance to be available..."
-awslocal rds wait db-instance-available --db-instance-identifier frank-dev
+awslocal rds wait db-instance-available --db-instance-identifier frank-db
 
 # Get the RDS endpoint
-RDS_ENDPOINT=$(awslocal rds describe-db-instances --db-instance-identifier frank-dev --query 'DBInstances[0].Endpoint.Address' --output text)
+RDS_ENDPOINT=$(awslocal rds describe-db-instances --db-instance-identifier frank-db --query 'DBInstances[0].Endpoint.Address' --output text)
 echo "RDS endpoint: $RDS_ENDPOINT"
 
 # Create S3 bucket for future use

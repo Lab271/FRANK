@@ -22,7 +22,7 @@ COPY stages/stage2/ /app/stage2/
 RUN pip install --upgrade pip
 
 WORKDIR /app/stage2
-RUN pip install --no-cache-dir -r requirements.stage2.rds.txt
+RUN pip install --no-cache-dir -r requirements.stage2.txt
 
 # This is a bit weird, but need to copy this so we can get the package
 COPY ./stages/stage2/setup.py ../src

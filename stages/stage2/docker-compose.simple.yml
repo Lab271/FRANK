@@ -6,7 +6,7 @@ services:
   # MySQL Database (Direct approach)
   mysql:
     image: mysql:8.0
-    container_name: frank-mysql
+    container_name: frank-mysql-stage2
     ports:
       - "3306:3306"
     environment:
@@ -29,8 +29,8 @@ services:
   frank-app:
     build:
       context: ../..  # Need to do this to include the src package
-      dockerfile: stages/stage2/Dockerfile.stage2.rds
-    container_name: frank-app
+      dockerfile: stages/stage2/Dockerfile.stage2
+    container_name: frank-app-stage2
     ports:
       - "8000:8000"
     environment:
@@ -53,7 +53,7 @@ services:
   # Database Administration Interface
   adminer:
     image: adminer
-    container_name: frank-adminer
+    container_name: adminer
     ports:
       - "8080:8080"
     environment:
