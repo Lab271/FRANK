@@ -33,6 +33,7 @@ def lambda_handler(event, context):
             aws_secret_access_key='test'
         )
         
+
         # Initialize S3 client for LocalStack
         s3 = boto3.client(
             's3',
@@ -54,6 +55,7 @@ def lambda_handler(event, context):
             Body=json.dumps(body, indent=2),
             ContentType='application/json'
         )
+
         
         # Store in DynamoDB
         item = {
@@ -66,6 +68,7 @@ def lambda_handler(event, context):
         
         table.put_item(Item=item)
         print(f"Successfully stored submission {submission_id} in DynamoDB and S3")
+
         
         return {
             'statusCode': 200,
