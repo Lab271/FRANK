@@ -12,6 +12,8 @@ This stage implements the FRANK platform with LocalStack simulation for AWS serv
 - **Location**: Local development with LocalStack
 - **Submissions**: Minimal model (unchanged)
 
+**NB:** RDS is now part of the professional license of LocalStack, we therefore run a separate MySQL Container. Of course you could also use the Pro license and go Localstack native. This this [site](https://docs.localstack.cloud/aws/licensing/#service-coverage-clarification) for more details on supported services.
+
 **Key Learning Objectives**:
 - AWS database service patterns (RDS configuration, connection management)
 - Docker containerization and service orchestration

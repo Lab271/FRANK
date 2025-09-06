@@ -3,6 +3,28 @@
 # ================================
 
 services:
+  # MySQL Database (Not part of Localstack free tier)
+  mysql:
+    image: mysql:8.0
+    container_name: frank-mysql-stage2
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=frank_root_pass
+      - MYSQL_DATABASE=frank
+      - MYSQL_USER=frank_user
+      - MYSQL_PASSWORD=frank_pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql_init:/docker-entrypoint-initdb.d
+    networks:
+      - frank-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "frank_user", "-pfrank_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
   # LocalStack - AWS Services Simulation
   localstack:
     image: localstack/localstack:latest
@@ -11,24 +33,13 @@ services:
       - "4566:4566"  # LocalStack API
       - "4571:4571"  # LocalStack Dashboard (optional)
     environment:
-      - SERVICES=rds,s3,secretsmanager,iam,sts
+      - SERVICES=s3,secretsmanager,iam,sts
       - DEBUG=1
-      - DATA_DIR=/var/lib/localstack/data
-      - PERSISTENCE=1
-      - RDS_MYSQL_DOCKER=1
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./localstack_data:/var/lib/localstack/data"
       - "./localstack_init:/etc/localstack/init/ready.d"
     networks:
       - frank-network
-    healthcheck:
-        test: ["CMD", "curl", "-f", "http://localhost:4566/health"]
-        interval: 10s
-        timeout: 5s
-        retries: 10
-        start_period: 30s
-
 
   # FRANK Application
   frank-app:
@@ -39,10 +50,10 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - FRANK_ENVIRONMENT=localstack
+      - FRANK_ENVIRONMENT=hybrid
       - LOCALSTACK_ENDPOINT=http://localstack:4566
-      - RDS_HOST=localstack
-      - RDS_PORT=4566
+      - RDS_HOST=mysql
+      - RDS_PORT=3306
       - RDS_DATABASE=frank
       - RDS_USERNAME=frank_user
       - RDS_PASSWORD=frank_pass
@@ -50,8 +61,10 @@ services:
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=eu-west-1
     depends_on:
-      localstack:
+      mysql:
         condition: service_healthy
+      localstack:
+        condition: service_started
     volumes:
       - "./logs:/app/logs"    # Live logs folder
       - "../../src:/src"      # Live src/ package development
@@ -66,7 +79,7 @@ services:
     ports:
       - "8080:8080"
     environment:
-      - ADMINER_DEFAULT_SERVER=localstack:4566
+      - ADMINER_DEFAULT_SERVER=mysql:3306
     depends_on:
       - localstack
     networks:
@@ -77,5 +90,5 @@ networks:
     driver: bridge
 
 volumes:
-  localstack_data:
+  mysql_data:
   logs:

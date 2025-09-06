@@ -113,6 +113,8 @@ class FrankConfig:
             self.mysql_database = os.getenv('RDS_DATABASE', 'frank')
             self.mysql_username = os.getenv('RDS_USERNAME', 'frank_user')
             self.mysql_password = os.getenv('RDS_PASSWORD', 'frank_pass')
+        elif self.environment == 'hybrid':
+            self.setup_localstack_hybrid_config()
         elif self.environment == 'localstack':
             self.setup_localstack_config()
         elif self.environment == 'aws':
@@ -124,7 +126,24 @@ class FrankConfig:
         """Local SQLite configuration (fallback)"""
         self.database_type = 'sqlite'
         self.sqlite_path = os.getenv('SQLITE_PATH', '/tmp/frank_local.db')
-    
+
+    def setup_localstack_hybrid_config(self):
+        """Hybrid LocalStack with external MySQL configuration"""
+        self.database_type = 'rds'
+        self.localstack_endpoint = os.getenv('LOCALSTACK_ENDPOINT', 'http://localhost:4566')
+        
+        # MySQL Configuration (external)
+        self.rds_host = os.getenv('RDS_HOST', 'mysql')
+        self.rds_port = int(os.getenv('RDS_PORT', '3306'))
+        self.rds_database = os.getenv('RDS_DATABASE', 'frank')
+        self.rds_username = os.getenv('RDS_USERNAME', 'frank_user')
+        self.rds_password = os.getenv('RDS_PASSWORD', 'frank_pass')
+        
+        # AWS Credentials (for LocalStack)
+        self.aws_access_key = os.getenv('AWS_ACCESS_KEY_ID', 'test')
+        self.aws_secret_key = os.getenv('AWS_SECRET_ACCESS_KEY', 'test')
+        self.aws_region = os.getenv('AWS_DEFAULT_REGION', 'eu-west-1')
+
     def setup_localstack_config(self):
         """LocalStack RDS configuration"""
         self.database_type = 'rds'
