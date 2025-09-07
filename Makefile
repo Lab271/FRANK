@@ -58,6 +58,9 @@ $(VIRTUALENV)/bin/python: # create the local virtualenv
 update: ## update all packages
 	@$(PYTHON) -m pip install --upgrade pip
 
+outdated: ## list all outdated packages
+	@$(PYTHON) -m pip list --outdated	
+	
 help: ## Shows help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
 	@echo ""

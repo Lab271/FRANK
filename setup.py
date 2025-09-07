@@ -1,6 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
+import os
 from setuptools import setup, find_packages
+
+PACKAGE = 'frank'
 
 with open("README.md", "r") as f:
     long_description = f.read()
@@ -12,7 +15,7 @@ def get_version():
     return version['__version__']
 
 setup(
-    name='frank',
+    name=PACKAGE,
     version=get_version(),
     description='Vulnerability platform',
     long_description=long_description,
@@ -21,7 +24,7 @@ setup(
     # author_email='',
     maintainer='Ilja Heitlager',
     maintainer_email='iheitlager@schubergphilis.com',
-    keywords=["research-tools"],
+    keywords=["security-tools"],
     url='https://github.com/iheitlager/frank',
     packages=find_packages('src'),
     package_dir={'': 'src'},
