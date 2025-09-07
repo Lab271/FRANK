@@ -1,0 +1,34 @@
+[build-system]
+requires = ["setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "frank"
+version = "0.3.0"
+description = "Vulnerability platform"
+readme = "README.md"
+license = {text = "Apache 2.0"}
+authors = [{name = "Ilja Heitlager"}]
+maintainers = [{name = "Ilja Heitlager", email = "iheitlager@schubergphilis.com"}]
+keywords = ["security-tools"]
+classifiers = [
+    "Development Status :: 2 - Pre-Alpha",
+    "Environment :: Console",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3.11",
+    "Intended Audience :: Developers",
+    "License :: OSI Approved :: Apache Software License",
+    "Natural Language :: English"
+]
+requires-python = ">=3.11"
+dependencies = []
+
+[project.urls]
+Homepage = "https://github.com/iheitlager/frank"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-dir]
+"" = "src"

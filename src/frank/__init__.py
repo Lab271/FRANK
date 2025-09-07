@@ -5,7 +5,7 @@ A threat intelligence sharing platform that enables anonymous and secure exchang
 of cybersecurity information between organizations following a tiered access model.
 """
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 __author__ = "Schuberg Philis"
 __description__ = "FRANK Platform - Cybersecurity Threat Intelligence Sharing"
 
