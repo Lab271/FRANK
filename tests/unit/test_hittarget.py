@@ -2,6 +2,9 @@
 """
 Unit tests for FRANK HitTarget model
 Tests the "be forgiving on what you receive, strong on what you return" principle
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
@@ -11,7 +14,7 @@ import json
 
 # Import the models (adjust import path as needed)
 from frank.core.models import HitTarget
-from frank.core.enum import *
+from frank.core.enum import TierLevel
 from pydantic import ValidationError
 
 

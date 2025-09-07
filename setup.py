@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 # -*- coding: UTF-8 -*-
+
+"""
+FRANK Platform - Setup Script
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
+
 import os
 from setuptools import setup, find_packages
 

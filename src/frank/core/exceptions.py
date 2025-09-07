@@ -3,6 +3,9 @@ FRANK Platform Exception Hierarchy
 
 Centralized exception definitions following Python best practices.
 All FRANK exceptions inherit from FRANKError for easy catching.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 

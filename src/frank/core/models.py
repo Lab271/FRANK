@@ -3,6 +3,9 @@
 FRANK Platform - Pydantic Models (v2 Compatible)
 Replaces dataclass implementation with robust validation for cybersecurity data.
 Implements "be forgiving on what you receive, strong on what you return" principle.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 from pydantic import BaseModel, Field, field_validator, model_validator, field_serializer, ConfigDict
@@ -10,7 +13,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import uuid
 
-from .enum import *
+from frank.core.enum import ObservableType, TierLevel, SeverityLevel
 from frank import __version__
 
 class Observable(BaseModel):
@@ -19,11 +22,12 @@ class Observable(BaseModel):
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
-        use_enum_values=True
+        use_enum_values=True,
+        populate_by_name=True  # Allow both field name and alias
     )
     
     id: Optional[str] = Field(None, description="STIX-formatted observable ID")
-    type: ObservableType = Field(..., description="Type of network observable")
+    observable_type: ObservableType = Field(..., alias="type", description="Type of network observable")
     value: str = Field(..., min_length=1, description="Observable value")
     role: Optional[str] = Field(None, description="Role in attack (C2, exfiltration, etc)")
     port: Optional[int] = Field(None, ge=1, le=65535, description="Network port")
@@ -31,69 +35,31 @@ class Observable(BaseModel):
     first_seen: Optional[datetime] = Field(None, description="First observation time")
     connection_count: Optional[int] = Field(None, ge=0, description="Number of connections")
     
-    @field_validator('id', mode='before')
-    @classmethod
-    def generate_stix_id(cls, v, info=None):
-        """Generate STIX-compliant ID if not provided"""
-        if v is None or v == "":
-            # Try to get type from other fields if available
-            if info and info.data:
-                observable_type = info.data.get('type', 'unknown')
-            else:
-                observable_type = 'unknown'
-                
-            if observable_type == 'ipv4':
-                return f"ipv4-addr--{uuid.uuid4()}"
-            elif observable_type == 'ipv6':
-                return f"ipv6-addr--{uuid.uuid4()}"
-            elif observable_type == 'domain':
-                return f"domain-name--{uuid.uuid4()}"
-            elif observable_type == 'url':
-                return f"url--{uuid.uuid4()}"
-            else:
-                return f"observable--{uuid.uuid4()}"
-        return v
-    
     @model_validator(mode='after')
     def ensure_id_generated(self):
         """Ensure ID is always generated after all fields are set"""
         if not self.id:
-            if self.type == ObservableType.IPV4:
-                self.id = f"ipv4-addr--{uuid.uuid4()}"
-            elif self.type == ObservableType.IPV6:
-                self.id = f"ipv6-addr--{uuid.uuid4()}"
-            elif self.type == ObservableType.DOMAIN:
-                self.id = f"domain-name--{uuid.uuid4()}"
-            elif self.type == ObservableType.URL:
-                self.id = f"url--{uuid.uuid4()}"
-            else:
-                self.id = f"observable--{uuid.uuid4()}"
+            self.id = f"{self.observable_type}--{uuid.uuid4()}"
         return self
 
     @model_validator(mode='after')
     def normalize_values(self):
         """Normalize values based on type after all fields are processed."""
-        if self.type == ObservableType.DOMAIN:
+        if self.observable_type == ObservableType.DOMAIN:
             self.value = self.value.strip().lower()
-        elif self.type in [ObservableType.IPV4, ObservableType.IPV6]:
+        elif self.observable_type in [ObservableType.IPV4, ObservableType.IPV6]:
             self.value = self.value.strip().lower()
-        elif self.type == ObservableType.URL:
+        elif self.observable_type == ObservableType.URL:
             self.value = self.value.strip()  # Preserve case for URLs
         else:
             self.value = self.value.strip().lower()
         return self
 
-    @field_serializer('first_seen', when_used='json')
-    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
-        if value is None:
-            return None
-        return value.isoformat() + "Z"
-
     @classmethod
     def create_ipv4(cls, value: str, role: str = None, port: int = None):
         """Factory method for IPv4 observables"""
         return cls(
-            type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4,
             value=value,
             role=role,
             port=port
@@ -103,7 +69,7 @@ class Observable(BaseModel):
     def create_domain(cls, value: str, role: str = None):
         """Factory method for domain observables"""
         return cls(
-            type=ObservableType.DOMAIN,
+            observable_type=ObservableType.DOMAIN,
             value=value,
             role=role
         )
@@ -125,14 +91,6 @@ class Submitter(BaseModel):
     region: Optional[str] = Field(None, description="Geographic region")
     submission_method: Optional[str] = Field(default="api", description="How submission was made")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
-    
-    # @field_validator('organization_id', mode='before')
-    # @classmethod
-    # def generate_org_id(cls, v):
-    #     """Generate STIX identity if not provided - 'be forgiving'"""
-    #     if v is None or v == "":
-    #         return f"identity--{uuid.uuid4()}"
-    #     return v
     
     @model_validator(mode='after') 
     def ensure_org_id(self):

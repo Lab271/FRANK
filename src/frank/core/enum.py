@@ -2,6 +2,9 @@
 """
 FRANK Platform - Pydantic Models (v2 Compatible)
 These are all enum's for all categories used in the models.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 from enum import Enum
 
