@@ -142,7 +142,7 @@ class TestObservableSerialization(unittest.TestCase):
             "role": "C2",
             "port": 80,
             "protocol": "tcp",
-            "first_seen": "2025-01-15T10:30:00+00:00",
+            "first_seen": self.test_datetime.isoformat(),
             "connection_count": 15
         }
         
@@ -171,6 +171,8 @@ class TestObservableSerialization(unittest.TestCase):
         self.assertEqual(observable.role, "C2")
         self.assertEqual(observable.port, 80)
         self.assertEqual(observable.protocol, "tcp")
+        self.assertIsInstance(observable.first_seen, datetime)
+        self.assertEqual(observable.first_seen, self.test_datetime) 
         self.assertEqual(observable.connection_count, 15)
 
     def test_observable_to_dict_with_alias(self):
@@ -183,6 +185,8 @@ class TestObservableSerialization(unittest.TestCase):
         self.assertEqual(result["type"], "ipv4")
         self.assertEqual(result["value"], "192.168.1.1")
         self.assertEqual(result["port"], 80)
+        self.assertIsInstance(result["first_seen"], str)
+        self.assertEqual(result["first_seen"], "2025-01-15T10:30:00+00:00") 
 
     def test_observable_to_dict_with_field_names(self):
         """Test converting Observable to dictionary using field names."""

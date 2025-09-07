@@ -35,11 +35,19 @@ class Observable(BaseModel):
     first_seen: Optional[datetime] = Field(None, description="First observation time")
     connection_count: Optional[int] = Field(None, ge=0, description="Number of connections")
     
+    @field_serializer('first_seen', when_used='always')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """Always serialize datetime as ISO string"""
+        if value is None:
+            return None
+        return value.isoformat()
+
     @model_validator(mode='after')
     def ensure_id_generated(self):
         """Ensure ID is always generated after all fields are set"""
         if not self.id:
-            self.id = f"{self.observable_type}--{uuid.uuid4()}"
+            type_val = self.observable_type if isinstance(self.observable_type, str) else self.observable_type.value
+            self.id = f"{type_val}--{uuid.uuid4()}"
         return self
 
     @model_validator(mode='after')
@@ -87,6 +95,8 @@ class Submitter(BaseModel):
     organization_id: Optional[str] = Field(None, description="STIX identity for organization")
     tier: TierLevel = Field(..., description="Access tier level")
     organization_type: str = Field(default="cyber_partner", description="Organization type")
+
+    # Optional metadata
     sector: Optional[str] = Field(None, description="Industry sector") 
     region: Optional[str] = Field(None, description="Geographic region")
     submission_method: Optional[str] = Field(default="api", description="How submission was made")
@@ -142,6 +152,8 @@ class HitTarget(BaseModel):
     
     organization_id: Optional[str] = Field(None, description="STIX identity for affected organization") 
     sector: str = Field(..., min_length=1, description="Industry sector of target")
+
+    # Optional metadata 
     organization_type: Optional[str] = Field(default="customer", description="Organization type")
     organization_size: Optional[str] = Field(None, description="Organization size category")
     region: Optional[str] = Field(None, description="Geographic region")
@@ -236,7 +248,7 @@ class Impact(BaseModel):
 
 class Sighting(BaseModel):
     """
-    Core sighting information with automatic timestamp generation.
+    Core sighting information with observables and automatic timestamp generation.
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
@@ -244,43 +256,35 @@ class Sighting(BaseModel):
     )
     
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
-    observables: Observables = Field(..., description="Threat observables")
-
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When threat was observed")
+    observables: Observables = Field(..., description="Threat observables")
     confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
+    observation_count: int = Field(default=1, ge=1, description="Number of observations")
+
+    # Optional extended threat metadata
     severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
     first_observed: Optional[datetime] = Field(None, description="First observation time")
     last_observed: Optional[datetime] = Field(None, description="Last observation time") 
-    observation_count: int = Field(default=1, ge=1, description="Number of observations")
     sigma_detection: Optional[SigmaDetection] = Field(None, description="SIGMA detection data")
     threat_context: Optional[ThreatContext] = Field(None, description="Threat context")
     impact: Optional[Impact] = Field(None, description="Impact assessment")
 
-    @field_validator('sighting_id', mode='before')
-    @classmethod
-    def generate_sighting_id(cls, v):
-        """Generate STIX sighting ID if not provided"""
-        if v is None or v == "":
-            return f"sighting--{uuid.uuid4()}"
-        return v
-    
+
     @field_validator('timestamp', mode='before')
     @classmethod
-    def set_timestamp(cls, v):
-        """Set current timestamp if not provided - 'be forgiving'"""
+    def validate_timestamp(cls, v):
+        """Ensure observation times are logical and IDs are set"""
+        # Ensure required fields are set
         if v is None or v == "":
-            return datetime.utcnow()
-        
-        # Handle string timestamps
-        if isinstance(v, str):
-            try:
-                # Try parsing ISO format
-                return datetime.fromisoformat(v.replace('Z', '+00:00'))
-            except ValueError:
-                # Fallback to current time if parsing fails
-                return datetime.utcnow()
-        
+            return datetime.now(timezone.utc)
         return v
+
+    @field_serializer('timestamp', 'first_observed', 'last_observed', when_used='always')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """Always serialize datetime as ISO string"""
+        if value is None:
+            return None
+        return value.isoformat()
     
     @model_validator(mode='after')
     def validate_observation_times_and_ensure_ids(self):
@@ -289,17 +293,26 @@ class Sighting(BaseModel):
         if not self.sighting_id:
             self.sighting_id = f"sighting--{uuid.uuid4()}"
         if not self.timestamp:
-            self.timestamp = datetime.utcnow()
-            
+            self.timestamp = datetime.now(timezone.utc)
+
+        if self.timestamp.tzinfo is None:
+            self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
+        if self.first_observed and self.first_observed.tzinfo is None:
+            self.first_observed = self.first_observed.replace(tzinfo=timezone.utc)
+        if self.last_observed and self.last_observed.tzinfo is None:
+            self.last_observed = self.last_observed.replace(tzinfo=timezone.utc)
+
         # Validate observation times
-        if self.first_observed and self.last_observed and self.first_observed > self.last_observed:
-            raise ValueError("first_observed cannot be after last_observed")
+        if self.first_observed and self.last_observed:
+            if self.first_observed > self.last_observed:
+                raise ValueError("first_observed cannot be after last_observed")
+
+        # Ensure observation times don't conflict with main timestamp
+        if self.first_observed and self.timestamp:
+            if self.first_observed > self.timestamp:
+                raise ValueError("first_observed cannot be after main timestamp")
         return self
 
-    @field_serializer('timestamp', 'first_observed', 'last_observed')
-    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
-        return value.isoformat() + "Z" if value else None
-    
     @classmethod
     def create(cls, observables: Observables = None, confidence: int = 69, severity: SeverityLevel = None, observation_count: int = 1):
         """Factory method for creating sightings"""
@@ -314,25 +327,41 @@ class Sighting(BaseModel):
 class Submission(BaseModel):
     """
     Complete FRANK threat intelligence submission with comprehensive validation.
-    Implements both 'be forgiving' (input) and 'strong on return' (output) principles.
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
         use_enum_values=True
     )
-    
+    submission_id: Optional[str] = Field(None, description="Unique submission identifier")
+    format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Submission timestamp") 
+
+    # Optional metadata - be forgiving on input
+    submission_method: Optional[str] = Field(default="api", description="Submission method")
+    processing_notes: Optional[str] = Field(None, description="Processing notes")
+    tlp_level: Optional[str] = Field('GREEN', description="TLP classification")
+    confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
+    severity: Optional[str] = Field(None, description="Threat severity")
+
     submitter: Submitter = Field(..., description="Submitting organization")
     hit_target: Optional[HitTarget] = Field(None, description="Affected organization")  
     sighting: Sighting = Field(..., description="Sighting details")
     
-    # Optional metadata - be forgiving on input
-    format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
-    submission_method: Optional[str] = Field(default="api", description="Submission method")
-    processing_notes: Optional[str] = Field(None, description="Processing notes")
 
+    @field_serializer('timestamp', when_used='always')
+    def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
+        """Always serialize datetime as ISO string"""
+        if value is None:
+            return None
+        return value.isoformat()
+        
     @model_validator(mode='after')
     def validate_submission_integrity(self):
         """Cross-field validation for submission integrity"""
+        # Ensure organization ID is always set
+        if not self.submission_id:
+            self.submission_id = f"submission--{uuid.uuid4()}"
+        
         # Ensure submitter and target are different organizations
         if not self.hit_target:
             return self
@@ -345,23 +374,33 @@ class Submission(BaseModel):
         
         return self
     
-    def to_api_format(self) -> Dict[str, Any]:
-        """Convert to API format - 'strong on what you return'"""
-        submission = {
-            "submission": {
-                "submitter": self.submitter.model_dump(),
-                "sighting": self.sighting.model_dump(),
-                "observables": self.observables.model_dump()
-            }
-        }
-        if self.hit_target:
-            submission['hit_target'] = self.hit_target.model_dump()
-        return submission
+    # def to_api_format(self) -> Dict[str, Any]:
+    #     """Convert to API format - 'strong on what you return'"""
+    #     submission = {
+    #         "submission": {
+    #             "submitter": self.submitter.model_dump(
+    #                 exclude_none=True,
+    #                 by_alias=True
+    #             ),
+    #             "sighting": self.sighting.model_dump(
+    #                 exclude_none=True,
+    #                 by_alias=True
+    #             ),
+    #         }
+    #     }
+    #     if self.hit_target:
+    #         submission['hit_target'] = self.hit_target.model_dump()
+    #     return submission
 
     def to_yaml_safe(self) -> str:
         """Convert to YAML with proper formatting"""
         import yaml
-        data = self.to_api_format()
+        data = {
+            'submission': self.model_dump(
+                    exclude_none=True,
+                    by_alias=True
+                )
+        }
         return yaml.dump(data, default_flow_style=False, sort_keys=False)
 
     def extract_iocs(self) -> Dict[str, List[str]]:

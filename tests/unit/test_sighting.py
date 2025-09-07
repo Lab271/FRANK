@@ -1,7 +1,12 @@
 #!/usr/bin/env python3
 """
+FRANK Platform - Pydantic Models (v2 Compatible)
+
 Unit tests for FRANK Sighting model
 Tests the "be forgiving on what you receive, strong on what you return" principle
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
@@ -20,7 +25,7 @@ class TestSighting(unittest.TestCase):
 
     def setUp(self):
         """Set up test fixtures before each test method."""
-        self.base_timestamp = datetime(2024, 1, 15, 14, 30, 0)
+        self.base_timestamp = datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
         self.valid_sighting_data = {
             "confidence": 85,
             "severity": SeverityLevel.HIGH,
@@ -46,7 +51,6 @@ class TestSighting(unittest.TestCase):
         self.assertIsNotNone(sighting.sighting_id)
         self.assertTrue(sighting.sighting_id.startswith("sighting--"))
         self.assertIsInstance(uuid.UUID(sighting.sighting_id.split("--")[1]), uuid.UUID)
-        
         self.assertIsNotNone(sighting.timestamp)
         self.assertIsInstance(sighting.timestamp, datetime)
         
@@ -54,13 +58,16 @@ class TestSighting(unittest.TestCase):
         self.assertIsNone(sighting.first_observed)
         self.assertIsNone(sighting.last_observed)
         self.assertIsNone(sighting.severity)
+        self.assertIsNone(sighting.sigma_detection)
+        self.assertIsNone(sighting.threat_context)
+        self.assertIsNone(sighting.impact)
 
     def test_create_sighting_with_all_fields(self):
         """Test creating a sighting with all fields provided"""
         sighting_id = f"sighting--{uuid.uuid4()}"
-        timestamp = datetime(2024, 1, 15, 10, 30, 0)
-        first_observed = datetime(2024, 1, 15, 9, 0, 0)
-        last_observed = datetime(2024, 1, 15, 11, 0, 0)
+        timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
+        first_observed = datetime(2024, 1, 15, 9, 0, 0, tzinfo=timezone.utc)
+        last_observed = datetime(2024, 1, 15, 11, 0, 0, tzinfo=timezone.utc)
         
         sighting = Sighting(
             sighting_id=sighting_id,
@@ -83,7 +90,12 @@ class TestSighting(unittest.TestCase):
         self.assertEqual(sighting.severity, SeverityLevel.CRITICAL)
 
     def test_sighting_id_auto_generation(self):
-        """Test that sighting_id is auto-generated when not provided"""
+        """Test that sighting_id is auto-generated when not set"""
+        # Test not provided
+        sighting1 = Sighting(observables=Observables(network=self.valid_network_observables))
+        self.assertIsNotNone(sighting1.sighting_id)
+        self.assertTrue(sighting1.sighting_id.startswith("sighting--"))
+        
         # Test with None
         sighting1 = Sighting(sighting_id=None,
                 observables=Observables(network=self.valid_network_observables))
@@ -100,23 +112,16 @@ class TestSighting(unittest.TestCase):
         self.assertNotEqual(sighting1.sighting_id, sighting2.sighting_id)
 
     @patch('frank.core.models.datetime')
-    def test_timestamp_auto_generation_with_mock(self, mock_datetime_module):
-        """Test that timestamp is auto-generated when not provided (with proper mocking)"""
+    def test_timestamp_auto_generation_with_mock(self, mock_datetime):
+        """Test that timestamp is auto-generated when set to None (with proper mocking)"""
         # Mock the current time
-        mock_now = datetime(2024, 2, 1, 12, 0, 0)
+        mock_now = datetime(2024, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
+        mock_datetime.now.return_value = mock_now
         
-        # Create a mock datetime class that behaves like the real one
-        mock_datetime_class = MagicMock()
-        mock_datetime_class.utcnow.return_value = mock_now
-        
-        # Make the datetime constructor work normally
-        def datetime_constructor(*args, **kwargs):
-            return datetime(*args, **kwargs)
-        mock_datetime_class.side_effect = datetime_constructor
-        
-        # Replace the datetime class in the module
-        mock_datetime_module.utcnow = mock_datetime_class.utcnow
-        
+        # Test with not provided
+        sighting1 = Sighting(observables=Observables(network=self.valid_network_observables))
+        self.assertEqual(sighting1.timestamp, mock_now)
+
         # Test with None
         sighting1 = Sighting(timestamp=None,
                 observables=Observables(network=self.valid_network_observables))
@@ -130,15 +135,15 @@ class TestSighting(unittest.TestCase):
     def test_timestamp_auto_generation_simple(self):
         """Test timestamp auto-generation without mocking (simpler approach)"""
         # Capture time before and after to verify it's recent
-        before = datetime.utcnow()
+        before = datetime.now(timezone.utc)
 
         sighting1 = Sighting(timestamp=None,
                 observables=Observables(network=self.valid_network_observables))
         sighting2 = Sighting(timestamp="",
                 observables=Observables(network=self.valid_network_observables))
 
-        after = datetime.utcnow()
-        
+        after = datetime.now(timezone.utc)
+
         # Verify timestamps are recent (between before and after)
         self.assertGreaterEqual(sighting1.timestamp, before)
         self.assertLessEqual(sighting1.timestamp, after)
@@ -168,7 +173,7 @@ class TestSighting(unittest.TestCase):
     def test_timestamp_invalid_string_fallback(self):
         """Test that invalid timestamp strings fall back to current time"""
         # Instead of mocking, test that we get a reasonable timestamp (recent)
-        before_test = datetime.utcnow()
+        before_test = datetime.now(timezone.utc)
         
         invalid_timestamps = [
             "invalid-date",
@@ -179,14 +184,16 @@ class TestSighting(unittest.TestCase):
         
         for invalid_ts in invalid_timestamps:
             with self.subTest(invalid_timestamp=invalid_ts):
-                sighting = Sighting(timestamp=invalid_ts,
-                                    observables=Observables(network=self.valid_network_observables))
-                after_test = datetime.utcnow()
+                with self.assertRaises(ValidationError) as cm:
+                    sighting = Sighting(timestamp=invalid_ts,
+                                        observables=Observables(network=self.valid_network_observables))
+ 
+                    after_test = datetime.now(timezone.utc)
                 
-                # Verify the timestamp is between before and after the test
-                # (i.e., it was set to "now" during the test)
-                self.assertGreaterEqual(sighting.timestamp, before_test)
-                self.assertLessEqual(sighting.timestamp, after_test)
+                    # Verify the timestamp is between before and after the test
+                    # (i.e., it was set to "now" during the test)
+                    self.assertGreaterEqual(sighting.timestamp, before_test)
+                    self.assertLessEqual(sighting.timestamp, after_test)
 
     def test_confidence_validation(self):
         """Test confidence score validation"""
@@ -259,9 +266,9 @@ class TestSighting(unittest.TestCase):
     def test_observation_times_validation(self):
         """Test validation of first_observed and last_observed times"""
         # Valid case: first_observed before last_observed
-        first = datetime(2024, 1, 15, 9, 0, 0)
-        last = datetime(2024, 1, 15, 10, 0, 0)
-        
+        first = datetime(2024, 1, 15, 9, 0, 0, tzinfo=timezone.utc)
+        last = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
+
         sighting = Sighting(
             first_observed=first,
             last_observed=last,
@@ -273,9 +280,9 @@ class TestSighting(unittest.TestCase):
 
     def test_observation_times_invalid_order(self):
         """Test that first_observed after last_observed raises error"""
-        first = datetime(2024, 1, 15, 10, 0, 0)  # After last
-        last = datetime(2024, 1, 15, 9, 0, 0)    # Before first
-        
+        first = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)  # After last
+        last = datetime(2024, 1, 15, 9, 0, 0, tzinfo=timezone.utc)    # Before first
+
         with self.assertRaises(ValidationError) as context:
             Sighting(
                 first_observed=first,
@@ -287,7 +294,7 @@ class TestSighting(unittest.TestCase):
 
     def test_observation_times_same_time(self):
         """Test that same first_observed and last_observed is allowed"""
-        same_time = datetime(2024, 1, 15, 10, 0, 0)
+        same_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         
         sighting = Sighting(
             first_observed=same_time,
@@ -307,7 +314,7 @@ class TestSighting(unittest.TestCase):
         self.assertIsNone(sighting1.last_observed)
         
         # One None
-        time_val = datetime(2024, 1, 15, 10, 0, 0)
+        time_val = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         sighting2 = Sighting(first_observed=time_val, last_observed=None,
                               observables=Observables(network=self.valid_network_observables))
         self.assertEqual(sighting2.first_observed, time_val)
@@ -342,7 +349,7 @@ class TestSighting(unittest.TestCase):
 
     def test_model_dump(self):
         """Test serialization to dictionary"""
-        timestamp = datetime(2024, 1, 15, 14, 30, 0)
+        timestamp = datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
         sighting = Sighting(
             timestamp=timestamp,
             confidence=85,
@@ -388,7 +395,7 @@ class TestSighting(unittest.TestCase):
 
     def test_json_serialization_with_datetime(self):
         """Test JSON serialization with datetime handling"""
-        timestamp = datetime(2024, 1, 15, 14, 30, 0)
+        timestamp = datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
         sighting = Sighting(timestamp=timestamp, confidence=85,
                             observables=Observables(network=self.valid_network_observables))
 
@@ -417,8 +424,8 @@ class TestSighting(unittest.TestCase):
     def test_sighting_equality(self):
         """Test sighting equality comparison"""
         sighting_id = f"sighting--{uuid.uuid4()}"
-        timestamp = datetime(2024, 1, 15, 14, 30, 0)
-        
+        timestamp = datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
+
         sighting1 = Sighting(
             sighting_id=sighting_id,
             timestamp=timestamp,
@@ -474,9 +481,9 @@ class TestSighting(unittest.TestCase):
         self.assertEqual(sighting_large.observation_count, 999999)
         
         # Very close timestamps (microsecond difference)
-        base_time = datetime(2024, 1, 15, 10, 0, 0, 0)
-        close_time = datetime(2024, 1, 15, 10, 0, 0, 1)  # 1 microsecond later
-        
+        base_time = datetime(2024, 1, 15, 10, 0, 0, 0, tzinfo=timezone.utc)
+        close_time = datetime(2024, 1, 15, 10, 0, 0, 1, tzinfo=timezone.utc)  # 1 microsecond later
+
         sighting = Sighting(
             first_observed=base_time,
             last_observed=close_time,

@@ -1,13 +1,16 @@
 #!/usr/bin/env python3
 """
+FRANK Platform - Pydantic Models (v2 Compatible)
+
 Unit tests for FRANK Submission (FRANKSubmission) class
 Tests the "be forgiving on what you receive, strong on what you return" principle
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
 import uuid
-from datetime import datetime
-import json
 
 from frank import __version__
 from frank.core.enum import TierLevel, ObservableType, SeverityLevel
@@ -76,9 +79,9 @@ class TestSubmission(unittest.TestCase):
         # Verify observables properties
         self.assertEqual(len(submission.sighting.observables.network), 2)
         self.assertIsInstance(submission.sighting.observables.network[0], Observable)
-        self.assertEqual(submission.sighting.observables.network[0].type, ObservableType.IPV4)
+        self.assertEqual(submission.sighting.observables.network[0].observable_type, ObservableType.IPV4)
         self.assertEqual(submission.sighting.observables.network[0].value, "192.168.1.100")
-        self.assertEqual(submission.sighting.observables.network[1].type, ObservableType.DOMAIN)
+        self.assertEqual(submission.sighting.observables.network[1].observable_type, ObservableType.DOMAIN)
         self.assertEqual(submission.sighting.observables.network[1].value, "malicious.example.com")
         
         # Verify default values
@@ -132,7 +135,7 @@ class TestSubmission(unittest.TestCase):
         # All network observables should have c2 role
         for obs in submission.sighting.observables.network:
             self.assertEqual(obs.role, "c2")
-            self.assertEqual(obs.type, ObservableType.IPV4)
+            self.assertEqual(obs.observable_type, ObservableType.IPV4)
         
         # Test with custom parameters
         custom_submission = Submission.create_minimal(
