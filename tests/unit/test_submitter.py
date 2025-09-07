@@ -38,7 +38,6 @@ class TestSubmitter(unittest.TestCase):
         # Check that required fields are set
         self.assertEqual(submitter.tier, TierLevel.PARTNER)
         self.assertEqual(submitter.organization_type, "cyber_partner")  # default
-        self.assertEqual(submitter.submission_method, "api")  # default
         
         # Check that organization_id is auto-generated
         self.assertIsNotNone(submitter.organization_id)
@@ -54,7 +53,6 @@ class TestSubmitter(unittest.TestCase):
             organization_type="mssp",
             sector="technology",
             region="north_america",
-            submission_method="automated_feed",
             client_count=150
         )
         
@@ -63,7 +61,6 @@ class TestSubmitter(unittest.TestCase):
         self.assertEqual(submitter.organization_type, "mssp")
         self.assertEqual(submitter.sector, "technology")
         self.assertEqual(submitter.region, "north_america")
-        self.assertEqual(submitter.submission_method, "automated_feed")
         self.assertEqual(submitter.client_count, 150)
 
     def test_organization_id_auto_generation(self):
@@ -186,7 +183,6 @@ class TestSubmitter(unittest.TestCase):
         self.assertIn("organization_type", data)
         self.assertIn("sector", data)
         self.assertIn("region", data)
-        self.assertIn("submission_method", data)
         self.assertIn("client_count", data)
         
         # Check values
@@ -366,7 +362,6 @@ class TestSubmitterSerialization(unittest.TestCase):
             "organization_type": "cyber_partner",
             "sector": "financial",
             "region": "north_america",
-            "submission_method": "api",
             "client_count": 150
         }
         
@@ -388,7 +383,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         self.assertEqual(submitter.tier, TierLevel.PARTNER)
         self.assertEqual(submitter.organization_type, "cyber_partner")  # Default value
-        self.assertEqual(submitter.submission_method, "api")  # Default value
         self.assertIsNotNone(submitter.organization_id)
         self.assertTrue(submitter.organization_id.startswith("identity--"))
 
@@ -401,7 +395,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         self.assertEqual(submitter.organization_type, "cyber_partner")
         self.assertEqual(submitter.sector, "financial")
         self.assertEqual(submitter.region, "north_america")
-        self.assertEqual(submitter.submission_method, "api")
         self.assertEqual(submitter.client_count, 150)
 
     def test_submitter_to_dict(self):
@@ -424,7 +417,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         self.assertEqual(result_dict["tier"], self.minimal_data["tier"])
         self.assertIn("organization_id", result_dict)
         self.assertEqual(result_dict["organization_type"], "cyber_partner")
-        self.assertEqual(result_dict["submission_method"], "api")
 
     def test_dict_roundtrip_full(self):
         """Test dictionary roundtrip with full data."""
@@ -611,12 +603,10 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Check defaults are set
         self.assertEqual(submitter.organization_type, "cyber_partner")
-        self.assertEqual(submitter.submission_method, "api")
         
         # Check they appear in serialization
         data = submitter.model_dump(exclude_none=True)
         self.assertEqual(data["organization_type"], "cyber_partner")
-        self.assertEqual(data["submission_method"], "api")
 
     def test_extra_fields_ignored(self):
         """Test that extra fields are ignored due to 'extra=ignore' config."""
@@ -671,7 +661,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         # Required and default fields should be present
         self.assertIn("tier", result)
         self.assertIn("organization_type", result)
-        self.assertIn("submission_method", result)
 
     def test_multiple_format_consistency(self):
         """Test that dict, JSON, and YAML produce consistent results."""
@@ -713,7 +702,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         self.assertEqual(submitter.tier, roundtrip.tier)
         self.assertEqual(submitter.organization_type, roundtrip.organization_type)
-        self.assertEqual(submitter.submission_method, roundtrip.submission_method)
 
     def test_enum_serialization_consistency(self):
         """Test that enum values are consistently serialized as strings."""
@@ -747,7 +735,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Add additional data
         submitter.client_count = 500
-        submitter.submission_method = "manual"
         
         # Test through all formats
         formats_data = {}
@@ -770,7 +757,6 @@ class TestSubmitterSerialization(unittest.TestCase):
                 self.assertEqual(reconstructed.sector, "financial")  # Normalized
                 self.assertEqual(reconstructed.region, "north_america")
                 self.assertEqual(reconstructed.client_count, 500)
-                self.assertEqual(reconstructed.submission_method, "manual")
 
 
 if __name__ == "__main__":

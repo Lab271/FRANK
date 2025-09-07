@@ -13,7 +13,6 @@ import logging
 from typing import Dict, Any, List
 
 
-from frank.core.submission import FRANKValidator, FRANKSubmission
 from frank.core.exceptions import FRANKValidationError
 from frank.db.base import BaseFRANKDatabase
 from frank.db.sqlite import SQLiteFRANKDatabase

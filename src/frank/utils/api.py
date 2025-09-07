@@ -35,7 +35,6 @@ class MinimalSubmissionRequest(BaseModel):
     threat_indicators: List[str] = Field(..., min_length=1)
     confidence: Optional[int] = Field(69, ge=0, le=100)
 
-
 class SubmissionData(BaseModel):
     submitter: Submitter = Field(..., description="Submitting organization data")
     hit_target: Optional[Dict[str, Any]] = Field(None, description="Target organization data")

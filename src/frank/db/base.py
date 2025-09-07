@@ -14,6 +14,8 @@ import hashlib
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
+from frank.core.models import Submission, Observable
+
 class BaseFRANKDatabase(ABC):
     """
     Abstract base class defining the interface for FRANK database operations.
@@ -30,18 +32,18 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def store_submission(self, submission: Dict[str, Any]) -> bool:
+    def store_submission(self, submission: Submission) -> bool:
         """Store a complete submission in the database."""
         pass
     
     @abstractmethod
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Dict[str, Any]]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
         """Retrieve a specific submission with access level filtering."""
         pass
     
     @abstractmethod
     def query_observables(self, org_id: str, observable_type: str = None, 
-                         limit: int = 100, access_level: str = 'contributor') -> List[Dict[str, Any]]:
+                         limit: int = 100, access_level: str = 'contributor') -> List[Observable]:
         """Query observables with access level filtering."""
         pass
     

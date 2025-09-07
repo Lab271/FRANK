@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Pydantic Models (v2 Compatible)
+
 Replaces dataclass implementation with robust validation for cybersecurity data.
 Implements "be forgiving on what you receive, strong on what you return" principle.
 
@@ -99,7 +100,6 @@ class Submitter(BaseModel):
     # Optional metadata
     sector: Optional[str] = Field(None, description="Industry sector") 
     region: Optional[str] = Field(None, description="Geographic region")
-    submission_method: Optional[str] = Field(default="api", description="How submission was made")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
     
     @model_validator(mode='after') 
@@ -211,12 +211,17 @@ class Observables(BaseModel):
     """
     model_config = ConfigDict(
         extra="ignore",  # Be forgiving on input
-        use_enum_values=True
+        use_enum_values=True,
     )
-    
-    network: List[Observable] = Field(default_factory=list, description="Network observables")
-    file: Optional[List[Dict]] = Field(default_factory=list, description="File observables")
-    process: Optional[List[Dict]] = Field(default_factory=list, description="Process observables")
+
+    network: Optional[List[Observable]] = Field(default_factory=list, description="Network observables")
+    file: Optional[List[Observable]] = Field(default_factory=list, description="File observables")
+    process: Optional[List[Observable]] = Field(default_factory=list, description="Process observables")
+
+    # @field_serializer('network', 'file', 'process', when_used='always')
+    # def serialize_lists(self, value: List[Any]) -> List[Any] | None:
+    #     """Return None for empty lists to exclude them"""
+    #     return value if value and value != [] else None
 
 # Pydantic models for request/response validation
 class SigmaDetection(BaseModel):
@@ -233,6 +238,10 @@ class Campaign(BaseModel):
     name: Optional[str] = Field(None, description="Campaign name")
     attribution: Optional[str] = Field(None, description="Attributed threat actor")
     target_sectors: Optional[List[str]] = Field(None, description="Targeted sectors")
+    attack_vector: Optional[str] = Field(None, description="Primary attack vector")
+    payload_type: Optional[str] = Field(None, description="Type of payload used")
+    campaign_start: Optional[datetime] = Field(None, description="Campaign start time")
+    estimated_victims: Optional[int] = Field(None, description="Estimated number of victims")   
     confidence: Optional[int] = Field(None, description="Attribution confidence")
 
 class ThreatContext(BaseModel):
@@ -257,9 +266,9 @@ class Sighting(BaseModel):
     
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When threat was observed")
-    observables: Observables = Field(..., description="Threat observables")
     confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
     observation_count: int = Field(default=1, ge=1, description="Number of observations")
+    observables: Optional[Observables] = Field(None, description="Threat observables")
 
     # Optional extended threat metadata
     severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
@@ -343,7 +352,7 @@ class Submission(BaseModel):
     confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
     severity: Optional[str] = Field(None, description="Threat severity")
 
-    submitter: Submitter = Field(..., description="Submitting organization")
+    submitter: Optional[Submitter] = Field(None, description="Submitting organization")
     hit_target: Optional[HitTarget] = Field(None, description="Affected organization")  
     sighting: Sighting = Field(..., description="Sighting details")
     

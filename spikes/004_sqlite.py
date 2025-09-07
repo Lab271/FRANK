@@ -5,7 +5,11 @@ Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
 This script demonstrates generating and parsing minimal threat intelligence submissions
 with SQLite database storage following the "be forgiving on what you receive and 
-strong on what you return" principle.
+strong on what you return" principle and dedicated models not from the system.
+Created before included in the overall FRANK library for clarity.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import yaml
@@ -14,7 +18,7 @@ import uuid
 import sqlite3
 import hashlib
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 import logging
 from pathlib import Path
 
@@ -897,7 +901,7 @@ def run_database_demo():
     print("FRANK Platform - Database Demonstration")
     print("="*70)
     
-    frank = FRANKSubmission("frank_demo.db")
+    frank = FRANKSubmission("/tmp/frank_demo.db")
     
     # Scenario 1: Multiple organizations reporting the same threat
     print("\n📊 Scenario 1: Collaborative Threat Detection")
@@ -996,7 +1000,7 @@ def run_database_demo():
     print(f"  MSP Report: {'✓' if stored else '✗'} High-severity threat reported for retail customer")
     
     # Query recent high-severity threats
-    with sqlite3.connect("frank_demo.db") as conn:
+    with sqlite3.connect("/tmp/frank_demo.db") as conn:
         conn.row_factory = sqlite3.Row
         cursor = conn.execute("""
             SELECT s.severity, s.confidence, o.observable_type, COUNT(*) as count
@@ -1053,7 +1057,7 @@ def run_database_demo():
             print(f"    {obs_type}: {count}")
     
     print("\n✅ Database demonstration complete!")
-    print(f"📁 Demo database saved as: frank_demo.db")
+    print(f"📁 Demo database saved as: /tmp/frank_demo.db")
     
     return frank
 
@@ -1086,7 +1090,7 @@ if __name__ == "__main__":
     
     print(f"\n🎯 FRANK local development environment ready!")
     print(f"📊 Test database: {results['database_path']}")
-    print(f"📊 Demo database: frank_demo.db")
+    print(f"📊 Demo database: /tmp/frank_demo.db")
     print(f"\nNext development stages:")
     print(f"  Stage 3: Add REST API endpoints (Flask/FastAPI)")
     print(f"  Stage 4: Implement contribution scoring algorithms")
@@ -1096,6 +1100,6 @@ if __name__ == "__main__":
     
     # Provide database inspection commands
     print(f"\n🔍 Database inspection commands:")
-    print(f"  sqlite3 frank_demo.db '.tables'")
-    print(f"  sqlite3 frank_demo.db 'SELECT * FROM observable_statistics;'")
-    print(f"  sqlite3 frank_demo.db 'SELECT COUNT(*) FROM submissions;'")
+    print(f"  sqlite3 /tmp/frank_demo.db '.tables'")
+    print(f"  sqlite3 /tmp/frank_demo.db 'SELECT * FROM observable_statistics;'")
+    print(f"  sqlite3 /tmp/frank_demo.db 'SELECT COUNT(*) FROM submissions;'")

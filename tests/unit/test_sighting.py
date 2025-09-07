@@ -36,6 +36,16 @@ class TestSighting(unittest.TestCase):
             Observable.create_domain("malicious.example.com", role="phishing")
         ]
 
+    def test_create_public_sighting(self):
+        """Test creating a public sighting with required fields"""
+        sighting = Sighting(**self.valid_sighting_data)
+
+        self.assertIsInstance(sighting, Sighting)
+        self.assertEqual(sighting.confidence, 85)
+        self.assertEqual(sighting.severity, SeverityLevel.HIGH)
+        self.assertEqual(sighting.observation_count, 3)
+        self.assertIsNone(sighting.observables)
+
     def test_create_minimal_sighting(self):
         """Test creating a sighting with minimal required fields"""
         sighting = Sighting(observables=Observables(network=self.valid_network_observables))

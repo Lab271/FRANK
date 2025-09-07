@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Pydantic Models (v2 Compatible)
+
 These are all enum's for all categories used in the models.
 
 Copyright (c) 2025 Schuberg Philis B.V.
