@@ -2,169 +2,239 @@
 """
 FRANK Platform - Sighting Parser and Generator
 Handles parsing and generation of FRANK sighting submissions in YAML format.
+Now make this Pydantic
 """
 
 import yaml
 import uuid
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
-from datetime import datetime
+import logging
+from datetime import datetime, timezone
+from typing import Dict, Any, List, Optional, Union
+
+from pydantic import BaseModel, Field, validator, field_validator, ConfigDict, model_validator
 
 
-@dataclass
-class NetworkObservable:
-    """Represents a network observable in a FRANK sighting."""
-    id: str
-    type: str
-    value: str
-    role: Optional[str] = None
-    port: Optional[int] = None
-    protocol: Optional[str] = None
-    first_seen: Optional[str] = None
-    connection_count: Optional[int] = None
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+logger = logging.getLogger(__name__)
+
+
+# ================================
+# PYDANTIC MODELS (Based on your existing SQLite models)
+# ================================
+
+class Observable(BaseModel):
+    """Observable model based on examples/minimal_submission.yaml"""
+    id: str = Field(default_factory=lambda: f"observable--{uuid.uuid4()}")
+    type: str = Field(..., description="Observable type")
+    value: str = Field(..., description="Observable value")
+    role: Optional[str] = Field(None, description="Role in attack (C2, exfiltration, etc)")
+    port: Optional[int] = Field(None, ge=1, le=65535, description="Network port")
+
+    @field_validator('type', mode='before')
+    def validate_type(cls, v):
+        allowed_types = ['ipv4', 'ipv6', 'domain', 'url', 'file_hash', 'email', 'registry_key']
+        if v not in allowed_types:
+            raise ValueError(f'Observable type must be one of: {allowed_types}')
+        return v
+
+    @model_validator(mode='after')
+    def ensure_id_generated(self):
+        """Ensure ID is always generated after all fields are set"""
+        if not self.id:
+            self.id = f"{self.type}--{uuid.uuid4()}"
+        return self
 
     @classmethod
-    def create_ipv4(cls, value: str, role: str = None, port: int = None) -> 'NetworkObservable':
-        """Create an IPv4 observable with STIX-formatted ID."""
+    def create_ipv4(cls, value: str, role: str = None, port: int = None):
+        """Factory method for IPv4 observables"""
         return cls(
-            id=f"ipv4-addr-{uuid.uuid4()}",
-            type="ipv4",
+            type='ipv4',
             value=value,
             role=role,
             port=port
         )
-
-    @classmethod
-    def create_domain(cls, value: str, role: str = None) -> 'NetworkObservable':
-        """Create a domain observable with STIX-formatted ID."""
+    
+    @classmethod 
+    def create_domain(cls, value: str, role: str = None):
+        """Factory method for domain observables"""
         return cls(
-            id=f"domain-name-{uuid.uuid4()}",
-            type="domain",
+            type='domain',
             value=value,
             role=role
         )
 
+class Observables(BaseModel):
+    """Container for all observables with validation."""
+    network: List[Observable] = Field(default_factory=list, description="Network observables")
 
-@dataclass
-class Submitter:
-    """Represents the submitting organization (cyber partner)."""
-    organization_id: str
-    tier: str
-    organization_type: Optional[str] = "cyber_partner"
-    sector: Optional[str] = None
-    region: Optional[str] = None
-    submission_method: Optional[str] = "api"
-    client_count: Optional[int] = None
+
+class Sighting(BaseModel):
+    """Core sighting information with automatic timestamp generation."""
+    sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
+    observables: Observables = Field(..., description="Threat observables")
+
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Sighting timestamp")
+    confidence: int = Field(..., ge=0, le=100, description="Confidence level (0-100)")
+    severity: Optional[str] = Field(None, description="Threat severity")
+    observation_count: Optional[int] = Field(1, ge=1, description="Number of observations")
+    first_observed: Optional[datetime] = Field(None, description="First observed time")
+    last_observed: Optional[datetime] = Field(None, description="Last observed time")
+
+    @model_validator(mode='after')
+    def validate_observation_times_and_ensure_ids(self):
+        """Ensure observation times are logical and IDs are set"""
+        # Ensure required fields are set
+        if not self.sighting_id:
+            self.sighting_id = f"sighting--{uuid.uuid4()}"
+        if not self.timestamp:
+            self.timestamp = datetime.utcnow()
+            
+        # Validate observation times
+        if self.first_observed and self.last_observed and self.first_observed > self.last_observed:
+            raise ValueError("first_observed cannot be after last_observed")
+        return self
+    
+    @classmethod
+    def create(cls, observables: Observables = None, confidence: int = 69, severity: str = None, observation_count: int = 1):
+        """Factory method for creating sightings"""
+        return cls(
+            confidence=confidence,
+            observables=observables,
+            severity=severity,
+            observation_count=observation_count
+        )
+
+class Submitter(BaseModel):
+    """Submitting organization with validation and auto-generation."""
+    organization_id: Optional[str] = Field(None, description="STIX identity for organization")
+    organization_type: str = Field(default="cyber_partner", description="Organization type")
+    tier: Optional[str] = Field(None, description="Organization tier")
+    sector: Optional[str] = Field(None, description="Industry sector")
+    region: Optional[str] = Field(None, description="Geographic region")    
+
+    @field_validator('tier', mode='before')
+    def validate_type(cls, v):
+        allowed_types = ['partner', 'contributor', 'observer', 'public', 'core_member']
+        if v not in allowed_types:
+            raise ValueError(f'Tier type must be one of: {allowed_types}')
+        return v
+    
+    @model_validator(mode='after') 
+    def ensure_org_id(self):
+        """Ensure organization ID is always set"""
+        if not self.organization_id:
+            self.organization_id = f"identity--{uuid.uuid4()}"
+        return self
 
     @classmethod
-    def create(cls, tier: str, sector: str = None, region: str = None) -> 'Submitter':
-        """Create a submitter with auto-generated STIX ID."""
+    def create(cls, tier: str, organization_type: str = "cyber_partner", sector: str = None, region: str = None):
+        """Factory method for creating submitters"""
         return cls(
-            organization_id=f"identity-{uuid.uuid4()}",
             tier=tier,
+            organization_type=organization_type,
             sector=sector,
             region=region
         )
 
+class HitTarget(BaseModel):
+    """Affected organization with privacy controls. """   
+    organization_id: Optional[str] = Field(None, description="STIX identity for affected organization") 
+    sector: str = Field(..., min_length=1, description="Industry sector of target")
+    organization_type: Optional[str] = Field(default="customer", description="Organization type")
+    organization_size: Optional[str] = Field(None, description="Organization size category")
+    region: Optional[str] = Field(None, description="Geographic region")
+    anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
+    
+    @model_validator(mode='after') 
+    def ensure_org_id(self):
+        """Ensure organization ID is always set"""
+        if not self.organization_id:
+            self.organization_id = f"identity--{uuid.uuid4()}"
+        return self
 
-@dataclass
-class HitTarget:
-    """Represents the affected customer organization."""
-    organization_id: str
-    sector: str
-    organization_type: Optional[str] = "customer"
-    organization_size: Optional[str] = None
-    region: Optional[str] = None
-    anonymization_level: Optional[str] = "high"
+    @field_validator('organization_size')
+    @classmethod
+    def normalize_org_size(cls, v):
+        """Normalize organization size categories"""
+        if v is None:
+            return v
+            
+        size_mappings = {
+            'small': 'small',
+            'sme': 'small',
+            'startup': 'small',
+            'medium': 'medium',
+            'mid': 'medium',
+            'large': 'large',
+            'enterprise': 'large',
+            'multinational': 'large'
+        }
+        
+        normalized = v.lower().strip()
+        return size_mappings.get(normalized, v)
 
     @classmethod
-    def create(cls, sector: str, organization_size: str = None, region: str = None) -> 'HitTarget':
-        """Create a hit target with auto-generated STIX ID."""
+    def create(cls, sector: str, organization_size: str = None, region: str = None):
+        """Factory method for creating hit targets"""
         return cls(
-            organization_id=f"identity-{uuid.uuid4()}",
             sector=sector,
             organization_size=organization_size,
             region=region
         )
 
+class Submission(BaseModel):
+    """Submission model based on your existing implementation"""
+    submission_id: Optional[str] = Field(None, description="Unique submission identifier")
+    confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
+    severity: Optional[str] = Field(None, description="Threat severity")
+    submission_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    format_version: str = Field(default="1.0", description="Submission format version")
+    tlp_level: Optional[str] = Field('GREEN', description="TLP classification")
 
-@dataclass
-class Sighting:
-    """Represents the core sighting information."""
-    sighting_id: str
-    timestamp: str
-    confidence: int
-    first_observed: Optional[str] = None
-    last_observed: Optional[str] = None
-    observation_count: Optional[int] = 1
-    severity: Optional[str] = None
+    submitter: Submitter = Field(..., description="Submitting organization")
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organization")  
+    sighting: Sighting = Field(..., description="Sighting details")
 
-    @classmethod
-    def create(cls, confidence: int, severity: str = None, observation_count: int = 1) -> 'Sighting':
-        """Create a sighting with auto-generated STIX ID and current timestamp."""
-        return cls(
-            sighting_id=f"sighting-{uuid.uuid4()}",
-            timestamp=datetime.utcnow().isoformat() + "Z",
-            confidence=confidence,
-            observation_count=observation_count,
-            severity=severity
-        )
+    
+    @model_validator(mode='after') 
+    def ensure_org_id(self):
+        """Ensure organization ID is always set"""
+        if not self.submission_id:
+            self.submission_id = f"submission--{uuid.uuid4()}"
+        return self
 
+    @field_validator('severity', mode='before')
+    def validate_severity(cls, v):
+        if v is not None:
+            allowed = ['low', 'medium', 'high', 'critical']
+            if v not in allowed:
+                raise ValueError(f'Severity must be one of: {allowed}')
+        return v
 
-@dataclass
-class FrankSubmission:
-    """Complete FRANK sighting submission."""
-    submitter: Submitter
-    hit_target: HitTarget
-    sighting: Sighting
-    observables: Dict[str, List[NetworkObservable]]
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert submission to dictionary format."""
-        return {
-            "submission": {
-                "submitter": asdict(self.submitter),
-                "hit_target": asdict(self.hit_target),
-                "sighting": asdict(self.sighting),
-                "observables": {
-                    "network": [asdict(obs) for obs in self.observables.get("network", [])]
-                }
-            }
-        }
+    @field_validator('tlp_level', mode='before')
+    def validate_tlp(cls, v):
+        if v is not None:
+            allowed = ['RED', 'AMBER+', 'AMBER', 'GREEN', 'CLEAR']
+            if v not in allowed:
+                raise ValueError(f'TLP level must be one of: {allowed}')
+        return v
 
     def to_yaml(self) -> str:
-        """Convert submission to YAML string."""
-        data = self.to_dict()
-        return yaml.dump(data, default_flow_style=False, sort_keys=False)
-
-    @classmethod
-    def from_dict(cls, data: Dict[str, Any]) -> 'FrankSubmission':
-        """Create FrankSubmission from dictionary."""
-        submission_data = data["submission"]
-        
-        submitter = Submitter(**submission_data["submitter"])
-        hit_target = HitTarget(**submission_data["hit_target"])
-        sighting = Sighting(**submission_data["sighting"])
-        
-        observables = {"network": []}
-        if "observables" in submission_data and "network" in submission_data["observables"]:
-            observables["network"] = [
-                NetworkObservable(**obs) for obs in submission_data["observables"]["network"]
-            ]
-        
-        return cls(
-            submitter=submitter,
-            hit_target=hit_target,
-            sighting=sighting,
-            observables=observables
+        """Serialize submission to YAML format."""
+        return yaml.dump(
+            {'submission': self.model_dump(exclude_none=True)},
+            default_flow_style=False,
+            sort_keys=False
         )
 
     @classmethod
-    def from_yaml(cls, yaml_string: str) -> 'FrankSubmission':
-        """Create FrankSubmission from YAML string."""
+    def from_yaml(cls, yaml_string: str) -> 'Submission':
+        """Deserialize submission from YAML format."""
         data = yaml.safe_load(yaml_string)
-        return cls.from_dict(data)
-
+        if 'submission' not in data:
+            raise ValueError("YAML does not contain 'submission' key")
+        return cls.model_validate(data['submission'])   
 
 class FrankSightingGenerator:
     """Generator for creating FRANK sightings programmatically."""
@@ -172,153 +242,156 @@ class FrankSightingGenerator:
     @staticmethod
     def create_minimal_sighting(
         submitter_tier: str,
-        target_sector: str,
         confidence: int,
         ip_address: str,
+        target_sector: str = None,
         domain: str = None
-    ) -> FrankSubmission:
+    ) -> Submission:
         """Create a minimal FRANK sighting submission."""
         
         submitter = Submitter.create(tier=submitter_tier)
-        hit_target = HitTarget.create(sector=target_sector)
-        sighting = Sighting.create(confidence=confidence)
-        
-        network_observables = [NetworkObservable.create_ipv4(ip_address)]
+        if target_sector:
+            hit_target = HitTarget.create(sector=target_sector)
+        else:
+            hit_target = None
+
+        network_observables = [Observable.create_ipv4(ip_address)]
         if domain:
-            network_observables.append(NetworkObservable.create_domain(domain))
+            network_observables.append(Observable.create_domain(domain))
+
+        sighting = Sighting.create(confidence=confidence, observables=Observables(network=network_observables))
         
-        return FrankSubmission(
+        return Submission(
             submitter=submitter,
             hit_target=hit_target,
-            sighting=sighting,
-            observables={"network": network_observables}
+            sighting=sighting
         )
 
-    @staticmethod
-    def create_banking_threat_sighting(
-        submitter_tier: str = "partner",
-        confidence: int = 87
-    ) -> FrankSubmission:
-        """Create a sample banking threat sighting."""
+    # @staticmethod
+    # def create_banking_threat_sighting(
+    #     submitter_tier: str = "partner",
+    #     confidence: int = 87
+    # ) -> FrankSubmission:
+    #     """Create a sample banking threat sighting."""
         
-        submitter = Submitter.create(
-            tier=submitter_tier,
-            sector="cybersecurity_services",
-            region="nl_north_holland"
-        )
+    #     submitter = Submitter.create(
+    #         tier=submitter_tier,
+    #         sector="cybersecurity_services",
+    #         region="nl_north_holland"
+    #     )
         
-        hit_target = HitTarget.create(
-            sector="financial_services",
-            organization_size="medium",
-            region="nl_north_holland"
-        )
+    #     hit_target = HitTarget.create(
+    #         sector="financial_services",
+    #         organization_size="medium",
+    #         region="nl_north_holland"
+    #     )
         
-        sighting = Sighting.create(
-            confidence=confidence,
-            severity="high",
-            observation_count=23
-        )
+    #     sighting = Sighting.create(
+    #         confidence=confidence,
+    #         severity="high",
+    #         observation_count=23
+    #     )
         
-        network_observables = [
-            NetworkObservable.create_ipv4(
-                value="185.220.102.45",
-                role="c2_server",
-                port=443
-            ),
-            NetworkObservable.create_domain(
-                value="secure-bank-verify.nl",
-                role="phishing_domain"
-            )
-        ]
+    #     network_observables = [
+    #         NetworkObservable.create_ipv4(
+    #             value="185.220.102.45",
+    #             role="c2_server",
+    #             port=443
+    #         ),
+    #         NetworkObservable.create_domain(
+    #             value="secure-bank-verify.nl",
+    #             role="phishing_domain"
+    #         )
+    #     ]
         
-        return FrankSubmission(
-            submitter=submitter,
-            hit_target=hit_target,
-            sighting=sighting,
-            observables={"network": network_observables}
-        )
+    #     return FrankSubmission(
+    #         submitter=submitter,
+    #         hit_target=hit_target,
+    #         sighting=sighting,
+    #         observables={"network": network_observables}
+    #     )
 
 
-class FrankSightingParser:
-    """Parser for processing FRANK sighting submissions."""
+# class FrankSightingParser:
+#     """Parser for processing FRANK sighting submissions."""
     
-    @staticmethod
-    def validate_submission(submission: FrankSubmission) -> List[str]:
-        """Validate a FRANK submission and return list of errors."""
-        errors = []
+#     @staticmethod
+#     def validate_submission(submission: FrankSubmission) -> List[str]:
+#         """Validate a FRANK submission and return list of errors."""
+#         errors = []
         
-        # Validate required fields
-        if not submission.submitter.organization_id:
-            errors.append("Submitter organization_id is required")
+#         # Validate required fields
+#         if not submission.submitter.organization_id:
+#             errors.append("Submitter organization_id is required")
         
-        if not submission.hit_target.organization_id:
-            errors.append("Hit target organization_id is required")
+#         if not submission.hit_target.organization_id:
+#             errors.append("Hit target organization_id is required")
         
-        if not submission.sighting.sighting_id:
-            errors.append("Sighting ID is required")
+#         if not submission.sighting.sighting_id:
+#             errors.append("Sighting ID is required")
         
-        # Validate confidence range
-        if not 0 <= submission.sighting.confidence <= 100:
-            errors.append("Confidence must be between 0 and 100")
+#         # Validate confidence range
+#         if not 0 <= submission.sighting.confidence <= 100:
+#             errors.append("Confidence must be between 0 and 100")
         
-        # Validate tier
-        valid_tiers = ["public", "observer", "contributor", "partner", "core_member"]
-        if submission.submitter.tier not in valid_tiers:
-            errors.append(f"Invalid tier: {submission.submitter.tier}")
+#         # Validate tier
+#         valid_tiers = ["public", "observer", "contributor", "partner", "core_member"]
+#         if submission.submitter.tier not in valid_tiers:
+#             errors.append(f"Invalid tier: {submission.submitter.tier}")
         
-        # Validate network observables
-        if not submission.observables.get("network"):
-            errors.append("At least one network observable is required")
+#         # Validate network observables
+#         if not submission.observables.get("network"):
+#             errors.append("At least one network observable is required")
         
-        for obs in submission.observables.get("network", []):
-            if not obs.value:
-                errors.append("Network observable value is required")
-            if obs.type not in ["ipv4", "ipv6", "domain", "url"]:
-                errors.append(f"Invalid network observable type: {obs.type}")
+#         for obs in submission.observables.get("network", []):
+#             if not obs.value:
+#                 errors.append("Network observable value is required")
+#             if obs.type not in ["ipv4", "ipv6", "domain", "url"]:
+#                 errors.append(f"Invalid network observable type: {obs.type}")
         
-        return errors
+#         return errors
 
-    @staticmethod
-    def extract_iocs(submission: FrankSubmission) -> Dict[str, List[str]]:
-        """Extract IoCs from submission for further processing."""
-        iocs = {
-            "ip_addresses": [],
-            "domains": [],
-            "urls": []
-        }
+#     @staticmethod
+#     def extract_iocs(submission: FrankSubmission) -> Dict[str, List[str]]:
+#         """Extract IoCs from submission for further processing."""
+#         iocs = {
+#             "ip_addresses": [],
+#             "domains": [],
+#             "urls": []
+#         }
         
-        for obs in submission.observables.get("network", []):
-            if obs.type in ["ipv4", "ipv6"]:
-                iocs["ip_addresses"].append(obs.value)
-            elif obs.type == "domain":
-                iocs["domains"].append(obs.value)
-            elif obs.type == "url":
-                iocs["urls"].append(obs.value)
+#         for obs in submission.observables.get("network", []):
+#             if obs.type in ["ipv4", "ipv6"]:
+#                 iocs["ip_addresses"].append(obs.value)
+#             elif obs.type == "domain":
+#                 iocs["domains"].append(obs.value)
+#             elif obs.type == "url":
+#                 iocs["urls"].append(obs.value)
         
-        return iocs
+#         return iocs
 
-    @staticmethod
-    def anonymize_submission(submission: FrankSubmission, access_level: str) -> FrankSubmission:
-        """Anonymize submission based on access level."""
-        # Create a copy to avoid modifying original
-        import copy
-        anonymized = copy.deepcopy(submission)
+#     @staticmethod
+#     def anonymize_submission(submission: FrankSubmission, access_level: str) -> FrankSubmission:
+#         """Anonymize submission based on access level."""
+#         # Create a copy to avoid modifying original
+#         import copy
+#         anonymized = copy.deepcopy(submission)
         
-        if access_level == "public":
-            # Hash all observables for public access
-            for obs in anonymized.observables.get("network", []):
-                obs.value = f"hash_{hash(obs.value) % 10000:04d}"
+#         if access_level == "public":
+#             # Hash all observables for public access
+#             for obs in anonymized.observables.get("network", []):
+#                 obs.value = f"hash_{hash(obs.value) % 10000:04d}"
         
-        elif access_level == "observer":
-            # Partial anonymization for observers
-            for obs in anonymized.observables.get("network", []):
-                if obs.type in ["ipv4", "ipv6"]:
-                    parts = obs.value.split(".")
-                    if len(parts) == 4:
-                        obs.value = f"{parts[0]}.{parts[1]}.x.x"
+#         elif access_level == "observer":
+#             # Partial anonymization for observers
+#             for obs in anonymized.observables.get("network", []):
+#                 if obs.type in ["ipv4", "ipv6"]:
+#                     parts = obs.value.split(".")
+#                     if len(parts) == 4:
+#                         obs.value = f"{parts[0]}.{parts[1]}.x.x"
         
-        # Contributors and above get full data
-        return anonymized
+#         # Contributors and above get full data
+#         return anonymized
 
 
 # Example usage and testing
@@ -327,50 +400,62 @@ if __name__ == "__main__":
     generator = FrankSightingGenerator()
     minimal_sighting = generator.create_minimal_sighting(
         submitter_tier="partner",
+        confidence=87,
+        ip_address="185.220.102.45",
+        domain="secure-bank-verify.nl"
+    )
+    
+    print("=== Minimal Sighting YAML No Hit Target ===")
+    print(minimal_sighting.to_yaml())
+    
+    minimal_sighting = generator.create_minimal_sighting(
+        submitter_tier="partner",
         target_sector="financial_services",
         confidence=87,
         ip_address="185.220.102.45",
         domain="secure-bank-verify.nl"
     )
     
-    print("=== Minimal Sighting YAML ===")
+    print("=== Minimal Sighting YAML With Hit Target ===")
     print(minimal_sighting.to_yaml())
-    
-    # Generate a complete banking threat sighting
-    banking_sighting = generator.create_banking_threat_sighting()
-    
-    print("\n=== Banking Threat Sighting YAML ===")
-    print(banking_sighting.to_yaml())
-    
+
     # Parse YAML back to object
     yaml_string = minimal_sighting.to_yaml()
-    parsed_sighting = FrankSubmission.from_yaml(yaml_string)
-    
+    parsed_submission = Submission.from_yaml(yaml_string)
+
     print("\n=== Parsed Sighting (Round-trip test) ===")
-    print(f"Submitter Tier: {parsed_sighting.submitter.tier}")
-    print(f"Target Sector: {parsed_sighting.hit_target.sector}")
-    print(f"Confidence: {parsed_sighting.sighting.confidence}")
-    print(f"Network Observables: {len(parsed_sighting.observables['network'])}")
+    print(f"Submitter Tier: {parsed_submission.submitter.tier}")
+    print(f"Target Sector: {parsed_submission.hit_target.sector}")
+    print(f"Confidence: {parsed_submission.sighting.confidence}")
+    print(f"Network Observables: {len(parsed_submission.sighting.observables.network)}")
+
+
+    # # Generate a complete banking threat sighting
+    # banking_sighting = generator.create_banking_threat_sighting()
     
-    # Validate submission
-    parser = FrankSightingParser()
-    errors = parser.validate_submission(parsed_sighting)
+    # print("\n=== Banking Threat Sighting YAML ===")
+    # print(banking_sighting.to_yaml())
     
-    print(f"\n=== Validation Results ===")
-    if errors:
-        print("Validation errors:")
-        for error in errors:
-            print(f"- {error}")
-    else:
-        print("Submission is valid")
+
+    # # Validate submission
+    # parser = FrankSightingParser()
+    # errors = parser.validate_submission(parsed_sighting)
     
-    # Extract IoCs
-    iocs = parser.extract_iocs(parsed_sighting)
-    print(f"\n=== Extracted IoCs ===")
-    print(f"IP Addresses: {iocs['ip_addresses']}")
-    print(f"Domains: {iocs['domains']}")
+    # print(f"\n=== Validation Results ===")
+    # if errors:
+    #     print("Validation errors:")
+    #     for error in errors:
+    #         print(f"- {error}")
+    # else:
+    #     print("Submission is valid")
     
-    # Test anonymization
-    anonymized = parser.anonymize_submission(parsed_sighting, "observer")
-    print(f"\n=== Anonymized for Observer ===")
-    print(anonymized.to_yaml())
+    # # Extract IoCs
+    # iocs = parser.extract_iocs(parsed_sighting)
+    # print(f"\n=== Extracted IoCs ===")
+    # print(f"IP Addresses: {iocs['ip_addresses']}")
+    # print(f"Domains: {iocs['domains']}")
+    
+    # # Test anonymization
+    # anonymized = parser.anonymize_submission(parsed_sighting, "observer")
+    # print(f"\n=== Anonymized for Observer ===")
+    # print(anonymized.to_yaml())
