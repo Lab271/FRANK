@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Submission Generation and Parsing Library
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+This modules provides a high-level client interface combining submission handling
+with database operations for easy integration into applications.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
 import logging
 from typing import Dict, Any, List
 

@@ -6,19 +6,19 @@ Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 This module provides core functionality for generating, parsing, and validating
 FRANK threat intelligence submissions following the "be forgiving on what you 
 receive and strong on what you return" principle.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import uuid
 from typing import Dict, Any, List
-import logging
 from datetime import datetime, timezone
 
-from frank.core.submission import FRANKSubmission, FRANKValidator
-from frank.core.exceptions import FRANKFormatError, FRANKValidationError
-
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+# from frank.core.submission import FRANKSubmission, FRANKValidator
+from frank.core.enum import TierLevel, ObservableType
+from frank.core.models import Submission
+from frank.core.exceptions import FRANKValidationError
 
 
 def get_default_observables() -> List[Dict[str, Any]]:
@@ -30,12 +30,12 @@ def get_default_observables() -> List[Dict[str, Any]]:
     """
     return [
         {
-            "id": f"ipv4-addr-{uuid.uuid4()}",
+            "id": f"ipv4--{uuid.uuid4()}",
             "type": "ipv4",
             "value": "185.220.102.45"
         },
         {
-            "id": f"domain-name-{uuid.uuid4()}",
+            "id": f"domain--{uuid.uuid4()}",
             "type": "domain", 
             "value": "secure-bank-verify.nl"
         }
@@ -45,12 +45,12 @@ def get_sample_malware_observables() -> List[Dict[str, Any]]:
     """Generate sample malware-related observables."""
     return [
         {
-            "id": f"file-hash-{uuid.uuid4()}",
+            "id": f"file_hash--{uuid.uuid4()}",
             "type": "file_hash",
             "value": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
         },
         {
-            "id": f"domain-name-{uuid.uuid4()}",
+            "id": f"domain--{uuid.uuid4()}",
             "type": "domain",
             "value": "malicious-c2.example.com"
         }
@@ -60,12 +60,12 @@ def get_sample_phishing_observables() -> List[Dict[str, Any]]:
     """Generate sample phishing-related observables."""
     return [
         {
-            "id": f"url-{uuid.uuid4()}",
+            "id": f"url--{uuid.uuid4()}",
             "type": "url",
             "value": "https://fake-bank-login.suspicious.tld/auth"
         },
         {
-            "id": f"email-{uuid.uuid4()}",
+            "id": f"email--{uuid.uuid4()}",
             "type": "email",
             "value": "noreply@fake-bank.suspicious.tld"
         }
@@ -108,12 +108,11 @@ def generate_minimal_submission_dict(org_id: str = None,
         
     Raises:
         FRANKValidationError: If invalid values provided
-    """
-    validator = FRANKValidator()
-    
+    """ 
     # Validate inputs
-    if tier not in validator.VALID_TIERS:
-        raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {validator.VALID_TIERS}")
+    all_tiers = [level.value for level in TierLevel]
+    if tier not in all_tiers:
+        raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {all_tiers}")
     
     if confidence is not None and not (0 <= confidence <= 100):
         raise FRANKValidationError(f"Confidence {confidence} out of range [0-100]")
@@ -125,22 +124,23 @@ def generate_minimal_submission_dict(org_id: str = None,
     if observables is None:
         observables = [
             {
-                "id": f"ipv4-addr-{uuid.uuid4()}",
+                "id": f"ipv4--{uuid.uuid4()}",
                 "type": "ipv4",
                 "value": "185.220.102.45"
             },
             {
-                "id": f"domain-name-{uuid.uuid4()}",
+                "id": f"domain--{uuid.uuid4()}",
                 "type": "domain", 
                 "value": "secure-bank-verify.nl"
             }
         ]
     
     # Validate observables
+    all_observable_types = [obs.value for obs in ObservableType]
     for obs in observables:
-        if 'type' in obs and obs['type'] not in validator.VALID_OBSERVABLE_TYPES:
-            raise FRANKValidationError(f"Invalid observable type '{obs['type']}'. Must be one of: {validator.VALID_OBSERVABLE_TYPES}")
-    
+        if 'type' in obs and obs['type'] not in all_observable_types:
+            raise FRANKValidationError(f"Invalid observable type '{obs['type']}'. Must be one of: {all_observable_types}")
+
     submission = {
         "submission": {
             "submitter": {
@@ -158,11 +158,10 @@ def generate_minimal_submission_dict(org_id: str = None,
         }
     }
     
-    logger.info(f"Generated minimal submission for org {org_id}")
     return submission
     
 
-def generate_minimal_submission(org_id: str = None, tier: str = "partner", observables: list = None, confidence: int = None) -> FRANKSubmission:
+def generate_minimal_submission(org_id: str = None, tier: str = "partner", observables: list = None, confidence: int = None) -> Submission:
     """
     Generate a minimal FRANKSubmission instance with only required fields.
 
@@ -178,96 +177,112 @@ def generate_minimal_submission(org_id: str = None, tier: str = "partner", obser
         FRANKValidationError: If invalid values provided
     """
     submission_dict = generate_minimal_submission_dict(org_id=org_id, tier=tier, observables=observables, confidence=confidence)
-    return FRANKSubmission.from_dict(submission_dict)
+    return Submission(**submission_dict["submission"])
 
 
-def generate_comprehensive_submission(
-    org_id: str = None,
-    tier: str = "partner",
-    hit_target_org: str = None,
-    observables: list = None,
-    severity: str = "high",
-    confidence: int = 92,
-    campaign_context: dict = None,
-    sigma_detection: dict = None,
-    impact_data: dict = None,
-    sharing: dict = None
-) -> FRANKSubmission:
-    """
-    Generate a comprehensive FRANKSubmission instance with all major fields populated.
+# def generate_comprehensive_submission(
+#     org_id: str = None,
+#     tier: str = "partner",
+#     hit_target_org: str = None,
+#     observables: list = None,
+#     severity: str = "high",
+#     confidence: int = 92,
+#     campaign_context: dict = None,
+#     sigma_detection: dict = None,
+#     impact_data: dict = None,
+#     sharing: dict = None
+# ) -> FRANKSubmission:
+#     """
+#     Generate a comprehensive FRANKSubmission instance with all major fields populated.
 
-    Args:
-        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
-        tier (str, optional): Organization tier level. Defaults to "partner".
-        hit_target_org (str, optional): Organization ID of the target (if applicable).
-        observables (list, optional): List of observable objects. If None, default observables are generated.
-        severity (str, optional): Sighting severity. Defaults to "high".
-        confidence (int, optional): Confidence level 0-100. Defaults to 92.
-        campaign_context (dict, optional): Dictionary with campaign/actor context.
-        sigma_detection (dict, optional): Dictionary with sigma rule detection info.
-        impact_data (dict, optional): Dictionary with impact/severity/affected systems.
-        sharing (dict, optional): Dictionary with sharing preferences (e.g., distribution_level, anonymization_level).
+#     Args:
+#         org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+#         tier (str, optional): Organization tier level. Defaults to "partner".
+#         hit_target_org (str, optional): Organization ID of the target (if applicable).
+#         observables (list, optional): List of observable objects. If None, default observables are generated.
+#         severity (str, optional): Sighting severity. Defaults to "high".
+#         confidence (int, optional): Confidence level 0-100. Defaults to 92.
+#         campaign_context (dict, optional): Dictionary with campaign/actor context.
+#         sigma_detection (dict, optional): Dictionary with sigma rule detection info.
+#         impact_data (dict, optional): Dictionary with impact/severity/affected systems.
+#         sharing (dict, optional): Dictionary with sharing preferences (e.g., distribution_level, anonymization_level).
 
-    Returns:
-        FRANKSubmission instance containing a comprehensive valid submission
-    """
-    if org_id is None:
-        org_id = f"identity-{uuid.uuid4()}"
-    if observables is None:
-        observables = get_default_observables()
-    now = datetime.now(timezone.utc)
-    submission = {
-        "submission": {
-            "submitter": {
-                "organization_id": org_id,
-                "tier": tier
-            },
-            "sighting": {
-                "sighting_id": f"sighting-{uuid.uuid4()}",
-                "timestamp": now.isoformat(),
-                "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
-                "last_observed": now.isoformat(),
-                "confidence": confidence,
-                "severity": severity,
-                "observables": {
-                    "network": observables
-                }
-            },
-            "metadata": {
-                "submission_id": f"submission-{uuid.uuid4()}",
-                "format_version": "1.0"
-            }
-        }
-    }
-    if hit_target_org:
-        submission["submission"]["hit_target"] = {"organization_id": hit_target_org}
-    if campaign_context:
-        submission["submission"]["sighting"]["threat_context"] = campaign_context
-    if sigma_detection:
-        submission["submission"]["sighting"]["sigma_detection"] = sigma_detection
-    if impact_data:
-        submission["submission"]["sighting"]["impact"] = impact_data
-    if sharing:
-        submission["submission"]["sharing"] = sharing
+#     Returns:
+#         FRANKSubmission instance containing a comprehensive valid submission
+#     """
+#     if org_id is None:
+#         org_id = f"identity-{uuid.uuid4()}"
+#     if observables is None:
+#         observables = get_default_observables()
+#     now = datetime.now(timezone.utc)
+#     submission = {
+#         "submission": {
+#             "submitter": {
+#                 "organization_id": org_id,
+#                 "tier": tier
+#             },
+#             "sighting": {
+#                 "sighting_id": f"sighting-{uuid.uuid4()}",
+#                 "timestamp": now.isoformat(),
+#                 "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
+#                 "last_observed": now.isoformat(),
+#                 "confidence": confidence,
+#                 "severity": severity,
+#                 "observables": {
+#                     "network": observables
+#                 }
+#             },
+#             "metadata": {
+#                 "submission_id": f"submission-{uuid.uuid4()}",
+#                 "format_version": "1.0"
+#             }
+#         }
+#     }
+#     if hit_target_org:
+#         submission["submission"]["hit_target"] = {"organization_id": hit_target_org}
+#     if campaign_context:
+#         submission["submission"]["sighting"]["threat_context"] = campaign_context
+#     if sigma_detection:
+#         submission["submission"]["sighting"]["sigma_detection"] = sigma_detection
+#     if impact_data:
+#         submission["submission"]["sighting"]["impact"] = impact_data
+#     if sharing:
+#         submission["submission"]["sharing"] = sharing
 
-    logger.info(f"Generated comprehensive submission for org {org_id}")
-    return FRANKSubmission.from_dict(submission)
+#     logger.info(f"Generated comprehensive submission for org {org_id}")
+#     return FRANKSubmission.from_dict(submission)
 
 
-def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> FRANKSubmission:
-    """
-    Generate a sample FRANKSubmission object for testing or demonstration purposes.
+# def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> FRANKSubmission:
+#     """
+#     Generate a sample FRANKSubmission object for testing or demonstration purposes.
 
-    Args:
-        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
-        sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
-        **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
+#     Args:
+#         org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+#         sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
+#         **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
 
-    Returns:
-        FRANKSubmission: Instance containing a sample valid submission.
+#     Returns:
+#         FRANKSubmission: Instance containing a sample valid submission.
 
-    """
-    sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
-    logger.info(f"Generated sample submission for org {org_id} with sample_type '{sample_type}'")
-    return FRANKSubmission().from_dict(sample_dict)
+#     """
+#     sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
+#     logger.info(f"Generated sample submission for org {org_id} with sample_type '{sample_type}'")
+#     return FRANKSubmission().from_dict(sample_dict)
 
+# Example usage and testing functions
+def example_usage():
+    """Demonstrate Pydantic model usage"""
+    
+    print("=== FRANK Pydantic Models Sample Generator (v2 Compatible) ===\n")
+    
+    # 1. Create minimal submission using factory method
+    print("1. Creating minimal submission...")
+    minimal = generate_minimal_submission(
+        org_id=f"identity--{uuid.uuid4()}",
+        tier="partner"
+    )
+    print("✓ Minimal submission created")
+    
+if __name__ == "__main__":
+    example_usage()

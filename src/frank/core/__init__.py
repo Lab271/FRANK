@@ -1,10 +1,11 @@
+#!/usr/bin/env python3
 """
-Core FRANK functionality - submission handling and validation
+FRANK Platform - Submission Generation and Parsing Library
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+This module provides the core models and exceptions for the FRANK platform.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
-from .submission import FRANKSubmission
-from .exceptions import *
-
-__all__ = [
-    'FRANKSubmission',
-]

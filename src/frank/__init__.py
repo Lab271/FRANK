@@ -3,6 +3,9 @@ FRANK Platform - Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kenn
 
 A threat intelligence sharing platform that enables anonymous and secure exchange
 of cybersecurity information between organizations following a tiered access model.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 __version__ = "0.3.0"

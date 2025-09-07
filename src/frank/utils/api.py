@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Pydantic Models (v2 Compatible)
+
 Support models for API handling.
 Implements "be forgiving on what you receive, strong on what you return" principle.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict

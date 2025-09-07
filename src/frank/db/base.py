@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Submission Generation and Parsing Library
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+This modules provides an abstract base class defining the interface for
+FRANK database operations, supporting both SQLite and DynamoDB implementations
+with a consistent API.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
 import hashlib
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
