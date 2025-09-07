@@ -5,9 +5,15 @@ from setuptools import setup, find_packages
 with open("README.md", "r") as f:
     long_description = f.read()
 
+def get_version():
+    version = {}
+    with open(os.path.join(os.path.dirname(__file__), 'src', PACKAGE, '__init__.py')) as f:
+        exec(f.read(), version)
+    return version['__version__']
+
 setup(
     name='frank',
-    version="0.1",
+    version=get_version(),
     description='Vulnerability platform',
     long_description=long_description,
     license='Apache 2.0',
