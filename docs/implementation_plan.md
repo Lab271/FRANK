@@ -14,6 +14,14 @@ This document outlines the 5-stage progressive development approach for FRANK (F
 ### Risk Management
 Each stage maintains a **working fallback system**, ensuring continuous development capability and reducing deployment risk.
 
+| Stage | Database | Compute | Location | **Functional Scope** | Purpose |
+|-------|----------|---------|----------|---------------------|---------|
+| 1 | SQLite | FastAPI | Local | **Minimal submissions** | Current foundation |
+| 2 | RDS / DynamoDB | FastAPI | LocalStack | **Minimal submissions** | AWS database patterns |
+| 3 | DynamoDB | Lambda | LocalStack / Mangum| **Minimal submissions** | AWS compute patterns |
+| 4 | DynamoDB | Lambda | LocalStack / Mangum | **🚀 Maximum submissions** | AWS NoSQL + full data model |
+| 5 | DynamoDB | Lambda | Real AWS | **Maximum submissions** | Production deployment |
+
 ---
 
 ## Stage Progression
@@ -84,7 +92,7 @@ See [Stage 2/README.md](../stages/stage2/README.md)
 
 **Technology Stack**:
 - **Database**: LocalStack RDS (primary) + LocalStack DynamoDB (testing)
-- **API**: AWS Lambda handlers (LocalStack)
+- **API**: AWS Lambda handlers with Mangum (LocalStack)
 - **Location**: Local development with LocalStack
 - **Submissions**: Minimal model (unchanged)
 

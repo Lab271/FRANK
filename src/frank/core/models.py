@@ -126,13 +126,13 @@ class Submitter(BaseModel):
     submission_method: Optional[str] = Field(default="api", description="How submission was made")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
     
-    @field_validator('organization_id', mode='before')
-    @classmethod
-    def generate_org_id(cls, v):
-        """Generate STIX identity if not provided - 'be forgiving'"""
-        if v is None or v == "":
-            return f"identity--{uuid.uuid4()}"
-        return v
+    # @field_validator('organization_id', mode='before')
+    # @classmethod
+    # def generate_org_id(cls, v):
+    #     """Generate STIX identity if not provided - 'be forgiving'"""
+    #     if v is None or v == "":
+    #         return f"identity--{uuid.uuid4()}"
+    #     return v
     
     @model_validator(mode='after') 
     def ensure_org_id(self):
