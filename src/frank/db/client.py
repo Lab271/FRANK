@@ -16,6 +16,7 @@ from typing import Dict, Any, List
 from frank.core.models import Submission, Observables
 from frank.db.base import BaseFRANKDatabase
 from frank.db.sqlite import SQLiteFRANKDatabase
+from frank.db.mysql import MySQLFRANKDatabase
 from frank.db.exceptions import FRANKDatabaseError, FRANKConfigurationError, FRANKConnectionError
 
 from frank.utils.sample_builder import generate_minimal_submission
@@ -72,7 +73,24 @@ def create_database(db_type: str = "sqlite", **kwargs) -> BaseFRANKDatabase:
             raise FRANKConfigurationError(f"SQLite backend not available: {e}")
         except Exception as e:
             raise FRANKConnectionError(f"Failed to create SQLite database: {e}")
-    
+    elif db_type.lower() == 'mysql':
+        try:
+
+            # Extract MySQL-specific parameters
+            host = kwargs.get('database_host', 'localhost')
+            port = kwargs.get('database_port', 3306)
+            database = kwargs.get('database_name', 'frank')
+            user = kwargs.get('database_user', 'frank_user')
+            password = kwargs.get('database_password', 'frank_password')
+
+            logger.info(f"Creating MySQL database at {host}:{port}/{database}")
+            return MySQLFRANKDatabase(host=host, port=port, database=database, user=user, password=password)
+
+        except ImportError as e:
+            raise FRANKConfigurationError(f"MySQL backend not available: {e}")
+        except Exception as e:
+            raise FRANKConnectionError(f"Failed to create MySQL database: {e}")
+            
 #     elif db_type.lower() == 'dynamodb':
 #         try:
             
