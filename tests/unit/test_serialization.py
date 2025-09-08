@@ -436,9 +436,10 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Submission -> Dict -> JSON -> Dict -> Submission
         dict_data = submission.model_dump(exclude_none=True, by_alias=True)
-        json_str = json.dumps(dict_data)
+        self.assertNotIn('submission', dict_data)
+        json_str = json.dumps({'submission': dict_data})
         json_dict = json.loads(json_str)
-        json_submission = Submission(**json_dict)
+        json_submission = Submission(**json_dict['submission'])
         
         # Submission -> Dict -> YAML -> Dict -> Submission  
         yaml_data = {"submission": submission.model_dump(exclude_none=True)}

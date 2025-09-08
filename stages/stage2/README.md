@@ -3,11 +3,11 @@
 ## Overview
 This stage 2 is part of the 5-stage progressive development approach for FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sharing), evolving from a local SQLite/FastAPI prototype to a scalable AWS production system.
 
-This stage implements the FRANK platform with LocalStack simulation for AWS services and dual database support (RDS + DynamoDB) for performance comparison and learning.
+This stage implements the FRANK platform with LocalStack simulation for AWS services and dual database support (MySQL + DynamoDB) for performance comparison and learning.
 
 
 **Technology Stack**:
-- **Database**: LocalStack RDS (MySQL) + LocalStack DynamoDB (parallel testing)
+- **Database**: MySQL (LocalStack RDS) + LocalStack DynamoDB (parallel testing)
 - **API**: FastAPI
 - **Location**: Local development with LocalStack
 - **Submissions**: Minimal model (unchanged)
@@ -15,13 +15,13 @@ This stage implements the FRANK platform with LocalStack simulation for AWS serv
 **NB:** RDS is now part of the professional license of LocalStack, we therefore run a separate MySQL Container. Of course you could also use the Pro license and go Localstack native. This this [site](https://docs.localstack.cloud/aws/licensing/#service-coverage-clarification) for more details on supported services.
 
 **Key Learning Objectives**:
-- AWS database service patterns (RDS configuration, connection management)
+- AWS database service patterns (MySQL configuration, connection management)
 - Docker containerization and service orchestration
 - Database abstraction layer implementation
 - LocalStack simulation environment setup
 
 **Implementation Focus**:
-- Dual database support (RDS and DynamoDB side-by-side)
+- Dual database support (MySQL and DynamoDB side-by-side)
 - Repository pattern for database abstraction
 - Docker Compose orchestration
 - Environment-based configuration management
@@ -44,7 +44,7 @@ For more details see the [implementation plan](../../docs/implementation_plan.md
 
 **Stage 2 Goals:**
 - ✅ AWS service simulation with LocalStack
-- ✅ Dual database implementation (RDS MySQL + DynamoDB)
+- ✅ Dual database implementation (MySQL + DynamoDB)
 - ✅ Performance comparison between SQL and NoSQL
 - ✅ Container orchestration with Docker Compose
 - ✅ Repository pattern for database abstraction
@@ -58,18 +58,31 @@ For more details see the [implementation plan](../../docs/implementation_plan.md
 │   (Port 8000)    │    │   (Port 4566)    │    │   (Port 8080)   │
 │                  │    │                  │    │                 │
 │ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌─────────────┐ │
-│ │ Dual Repo    │ │◄──►│ │ RDS (MySQL)  │ │    │ │   Adminer   │ │
-│ │  Manager     │ │    │ │              │ │    │ │ (RDS GUI)   │ │
+│ │ Dual Repo    │ │◄──►│ │  DynamoDB    │ │    │ │   Adminer   │ │
+│ │  Manager     │ │    │ │              │ │    │ │ (MySQL GUI) │ │
 │ └──────────────┘ │    │ └──────────────┘ │    │ └─────────────┘ │
 │ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌─────────────┐ │
-│ │RDS Repository│ │◄──►│ │  DynamoDB    │ │    │ │DynamoDB GUI │ │
-│ └──────────────┘ │    │ │              │ │    │ │(Port 8001)  │ │
-│ ┌──────────────┐ │    │ └──────────────┘ │    │ └─────────────┘ │
-│ │DynamoDB Repo │ │    │ ┌──────────────┐ │    └─────────────────┘
-│ └──────────────┘ │    │ │      S3      │ │
-└──────────────────┘    │ │   (Future)   │ │
-                        │ └──────────────┘ │
-                        └──────────────────┘
+│ │MySQL Repo    │ │◄──┐│ │      S3      │ │    │ │DynamoDB GUI │ │
+│ │(Replacement) │ │   ││ │   (Future)   │ │    │ │(Port 8001)  │ │
+│ └──────────────┘ │   ││ └──────────────┘ │    │ └─────────────┘ │
+│ ┌──────────────┐ │   │└──────────────────┘    └─────────────────┘
+│ │DynamoDB Repo │ │   │
+│ └──────────────┘ │   │
+└──────────────────┘   │
+                       │
+                    ┌──▼──────────────────────┐
+                    │    MySQL Container      │
+                    │     (Port 3306)         │
+                    │                         │
+                    │ ┌─────────────────────┐ │
+                    │ │   MySQL Database    │ │
+                    │ │                     │ │
+                    │ │ • frank_sightings   │ │
+                    │ │ • frank_aggregates  │ │
+                    │ │ • frank_submitters. │ │
+                    │ │ • frank_idempotency │ │
+                    │ └─────────────────────┘ │
+                    └─────────────────────────┘
 ```
 
 ## Quick Start
@@ -103,7 +116,8 @@ make test-api
 ### Service URLs
 - **FRANK API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
-- **RDS Admin (Adminer)**: http://localhost:8080
+- **MySQL**: localhost:3306
+- **MySQL Admin (Adminer)**: http://localhost:8080
 - **DynamoDB Admin**: http://localhost:8001
 - **LocalStack Dashboard**: http://localhost:4571
 
@@ -163,7 +177,7 @@ curl -X POST "http://localhost:8000/v1/test/generate-sample-data?count=10"
 
 ## Database Comparison
 
-### RDS (MySQL) Approach
+### MySQL Approach
 ```sql
 -- Normalized relational design
 CREATE TABLE submissions (
@@ -252,8 +266,8 @@ FRANK_ENVIRONMENT=localstack
 LOCALSTACK_ENDPOINT=http://localhost:4566
 
 # RDS Settings
-RDS_HOST=localhost
-RDS_PORT=4566
+RDS_HOST=mysql
+RDS_PORT=3066
 RDS_DATABASE=frank
 RDS_USERNAME=frank_user
 RDS_PASSWORD=frank_pass
@@ -271,9 +285,9 @@ AWS_SECRET_ACCESS_KEY=test
 
 The API supports three database modes:
 
-1. **`database=dual`** (default): Save to both RDS and DynamoDB
+1. **`database=dual`** (default): Save to both MySQL and DynamoDB
 2. **`database=dynamodb`**: DynamoDB only
-3. **`database=rds`**: RDS only
+3. **`database=rds/mysql`**: MySQL/RDS only
 
 ## Development Workflow
 

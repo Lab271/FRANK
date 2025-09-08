@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 import uuid
 from datetime import datetime, timezone, timedelta
 import json
@@ -120,6 +120,40 @@ class TestSighting(unittest.TestCase):
         
         # Test different IDs are generated
         self.assertNotEqual(sighting1.sighting_id, sighting2.sighting_id)
+
+    def test_timestamp_auto_generation_branch(self):
+        """Test Sighting auto-generates timestamp if None or empty string is provided (branch coverage)"""
+        before = datetime.now(timezone.utc)
+        sighting_none = Sighting(
+            timestamp=None, confidence=80, observation_count=1,
+            sighting_id=None, observables=None, severity=None,
+            first_observed=None, last_observed=None,
+            sigma_detection=None, threat_context=None, impact=None
+        )
+        sighting_empty = Sighting(
+            timestamp="", confidence=80, observation_count=1,
+            sighting_id=None, observables=None, severity=None,
+            first_observed=None, last_observed=None,
+            sigma_detection=None, threat_context=None, impact=None
+        )
+        after = datetime.now(timezone.utc)
+
+        self.assertIsInstance(sighting_none.timestamp, datetime)
+        self.assertIsInstance(sighting_empty.timestamp, datetime)
+        self.assertGreaterEqual(sighting_none.timestamp, before)
+        self.assertLessEqual(sighting_none.timestamp, after)
+        self.assertGreaterEqual(sighting_empty.timestamp, before)
+        self.assertLessEqual(sighting_empty.timestamp, after)
+
+        # If a valid timestamp is provided, it should not be overwritten
+        ts = datetime(2025, 9, 8, 12, 0, 0, tzinfo=timezone.utc)
+        sighting_valid = Sighting(
+            timestamp=ts, confidence=80, observation_count=1,
+            sighting_id=None, observables=None, severity=None,
+            first_observed=None, last_observed=None,
+            sigma_detection=None, threat_context=None, impact=None
+        )
+        self.assertEqual(sighting_valid.timestamp, ts)
 
     @patch('frank.core.models.datetime')
     def test_timestamp_auto_generation_with_mock(self, mock_datetime):

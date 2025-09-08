@@ -222,6 +222,48 @@ class TestSubmission(unittest.TestCase):
         target_id_set = set(target_ids)
         self.assertEqual(len(submitter_id_set.intersection(target_id_set)), 0)
 
+class TestSubmissionSerialization(unittest.TestCase):
+    def setUp(self):
+        """Set up test fixtures before each test method."""
+        self.valid_network_observables = [
+            Observable.create_ipv4("192.168.1.100", role="c2"),
+            Observable.create_domain("malicious.example.com", role="phishing")
+        ]
+        
+        self.valid_submitter = Submitter.create(
+            tier=TierLevel.PARTNER,
+            sector="financial"
+        )
+        
+        self.valid_hit_target = HitTarget.create(
+            sector="healthcare",
+            organization_size="large"
+        )
+        
+        self.valid_sighting = Sighting.create(
+            confidence=85,
+            severity=SeverityLevel.HIGH,
+            observables=Observables(network=self.valid_network_observables),
+            observation_count=2
+        )
+        
+        self.valid_observables = Observables(
+            network=self.valid_network_observables
+        )
+
+        self.valid_submission = Submission(
+            submitter=self.valid_submitter,
+            hit_target=self.valid_hit_target,
+            sighting=self.valid_sighting
+        )  
+
+    def test_to_yaml(self):
+        yaml = self.valid_submission.to_yaml()
+        self.assertGreater(len(yaml), 0)
+
+    def test_to_json(self):
+        yaml = self.valid_submission.to_json()
+        self.assertGreater(len(yaml), 0)
 
 if __name__ == "__main__":
     # Configure test runner
