@@ -30,19 +30,18 @@ class TestFRANKSubmission(unittest.TestCase):
 
     def test_generate_minimal_submission_defaults(self):
         """Test generating minimal submission with default values."""
-        submission = generate_minimal_submission().to_dict()
+        submission = generate_minimal_submission().model_dump()
         
         # Check structure
-        self.assertIn('submission', submission)
-        self.assertIn('submitter', submission['submission'])
-        self.assertIn('sighting', submission['submission'])
+        self.assertIn('submitter', submission)
+        self.assertIn('sighting', submission)
         
         # Check required fields
-        submitter = submission['submission']['submitter']
+        submitter = submission['submitter']
         self.assertIn('organization_id', submitter)
         self.assertEqual(submitter['tier'], 'partner')  # default
         
-        sighting = submission['submission']['sighting']
+        sighting = submission['sighting']
         self.assertIn('sighting_id', sighting)
         self.assertIn('timestamp', sighting)
         self.assertEqual(sighting['confidence'], 69)  # default
@@ -61,13 +60,13 @@ class TestFRANKSubmission(unittest.TestCase):
             tier=self.valid_tier,
             observables=self.valid_observables,
             confidence=85
-        ).to_dict()
+        ).model_dump()
         
-        submitter = submission['submission']['submitter']
+        submitter = submission['submitter']
         self.assertEqual(submitter['organization_id'], self.valid_org_id)
         self.assertEqual(submitter['tier'], self.valid_tier)
         
-        sighting = submission['submission']['sighting']
+        sighting = submission['sighting']
         self.assertEqual(sighting['confidence'], 85)
         self.assertEqual(len(sighting['observables']['network']), 2)
     
@@ -146,3 +145,7 @@ class TestFRANKSubmission(unittest.TestCase):
     #     sharing = submission['submission']['sharing']
     #     self.assertIn('distribution_level', sharing)
     #     self.assertIn('anonymization_level', sharing)
+
+if __name__ == "__main__":
+    # Configure test runner
+    unittest.main(verbosity=2, buffer=True)
