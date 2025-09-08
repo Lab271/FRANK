@@ -8,7 +8,7 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-__version__ = "0.3.0"
+__version__ = "0.4.0"
 __author__ = "Schuberg Philis"
 __description__ = "FRANK Platform - Cybersecurity Threat Intelligence Sharing"
 

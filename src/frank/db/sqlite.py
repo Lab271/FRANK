@@ -19,18 +19,11 @@ from typing import Dict, Any, List, Optional
 import logging
 from pathlib import Path
 
+from frank.core.models import Submission, Sighting, Submitter
+from frank.utils import NullLogger
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
-from frank.core.models import Submission, Sighting, Submitter
 
-class NullLogger:
-    """Null logger that discards all log messages"""
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
-    def critical(self, *args, **kwargs): pass
-    def exception(self, *args, **kwargs): pass
 
 class SQLiteFRANKDatabase(BaseFRANKDatabase):
     """
