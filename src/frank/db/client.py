@@ -1,12 +1,24 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Submission Generation and Parsing Library
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+This modules provides a high-level client interface combining submission handling
+with database operations for easy integration into applications.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
 import logging
 from typing import Dict, Any, List
 
 
-from frank.core.submission import FRANKValidator, FRANKSubmission
-from frank.core.exceptions import FRANKValidationError
+from frank.core.models import Submission, Observables
 from frank.db.base import BaseFRANKDatabase
 from frank.db.sqlite import SQLiteFRANKDatabase
 from frank.db.exceptions import FRANKDatabaseError, FRANKConfigurationError, FRANKConnectionError
+
+from frank.utils.sample_builder import generate_minimal_submission
 
 # Set up logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -92,14 +104,11 @@ class FRANKClient:
     API that handles both submission processing and storage automatically.
     """
     
-    def __init__(self, database: BaseFRANKDatabase, config: Dict[str, Any],
-                 validator: FRANKValidator = FRANKValidator()):
+    def __init__(self, database: BaseFRANKDatabase, config: Dict[str, Any]):
         self.database = database
         self.config = config
-        self.validator = validator
     
-    def submit_threat_intelligence(self, submission: FRANKSubmission, 
-                                 validate: bool = True) -> str:
+    def submit_threat_intelligence(self, submission: Submission) -> str:
         """
         Submit threat intelligence to the FRANK platform.
         
@@ -114,33 +123,23 @@ class FRANKClient:
             FRANKValidationError: If validation fails
             FRANKDatabaseError: If storage fails
         """
-        if validate:
-            is_valid, issues = self.validator.validate_submission(submission)
-            if not is_valid:
-                raise FRANKValidationError(
-                    "Submission validation failed", 
-                    validation_errors=issues
-                )
-        
-        # Normalize submission
-        normalized = self.validator.normalize_submission(submission)
         
         # Store in database
-        success = self.database.store_submission(normalized)
+        success = self.database.store_submission(submission)
         if not success:
             raise FRANKDatabaseError("Failed to store submission in database")
         
         # Extract submission ID
-        return normalized['submission']['metadata']['submission_id']
+        return submission.submission_id
     
     def generate_and_submit(self, org_id: str, tier: str = "partner", 
-                          observables: List[Dict] = None, **kwargs) -> str:
+                          observables: Observables = None, **kwargs) -> str:
         """
         Generate a minimal submission and submit it automatically.
         
         Convenience method for quick threat intelligence submission.
         """
-        submission = frank.utils.generate_minimal_submission(
+        submission = generate_minimal_submission(
             org_id=org_id, tier=tier, observables=observables, **kwargs
         )
         return self.submit_threat_intelligence(submission)
@@ -172,7 +171,7 @@ class FRANKClient:
     
 
 
-def create_client(config: dict = None):
+def create_client(config: dict = None) -> FRANKClient:
     """
     Factory function to create a complete FRANK client with database backend.
     

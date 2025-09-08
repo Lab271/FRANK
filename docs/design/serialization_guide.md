@@ -7,18 +7,16 @@ The FRANK platform implements a clean serialization pipeline that transforms thr
 ## Serialization Pipeline Architecture
 
 ```
-FRANKSubmission (dataclass) 
-    ↓ to_dict()
-Python Dict 
-    ↓ yaml.dump() / json.dumps()
-YAML/JSON String
+Submission (Pydantic) 
+    ↓ model_dump_json() / to_yaml()
+JSON/YAML String
     ↓ Network/Storage
-YAML/JSON String
-    ↓ yaml.safe_load() / json.loads()
-Python Dict
-    ↓ from_dict()
-FRANKSubmission (dataclass)
+JSON/YAML String
+    ↓ model_validate_json() / from_yaml()
+Submission (Pydantic)
 ```
+
+This is in Pydantic v2
 
 ## Step-by-Step Data Transformation
 

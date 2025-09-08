@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - FastAPI Spike Solution
+
 A working prototype API server implementing the FRANK threat intelligence platform
 using FastAPI and the SQLite database backend.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import os
@@ -14,17 +18,16 @@ from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, Field, validator, field_serializer
 import uvicorn
 
 # Import enums from FRANK core 
 from frank.core.enum import ObservableType, SeverityLevel, TierLevel, TLPLevel
-from frank.core.models import Observables, Submitter, Sighting
+from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.db.sqlite import SQLiteFRANKDatabase
-from frank.utils.sample_builder import generate_minimal_submission_dict
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
+from frank.utils.sample_builder import generate_minimal_submission
+from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ErrorResponse
 from frank import __version__
 
 # Initialize FastAPI app
@@ -52,9 +55,6 @@ security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_spike.db")
 db = SQLiteFRANKDatabase(db_path)
 
-
-class ErrorResponse(BaseModel):
-    error: Dict[str, Any] = Field(..., description="Error details")
 
 # Authentication and authorization functions
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
@@ -141,7 +141,7 @@ rate_limiter = RateLimiter()
 @app.post("/v1/submission", response_model=SubmissionResponse)
 async def submit_threat_intelligence(
     request: Request,
-    submission_data: SubmissionRequest = Body(...),
+    submission_request: SubmissionRequest = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user)
 ):
     """
@@ -164,33 +164,9 @@ async def submit_threat_intelligence(
         )
     
     try:
-        # Convert Pydantic model to dict for database storage
-        submission_dict = {
-            "submission": {
-                "submitter": {
-                    "organization_id": current_user["organization_id"],
-                    "tier": current_user["tier"],
-                    "sector": current_user.get("sector")
-                },
-                "sighting": submission_data.submission.sighting.dict(),
-                "metadata": {
-                    "submission_id": f"sub-{uuid.uuid4()}",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "format_version": "1.0"
-                }
-            }
-        }
-        
-        # Add hit_target if provided
-        if submission_data.submission.hit_target:
-            submission_dict["submission"]["hit_target"] = submission_data.submission.hit_target
-        
-        # Add sharing preferences if provided
-        if submission_data.submission.sharing:
-            submission_dict["submission"]["sharing"] = submission_data.submission.sharing
-        
+     
         # Store in database
-        success = db.store_submission(submission_dict)
+        success = db.store_submission(submission_request.submission)
         
         if not success:
             raise HTTPException(
@@ -199,11 +175,11 @@ async def submit_threat_intelligence(
             )
         
         # Calculate contribution score impact (simplified)
-        score_impact = calculate_contribution_score(submission_dict)
+        score_impact = calculate_contribution_score(submission_request.submission)
         
         return SubmissionResponse(
             status="accepted",
-            submission_id=submission_dict["submission"]["metadata"]["submission_id"],
+            submission_id=submission_request.submission.submission_id,
             contribution_score_impact=score_impact,
             processing_status="queued",
             validation_required=False,
@@ -375,25 +351,25 @@ async def get_platform_statistics(
     return stats
 
 # Helper functions
-def calculate_contribution_score(submission: Dict[str, Any]) -> int:
+def calculate_contribution_score(submission: Submission) -> int:
     """Calculate contribution score impact for a submission"""
     base_score = 10
     
     # Add points for observables
-    observables = submission["submission"]["sighting"].get("observables", {})
-    observable_count = sum(len(obs_list) for obs_list in observables.values() if isinstance(obs_list, list))
+    obs = submission.sighting.observables
+    observable_count = len(obs.network or []) + len(obs.file or []) + len(obs.process or [])
     score = base_score + observable_count * 2
     
     # Add points for SIGMA detection
-    if submission["submission"]["sighting"].get("sigma_detection"):
+    if submission.sighting.sigma_detection:
         score += 5
     
     # Add points for threat context
-    if submission["submission"]["sighting"].get("threat_context"):
+    if submission.sighting.threat_context:
         score += 3
     
     # Add points for impact data
-    if submission["submission"]["sighting"].get("impact"):
+    if submission.sighting.impact:
         score += 2
     
     return min(score, 25)  # Cap at 25 points
@@ -531,7 +507,7 @@ async def startup_event():
     
     # Create some demo submissions
     for i in range(5):
-        demo_submission = generate_minimal_submission_dict(
+        demo_submission = generate_minimal_submission(
             org_id="demo-partner-org",
             tier="partner",
             confidence=70 + i * 5

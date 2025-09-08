@@ -1,9 +1,6 @@
 {
-    "python.testing.pytestArgs": [
-        "testing"
-    ],
-    "python.testing.unittestEnabled": false,
-    "python.testing.pytestEnabled": true,
+    "python.testing.unittestEnabled": true,
+    "python.testing.pytestEnabled": false,
     "cucumber.feattestsures": [
         "**/features/**/*.feature"
     ],

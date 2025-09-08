@@ -2,6 +2,7 @@
 """
 FRANK Platform - Sighting Parser and Generator
 Handles parsing and generation of FRANK sighting submissions in YAML format.
+First attempt to create a model bases approach using dataclasses.
 """
 
 import yaml

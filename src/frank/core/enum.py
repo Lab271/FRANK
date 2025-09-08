@@ -1,7 +1,11 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Pydantic Models (v2 Compatible)
+
 These are all enum's for all categories used in the models.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 from enum import Enum
 
@@ -23,6 +27,8 @@ class ObservableType(str, Enum):
     EMAIL = "email"
     FILE_HASH = 'file_hash'
     REGISTRY_KEY = "registry_key"
+    MUTEX = "mutex"
+    CERTIFICATE = "certificate"
 
 
 class SeverityLevel(str, Enum):
@@ -32,7 +38,9 @@ class SeverityLevel(str, Enum):
     HIGH = "high"
     CRITICAL = "critical"
 
+
 class TLPLevel(str, Enum):
+    """Traffic Light Protocol (TLP) classification levels."""
     RED = "RED"
     AMBER_PLUS = "AMBER+"
     AMBER = "AMBER"

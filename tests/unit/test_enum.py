@@ -2,6 +2,9 @@
 """
 Unit tests for FRANK Enum module
 Tests enum values, serialization behavior, and use_enum_values=True|False config setting
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
@@ -673,7 +676,7 @@ class TestEnumCompatibility(unittest.TestCase):
         
         # Test ObservableType iteration
         obs_values = [obs.value for obs in ObservableType]
-        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key"]
+        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key", "mutex", "certificate"]
         self.assertEqual(obs_values, expected_obs)
         
         # Test SeverityLevel iteration

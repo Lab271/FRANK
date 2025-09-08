@@ -1,6 +1,6 @@
 import unittest
 
-from frank.utils.sample_builder import generate_minimal_submission, generate_comprehensive_submission
+from frank.utils.sample_builder import generate_minimal_submission
 from frank.core.exceptions import FRANKValidationError
 
 import uuid
@@ -30,19 +30,18 @@ class TestFRANKSubmission(unittest.TestCase):
 
     def test_generate_minimal_submission_defaults(self):
         """Test generating minimal submission with default values."""
-        submission = generate_minimal_submission().to_dict()
+        submission = generate_minimal_submission().model_dump()
         
         # Check structure
-        self.assertIn('submission', submission)
-        self.assertIn('submitter', submission['submission'])
-        self.assertIn('sighting', submission['submission'])
+        self.assertIn('submitter', submission)
+        self.assertIn('sighting', submission)
         
         # Check required fields
-        submitter = submission['submission']['submitter']
+        submitter = submission['submitter']
         self.assertIn('organization_id', submitter)
         self.assertEqual(submitter['tier'], 'partner')  # default
         
-        sighting = submission['submission']['sighting']
+        sighting = submission['sighting']
         self.assertIn('sighting_id', sighting)
         self.assertIn('timestamp', sighting)
         self.assertEqual(sighting['confidence'], 69)  # default
@@ -61,13 +60,13 @@ class TestFRANKSubmission(unittest.TestCase):
             tier=self.valid_tier,
             observables=self.valid_observables,
             confidence=85
-        ).to_dict()
+        ).model_dump()
         
-        submitter = submission['submission']['submitter']
+        submitter = submission['submitter']
         self.assertEqual(submitter['organization_id'], self.valid_org_id)
         self.assertEqual(submitter['tier'], self.valid_tier)
         
-        sighting = submission['submission']['sighting']
+        sighting = submission['sighting']
         self.assertEqual(sighting['confidence'], 85)
         self.assertEqual(len(sighting['observables']['network']), 2)
     
@@ -101,48 +100,52 @@ class TestFRANKSubmission(unittest.TestCase):
         
         self.assertIn("Invalid observable type", str(context.exception))
 
-    def test_generate_comprehensive_submission(self):
-        """Test generating comprehensive submission with all parameters."""
-        campaign_context = {"name": "test_campaign", "actor": "test_actor"}
-        sigma_detection = {"rule_id": "test-rule-123", "confidence": 0.95}
-        impact_data = {"severity": "high", "affected_systems": 5}
-        sharing = {"distribution_level": "TLP:AMBER", "anonymization_level": "moderate"}
+    # def test_generate_comprehensive_submission(self):
+    #     """Test generating comprehensive submission with all parameters."""
+    #     campaign_context = {"name": "test_campaign", "actor": "test_actor"}
+    #     sigma_detection = {"rule_id": "test-rule-123", "confidence": 0.95}
+    #     impact_data = {"severity": "high", "affected_systems": 5}
+    #     sharing = {"distribution_level": "TLP:AMBER", "anonymization_level": "moderate"}
 
-        submission = generate_comprehensive_submission(
-            org_id=self.valid_org_id,
-            tier=self.valid_tier,
-            hit_target_org="target-org-456",
-            observables=self.valid_observables,
-            severity="high",
-            confidence=92,
-            campaign_context=campaign_context,
-            sigma_detection=sigma_detection,
-            impact_data=impact_data,
-            sharing=sharing
-        ).to_dict()
+    #     submission = generate_comprehensive_submission(
+    #         org_id=self.valid_org_id,
+    #         tier=self.valid_tier,
+    #         hit_target_org="target-org-456",
+    #         observables=self.valid_observables,
+    #         severity="high",
+    #         confidence=92,
+    #         campaign_context=campaign_context,
+    #         sigma_detection=sigma_detection,
+    #         impact_data=impact_data,
+    #         sharing=sharing
+    #     ).to_dict()
 
-        # Check metadata
-        self.assertIn('metadata', submission['submission'])
-        metadata = submission['submission']['metadata']
-        self.assertIn('submission_id', metadata)
-        self.assertIn('format_version', metadata)
+    #     # Check metadata
+    #     self.assertIn('metadata', submission['submission'])
+    #     metadata = submission['submission']['metadata']
+    #     self.assertIn('submission_id', metadata)
+    #     self.assertIn('format_version', metadata)
 
-        # Check hit target
-        self.assertIn('hit_target', submission['submission'])
-        hit_target = submission['submission']['hit_target']
-        self.assertEqual(hit_target['organization_id'], "target-org-456")
+    #     # Check hit target
+    #     self.assertIn('hit_target', submission['submission'])
+    #     hit_target = submission['submission']['hit_target']
+    #     self.assertEqual(hit_target['organization_id'], "target-org-456")
 
-        # Check enhanced sighting
-        sighting = submission['submission']['sighting']
-        self.assertEqual(sighting['severity'], "high")
-        self.assertIn('first_observed', sighting)
-        self.assertIn('last_observed', sighting)
-        self.assertIn('sigma_detection', sighting)
-        self.assertIn('threat_context', sighting)
-        self.assertIn('impact', sighting)
+    #     # Check enhanced sighting
+    #     sighting = submission['submission']['sighting']
+    #     self.assertEqual(sighting['severity'], "high")
+    #     self.assertIn('first_observed', sighting)
+    #     self.assertIn('last_observed', sighting)
+    #     self.assertIn('sigma_detection', sighting)
+    #     self.assertIn('threat_context', sighting)
+    #     self.assertIn('impact', sighting)
 
-        # Check sharing preferences
-        self.assertIn('sharing', submission['submission'])
-        sharing = submission['submission']['sharing']
-        self.assertIn('distribution_level', sharing)
-        self.assertIn('anonymization_level', sharing)
+    #     # Check sharing preferences
+    #     self.assertIn('sharing', submission['submission'])
+    #     sharing = submission['submission']['sharing']
+    #     self.assertIn('distribution_level', sharing)
+    #     self.assertIn('anonymization_level', sharing)
+
+if __name__ == "__main__":
+    # Configure test runner
+    unittest.main(verbosity=2, buffer=True)

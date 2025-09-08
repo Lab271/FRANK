@@ -1,23 +1,26 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - Unit Tests
-Comprehensive test suite for FRANK database and sample builder components
+FRANK Platform - Unit Tests SQLite Database
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+Comprehensive test suite for FRANK sqlite database and sample builder components
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
 import tempfile
 import os
-import json
 import sqlite3
-import uuid
 from datetime import datetime, timezone
-from unittest.mock import patch, MagicMock
 
 # Import the modules we're testing
 import sys
 import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
+from frank.core.models import Submission
 from frank.db.sqlite import SQLiteFRANKDatabase, create_sqlite_database
 
 
@@ -29,8 +32,9 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.temp_db = tempfile.NamedTemporaryFile(delete=False)
         self.temp_db.close()
         self.db_path = self.temp_db.name
+        # self.db_path = ":memory:"
         self.db = SQLiteFRANKDatabase(self.db_path)
-        
+
     def tearDown(self):
         """Clean up after each test"""
         if os.path.exists(self.db_path):
@@ -92,7 +96,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
 
     def test_store_submission_minimal(self):
         """Test storing a minimal submission"""
-        submission = {
+        submission_dict = {
             "submission": {
                 "submitter": {
                     "organization_id": "test-org-1",
@@ -111,24 +115,26 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                         ]
                     }
                 },
-                "metadata": {
-                    "submission_id": "test-sub-1",
-                    "timestamp": datetime.now(timezone.utc).isoformat()
-                }
+                "submission_id": "test-sub-1",
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
         }
-        
+
+        submission = Submission(**submission_dict['submission'])
         result = self.db.store_submission(submission)
         self.assertTrue(result)
         
-        # Verify submission was stored
+        # # Verify submission was stored
         stored_submission = self.db.get_submission_by_id("test-sub-1", "test-org-1")
         self.assertIsNotNone(stored_submission)
 
     def test_store_submission_comprehensive(self):
         """Test storing a comprehensive submission with all fields"""
-        submission = {
+        submission_dict = {
             "submission": {
+                "submission_id": "test-sub-2",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "format_version": "1.0",
                 "submitter": {
                     "organization_id": "test-org-2",
                     "tier": "core_member",
@@ -180,15 +186,10 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                         }
                     }
                 },
-                "metadata": {
-                    "submission_id": "test-sub-2",
-                    "timestamp": datetime.now(timezone.utc).isoformat(),
-                    "format_version": "1.0"
-                }
             }
         }
         
-        result = self.db.store_submission(submission)
+        result = self.db.store_submission(Submission(**submission_dict['submission']))
         self.assertTrue(result)
         
         # Verify all components were stored
@@ -208,8 +209,9 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
     def test_query_observables(self):
         """Test querying observables with various filters"""
         # First store a submission with observables
-        submission = {
+        submission_dict = {
             "submission": {
+                "submission_id": "test-sub-3",
                 "submitter": {
                     "organization_id": "test-org-3",
                     "tier": "contributor",
@@ -233,14 +235,11 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                         ]
                     }
                 },
-                "metadata": {
-                    "submission_id": "test-sub-3"
-                }
             }
         }
-        
-        self.db.store_submission(submission)
-        
+
+        self.db.store_submission(Submission(**submission_dict['submission']))
+
         # Query all observables
         results = self.db.query_observables("test-org-3")
         self.assertGreaterEqual(len(results), 2)
@@ -261,8 +260,9 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
     def test_access_level_filtering(self):
         """Test that access level filtering works correctly"""
         # Create a test submission
-        submission = {
+        submission_dict = {
             "submission": {
+                "submission_id": "test-sub-4",
                 "submitter": {
                     "organization_id": "test-org-4",
                     "tier": "partner"
@@ -283,15 +283,12 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                             }
                         ]
                     }
-                },
-                "metadata": {
-                    "submission_id": "test-sub-4"
                 }
             }
         }
-        
-        self.db.store_submission(submission)
-        
+
+        self.db.store_submission(Submission(**submission_dict['submission']))
+
         # Test different access levels
         public_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "public")
         observer_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "observer")
@@ -299,18 +296,21 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         partner_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "partner")
         
         # Public should have minimal data
-        self.assertIn('submission', public_data)
-        self.assertNotIn('hit_target', public_data['submission'])
+        self.assertIsInstance(public_data, Submission)
+        self.assertIsNone(public_data.hit_target)
         
         # Observer should have slightly more but masked values
-        self.assertIn('submission', observer_data)
+        self.assertIsNotNone(observer_data.sighting)
         
         # Contributor should have more complete data but anonymized hit_target
-        self.assertIn('submission', contributor_data)
+        self.assertIsNotNone(contributor_data.sighting)
+        self.assertIsNotNone(contributor_data.hit_target)
+        self.assertNotEqual(contributor_data.hit_target, partner_data.hit_target)
         
         # Partner should have complete access
-        self.assertIn('submission', partner_data)
-        self.assertIn('hit_target', partner_data['submission'])
+        self.assertIsNotNone(partner_data.sighting)
+        self.assertIsNotNone(partner_data.hit_target)
+
     
     def test_search_observables_by_value(self):
         """Test searching observables by value"""
@@ -340,7 +340,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             }
         }
         
-        self.db.store_submission(submission)
+        self.db.store_submission(Submission(**submission['submission']))
         
         # Search for partial matches
         results = self.db.search_observables_by_value("test-org-5", "malicious")
@@ -381,7 +381,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 }
             }
             
-            self.db.store_submission(submission)
+            self.db.store_submission(Submission(**submission['submission']))
         
         stats = self.db.get_statistics_summary("test-org-stats-0")
         
@@ -423,7 +423,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             }
         }
         
-        self.db.store_submission(submission)
+        self.db.store_submission(Submission(**submission['submission']))
         
         # Test cleanup (with 0 days to clean everything)
         deleted_count = self.db.cleanup_old_data(0)
@@ -467,3 +467,6 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)
+
+if __name__ == "__main__":
+    unittest.main()

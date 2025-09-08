@@ -1,3 +1,14 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Submission Generation and Parsing Library
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+This modules provides exception classes for database operations.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
+
 class FRANKDatabaseError(Exception):
     """Base exception for FRANK database operations."""
     pass

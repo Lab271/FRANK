@@ -364,7 +364,7 @@ class FRANKDatabase:
                 submission.confidence,
                 submission.severity,
                 submission.tlp_level,
-                submission.json()
+                submission.model_dump_json()
             ))
             
             # Insert sighting record
