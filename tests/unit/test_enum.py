@@ -676,7 +676,7 @@ class TestEnumCompatibility(unittest.TestCase):
         
         # Test ObservableType iteration
         obs_values = [obs.value for obs in ObservableType]
-        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key"]
+        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key", "mutex", "certificate"]
         self.assertEqual(obs_values, expected_obs)
         
         # Test SeverityLevel iteration

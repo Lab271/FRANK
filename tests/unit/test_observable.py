@@ -18,7 +18,7 @@ from unittest.mock import patch
 from pydantic import ValidationError
 import uuid
 
-from frank.core.models import Observable
+from frank.core.models import Observable, Observables
 from frank.core.enum import ObservableType
 
 
@@ -122,6 +122,9 @@ class TestObservableValidation(unittest.TestCase):
             uuid.UUID(uuid_part)
         except ValueError:
             self.fail(f"Invalid UUID format: {uuid_part}")
+
+    def test_get_dict(self):
+        """Test export to dict"""
 
 class TestObservableSerialization(unittest.TestCase):
     """Test Observable serialization and deserialization with various formats."""
@@ -330,10 +333,10 @@ class TestObservableSerialization(unittest.TestCase):
     def test_field_name_vs_alias_parsing(self):
         """Test that both field names and aliases work for input."""
         # Using alias
-        obs1 = Observable(type="domain", value="example.com")
+        obs1 = Observable(type=ObservableType.DOMAIN, value="example.com")
         
         # Using field name
-        obs2 = Observable(observable_type="domain", value="example.com")
+        obs2 = Observable(observable_type=ObservableType.DOMAIN, value="example.com")
         
         # Both should work and produce the same result
         self.assertEqual(obs1.observable_type, obs2.observable_type)
@@ -405,6 +408,88 @@ class TestObservableSerialization(unittest.TestCase):
         
         self.assertEqual(observable.observable_type, roundtrip.observable_type)
         self.assertEqual(observable.value, roundtrip.value)
+
+    def test_dict_export(self):
+        """Make sure we understand dict export"""
+        observable_dict = {
+            "network": [
+                {
+                    "type": ObservableType.IPV4.value,
+                    "value": "198.51.100.1",
+                    "confidence": 80,
+                },
+                {
+                    "type": ObservableType.IPV6.value,
+                    "value": "2001:db8::1",
+                    "confidence": 70,
+                },
+                {
+                    "type": ObservableType.DOMAIN.value,
+                    "value": "malicious.example.com",
+                    "confidence": 85,
+                },
+                {
+                    "type": ObservableType.URL.value,
+                    "value": "https://phishing.example.com/login",
+                    "confidence": 90,
+                },
+                {
+                    "type": ObservableType.EMAIL.value,
+                    "value": "attacker@malicious.test",
+                    "confidence": 75,
+                },
+                {
+                    "type": ObservableType.CERTIFICATE.value,
+                    "value": "40:6B:8B:CD:F9:27:A2:1C:42:8A:B9:F1:12:34:56:78:9A:BC:DE:F0",
+                    "confidence": 75,
+                }
+            ],
+            "file": [
+                {
+                    "type": ObservableType.FILE_HASH.value,
+                    "value": "5d41402abc4b2a76b9719d911017c592",
+                    "confidence": 95,
+                },
+                {
+                    "type": ObservableType.FILE_HASH.value,
+                    "value": "356a192b7913b04c54574d18c28d46e6395428ab",
+                    "confidence": 90,
+                },
+                {
+                    "type": ObservableType.FILE_HASH.value,
+                    "value": "e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317",
+                    "confidence": 100,
+                }
+             ],
+            "process": [
+                {
+                    "type": ObservableType.MUTEX.value,
+                    "value": "Global\\MalwareMutex",
+                    "confidence": 85,
+                },
+                {
+                    "type": ObservableType.MUTEX.value,
+                    "value": "Local\\RansomwareLock",
+                    "confidence": 90,
+                },
+                {
+                    "type": ObservableType.REGISTRY_KEY.value,
+                    "value": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Malware\\Config",
+                    "confidence": 80,
+                },
+                {
+                    "type": ObservableType.REGISTRY_KEY.value,
+                    "value": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Backdoor",
+                    "confidence": 95,
+                }
+            ],
+        }
+        obs = Observables(**observable_dict)
+        self.assertEqual(len(obs.network)+len(obs.file)+len(obs.process), 6+3+4)
+        obs.network = []
+        self.assertEqual(len(obs.network)+len(obs.file)+len(obs.process), 3+4)
+        obs.process = None
+        self.assertEqual(len(obs.network)+len(obs.file)+len(obs.process or []), 3)
 
 class TestObservableBeForgivingPrinciple(unittest.TestCase):
     """Test 'be forgiving on what you receive' principle."""

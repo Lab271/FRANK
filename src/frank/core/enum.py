@@ -27,6 +27,8 @@ class ObservableType(str, Enum):
     EMAIL = "email"
     FILE_HASH = 'file_hash'
     REGISTRY_KEY = "registry_key"
+    MUTEX = "mutex"
+    CERTIFICATE = "certificate"
 
 
 class SeverityLevel(str, Enum):
@@ -36,7 +38,9 @@ class SeverityLevel(str, Enum):
     HIGH = "high"
     CRITICAL = "critical"
 
+
 class TLPLevel(str, Enum):
+    """Traffic Light Protocol (TLP) classification levels."""
     RED = "RED"
     AMBER_PLUS = "AMBER+"
     AMBER = "AMBER"

@@ -37,19 +37,14 @@ class Observable(BaseModel):
     )
 
     id: Optional[str] = Field(None, description="STIX-formatted observable ID")
-    observable_type: ObservableType = Field(
-        ..., alias="type", description="Type of network observable"
-    )
+    observable_type: ObservableType = Field(..., alias="type", description="Type of network observable")
     value: str = Field(..., min_length=1, description="Observable value")
-    role: Optional[str] = Field(
-        None, description="Role in attack (C2, exfiltration, etc)"
-    )
+
+    role: Optional[str] = Field(None, description="Role in attack (C2, exfiltration, etc)")
     port: Optional[int] = Field(None, ge=1, le=65535, description="Network port")
     protocol: Optional[str] = Field(None, description="Network protocol")
     first_seen: Optional[datetime] = Field(None, description="First observation time")
-    connection_count: Optional[int] = Field(
-        None, ge=0, description="Number of connections"
-    )
+    connection_count: Optional[int] = Field(None, ge=0, description="Number of connections")
 
     @field_serializer("first_seen", when_used="always")
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
@@ -62,11 +57,7 @@ class Observable(BaseModel):
     def ensure_id_generated(self):
         """Ensure ID is always generated after all fields are set"""
         if not self.id:
-            type_val = (
-                self.observable_type
-                if isinstance(self.observable_type, str)
-                else self.observable_type.value
-            )
+            type_val = self.observable_type if isinstance(self.observable_type, str) else self.observable_type.value
             self.id = f"{type_val}--{uuid.uuid4()}"
         return self
 
@@ -86,9 +77,7 @@ class Observable(BaseModel):
     @classmethod
     def create_ipv4(cls, value: str, role: str = None, port: int = None):
         """Factory method for IPv4 observables"""
-        return cls(
-            observable_type=ObservableType.IPV4, value=value, role=role, port=port
-        )
+        return cls(observable_type=ObservableType.IPV4, value=value, role=role, port=port)
 
     @classmethod
     def create_domain(cls, value: str, role: str = None):
@@ -106,20 +95,14 @@ class Submitter(BaseModel):
         use_enum_values=True,
     )
 
-    organization_id: Optional[str] = Field(
-        None, description="STIX identity for organization"
-    )
+    organization_id: Optional[str] = Field(None, description="STIX identity for organization")
     tier: TierLevel = Field(..., description="Access tier level")
-    organization_type: str = Field(
-        default="cyber_partner", description="Organization type"
-    )
+    organization_type: str = Field(default="cyber_partner", description="Organization type")
 
     # Optional metadata
     sector: Optional[str] = Field(None, description="Industry sector")
     region: Optional[str] = Field(None, description="Geographic region")
-    client_count: Optional[int] = Field(
-        None, ge=0, description="Number of protected clients"
-    )
+    client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
 
     @model_validator(mode="after")
     def ensure_org_id(self):
@@ -166,22 +149,14 @@ class HitTarget(BaseModel):
         use_enum_values=True,
     )
 
-    organization_id: Optional[str] = Field(
-        None, description="STIX identity for affected organization"
-    )
+    organization_id: Optional[str] = Field(None, description="STIX identity for affected organization")
     sector: str = Field(..., min_length=1, description="Industry sector of target")
 
     # Optional metadata
-    organization_type: Optional[str] = Field(
-        default="customer", description="Organization type"
-    )
-    organization_size: Optional[str] = Field(
-        None, description="Organization size category"
-    )
+    organization_type: Optional[str] = Field(default="customer", description="Organization type")
+    organization_size: Optional[str] = Field(None, description="Organization size category")
     region: Optional[str] = Field(None, description="Geographic region")
-    anonymization_level: Optional[str] = Field(
-        default="high", description="Data anonymization level"
-    )
+    anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
 
     @field_validator("organization_id", mode="before")
     @classmethod
@@ -235,38 +210,29 @@ class Observables(BaseModel):
         use_enum_values=True,
     )
 
-    network: Optional[List[Observable]] = Field(
-        default_factory=list, description="Network observables"
-    )
-    file: Optional[List[Observable]] = Field(
-        default_factory=list, description="File observables"
-    )
-    process: Optional[List[Observable]] = Field(
-        default_factory=list, description="Process observables"
-    )
+    network: Optional[List[Observable]] = Field(default_factory=list, description="Network observables")
+    file: Optional[List[Observable]] = Field(default_factory=list, description="File observables")
+    process: Optional[List[Observable]] = Field(default_factory=list, description="Process observables")
 
-    # @field_serializer('network', 'file', 'process', when_used='always')
-    # def serialize_lists(self, value: List[Any]) -> List[Any] | None:
-    #     """Return None for empty lists to exclude them"""
-    #     return value if value and value != [] else None
-
-
-# Pydantic models for request/response validation
 class SigmaDetection(BaseModel):
+    """
+    SIGMA rule detection metadata.
+    """
+
     rule_id: Optional[str] = Field(None, description="SIGMA rule identifier")
     rule_name: Optional[str] = Field(None, description="SIGMA rule name")
     rule_version: Optional[str] = Field(None, description="Rule version")
     rule_status: Optional[str] = Field(None, description="Rule status")
     sigma_yaml: Optional[str] = Field(None, description="SIGMA rule YAML content")
-    rule_effectiveness: Optional[float] = Field(
-        None, description="Rule effectiveness score"
-    )
-    false_positive_rate: Optional[float] = Field(
-        None, description="False positive rate"
-    )
+    rule_effectiveness: Optional[float] = Field(None, description="Rule effectiveness score")
+    false_positive_rate: Optional[float] = Field(None, description="False positive rate")
 
 
 class Campaign(BaseModel):
+    """
+    Threat campaign metadata.
+    """
+
     id: Optional[str] = Field(None, description="Campaign identifier")
     name: Optional[str] = Field(None, description="Campaign name")
     attribution: Optional[str] = Field(None, description="Attributed threat actor")
@@ -274,33 +240,29 @@ class Campaign(BaseModel):
     attack_vector: Optional[str] = Field(None, description="Primary attack vector")
     payload_type: Optional[str] = Field(None, description="Type of payload used")
     campaign_start: Optional[datetime] = Field(None, description="Campaign start time")
-    estimated_victims: Optional[int] = Field(
-        None, description="Estimated number of victims"
-    )
+    estimated_victims: Optional[int] = Field(None, description="Estimated number of victims")
     confidence: Optional[int] = Field(None, description="Attribution confidence")
 
 
 class ThreatContext(BaseModel):
+    """
+    Threat context including campaign and MITRE mapping.
+    """
+
     campaign: Optional[Campaign] = Field(None, description="Campaign information")
-    mitre_attack: Optional[Dict[str, Any]] = Field(
-        None, description="MITRE ATT&CK mapping"
-    )
-    malware_family: Optional[Dict[str, Any]] = Field(
-        None, description="Malware family data"
-    )
+    mitre_attack: Optional[Dict[str, Any]] = Field(None, description="MITRE ATT&CK mapping")
+    malware_family: Optional[Dict[str, Any]] = Field(None, description="Malware family data")
 
 
 class Impact(BaseModel):
-    affected_systems: Optional[int] = Field(
-        None, description="Number of affected systems"
-    )
-    compromised_accounts: Optional[int] = Field(
-        None, description="Compromised accounts"
-    )
+    """
+    Impact assessment metadata.
+    """
+    
+    affected_systems: Optional[int] = Field(None, description="Number of affected systems")
+    compromised_accounts: Optional[int] = Field(None, description="Compromised accounts")
     containment_time: Optional[str] = Field(None, description="Time to containment")
-    financial_impact_eur: Optional[int] = Field(
-        None, description="Financial impact in EUR"
-    )
+    financial_impact_eur: Optional[int] = Field(None, description="Financial impact in EUR")
 
 
 class Sighting(BaseModel):
@@ -319,20 +281,14 @@ class Sighting(BaseModel):
         description="When threat was observed",
     )
     confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
-    observation_count: int = Field(
-        default=1, ge=1, description="Number of observations"
-    )
+    observation_count: int = Field(default=1, ge=1, description="Number of observations")
     observables: Optional[Observables] = Field(None, description="Threat observables")
 
     # Optional extended threat metadata
     severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
-    first_observed: Optional[datetime] = Field(
-        None, description="First observation time"
-    )
+    first_observed: Optional[datetime] = Field(None, description="First observation time")
     last_observed: Optional[datetime] = Field(None, description="Last observation time")
-    sigma_detection: Optional[SigmaDetection] = Field(
-        None, description="SIGMA detection data"
-    )
+    sigma_detection: Optional[SigmaDetection] = Field(None, description="SIGMA detection data")
     threat_context: Optional[ThreatContext] = Field(None, description="Threat context")
     impact: Optional[Impact] = Field(None, description="Impact assessment")
 
@@ -345,9 +301,7 @@ class Sighting(BaseModel):
             return datetime.now(timezone.utc)
         return v
 
-    @field_serializer(
-        "timestamp", "first_observed", "last_observed", when_used="always"
-    )
+    @field_serializer("timestamp", "first_observed", "last_observed", when_used="always")
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
         """Always serialize datetime as ISO string"""
         if value is None:
@@ -407,26 +361,18 @@ class Submission(BaseModel):
         extra="ignore",  # Be forgiving on input
         use_enum_values=True,
     )
-    submission_id: Optional[str] = Field(
-        None, description="Unique submission identifier"
-    )
-    format_version: Optional[str] = Field(
-        default=__version__, description="FRANK format version"
-    )
+    submission_id: Optional[str] = Field(None, description="Unique submission identifier")
+    format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
     timestamp: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Submission timestamp",
     )
 
     # Optional metadata - be forgiving on input
-    submission_method: Optional[str] = Field(
-        default="api", description="Submission method"
-    )
+    submission_method: Optional[str] = Field(default="api", description="Submission method")
     processing_notes: Optional[str] = Field(None, description="Processing notes")
     tlp_level: Optional[str] = Field("GREEN", description="TLP classification")
-    confidence: Optional[int] = Field(
-        None, ge=0, le=100, description="Overall confidence level"
-    )
+    confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
     severity: Optional[str] = Field(None, description="Threat severity")
 
     submitter: Optional[Submitter] = Field(None, description="Submitting organization")
@@ -534,11 +480,11 @@ class Submission(BaseModel):
 
     @classmethod
     def create_minimal(
-                            cls,
-                            submitter_tier: TierLevel = TierLevel.PARTNER,
-                            target_sector: str = None,
-                            threat_ips: List[str] = None,
-                        ) -> "Submission":
+        cls,
+        submitter_tier: TierLevel = TierLevel.PARTNER,
+        target_sector: str = None,
+        threat_ips: List[str] = None,
+    ) -> "Submission":
         """
         Factory method for creating minimal valid submissions.
         Implements 'be forgiving' by providing sensible defaults.
@@ -547,9 +493,7 @@ class Submission(BaseModel):
             threat_ips = ["185.220.102.45", "203.0.113.42"]
 
         # Create network observables
-        network_obs = Observables(
-            network=[Observable.create_ipv4(ip, role="c2") for ip in threat_ips]
-        )
+        network_obs = Observables(network=[Observable.create_ipv4(ip, role="c2") for ip in threat_ips])
 
         hit_target = HitTarget.create(sector=target_sector) if target_sector else None
 
@@ -638,7 +582,7 @@ def example_usage():
         # This should fail validation
         invalid = Observable(
             type=ObservableType.IPV4,
-            value="not.an.ip.address"  # Invalid IP
+            value="not.an.ip.address",  # Invalid IP
         )
     except ValueError as e:
         print(f"✓ Validation caught invalid IP: {e}")

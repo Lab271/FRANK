@@ -32,3 +32,8 @@ where = ["src"]
 
 [tool.setuptools.package-dir]
 "" = "src"
+
+
+[tool.ruff]
+# Allow lines to be as long as 120.
+line-length = 120
