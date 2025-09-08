@@ -34,7 +34,6 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.db_path = self.temp_db.name
         # self.db_path = ":memory:"
         self.db = SQLiteFRANKDatabase(self.db_path)
-        self.db = create_sqlite_database(self.db_path)
 
     def tearDown(self):
         """Clean up after each test"""
@@ -129,85 +128,83 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         stored_submission = self.db.get_submission_by_id("test-sub-1", "test-org-1")
         self.assertIsNotNone(stored_submission)
 
-    # def test_store_submission_comprehensive(self):
-    #     """Test storing a comprehensive submission with all fields"""
-    #     submission = {
-    #         "submission": {
-    #             "submitter": {
-    #                 "organization_id": "test-org-2",
-    #                 "tier": "core_member",
-    #                 "sector": "cybersecurity_services"
-    #             },
-    #             "hit_target": {
-    #                 "organization_id": "test-victim-1",
-    #                 "sector": "financial_services"
-    #             },
-    #             "sighting": {
-    #                 "sighting_id": "test-sighting-2",
-    #                 "confidence": 92,
-    #                 "severity": "high",
-    #                 "first_observed": "2025-01-20T13:15:00Z",
-    #                 "last_observed": "2025-01-20T14:25:00Z",
-    #                 "observation_count": 23,
-    #                 "observables": {
-    #                     "network": [
-    #                         {
-    #                             "id": "test-obs-2",
-    #                             "type": "ipv4",
-    #                             "value": "185.220.102.45",
-    #                             "role": "c2_server",
-    #                             "port": 443
-    #                         },
-    #                         {
-    #                             "id": "test-obs-3",
-    #                             "type": "domain",
-    #                             "value": "malicious.example.com"
-    #                         }
-    #                     ]
-    #                 },
-    #                 "sigma_detection": {
-    #                     "rule_id": "sigma-test-rule-1",
-    #                     "rule_name": "Test SIGMA Rule",
-    #                     "rule_version": "1.0",
-    #                     "rule_status": "stable",
-    #                     "sigma_yaml": "title: Test Rule\ndetection:\n  condition: test",
-    #                     "rule_effectiveness": 0.89,
-    #                     "false_positive_rate": 0.03
-    #                 },
-    #                 "threat_context": {
-    #                     "campaign": {
-    #                         "id": "test-campaign-1",
-    #                         "name": "Test Campaign",
-    #                         "attribution": "unknown_group",
-    #                         "target_sectors": ["financial"],
-    #                         "confidence": 78
-    #                     }
-    #                 }
-    #             },
-    #             "metadata": {
-    #                 "submission_id": "test-sub-2",
-    #                 "timestamp": datetime.now(timezone.utc).isoformat(),
-    #                 "format_version": "1.0"
-    #             }
-    #         }
-    #     }
+    def test_store_submission_comprehensive(self):
+        """Test storing a comprehensive submission with all fields"""
+        submission_dict = {
+            "submission": {
+                "submission_id": "test-sub-2",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "format_version": "1.0",
+                "submitter": {
+                    "organization_id": "test-org-2",
+                    "tier": "core_member",
+                    "sector": "cybersecurity_services"
+                },
+                "hit_target": {
+                    "organization_id": "test-victim-1",
+                    "sector": "financial_services"
+                },
+                "sighting": {
+                    "sighting_id": "test-sighting-2",
+                    "confidence": 92,
+                    "severity": "high",
+                    "first_observed": "2025-01-20T13:15:00Z",
+                    "last_observed": "2025-01-20T14:25:00Z",
+                    "observation_count": 23,
+                    "observables": {
+                        "network": [
+                            {
+                                "id": "test-obs-2",
+                                "type": "ipv4",
+                                "value": "185.220.102.45",
+                                "role": "c2_server",
+                                "port": 443
+                            },
+                            {
+                                "id": "test-obs-3",
+                                "type": "domain",
+                                "value": "malicious.example.com"
+                            }
+                        ]
+                    },
+                    "sigma_detection": {
+                        "rule_id": "sigma-test-rule-1",
+                        "rule_name": "Test SIGMA Rule",
+                        "rule_version": "1.0",
+                        "rule_status": "stable",
+                        "sigma_yaml": "title: Test Rule\ndetection:\n  condition: test",
+                        "rule_effectiveness": 0.89,
+                        "false_positive_rate": 0.03
+                    },
+                    "threat_context": {
+                        "campaign": {
+                            "id": "test-campaign-1",
+                            "name": "Test Campaign",
+                            "attribution": "unknown_group",
+                            "target_sectors": ["financial"],
+                            "confidence": 78
+                        }
+                    }
+                },
+            }
+        }
         
-    #     result = self.db.store_submission(submission)
-    #     self.assertTrue(result)
+        result = self.db.store_submission(Submission(**submission_dict['submission']))
+        self.assertTrue(result)
         
-    #     # Verify all components were stored
-    #     stored_submission = self.db.get_submission_by_id("test-sub-2", "test-org-2")
-    #     self.assertIsNotNone(stored_submission)
+        # Verify all components were stored
+        stored_submission = self.db.get_submission_by_id("test-sub-2", "test-org-2")
+        self.assertIsNotNone(stored_submission)
         
-    #     # Check SIGMA rule was stored
-    #     sigma_rules = self.db.get_sigma_rules("test-org-2")
-    #     self.assertEqual(len(sigma_rules), 1)
-    #     self.assertEqual(sigma_rules[0]['rule_name'], 'Test SIGMA Rule')
+        # Check SIGMA rule was stored
+        sigma_rules = self.db.get_sigma_rules("test-org-2")
+        self.assertEqual(len(sigma_rules), 1)
+        self.assertEqual(sigma_rules[0]['rule_name'], 'Test SIGMA Rule')
         
-    #     # Check campaign was stored
-    #     campaigns = self.db.get_campaigns("test-org-2")
-    #     self.assertEqual(len(campaigns), 1)
-    #     self.assertEqual(campaigns[0]['campaign_name'], 'Test Campaign')
+        # Check campaign was stored
+        campaigns = self.db.get_campaigns("test-org-2")
+        self.assertEqual(len(campaigns), 1)
+        self.assertEqual(campaigns[0]['campaign_name'], 'Test Campaign')
     
     def test_query_observables(self):
         """Test querying observables with various filters"""
@@ -299,176 +296,177 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         partner_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "partner")
         
         # Public should have minimal data
-        self.assertIn('submission', public_data)
-        self.assertNotIn('hit_target', public_data)
+        self.assertIsInstance(public_data, Submission)
+        self.assertIsNone(public_data.hit_target)
         
         # Observer should have slightly more but masked values
-        self.assertIn('sighting', observer_data)
+        self.assertIsNotNone(observer_data.sighting)
         
         # Contributor should have more complete data but anonymized hit_target
-        self.assertIn('sighting', contributor_data)
-        self.assertIn('hit_target', contributor_data)
-        self.assertNotEqual(contributor_data['hit_target'], partner_data['hit_target'])
+        self.assertIsNotNone(contributor_data.sighting)
+        self.assertIsNotNone(contributor_data.hit_target)
+        self.assertNotEqual(contributor_data.hit_target, partner_data.hit_target)
         
         # Partner should have complete access
-        self.assertIn('sighting', partner_data)
-        self.assertIn('hit_target', partner_data)
+        self.assertIsNotNone(partner_data.sighting)
+        self.assertIsNotNone(partner_data.hit_target)
+
     
-    # def test_search_observables_by_value(self):
-    #     """Test searching observables by value"""
-    #     # Store test data
-    #     submission = {
-    #         "submission": {
-    #             "submitter": {
-    #                 "organization_id": "test-org-5",
-    #                 "tier": "observer"
-    #             },
-    #             "sighting": {
-    #                 "sighting_id": "test-sighting-5",
-    #                 "confidence": 80,
-    #                 "observables": {
-    #                     "network": [
-    #                         {
-    #                             "id": "test-obs-7",
-    #                             "type": "domain",
-    #                             "value": "example.malicious.com"
-    #                         }
-    #                     ]
-    #                 }
-    #             },
-    #             "metadata": {
-    #                 "submission_id": "test-sub-5"
-    #             }
-    #         }
-    #     }
+    def test_search_observables_by_value(self):
+        """Test searching observables by value"""
+        # Store test data
+        submission = {
+            "submission": {
+                "submitter": {
+                    "organization_id": "test-org-5",
+                    "tier": "observer"
+                },
+                "sighting": {
+                    "sighting_id": "test-sighting-5",
+                    "confidence": 80,
+                    "observables": {
+                        "network": [
+                            {
+                                "id": "test-obs-7",
+                                "type": "domain",
+                                "value": "example.malicious.com"
+                            }
+                        ]
+                    }
+                },
+                "metadata": {
+                    "submission_id": "test-sub-5"
+                }
+            }
+        }
         
-    #     self.db.store_submission(submission)
+        self.db.store_submission(Submission(**submission['submission']))
         
-    #     # Search for partial matches
-    #     results = self.db.search_observables_by_value("test-org-5", "malicious")
-    #     self.assertGreaterEqual(len(results), 1)
+        # Search for partial matches
+        results = self.db.search_observables_by_value("test-org-5", "malicious")
+        self.assertGreaterEqual(len(results), 1)
         
-    #     # Search for exact match
-    #     results = self.db.search_observables_by_value("test-org-5", "example.malicious.com")
-    #     self.assertGreaterEqual(len(results), 1)
+        # Search for exact match
+        results = self.db.search_observables_by_value("test-org-5", "example.malicious.com")
+        self.assertGreaterEqual(len(results), 1)
     
-    # def test_statistics_summary(self):
-    #     """Test getting platform statistics"""
-    #     # Store some test data first
-    #     for i in range(3):
-    #         submission = {
-    #             "submission": {
-    #                 "submitter": {
-    #                     "organization_id": f"test-org-stats-{i}",
-    #                     "tier": "contributor",
-    #                     "sector": "technology"
-    #                 },
-    #                 "sighting": {
-    #                     "sighting_id": f"test-sighting-stats-{i}",
-    #                     "confidence": 70 + i * 10,
-    #                     "severity": "medium",
-    #                     "observables": {
-    #                         "network": [
-    #                             {
-    #                                 "id": f"test-obs-stats-{i}",
-    #                                 "type": "ipv4",
-    #                                 "value": f"10.0.0.{i + 10}"
-    #                             }
-    #                         ]
-    #                     }
-    #                 },
-    #                 "metadata": {
-    #                     "submission_id": f"test-sub-stats-{i}"
-    #                 }
-    #             }
-    #         }
+    def test_statistics_summary(self):
+        """Test getting platform statistics"""
+        # Store some test data first
+        for i in range(3):
+            submission = {
+                "submission": {
+                    "submitter": {
+                        "organization_id": f"test-org-stats-{i}",
+                        "tier": "contributor",
+                        "sector": "technology"
+                    },
+                    "sighting": {
+                        "sighting_id": f"test-sighting-stats-{i}",
+                        "confidence": 70 + i * 10,
+                        "severity": "medium",
+                        "observables": {
+                            "network": [
+                                {
+                                    "id": f"test-obs-stats-{i}",
+                                    "type": "ipv4",
+                                    "value": f"10.0.0.{i + 10}"
+                                }
+                            ]
+                        }
+                    },
+                    "metadata": {
+                        "submission_id": f"test-sub-stats-{i}"
+                    }
+                }
+            }
             
-    #         self.db.store_submission(submission)
+            self.db.store_submission(Submission(**submission['submission']))
         
-    #     stats = self.db.get_statistics_summary("test-org-stats-0")
+        stats = self.db.get_statistics_summary("test-org-stats-0")
         
-    #     # Verify statistics structure
-    #     self.assertIn('total_submissions', stats)
-    #     self.assertIn('active_organizations', stats)
-    #     self.assertIn('observable_types', stats)
-    #     self.assertIn('severity_distribution', stats)
+        # Verify statistics structure
+        self.assertIn('total_submissions', stats)
+        self.assertIn('active_organizations', stats)
+        self.assertIn('observable_types', stats)
+        self.assertIn('severity_distribution', stats)
         
-    #     # Verify some basic counts
-    #     self.assertGreaterEqual(stats['total_submissions'], 3)
-    #     self.assertGreaterEqual(stats['active_organizations'], 3)
+        # Verify some basic counts
+        self.assertGreaterEqual(stats['total_submissions'], 3)
+        self.assertGreaterEqual(stats['active_organizations'], 3)
     
-    # def test_cleanup_old_data(self):
-    #     """Test data cleanup functionality"""
-    #     # Store some test data
-    #     submission = {
-    #         "submission": {
-    #             "submitter": {
-    #                 "organization_id": "test-org-cleanup",
-    #                 "tier": "contributor"
-    #             },
-    #             "sighting": {
-    #                 "sighting_id": "test-sighting-cleanup",
-    #                 "confidence": 85,
-    #                 "observables": {
-    #                     "network": [
-    #                         {
-    #                             "id": "test-obs-cleanup",
-    #                             "type": "ipv4",
-    #                             "value": "10.0.0.99"
-    #                         }
-    #                     ]
-    #                 }
-    #             },
-    #             "metadata": {
-    #                 "submission_id": "test-sub-cleanup"
-    #             }
-    #         }
-    #     }
+    def test_cleanup_old_data(self):
+        """Test data cleanup functionality"""
+        # Store some test data
+        submission = {
+            "submission": {
+                "submitter": {
+                    "organization_id": "test-org-cleanup",
+                    "tier": "contributor"
+                },
+                "sighting": {
+                    "sighting_id": "test-sighting-cleanup",
+                    "confidence": 85,
+                    "observables": {
+                        "network": [
+                            {
+                                "id": "test-obs-cleanup",
+                                "type": "ipv4",
+                                "value": "10.0.0.99"
+                            }
+                        ]
+                    }
+                },
+                "metadata": {
+                    "submission_id": "test-sub-cleanup"
+                }
+            }
+        }
         
-    #     self.db.store_submission(submission)
+        self.db.store_submission(Submission(**submission['submission']))
         
-    #     # Test cleanup (with 0 days to clean everything)
-    #     deleted_count = self.db.cleanup_old_data(0)
-    #     self.assertGreaterEqual(deleted_count, 0)
+        # Test cleanup (with 0 days to clean everything)
+        deleted_count = self.db.cleanup_old_data(0)
+        self.assertGreaterEqual(deleted_count, 0)
     
-    # def test_health_check(self):
-    #     """Test database health check"""
-    #     health_status = self.db.health_check()
+    def test_health_check(self):
+        """Test database health check"""
+        health_status = self.db.health_check()
         
-    #     self.assertEqual(health_status['status'], 'healthy')
-    #     self.assertIn('database_path', health_status)
-    #     self.assertIn('table_counts', health_status)
-    #     self.assertIn('timestamp', health_status)
+        self.assertEqual(health_status['status'], 'healthy')
+        self.assertIn('database_path', health_status)
+        self.assertIn('table_counts', health_status)
+        self.assertIn('timestamp', health_status)
     
-    # def test_log_access(self):
-    #     """Test access logging functionality"""
-    #     result = self.db.log_access(
-    #         "test-org-log", 
-    #         "TEST_ACTION", 
-    #         "test_resource", 
-    #         "test-resource-1",
-    #         {"test": "details"}
-    #     )
-    #     self.assertTrue(result)
+    def test_log_access(self):
+        """Test access logging functionality"""
+        result = self.db.log_access(
+            "test-org-log", 
+            "TEST_ACTION", 
+            "test_resource", 
+            "test-resource-1",
+            {"test": "details"}
+        )
+        self.assertTrue(result)
         
-    #     # Retrieve logs
-    #     logs = self.db.get_access_logs("test-org-log")
-    #     self.assertGreaterEqual(len(logs), 1)
-    #     self.assertEqual(logs[0]['action'], 'TEST_ACTION')
+        # Retrieve logs
+        logs = self.db.get_access_logs("test-org-log")
+        self.assertGreaterEqual(len(logs), 1)
+        self.assertEqual(logs[0]['action'], 'TEST_ACTION')
     
-    # def test_factory_function(self):
-    #     """Test the factory function for creating database instances"""
-    #     temp_file = tempfile.NamedTemporaryFile(delete=False)
-    #     temp_file.close()
-    #     temp_path = temp_file.name
+    def test_factory_function(self):
+        """Test the factory function for creating database instances"""
+        temp_file = tempfile.NamedTemporaryFile(delete=False)
+        temp_file.close()
+        temp_path = temp_file.name
         
-    #     try:
-    #         db = create_sqlite_database(temp_path)
-    #         self.assertIsInstance(db, SQLiteFRANKDatabase)
-    #         self.assertEqual(db.db_path, temp_path)
-    #     finally:
-    #         if os.path.exists(temp_path):
-    #             os.unlink(temp_path)
+        try:
+            db = create_sqlite_database(temp_path)
+            self.assertIsInstance(db, SQLiteFRANKDatabase)
+            self.assertEqual(db.db_path, temp_path)
+        finally:
+            if os.path.exists(temp_path):
+                os.unlink(temp_path)
 
 if __name__ == "__main__":
     unittest.main()

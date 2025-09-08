@@ -21,7 +21,7 @@ from pathlib import Path
 
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
-from frank.core.models import Submission, Observable, Sighting, Submitter
+from frank.core.models import Submission, Sighting, Submitter
 
 class NullLogger:
     """Null logger that discards all log messages"""
@@ -110,9 +110,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         compromised_accounts INTEGER,
                         containment_time TEXT,
                         financial_impact_eur INTEGER,
-                        FOREIGN KEY (submission_id) REFERENCES submissions (submission_id) ON DELETE CASCADE,
-                        FOREIGN KEY (sigma_rule_id) REFERENCES sigma_rules (rule_id),
-                        FOREIGN KEY (campaign_id) REFERENCES campaigns (campaign_id)
+                        FOREIGN KEY (submission_id) REFERENCES submissions (submission_id) ON DELETE CASCADE
                     )
                 """)
                 
@@ -897,7 +895,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             return {'submission': filtered}
         elif access_level == 'contributor':
             # Remove only the most sensitive information
-            filtered = self._deep_copy({'submission': submission})
+            filtered = self._deep_copy(submission)
             
             # Anonymize hit target details
             if 'hit_target' in filtered:
