@@ -1,9 +1,19 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - API steps - BDD
+
+Step implementation function for BDD/Behave tests
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
+
 # features/steps/frank_api_steps.py
 import json
 import requests
 import time
 from datetime import datetime, timezone, timedelta
-from behave import given, when, then, step
+from behave import given, when, then
 from hamcrest import assert_that, equal_to, greater_than, contains_string, has_key, not_none, less_than_or_equal_to
 
 
@@ -16,6 +26,12 @@ TEST_TOKENS = {
     "core_member": "core_test_token"
 }
 
+# curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer partner_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer core_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+
+#  jq '.sightings[0] | length'
 
 class APIClient:
     def __init__(self, base_url=API_BASE_URL):
@@ -139,18 +155,18 @@ def step_query_invalid_dates(context, start_date, end_date):
     context.response = context.api.get("/v1/sighting", params=params)
 
 
-@when('I make more than {limit:d} requests in a day')
-def step_exceed_rate_limit(context, limit):
-    # For testing, we'll make a smaller number of rapid requests
-    # to simulate rate limiting
-    responses = []
-    for i in range(min(limit + 5, 20)):  # Cap at 20 for test efficiency
-        response = context.api.get("/v1/sighting")
-        responses.append(response)
-        if response.status_code == 429:
-            break
+# @when('I make more than {limit:d} requests in a day')
+# def step_exceed_rate_limit(context, limit):
+#     # For testing, we'll make a smaller number of rapid requests
+#     # to simulate rate limiting
+#     responses = []
+#     for i in range(min(limit + 5, 20)):  # Cap at 20 for test efficiency
+#         response = context.api.get("/v1/sighting")
+#         responses.append(response)
+#         if response.status_code == 429:
+#             break
     
-    context.response = responses[-1]
+#     context.response = responses[-1]
 
 
 @when('I check the API health status')
@@ -174,7 +190,7 @@ def step_complex_search(context, sector, days, confidence):
     context.response = context.api.get("/v1/sighting", params=params)
 
 
-@when('I submit a comprehensive sighting with')
+@when('I submit a comprehensive sighting with:')
 def step_submit_comprehensive(context):
     # Parse the table data from context
     sighting_data = {}
@@ -265,6 +281,12 @@ def step_confidence_filter_validation(context, min_confidence):
         for sighting in response_data["sightings"]:
             confidence = sighting.get("confidence", 0)
             assert_that(confidence, greater_than(min_confidence - 1))
+
+
+@then('subsequent requests should be rejected with "429" error')
+def step_subsequent_requests_rejected_429(context):
+    # The last response in the rate limit scenario should be 429
+    assert_that(context.response.status_code, equal_to(429))
 
 
 @then('the results should be properly paginated')

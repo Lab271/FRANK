@@ -1,8 +1,12 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - FastAPI Spike Solution
+
 A working prototype API server implementing the FRANK threat intelligence platform
 using FastAPI and the SQLite database backend.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import os

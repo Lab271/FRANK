@@ -175,7 +175,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         rule_name TEXT NOT NULL,
                         rule_version TEXT,
                         rule_status TEXT CHECK (rule_status IN ('stable', 'test', 'experimental')),
-                        sigma_yaml TEXT NOT NULL,
+                        sigma_yaml TEXT,
                         created_by_org TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,

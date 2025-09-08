@@ -219,8 +219,8 @@ class SigmaDetection(BaseModel):
     SIGMA rule detection metadata.
     """
 
-    rule_id: Optional[str] = Field(None, description="SIGMA rule identifier")
-    rule_name: Optional[str] = Field(None, description="SIGMA rule name")
+    rule_id: str = Field(default_factory=lambda: f"sigma--{uuid.uuid4()}", description="SIGMA rule identifier")
+    rule_name: str = Field(..., min_length=1, description="SIGMA rule name")
     rule_version: Optional[str] = Field(None, description="Rule version")
     rule_status: Optional[str] = Field(None, description="Rule status")
     sigma_yaml: Optional[str] = Field(None, description="SIGMA rule YAML content")
@@ -258,7 +258,7 @@ class Impact(BaseModel):
     """
     Impact assessment metadata.
     """
-    
+
     affected_systems: Optional[int] = Field(None, description="Number of affected systems")
     compromised_accounts: Optional[int] = Field(None, description="Compromised accounts")
     containment_time: Optional[str] = Field(None, description="Time to containment")
