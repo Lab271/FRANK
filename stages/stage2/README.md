@@ -27,8 +27,8 @@ This stage implements the FRANK platform with LocalStack simulation for AWS serv
 - Environment-based configuration management
 
 **Success Criteria**:
-- FastAPI application connects to both LocalStack RDS and DynamoDB
-- Same submission model works with both databases
+- FastAPI application connects to both MySQL (LocalStack RDS) and DynamoDB
+- Same Submission model works with both databases
 - Performance comparison between SQL and NoSQL approaches
 - Stable local development environment
 
@@ -38,7 +38,7 @@ This stage implements the FRANK platform with LocalStack simulation for AWS serv
 - Infrastructure patterns learned apply to real AWS
 
 
-For more details see the [implementation plan](../../docs/implementation_plan.md#Stage-2).
+For more details see the [/docs/implementation plan](../../docs/implementation_plan.md#Stage-2).
 
 ## Overview
 
@@ -369,7 +369,7 @@ make shell
 make logs
 
 # Check service health
-curl http://localhost:8000/health
+curl http://localhost:8000/v1/health
 ```
 
 ## Data Models

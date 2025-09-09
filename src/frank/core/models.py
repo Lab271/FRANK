@@ -233,7 +233,7 @@ class Campaign(BaseModel):
     Threat campaign metadata.
     """
 
-    id: Optional[str] = Field(None, description="Campaign identifier")
+    id: str = Field(default_factory=lambda: f"campaign--{uuid.uuid4()}", description="Campaign identifier")
     name: Optional[str] = Field(None, description="Campaign name")
     attribution: Optional[str] = Field(None, description="Attributed threat actor")
     target_sectors: Optional[List[str]] = Field(None, description="Targeted sectors")
