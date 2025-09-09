@@ -20,7 +20,6 @@ import logging
 from pathlib import Path
 
 from frank.core.models import Submission, Sighting, Submitter
-from frank.utils import NullLogger
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
 
@@ -31,24 +30,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     Provides full functionality with file-based storage and supports
     the complete FRANK access tier model.
     """
-    
-    def __init__(self, db_path: str = "/tmp/frank_local.db", logger: Optional[logging.Logger] = None) -> None:
-        """
-        Initialize SQLite database connection.
-        
-        Args:
-            db_path: Path to SQLite database file
-            logger: Optional logger instance for logging
-        """
-        self.db_path = db_path
-        self.logger = logger or NullLogger()
-
-        self.initialize()
-    
+      
     def initialize(self) -> None:
         """Initialize the SQLite database with FRANK schema."""
+        db_path = self.connection_params['db_path']
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
                 conn.execute("PRAGMA journal_mode = WAL")  # Better concurrency
                 
@@ -199,7 +186,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 self._create_indexes(conn)
                 
                 conn.commit()
-                self.logger.info(f"Database initialized at {self.db_path}")
+                self.logger.info(f"Database initialized at {db_path}")
                 
         except sqlite3.Error as e:
             self.logger.error(f"Database initialization error: {e}")
@@ -241,11 +228,6 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             except sqlite3.Error as e:
                 self.logger.warning(f"Failed to create index: {e}")
     
-    def hash_observable(self, observable_type: str, observable_value: str) -> str:
-        """Create a hash for observable deduplication and quick lookups."""
-        combined = f"{observable_type}:{observable_value}".lower()
-        return hashlib.sha256(combined.encode()).hexdigest()
-
     def store_submission(self, submission: Submission) -> bool:
         """
         Store a complete submission in the database with full normalization.
@@ -257,8 +239,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             True if stored successfully, False otherwise
         """
         self.logger.info(f"Storing submission: {submission.model_dump_json(exclude_none=True, exclude_defaults=True,by_alias=True)}...")
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
                 
                 # Extract main submission data
@@ -529,8 +513,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Filtered Submission or None if not found
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
@@ -577,8 +563,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of filtered observable statistics
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 # Build query based on access level and filters
@@ -661,8 +649,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Statistics summary dictionary
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 stats = {}
@@ -742,49 +732,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error getting statistics: {e}")
             raise FRANKQueryError(f"Failed to get statistics: {e}")
     
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """
-        Insert or update organization information.
-        
-        Args:
-            org_data: Organization data dictionary
-            
-        Returns:
-            True if successful
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                self._upsert_organization(conn, org_data)
-                conn.commit()
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error upserting organization: {e}")
-            return False
-    
-    def log_access(self, org_id: str, action: str, resource_type: str = None, 
-                   resource_id: str = None, details: Dict[str, Any] = None) -> bool:
-        """
-        Log access for auditing purposes.
-        
-        Args:
-            org_id: Organization ID performing the action
-            action: Action being performed
-            resource_type: Type of resource being accessed
-            resource_id: ID of specific resource
-            details: Additional details to log
-            
-        Returns:
-            True if logged successfully
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                self._log_access(conn, org_id, action, resource_type, resource_id, details)
-                conn.commit()
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error logging access: {e}")
-            return False
-    
+   
+   
     def _log_access(self, conn: sqlite3.Connection, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> None:
@@ -800,62 +749,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             resource_id,
             json.dumps(details) if details else None
         ))
-    
-    def cleanup_old_data(self, days: int = 90) -> int:
-        """
-        Clean up old data according to retention policies.
-        
-        Args:
-            days: Remove data older than this many days
-            
-        Returns:
-            Number of records deleted
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                # Clean up old submissions (cascades to sightings and observables)
-                cursor = conn.execute("""
-                    DELETE FROM submissions 
-                    WHERE submission_timestamp < datetime('now', '-{} days')
-                """.format(days))
-                
-                deleted_submissions = cursor.rowcount
-                
-                # Clean up old access logs
-                cursor = conn.execute("""
-                    DELETE FROM access_logs 
-                    WHERE timestamp < datetime('now', '-{} days')
-                """.format(days))
-                
-                deleted_logs = cursor.rowcount
-                
-                # Clean up orphaned statistics (where no recent sightings exist)
-                cursor = conn.execute("""
-                    DELETE FROM observable_statistics 
-                    WHERE last_seen < datetime('now', '-{} days')
-                    AND observable_hash NOT IN (
-                        SELECT DISTINCT observable_hash 
-                        FROM observables o
-                        JOIN sightings s ON o.sighting_id = s.sighting_id
-                        JOIN submissions sub ON s.submission_id = sub.submission_id
-                        WHERE sub.submission_timestamp >= datetime('now', '-{} days')
-                    )
-                """.format(days, days))
-                
-                deleted_stats = cursor.rowcount
-                
-                conn.commit()
-                
-                total_deleted = deleted_submissions + deleted_logs + deleted_stats
-                self.logger.info(f"Cleaned up {total_deleted} old records")
-                return total_deleted
-                
-        except sqlite3.Error as e:
-            self.logger.error(f"Error during cleanup: {e}")
-            raise FRANKStorageError(f"Failed to cleanup old data: {e}")
-    
+       
     def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: str) -> Dict[str, Any]:
         """Filter submission data based on access level."""
+        # TODO: Upgrade this to Pydantic classes
         self.logger.info(f"Filtering submission for access level: {access_level}")
         self.logger.debug(f"Original submission data: {submission}")
         if access_level == 'public':
@@ -942,8 +839,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of matching observables
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
@@ -990,8 +889,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Organization data or None if not found
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
@@ -1031,8 +932,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of SIGMA rule dictionaries
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 query = "SELECT * FROM sigma_rules"
@@ -1070,8 +973,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of campaign dictionaries
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 query = "SELECT * FROM campaigns"
@@ -1119,8 +1024,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of access log entries
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 query = """
@@ -1168,8 +1075,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Health status dictionary
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 # Basic connectivity test
                 cursor = conn.execute("SELECT 1")
                 cursor.fetchone()
@@ -1194,11 +1103,11 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 table_counts = dict(cursor.fetchall())
                 
                 # Check database size
-                db_size = Path(self.db_path).stat().st_size if Path(self.db_path).exists() else 0
+                db_size = Path(db_path).stat().st_size if Path(db_path).exists() else 0
                 
                 return {
                     'status': 'healthy',
-                    'database_path': self.db_path,
+                    'database_path': db_path,
                     'database_size_bytes': db_size,
                     'table_counts': table_counts,
                     'timestamp': datetime.now(timezone.utc).isoformat()
@@ -1215,7 +1124,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
 
 # Factory function for easy instantiation
-def create_sqlite_database(db_path: str = "/tmp/frank_local.db") -> SQLiteFRANKDatabase:
+def create_sqlite_database(db_path: str = "/tmp/frank_local.db",
+                           logger: Optional[logging.Logger] = None) -> SQLiteFRANKDatabase:
     """
     Factory function to create a SQLiteFRANKDatabase instance.
     
@@ -1226,11 +1136,16 @@ def create_sqlite_database(db_path: str = "/tmp/frank_local.db") -> SQLiteFRANKD
         Configured SQLiteFRANKDatabase instance
     """
 
-    # Set up logging
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
+    connection_params = {
+        "db_path": db_path
+    }
 
-    return SQLiteFRANKDatabase(db_path, logger=logger)
+    # Set up logging
+    if not logger:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+        logger = logging.getLogger(__name__)
+
+    return SQLiteFRANKDatabase(connection_params, logger=logger)
 
 
     

@@ -26,13 +26,6 @@ TEST_TOKENS = {
     "core_member": "core_test_token"
 }
 
-# curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-# curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-# curl -H "Authorization: Bearer partner_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-# curl -H "Authorization: Bearer core_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-
-#  jq '.sightings[0] | length'
-
 class APIClient:
     def __init__(self, base_url=API_BASE_URL):
         self.base_url = base_url
