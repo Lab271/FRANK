@@ -1,6 +1,8 @@
 # FRANK
 This is the Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling (FRANK) project. We have developed this in a 5-stage infra scaling process.
 
+<!-- Simple minimalist badge -->
+[![Python 3.11](https://img.shields.io/badge/python-v3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
 
 This project contains everything from design to implementation of the FRANK project. To get started, clone this project and run:
 
