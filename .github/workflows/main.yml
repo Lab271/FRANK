@@ -1,0 +1,75 @@
+name: FRANK Unit Tests
+
+# Trigger on pull requests to main branches and pushes to main/develop
+on:
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.py'
+      - 'requirements*.txt'
+      - 'setup.py'
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'src/**'
+      - 'tests/**'
+      - '*.py'
+      - 'requirements*.txt'
+      - 'setup.py'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [3.11]
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v4
+      with:
+        python-version: ${{ matrix.python-version }}
+        
+    - name: Cache pip dependencies
+      uses: actions/cache@v3
+      with:
+        path: ~/.cache/pip
+        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
+        restore-keys: |
+          ${{ runner.os }}-pip-
+          
+    - name: Install Python dependencies
+      run: |
+        python -m pip install --upgrade pip
+        # Install main requirements
+        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
+        # Install source code
+        pip install -e .; fi
+        # Install testing tools
+        pip install pytest pytest-cov pytest-xdist coverage
+        
+    - name: Run unit tests with pytest
+      run: |
+        # Run unit tests with coverage
+        python -m pytest tests/unit/ \
+          --verbose \
+          --tb=short \
+          --cov=src/ \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=70 \
+          --junitxml=test-results.xml
+        
+    - name: Upload test results
+      uses: actions/upload-artifact@v3
+      if: always()  # Always upload, even if tests fail
+      with:
+        name: test-results-${{ matrix.python-version }}
+        path: |
+          test-results.xml
