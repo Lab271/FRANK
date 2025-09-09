@@ -239,6 +239,10 @@ def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
     
     return user_level >= required_level_num
 
+# def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
+#     """Check if user tier meets required access level"""
+#     return user_tier >= required_level
+
 # Rate limiting (simplified for spike)
 class RateLimiter:
     def __init__(self):
