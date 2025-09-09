@@ -149,55 +149,42 @@ rate_limiter = RateLimiter()
 async def submit_threat_intelligence(
     request: Request,
     submission_request: SubmissionRequest = Body(...),
-    current_user: Dict[str, Any] = Depends(get_current_user)
+    current_user: Dict[str, Any] = Depends(get_current_user),
 ):
     """
     Submit threat intelligence sighting to the platform.
     Requires Contributor, Partner, or Core Member access level.
     """
-    
+
     # Check permissions
     if not check_submission_permissions(current_user):
-        raise HTTPException(
-            status_code=403,
-            detail="Insufficient access level for submission"
-        )
-    
+        raise HTTPException(status_code=403, detail="Insufficient access level for submission")
+
     # Check rate limiting
     if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
-        raise HTTPException(
-            status_code=429,
-            detail="Rate limit exceeded"
-        )
-    
+        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+
     try:
-     
         # Store in database
         success = db.store_submission(submission_request.submission)
-        
+
         if not success:
-            raise HTTPException(
-                status_code=500,
-                detail="Failed to store submission"
-            )
-        
+            raise HTTPException(status_code=500, detail="Failed to store submission")
+
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission_request.submission)
-        
+
         return SubmissionResponse(
             status="accepted",
             submission_id=submission_request.submission.submission_id,
             contribution_score_impact=score_impact,
             processing_status="queued",
             validation_required=False,
-            estimated_processing_time="2-5 minutes"
+            estimated_processing_time="2-5 minutes",
         )
-        
+
     except Exception as e:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Submission validation failed: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Submission validation failed: {str(e)}")
 
 @app.get("/v1/sighting", response_model=SightingSearchResponse)
 async def search_threat_sightings(
