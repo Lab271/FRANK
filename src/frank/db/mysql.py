@@ -3,77 +3,38 @@
 FRANK Platform - Submission Generation and Parsing Library
 Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-This modules provides MySQL based database storage for FRANK submissions.
+This modules provides MySQL based database storage for FRANK submissions using PyMySQL.
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
 import json
-import mysql.connector
+import pymysql
 import uuid
 import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
 import logging
-from pathlib import Path
 
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
 from frank.core.models import Submission, Sighting, Submitter
 
-class NullLogger:
-    """Null logger that discards all log messages"""
-    def debug(self, *args, **kwargs): pass
-    def info(self, *args, **kwargs): pass
-    def warning(self, *args, **kwargs): pass
-    def error(self, *args, **kwargs): pass
-    def critical(self, *args, **kwargs): pass
-    def exception(self, *args, **kwargs): pass
 
 class MySQLFRANKDatabase(BaseFRANKDatabase):
     """
-    MySQL implementation of FRANK database for scalable deployment.
+    MySQL (PyMySQL) implementation of FRANK database for scalable deployment.
     Provides full functionality with relational database storage and supports
     the complete FRANK access tier model.
     """
-    
-    def __init__(self, host: str = "localhost", port: int = 3306, database: str = "frank", 
-                 user: str = "frank_user", password: str = "frank_password", 
-                 logger: Optional[logging.Logger] = None) -> None:
-        """
-        Initialize MySQL database connection.
-        
-        Args:
-            host: MySQL server hostname
-            port: MySQL server port
-            database: Database name
-            user: Database username
-            password: Database password
-            logger: Optional logger instance for logging
-        """
-        self.connection_config = {
-            'host': host,
-            'port': port,
-            'database': database,
-            'user': user,
-            'password': password,
-            'charset': 'utf8mb4',
-            'collation': 'utf8mb4_unicode_ci',
-            'autocommit': False,
-            'raise_on_warnings': True,
-            'sql_mode': 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'
-        }
-        self.logger = logger or NullLogger()
-
-        self.initialize()
-    
-    def get_connection(self) -> mysql.connector.MySQLConnection:
+       
+    def get_connection(self) -> pymysql.Connection:
         """Get a fresh database connection."""
         try:
-            return mysql.connector.connect(**self.connection_config)
-        except mysql.connector.Error as e:
+            return pymysql.connect(**self.connection_params)
+        except pymysql.Error as e:
             self.logger.error(f"Failed to connect to MySQL: {e}")
             raise FRANKConnectionError(f"Database connection failed: {e}")
     
@@ -82,6 +43,9 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
+            
+            # Set SQL mode for strict operations
+            cursor.execute("SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'")
             
             # Organizations table (cyber partners and customers)
             cursor.execute("""
@@ -248,9 +212,9 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             conn.commit()
             cursor.close()
             conn.close()
-            self.logger.info(f"MySQL database initialized successfully")
+            self.logger.info(f"PyMySQL database initialized successfully")
                 
-        except mysql.connector.Error as e:
+        except pymysql.Error as e:
             self.logger.error(f"Database initialization error: {e}")
             raise FRANKConnectionError(f"Failed to initialize database: {e}")
     
@@ -358,10 +322,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             ))
             
             # Store observables and update statistics
-            self._store_observables(cursor, sighting, submitter)
+            self._store_observables(cursor, sighting, submitter) # type: ignore
             
             # Store SIGMA rule if present
-            self._store_sigma_rule(cursor, sighting, submitter)
+            self._store_sigma_rule(cursor, sighting, submitter) # type: ignore
             
             # Store campaign if present
             self._store_campaign(cursor, sighting)
@@ -374,7 +338,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             self.logger.info(f"Stored submission {submission.submission_id}")
             return True
                 
-        except mysql.connector.Error as e:
+        except pymysql.Error as e:
             if conn:
                 conn.rollback()
             self.logger.error(f"Error storing submission: {e}")
@@ -498,8 +462,6 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             campaign.estimated_victims,
             campaign.confidence
         ))
-    
-        
 
     def _upsert_organization(self, cursor, org_data: Dict[str, Any], org_type: str = 'cyber_partner') -> None:
         """Insert or update organization information."""
@@ -546,7 +508,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         
         if existing:
             # Update existing record
-            total_sightings, unique_orgs, sectors_json, regions_json = existing
+            total_sightings = existing['total_sightings']
+            unique_orgs = existing['unique_organizations']
+            sectors_json = existing['sectors_json']
+            regions_json = existing['regions_json']
             
             # Parse existing JSON data
             sectors = json.loads(sectors_json) if sectors_json else []
@@ -595,7 +560,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 json.dumps(sectors),
                 json.dumps(regions)
             ))
-    
+
     def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
@@ -611,7 +576,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         conn = None
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor()
             
             cursor.execute("""
                 SELECT s.*, o.tier as submitter_tier
@@ -635,7 +600,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             
             return Submission(**filtered_submission['submission'])
                 
-        except mysql.connector.Error as e:
+        except pymysql.Error as e:
             if conn:
                 conn.rollback()
             self.logger.error(f"Error retrieving submission {submission_id}: {e}")
@@ -643,7 +608,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         finally:
             if conn:
                 conn.close()
-    
+
     def query_observables(self, org_id: str, observable_type: str = None, 
                          limit: int = 100, access_level: str = 'contributor',
                          min_confidence: int = None, sectors: List[str] = None,
@@ -666,7 +631,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         conn = None
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor()
             
             # Build query based on access level and filters
             query_parts = ["""
@@ -735,7 +700,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level})")
             return results
                 
-        except mysql.connector.Error as e:
+        except pymysql.Error as e:
             if conn:
                 conn.rollback()
             self.logger.error(f"Error querying observables: {e}")
@@ -743,7 +708,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         finally:
             if conn:
                 conn.close()
-    
+
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
         Get platform statistics summary.
@@ -758,7 +723,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         conn = None
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor()
             
             stats = {}
             
@@ -778,7 +743,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             # Observable type distribution
             cursor.execute("""
                 SELECT observable_type, COUNT(*) as count,
-                       AVG(total_sightings) as avg_sightings
+                    AVG(total_sightings) as avg_sightings
                 FROM observable_statistics
                 WHERE updated_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
                 GROUP BY observable_type
@@ -787,8 +752,8 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             """, (days,))
 
             stats['observable_types'] = {
-                   row['observable_type']: {'count': row['count'], 'avg_sightings': row['avg_sightings']} 
-                   for row in cursor.fetchall()
+                row['observable_type']: {'count': row['count'], 'avg_sightings': row['avg_sightings']} 
+                for row in cursor.fetchall()
             }
                             
             # Severity distribution
@@ -834,7 +799,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             
             return stats
                 
-        except mysql.connector.Error as e:
+        except pymysql.Error as e:
             if conn:
                 conn.rollback()
             self.logger.error(f"Error getting statistics: {e}")
@@ -842,66 +807,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         finally:
             if conn:
                 conn.close()
-    
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """
-        Insert or update organization information.
-        
-        Args:
-            org_data: Organization data dictionary
-            
-        Returns:
-            True if successful
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            self._upsert_organization(cursor, org_data)
-            conn.commit()
-            cursor.close()
-            return True
-        except mysql.connector.Error as e:
-            if conn:
-                conn.rollback()
-            self.logger.error(f"Error upserting organization: {e}")
-            return False
-        finally:
-            if conn:
-                conn.close()
-    
-    def log_access(self, org_id: str, action: str, resource_type: str = None, 
-                   resource_id: str = None, details: Dict[str, Any] = None) -> bool:
-        """
-        Log access for auditing purposes.
-        
-        Args:
-            org_id: Organization ID performing the action
-            action: Action being performed
-            resource_type: Type of resource being accessed
-            resource_id: ID of specific resource
-            details: Additional details to log
-            
-        Returns:
-            True if logged successfully
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            self._log_access(cursor, org_id, action, resource_type, resource_id, details)
-            conn.commit()
-            cursor.close()
-            return True
-        except mysql.connector.Error as e:
-            if conn:
-                conn.rollback()
-            self.logger.error(f"Error logging access: {e}")
-            return False
-        finally:
-            if conn:
-                conn.close()
-    
+
     def _log_access(self, cursor, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> None:
@@ -917,69 +823,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             resource_id,
             json.dumps(details) if details else None
         ))
-    
-    def cleanup_old_data(self, days: int = 90) -> int:
-        """
-        Clean up old data according to retention policies.
-        
-        Args:
-            days: Remove data older than this many days
-            
-        Returns:
-            Number of records deleted
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            # Clean up old submissions (cascades to sightings and observables)
-            cursor.execute("""
-                DELETE FROM submissions 
-                WHERE submission_timestamp < DATE_SUB(NOW(), INTERVAL %s DAY)
-            """, (days,))
-            
-            deleted_submissions = cursor.rowcount
-            
-            # Clean up old access logs
-            cursor.execute("""
-                DELETE FROM access_logs 
-                WHERE timestamp < DATE_SUB(NOW(), INTERVAL %s DAY)
-            """, (days,))
-            
-            deleted_logs = cursor.rowcount
-            
-            # Clean up orphaned statistics (where no recent sightings exist)
-            cursor.execute("""
-                DELETE FROM observable_statistics 
-                WHERE last_seen < DATE_SUB(NOW(), INTERVAL %s DAY)
-                AND observable_hash NOT IN (
-                    SELECT DISTINCT observable_hash 
-                    FROM observables o
-                    JOIN sightings s ON o.sighting_id = s.sighting_id
-                    JOIN submissions sub ON s.submission_id = sub.submission_id
-                    WHERE sub.submission_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                )
-            """, (days, days))
-            
-            deleted_stats = cursor.rowcount
-            
-            conn.commit()
-            cursor.close()
-            
-            total_deleted = deleted_submissions + deleted_logs + deleted_stats
-            self.logger.info(f"Cleaned up {total_deleted} old records")
-            return total_deleted
-                
-        except mysql.connector.Error as e:
-            if conn:
-                conn.rollback()
-            self.logger.error(f"Error during cleanup: {e}")
-            raise FRANKStorageError(f"Failed to cleanup old data: {e}")
-        finally:
-            if conn:
-                conn.close()
-    
+
     def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: str) -> Dict[str, Any]:
         """Filter submission data based on access level."""
         self.logger.info(f"Filtering submission for access level: {access_level}")
@@ -1054,270 +898,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             return [self._deep_copy(item) for item in obj]
         else:
             return obj
-    
-    def search_observables_by_value(self, org_id: str, search_value: str, 
-                                   access_level: str = 'contributor') -> List[Dict[str, Any]]:
-        """
-        Search for observables by partial value match.
-        
-        Args:
-            org_id: Organization performing the search
-            search_value: Value to search for (supports wildcards)
-            access_level: Access level for filtering
-            
-        Returns:
-            List of matching observables
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            cursor.execute("""
-                SELECT os.* FROM observable_statistics os
-                WHERE os.observable_value LIKE %s
-                ORDER BY os.total_sightings DESC
-                LIMIT 100
-            """, (f"%{search_value}%",))
-            
-            results = []
-            for row in cursor.fetchall():
-                result = dict(row)
-                result = self._filter_observable_by_access_level(result, access_level)
-                
-                # Parse JSON fields
-                try:
-                    result['sectors'] = json.loads(result['sectors_json']) if result['sectors_json'] else []
-                    result['regions'] = json.loads(result['regions_json']) if result['regions_json'] else []
-                    del result['sectors_json']
-                    del result['regions_json']
-                except:
-                    result['sectors'] = []
-                    result['regions'] = []
-                
-                results.append(result)
-            
-            # Log access
-            self._log_access(cursor, org_id, 'SEARCH', 'observables', details={'search_value': search_value})
-            conn.commit()
-            cursor.close()
-            
-            return results
-                
-        except mysql.connector.Error as e:
-            if conn:
-                conn.rollback()
-            self.logger.error(f"Error searching observables: {e}")
-            raise FRANKQueryError(f"Failed to search observables: {e}")
-        finally:
-            if conn:
-                conn.close()
-    
-    def get_organization_info(self, org_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Get organization information.
-        
-        Args:
-            org_id: Organization ID to look up
-            
-        Returns:
-            Organization data or None if not found
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            cursor.execute("""
-                SELECT * FROM organizations WHERE organization_id = %s
-            """, (org_id,))
-            
-            row = cursor.fetchone()
-            if not row:
-                return None
-            
-            org_data = dict(row)
-            
-            # Parse metadata JSON
-            try:
-                metadata = json.loads(org_data['metadata_json']) if org_data['metadata_json'] else {}
-                org_data.update(metadata)
-                del org_data['metadata_json']
-            except:
-                del org_data['metadata_json']
-            
-            cursor.close()
-            return org_data
-                
-        except mysql.connector.Error as e:
-            self.logger.error(f"Error getting organization info: {e}")
-            return None
-        finally:
-            if conn:
-                conn.close()
-    
-    def get_sigma_rules(self, org_id: str, rule_status: str = None, 
-                       limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get SIGMA rules with optional filtering.
-        
-        Args:
-            org_id: Organization requesting the rules
-            rule_status: Filter by rule status (stable, test, experimental)
-            limit: Maximum number of rules to return
-            
-        Returns:
-            List of SIGMA rule dictionaries
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            query = "SELECT * FROM sigma_rules"
-            params = []
-            
-            if rule_status:
-                query += " WHERE rule_status = %s"
-                params.append(rule_status)
-            
-            query += f" ORDER BY updated_at DESC LIMIT {limit}"
-            
-            cursor.execute(query, params)
-            results = [dict(row) for row in cursor.fetchall()]
-            
-            # Log access
-            self._log_access(cursor, org_id, 'QUERY', 'sigma_rules')
-            conn.commit()
-            cursor.close()
-            
-            return results
-                
-        except mysql.connector.Error as e:
-            if conn:
-                conn.rollback()
-            self.logger.error(f"Error getting SIGMA rules: {e}")
-            raise FRANKQueryError(f"Failed to get SIGMA rules: {e}")
-        finally:
-            if conn:
-                conn.close()
-    
-    def get_campaigns(self, org_id: str, active_only: bool = False, 
-                     limit: int = 100) -> List[Dict[str, Any]]:
-        """
-        Get campaign information.
-        
-        Args:
-            org_id: Organization requesting campaigns
-            active_only: Only return recently active campaigns
-            limit: Maximum number of campaigns to return
-            
-        Returns:
-            List of campaign dictionaries
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            query = "SELECT * FROM campaigns"
-            
-            if active_only:
-                query += " WHERE updated_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)"
-            
-            query += f" ORDER BY updated_at DESC LIMIT {limit}"
-            
-            cursor.execute(query)
-            results = []
-            
-            for row in cursor.fetchall():
-                campaign = dict(row)
-                
-                # Parse JSON fields
-                try:
-                    campaign['target_sectors'] = json.loads(campaign['target_sectors_json']) if campaign['target_sectors_json'] else []
-                    del campaign['target_sectors_json']
-                except:
-                    campaign['target_sectors'] = []
-                
-                results.append(campaign)
-            
-            # Log access
-            self._log_access(cursor, org_id, 'QUERY', 'campaigns')
-            conn.commit()
-            cursor.close()
-            
-            return results
-                
-        except mysql.connector.Error as e:
-            if conn:
-                conn.rollback()
-            self.logger.error(f"Error getting campaigns: {e}")
-            raise FRANKQueryError(f"Failed to get campaigns: {e}")
-        finally:
-            if conn:
-                conn.close()
-    
-    def get_access_logs(self, org_id: str, days: int = 7, 
-                       actions: List[str] = None) -> List[Dict[str, Any]]:
-        """
-        Get access logs for auditing.
-        
-        Args:
-            org_id: Organization to get logs for
-            days: Number of days to look back
-            actions: Filter by specific actions
-            
-        Returns:
-            List of access log entries
-        """
-        conn = None
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
-            
-            query = """
-                SELECT * FROM access_logs 
-                WHERE organization_id = %s 
-                AND timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            """
-            
-            params = [org_id, days]
-            
-            if actions:
-                placeholders = ','.join(['%s'] * len(actions))
-                query += f" AND action IN ({placeholders})"
-                params.extend(actions)
-            
-            query += " ORDER BY timestamp DESC LIMIT 1000"
-            
-            cursor.execute(query, params)
-            results = []
-            
-            for row in cursor.fetchall():
-                log_entry = dict(row)
-                
-                # Parse details JSON
-                try:
-                    details = json.loads(log_entry['details_json']) if log_entry['details_json'] else {}
-                    log_entry['details'] = details
-                    del log_entry['details_json']
-                except:
-                    log_entry['details'] = {}
-                    del log_entry['details_json']
-                
-                results.append(log_entry)
-            
-            cursor.close()
-            return results
-                
-        except mysql.connector.Error as e:
-            self.logger.error(f"Error getting access logs: {e}")
-            raise FRANKQueryError(f"Failed to get access logs: {e}")
-        finally:
-            if conn:
-                conn.close()
-    
+
     def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the database.
@@ -1328,7 +909,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         conn = None
         try:
             conn = self.get_connection()
-            cursor = conn.cursor(dictionary=True)
+            cursor = conn.cursor()
             
             # Basic connectivity test
             cursor.execute("SELECT 1 as test")
@@ -1349,7 +930,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS 'size_mb'
                 FROM information_schema.tables 
                 WHERE table_schema = %s
-            """, (self.connection_config['database'],))
+            """, (self.connection_params['database'],))
             
             size_result = cursor.fetchone()
             db_size_mb = size_result['size_mb'] if size_result['size_mb'] else 0
@@ -1358,8 +939,8 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             
             return {
                 'status': 'healthy',
-                'database_host': self.connection_config['host'],
-                'database_name': self.connection_config['database'],
+                'database_host': self.connection_params['host'],
+                'database_name': self.connection_params['database'],
                 'database_size_mb': float(db_size_mb),
                 'table_counts': table_counts,
                 'timestamp': datetime.now(timezone.utc).isoformat()
@@ -1377,11 +958,11 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 conn.close()
 
 
-
 # Factory function for easy instantiation
 def create_mysql_database(host: str = "localhost", port: int = 3306, 
-                         database: str = "frank", user: str = "frank_user", 
-                         password: str = "frank_password") -> MySQLFRANKDatabase:
+                           database: str = "frank", user: str = "frank_user", 
+                           password: str = "frank_password",
+                           logger: Optional[logging.Logger] = None) -> MySQLFRANKDatabase:
     """
     Factory function to create a MySQLFRANKDatabase instance.
     
@@ -1397,7 +978,18 @@ def create_mysql_database(host: str = "localhost", port: int = 3306,
     """
 
     # Set up logging
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
+    if not logger:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+        logger = logging.getLogger(__name__)
 
-    return MySQLFRANKDatabase(host, port, database, user, password, logger=logger)
+    connection_params = {
+        "host": host,
+        "port": port,
+        "database": database,
+        "user": user,
+        "password": password,
+        'charset': 'utf8mb4',
+        'autocommit': False,
+        'cursorclass': pymysql.cursors.DictCursor
+    }
+    return MySQLFRANKDatabase(connection_params, logger=logger)

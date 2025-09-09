@@ -51,22 +51,12 @@ class BaseFRANKDatabase(ABC):
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """Get platform statistics summary."""
         pass
-    
+
     @abstractmethod
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """Insert or update organization information."""
+    def health_check(self) -> Dict[str, Any]:
+        """Perform a health check on the database."""
         pass
-    
-    @abstractmethod
-    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None) -> bool:
-        """Log access for auditing purposes."""
-        pass
-    
-    @abstractmethod
-    def cleanup_old_data(self, days: int = 90) -> int:
-        """Clean up old data according to retention policies."""
-        pass
-    
+     
     def hash_observable(self, observable_type: str, observable_value: str) -> str:
         """Create a hash for observable deduplication and quick lookups."""
         combined = f"{observable_type}:{observable_value}".lower()

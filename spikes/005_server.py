@@ -21,13 +21,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import enums from FRANK core 
-from frank.core.enum import ObservableType, SeverityLevel, TierLevel, TLPLevel
+from frank.core.enum import ObservableType, TLPLevel
 from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.db.sqlite import SQLiteFRANKDatabase
 from frank.utils.sample_builder import generate_minimal_submission
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ErrorResponse
+from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
 
 # Initialize FastAPI app

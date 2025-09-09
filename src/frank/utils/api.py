@@ -55,6 +55,3 @@ class SightingSearchResponse(BaseModel):
     aggregations: Optional[Dict[str, Any]] = Field(None, description="Statistical summaries")
     threat_context: Optional[Dict[str, Any]] = Field(None, description="Threat context data")
     pagination: Optional[Dict[str, Any]] = Field(None, description="Pagination information")
-
-class ErrorResponse(BaseModel):
-    error: Dict[str, Any] = Field(..., description="Error details")
