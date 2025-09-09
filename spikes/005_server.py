@@ -21,14 +21,21 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import enums from FRANK core 
-from frank.core.enum import ObservableType, TLPLevel
+from frank.core.enum import ObservableType, TLPLevel, TierLevel
 from frank.core.models import Submission
 
 # Import our FRANK database
-from frank.db.sqlite import SQLiteFRANKDatabase
+from frank.db.sqlite import create_sqlite_database
 from frank.utils.sample_builder import generate_minimal_submission
 from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
+
+# curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer partner_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer core_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+
+#  jq '.sightings[0] | length'
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -53,7 +60,7 @@ security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 
 # Database instance (global for spike)
 db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_spike.db")
-db = SQLiteFRANKDatabase(connection_params={'db_path': db_path})
+db = create_sqlite_database(db_path)
 
 
 # Authentication and authorization functions
@@ -77,25 +84,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if token.startswith("observer_"):
         return {
             "organization_id": "demo-observer-org",
-            "tier": "observer",
+            "tier": TierLevel.OBSERVER,
             "sector": "technology"
         }
     elif token.startswith("contributor_"):
         return {
             "organization_id": "demo-contributor-org", 
-            "tier": "contributor",
+            "tier": TierLevel.CONTRIBUTOR,
             "sector": "financial"
         }
     elif token.startswith("partner_"):
         return {
             "organization_id": "demo-partner-org",
-            "tier": "partner", 
+            "tier": TierLevel.PARTNER, 
             "sector": "cybersecurity_services"
         }
     elif token.startswith("core_"):
         return {
             "organization_id": "demo-core-org",
-            "tier": "core_member",
+            "tier": TierLevel.CORE_MEMBER,
             "sector": "government"
         }
     else:
@@ -106,17 +113,17 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 def check_submission_permissions(user: Dict[str, Any]) -> bool:
     """Check if user can submit threat intelligence"""
-    allowed_tiers = ["contributor", "partner", "core_member"]
+    allowed_tiers = [TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER]
     return user.get("tier") in allowed_tiers
 
-def check_access_level(user_tier: str, required_level: str) -> bool:
+def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
     """Check if user tier meets required access level"""
     tier_hierarchy = {
-        "public": 0,
-        "observer": 1,
-        "contributor": 2,
-        "partner": 3,
-        "core_member": 4
+        TierLevel.PUBLIC: 0,
+        TierLevel.OBSERVER: 1,
+        TierLevel.CONTRIBUTOR: 2,
+        TierLevel.PARTNER: 3,
+        TierLevel.CORE_MEMBER: 4
     }
     
     user_level = tier_hierarchy.get(user_tier, 0)
@@ -286,11 +293,11 @@ async def search_threat_sightings(
         )
         
         # Add aggregations for contributor and above
-        if check_access_level(current_user["tier"], "contributor"):
+        if check_access_level(current_user["tier"], TierLevel.CONTRIBUTOR):
             response.aggregations = generate_aggregations(results, current_user["tier"])
         
         # Add threat context for partner and above
-        if check_access_level(current_user["tier"], "partner"):
+        if check_access_level(current_user["tier"], TierLevel.PARTNER):
             response.threat_context = generate_threat_context(results)
         
         # Add pagination info
@@ -330,7 +337,7 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
 ):
     """Get platform usage statistics"""
-    if not check_access_level(current_user["tier"], "observer"):
+    if not check_access_level(current_user["tier"], TierLevel.OBSERVER):
         raise HTTPException(
             status_code=403,
             detail="Insufficient access level"
@@ -339,7 +346,7 @@ async def get_platform_statistics(
     stats = db.get_statistics_summary(current_user["organization_id"], days)
     
     # Filter stats based on access level
-    if current_user["tier"] == "observer":
+    if current_user["tier"] == TierLevel.OBSERVER:
         # Remove sensitive information for observers
         filtered_stats = {
             "total_submissions": stats.get("total_submissions", 0),

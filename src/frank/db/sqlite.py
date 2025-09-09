@@ -23,7 +23,6 @@ from frank.core.enum import ObservableType, TierLevel
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
 
-
 class SQLiteFRANKDatabase(BaseFRANKDatabase):
     """
     SQLite implementation of FRANK database for local development.
@@ -732,7 +731,26 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error getting statistics: {e}")
             raise FRANKQueryError(f"Failed to get statistics: {e}")
     
-   
+    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
+        """
+        Insert or update organization information.
+        
+        Args:
+            org_data: Organization data dictionary
+            
+        Returns:
+            True if successful
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                self._upsert_organization(conn, org_data)
+                conn.commit()
+                return True
+        except sqlite3.Error as e:
+            self.logger.error(f"Error upserting organization: {e}")
+            return False
    
     def _log_access(self, conn: sqlite3.Connection, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 

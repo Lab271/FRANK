@@ -84,11 +84,10 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             "region": "nl_north_holland",
             "client_count": 5
         }
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                self.db._upsert_organization(conn, org_data)
-        except sqlite3.Error as e:
-            self.fail(f"Not expected to receive error: {e}")
+        
+        result = self.db.upsert_organization(org_data)
+        self.assertTrue(result)
+
         # Verify organization was stored
         stored_org = self.db.get_organization_info("test-org-1")
         self.assertIsNotNone(stored_org)

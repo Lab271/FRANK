@@ -16,7 +16,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 from frank.core.models import Submission, Observable
-from frank.core.enum import ObservableType
+from frank.core.enum import ObservableType, TierLevel
 from frank.utils import NullLogger
 
 class BaseFRANKDatabase(ABC):
@@ -34,6 +34,11 @@ class BaseFRANKDatabase(ABC):
     def initialize(self) -> None:
         """Initialize database connection and schema."""
         pass
+
+    @abstractmethod
+    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
+        """Insert or update organization information."""
+        pass
     
     @abstractmethod
     def store_submission(self, submission: Submission) -> bool:
@@ -41,13 +46,13 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
         """Retrieve a specific submission with access level filtering."""
         pass
     
     @abstractmethod
     def query_observables(self, org_id: str, observable_type: ObservableType = None, 
-                         limit: int = 100, access_level: str = 'contributor') -> List[Observable]:
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Observable]:
         """Query observables with access level filtering."""
         pass
     
