@@ -53,7 +53,7 @@ security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 
 # Database instance (global for spike)
 db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_spike.db")
-db = SQLiteFRANKDatabase(db_path)
+db = SQLiteFRANKDatabase(connection_params={'db_path': db_path})
 
 
 # Authentication and authorization functions

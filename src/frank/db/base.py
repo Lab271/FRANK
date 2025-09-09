@@ -11,10 +11,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 import hashlib
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 from frank.core.models import Submission, Observable
+from frank.core.enum import ObservableType
+from frank.utils import NullLogger
 
 class BaseFRANKDatabase(ABC):
     """
@@ -22,8 +25,9 @@ class BaseFRANKDatabase(ABC):
     Supports both SQLite and DynamoDB implementations with consistent API.
     """
     
-    def __init__(self, connection_params: Dict[str, Any]):
+    def __init__(self, connection_params: Dict[str, Any], logger: Optional[logging.Logger] = None):
         self.connection_params = connection_params
+        self.logger = logger or NullLogger()
         self.initialize()
     
     @abstractmethod
@@ -42,7 +46,7 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def query_observables(self, org_id: str, observable_type: str = None, 
+    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
                          limit: int = 100, access_level: str = 'contributor') -> List[Observable]:
         """Query observables with access level filtering."""
         pass
