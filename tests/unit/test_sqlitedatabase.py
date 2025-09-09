@@ -407,18 +407,14 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
     
     def test_log_access(self):
         """Test access logging functionality"""
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                self.db._log_access(
-                    conn,
-                    "test-org-log", 
-                    "TEST_ACTION", 
-                    "test_resource", 
-                    "test-resource-1",
-                    {"test": "details"}
-                )
-        except sqlite3.Error as e:
-            self.fail(f"Should not raise sqlite3.Error {e}")
+        result = self.db.log_access(
+            "test-org-log", 
+            "TEST_ACTION", 
+            "test_resource", 
+            "test-resource-1",
+            {"test": "details"}
+        )
+        self.assertTrue(result)
         
         # Retrieve logs
         logs = self.db.get_access_logs("test-org-log")
