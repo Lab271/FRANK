@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 import json
 import sqlite3
 import uuid
-import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -20,6 +19,7 @@ import logging
 from pathlib import Path
 
 from frank.core.models import Submission, Sighting, Submitter
+from frank.core.enum import ObservableType, TierLevel
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
 
@@ -501,7 +501,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 json.dumps(regions)
             ))
     
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
         
@@ -544,8 +544,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error retrieving submission {submission_id}: {e}")
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
     
-    def query_observables(self, org_id: str, observable_type: str = None, 
-                         limit: int = 100, access_level: str = 'contributor',
+    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
                          min_confidence: int = None, sectors: List[str] = None,
                          days_back: int = None) -> List[Dict[str, Any]]:
         """
@@ -582,7 +582,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 
                 if observable_type:
                     where_clauses.append("COALESCE(os.observable_type, \"\") = ?")
-                    params.append(observable_type)
+                    params.append(observable_type.value)
                 
                 if min_confidence:
                     self.logger.info(f"finding min_confidence: {min_confidence}")
@@ -631,7 +631,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 self._log_access(conn, org_id, 'QUERY', 'observables')
                 conn.commit()
                 
-                self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level})")
+                self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level.value})")
                 return results
                 
         except sqlite3.Error as e:
@@ -750,12 +750,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             json.dumps(details) if details else None
         ))
        
-    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: str) -> Dict[str, Any]:
+    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter submission data based on access level."""
         # TODO: Upgrade this to Pydantic classes
-        self.logger.info(f"Filtering submission for access level: {access_level}")
+        self.logger.info(f"Filtering submission for access level: {access_level.value}")
         self.logger.debug(f"Original submission data: {submission}")
-        if access_level == 'public':
+        if access_level == TierLevel.PUBLIC:
             # Only basic statistics
             return {
                 'submission': {
@@ -768,7 +768,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     }
                 }
             }
-        elif access_level == 'observer':
+        elif access_level == TierLevel.OBSERVER:
             # Add some observable types but mask values
             filtered = self._deep_copy(submission)
             observables = filtered['sighting'].get('observables', {})
@@ -783,7 +783,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             filtered.pop('tlp_level', None)
 
             return {'submission': filtered}
-        elif access_level == 'contributor':
+        elif access_level == TierLevel.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
             
@@ -798,15 +798,15 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         # Partner and core_member get full access
         return {'submission': submission}
 
-    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: str) -> Dict[str, Any]:
+    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter observable data based on access level."""
-        if access_level == 'public':
+        if access_level == TierLevel.PUBLIC:
             return {
                 'observable_type': observable['observable_type'],
                 'total_sightings': observable['total_sightings'],
                 'last_seen': observable['last_seen']
             }
-        elif access_level == 'observer':
+        elif access_level == TierLevel.OBSERVER:
             filtered = dict(observable)
             # Mask observable value
             if 'observable_value' in filtered:
@@ -827,7 +827,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             return obj
     
     def search_observables_by_value(self, org_id: str, search_value: str, 
-                                   access_level: str = 'contributor') -> List[Dict[str, Any]]:
+                                   access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Dict[str, Any]]:
         """
         Search for observables by partial value match.
         

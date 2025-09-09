@@ -21,6 +21,7 @@ import logging
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
 from frank.core.models import Submission, Sighting, Submitter
+from frank.core.enum import ObservableType, TierLevel
 
 
 class MySQLFRANKDatabase(BaseFRANKDatabase):
@@ -561,7 +562,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 json.dumps(regions)
             ))
 
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
         
@@ -609,8 +610,8 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             if conn:
                 conn.close()
 
-    def query_observables(self, org_id: str, observable_type: str = None, 
-                         limit: int = 100, access_level: str = 'contributor',
+    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
                          min_confidence: int = None, sectors: List[str] = None,
                          days_back: int = None) -> List[Dict[str, Any]]:
         """
@@ -646,7 +647,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             
             if observable_type:
                 where_clauses.append("os.observable_type = %s")
-                params.append(observable_type)
+                params.append(observable_type.value)
             
             if min_confidence:
                 self.logger.info(f"finding min_confidence: {min_confidence}")
@@ -697,7 +698,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             conn.commit()
             cursor.close()
             
-            self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level})")
+            self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level.value})")
             return results
                 
         except pymysql.Error as e:
@@ -824,11 +825,11 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             json.dumps(details) if details else None
         ))
 
-    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: str) -> Dict[str, Any]:
+    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter submission data based on access level."""
-        self.logger.info(f"Filtering submission for access level: {access_level}")
+        self.logger.info(f"Filtering submission for access level: {access_level.value}")
         self.logger.debug(f"Original submission data: {submission}")
-        if access_level == 'public':
+        if access_level == TierLevel.PUBLIC:
             # Only basic statistics
             return {
                 'submission': {
@@ -841,7 +842,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     }
                 }
             }
-        elif access_level == 'observer':
+        elif access_level == TierLevel.OBSERVER:
             # Add some observable types but mask values
             filtered = self._deep_copy(submission)
             observables = filtered['sighting'].get('observables', {})
@@ -856,7 +857,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             filtered.pop('tlp_level', None)
 
             return {'submission': filtered}
-        elif access_level == 'contributor':
+        elif access_level == TierLevel.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
             
@@ -871,15 +872,15 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         # Partner and core_member get full access
         return {'submission': submission}
 
-    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: str) -> Dict[str, Any]:
+    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter observable data based on access level."""
-        if access_level == 'public':
+        if access_level == TierLevel.PUBLIC:
             return {
                 'observable_type': observable['observable_type'],
                 'total_sightings': observable['total_sightings'],
                 'last_seen': observable['last_seen']
             }
-        elif access_level == 'observer':
+        elif access_level == TierLevel.OBSERVER:
             filtered = dict(observable)
             # Mask observable value
             if 'observable_value' in filtered:
