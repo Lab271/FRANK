@@ -14,12 +14,3 @@ This project contains everything from design to implementation of the FRANK proj
 ```
 
 This will prep your Macbook to run FRANK locally. It assumes Docker/Python/Make/AWS Cli to be available.
-
-
-1. Remove FRANKSubmission/validator, fix all fields
-2. Upgrade sqlite client to Submission model
-3. Upgrade all spikes/server to Submission model
-4. Fix unittests to new model
-5. Upgrade BDD to simple models
-6. Upgrade stage 1 to models
-7. Upgrade stage 2 to models
