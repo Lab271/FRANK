@@ -825,7 +825,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             conn = self.get_connection()
             cursor = conn.cursor()
 
-            self._upsert_organization(conn, org_data)
+            self._upsert_organization(cursor, org_data)
             conn.commit()
             return True
         except pymysql.Error as e:
