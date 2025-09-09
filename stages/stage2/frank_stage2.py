@@ -1,98 +1,56 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - Stage 2 Implementation
-Based on spikes/004_sqlite.py but using RDS/MariaDB via LocalStack
+FRANK Platform - FastAPI Spike Solution
 
-This implementation provides:
-1. FastAPI server adapted from your existing SQLite implementation
-2. RDS/MariaDB integration via LocalStack 
-3. Repository pattern for database abstraction
-4. Minimal submission model from your existing spikes
-5. Direct migration path from SQLite to RDS
+A working prototype API server implementing the FRANK threat intelligence platform
+using FastAPI and the MySQL database backend.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import os
-import json
 import uuid
-import hashlib
-import asyncio
 import logging
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional, Union
-from pathlib import Path
-
 import pymysql
-from pydantic import BaseModel, Field, validator
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from datetime import datetime, timezone
+from typing import Optional, List, Dict, Any
+from contextlib import asynccontextmanager
+
+from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
+# Import enums from FRANK core 
+from frank.core.enum import ObservableType, TLPLevel, TierLevel
+from frank.core.models import Submission
+
+# Import our FRANK database
+from frank.db.mysql import create_mysql_database    
+from frank.utils.sample_builder import generate_minimal_submission
+from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-# ================================
-# PYDANTIC MODELS (Based on your existing SQLite models)
-# ================================
+# curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer partner_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
+# curl -H "Authorization: Bearer core_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 
-class SimpleObservable(BaseModel):
-    """Observable model based on spikes/004_sqlite.py"""
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    type: str = Field(..., description="Observable type")
-    value: str = Field(..., description="Observable value")
-    confidence: Optional[int] = Field(None, ge=0, le=100, description="Confidence level 0-100")
-    role: Optional[str] = Field(None, description="Role in attack")
-    port: Optional[int] = Field(None, description="Network port")
-    protocol: Optional[str] = Field(None, description="Network protocol")
-    
-    @validator('type')
-    def validate_type(cls, v):
-        allowed_types = ['ipv4', 'ipv6', 'domain', 'url', 'file_hash', 'email', 'registry_key']
-        if v not in allowed_types:
-            raise ValueError(f'Observable type must be one of: {allowed_types}')
-        return v
-
-class MinimalSubmission(BaseModel):
-    """Minimal submission model based on your existing implementation"""
-    submission_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    submitter_org_id: str = Field(..., description="Organization ID of submitter")
-    hit_target_org_id: Optional[str] = Field(None, description="Target organization ID")
-    observables: List[SimpleObservable] = Field(..., description="List of threat observables")
-    confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
-    severity: Optional[str] = Field(None, description="Threat severity")
-    submission_timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
-    format_version: str = Field(default="1.0", description="Submission format version")
-    tlp_level: Optional[str] = Field('GREEN', description="TLP classification")
-    
-    @validator('severity')
-    def validate_severity(cls, v):
-        if v is not None:
-            allowed = ['low', 'medium', 'high', 'critical']
-            if v not in allowed:
-                raise ValueError(f'Severity must be one of: {allowed}')
-        return v
-    
-    @validator('tlp_level')
-    def validate_tlp(cls, v):
-        if v is not None:
-            allowed = ['RED', 'AMBER+', 'AMBER', 'GREEN', 'CLEAR']
-            if v not in allowed:
-                raise ValueError(f'TLP level must be one of: {allowed}')
-        return v
-
-class SubmissionResponse(BaseModel):
-    """API response model"""
-    status: str
-    submission_id: str
-    message: str
-    database_used: str = "rds"
-    performance_ms: Optional[float] = None
+#  jq '.sightings[0] | length'
 
 # ================================
 # CONFIGURATION MANAGEMENT
 # ================================
+
+# Security
+security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
+
 
 class FrankConfig:
     """Environment-based configuration management"""
@@ -108,11 +66,11 @@ class FrankConfig:
         elif self.environment in ['mysql']:
             # Direct MySQL connection
             self.database_type = 'mysql'
-            self.mysql_host = os.getenv('RDS_HOST', 'localhost')
-            self.mysql_port = int(os.getenv('RDS_PORT', '3306'))
-            self.mysql_database = os.getenv('RDS_DATABASE', 'frank')
-            self.mysql_username = os.getenv('RDS_USERNAME', 'frank_user')
-            self.mysql_password = os.getenv('RDS_PASSWORD', 'frank_pass')
+            self.rds_host = os.getenv('RDS_HOST', 'localhost')
+            self.rds_port = int(os.getenv('RDS_PORT', '3306'))
+            self.rds_database = os.getenv('RDS_DATABASE', 'frank')
+            self.rds_username = os.getenv('RDS_USERNAME', 'frank_user')
+            self.rds_password = os.getenv('RDS_PASSWORD', 'frank_pass')
         elif self.environment == 'hybrid':
             self.setup_localstack_hybrid_config()
         elif self.environment == 'localstack':
@@ -125,11 +83,11 @@ class FrankConfig:
     def setup_local_config(self):
         """Local SQLite configuration (fallback)"""
         self.database_type = 'sqlite'
-        self.sqlite_path = os.getenv('SQLITE_PATH', '/tmp/frank_local.db')
+        self.db_path = os.getenv('SQLITE_PATH', '/tmp/frank_local.db')
 
     def setup_localstack_hybrid_config(self):
         """Hybrid LocalStack with external MySQL configuration"""
-        self.database_type = 'rds'
+        self.database_type = 'mysql'
         self.localstack_endpoint = os.getenv('LOCALSTACK_ENDPOINT', 'http://localhost:4566')
         
         # MySQL Configuration (external)
@@ -172,466 +130,20 @@ class FrankConfig:
         self.aws_region = os.getenv('AWS_DEFAULT_REGION', 'eu-west-1')
 
 # ================================
-# DATABASE LAYER (Based on spikes/004_sqlite.py schema)
-# ================================
-
-class FRANKDatabase:
-    """
-    RDS/MariaDB database handler adapted from your SQLite implementation
-    Schema based on spikes/004_sqlite.py
-    """
-    
-    def __init__(self, config: FrankConfig):
-        self.config = config
-        self.logger = logging.getLogger(self.__class__.__name__)
-        logger.info(f"Initializing FRANK Database - {config.database_type}")
-        
-    def get_connection(self):
-        """Get database connection"""
-        if self.config.database_type == 'sqlite':
-            # Fallback for local development
-            import sqlite3
-            return sqlite3.connect(self.config.sqlite_path)
-        else:
-            # RDS/MariaDB connection
-            return pymysql.connect(
-                host=self.config.rds_host,
-                port=self.config.rds_port,
-                user=self.config.rds_username,
-                password=self.config.rds_password,
-                database=self.config.rds_database,
-                charset='utf8mb4',
-                autocommit=False
-            )
-    
-    async def initialize_schema(self):
-        """Initialize database schema - adapted from spikes/004_sqlite.py"""
-        try:
-            conn = self.get_connection()
-            
-            if self.config.database_type == 'sqlite':
-                cursor = conn.cursor()
-                execute_func = cursor.execute
-            else:
-                cursor = conn.cursor()
-                execute_func = cursor.execute
-            
-            # Organizations table (cyber partners and customers)
-            execute_func("""
-                CREATE TABLE IF NOT EXISTS organizations (
-                    organization_id VARCHAR(255) PRIMARY KEY,
-                    organization_type VARCHAR(50) NOT NULL,
-                    tier VARCHAR(50),
-                    sector VARCHAR(100),
-                    region VARCHAR(100),
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    last_active TIMESTAMP,
-                    contribution_score INTEGER DEFAULT 0,
-                    client_count INTEGER DEFAULT 0
-                )
-            """)
-            
-            # Submissions table (main submission data)
-            execute_func("""
-                CREATE TABLE IF NOT EXISTS submissions (
-                    submission_id VARCHAR(255) PRIMARY KEY,
-                    submitter_org_id VARCHAR(255) NOT NULL,
-                    hit_target_org_id VARCHAR(255),
-                    format_version VARCHAR(10) DEFAULT '1.0',
-                    submission_timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    confidence INTEGER,
-                    severity VARCHAR(20),
-                    tlp_level VARCHAR(10),
-                    full_submission_json TEXT NOT NULL,
-                    INDEX idx_submitter_org (submitter_org_id),
-                    INDEX idx_timestamp (submission_timestamp),
-                    INDEX idx_severity (severity)
-                )
-            """)
-            
-            # Sightings table (individual threat sightings)
-            execute_func("""
-                CREATE TABLE IF NOT EXISTS sightings (
-                    sighting_id VARCHAR(255) PRIMARY KEY,
-                    submission_id VARCHAR(255) NOT NULL,
-                    first_observed TIMESTAMP,
-                    last_observed TIMESTAMP,
-                    observation_count INTEGER DEFAULT 1,
-                    confidence INTEGER,
-                    severity VARCHAR(20),
-                    INDEX idx_submission (submission_id),
-                    FOREIGN KEY (submission_id) REFERENCES submissions(submission_id) ON DELETE CASCADE
-                )
-            """)
-            
-            # Observables table (IoCs and artifacts)
-            execute_func("""
-                CREATE TABLE IF NOT EXISTS observables (
-                    observable_id VARCHAR(255) PRIMARY KEY,
-                    sighting_id VARCHAR(255),
-                    submission_id VARCHAR(255) NOT NULL,
-                    observable_type VARCHAR(50) NOT NULL,
-                    observable_value TEXT NOT NULL,
-                    observable_hash VARCHAR(64),
-                    confidence INTEGER,
-                    role VARCHAR(100),
-                    port INTEGER,
-                    protocol VARCHAR(50),
-                    first_seen TIMESTAMP,
-                    INDEX idx_submission (submission_id),
-                    INDEX idx_type (observable_type),
-                    INDEX idx_hash (observable_hash),
-                    INDEX idx_value (observable_value(255)),
-                    FOREIGN KEY (submission_id) REFERENCES submissions(submission_id) ON DELETE CASCADE
-                )
-            """)
-            
-            # Statistics table (aggregated data)
-            execute_func("""
-                CREATE TABLE IF NOT EXISTS observable_statistics (
-                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    observable_hash VARCHAR(64) NOT NULL,
-                    observable_type VARCHAR(50) NOT NULL,
-                    observable_value TEXT NOT NULL,
-                    total_sightings INTEGER DEFAULT 1,
-                    unique_organizations INTEGER DEFAULT 1,
-                    first_seen TIMESTAMP,
-                    last_seen TIMESTAMP,
-                    avg_confidence DECIMAL(5,2),
-                    sectors_json TEXT,
-                    regions_json TEXT,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_hash (observable_hash),
-                    INDEX idx_type (observable_type)
-                )
-            """)
-            
-            # Access logs for auditing
-            execute_func("""
-                CREATE TABLE IF NOT EXISTS access_logs (
-                    id INTEGER PRIMARY KEY AUTO_INCREMENT,
-                    organization_id VARCHAR(255) NOT NULL,
-                    action VARCHAR(100) NOT NULL,
-                    resource_type VARCHAR(50),
-                    resource_id VARCHAR(255),
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    access_level VARCHAR(50),
-                    success BOOLEAN DEFAULT TRUE,
-                    INDEX idx_org (organization_id),
-                    INDEX idx_timestamp (timestamp)
-                )
-            """)
-            
-            conn.commit()
-            if cursor:
-                cursor.close()
-            conn.close()
-            
-            self.logger.info("Database schema initialized successfully")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Database initialization error: {e}")
-            raise
-    
-    def hash_observable(self, observable_type: str, observable_value: str) -> str:
-        """Create a hash for observable deduplication - from spikes/004_sqlite.py"""
-        combined = f"{observable_type}:{observable_value}".lower()
-        return hashlib.sha256(combined.encode()).hexdigest()
-    
-    async def store_submission(self, submission: MinimalSubmission) -> bool:
-        """Store a complete submission - adapted from spikes/004_sqlite.py"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            # Create default sighting ID for this submission
-            sighting_id = str(uuid.uuid4())
-            
-            # Insert submission record
-            cursor.execute("""
-                INSERT INTO submissions 
-                (submission_id, submitter_org_id, hit_target_org_id, format_version, 
-                 submission_timestamp, confidence, severity, tlp_level, full_submission_json)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                submission.submission_id,
-                submission.submitter_org_id,
-                submission.hit_target_org_id,
-                submission.format_version,
-                submission.submission_timestamp,
-                submission.confidence,
-                submission.severity,
-                submission.tlp_level,
-                submission.model_dump_json()
-            ))
-            
-            # Insert sighting record
-            cursor.execute("""
-                INSERT INTO sightings 
-                (sighting_id, submission_id, first_observed, last_observed, 
-                 observation_count, confidence, severity)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-            """, (
-                sighting_id,
-                submission.submission_id,
-                submission.submission_timestamp,
-                submission.submission_timestamp,
-                1,
-                submission.confidence,
-                submission.severity
-            ))
-            
-            # Insert observable records
-            for observable in submission.observables:
-                observable_hash = self.hash_observable(observable.type, observable.value)
-                
-                cursor.execute("""
-                    INSERT INTO observables 
-                    (observable_id, sighting_id, submission_id, observable_type, observable_value,
-                     observable_hash, confidence, role, port, protocol, first_seen)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    observable.id,
-                    sighting_id,
-                    submission.submission_id,
-                    observable.type,
-                    observable.value,
-                    observable_hash,
-                    observable.confidence,
-                    observable.role,
-                    observable.port,
-                    observable.protocol,
-                    submission.submission_timestamp
-                ))
-                
-                # Update or create statistics record
-                await self._update_observable_statistics(
-                    cursor, observable_hash, observable.type, observable.value,
-                    submission.submitter_org_id, submission.confidence, submission.submission_timestamp
-                )
-            
-            # Log access
-            cursor.execute("""
-                INSERT INTO access_logs 
-                (organization_id, action, resource_type, resource_id, access_level, success)
-                VALUES (%s, %s, %s, %s, %s, %s)
-            """, (
-                submission.submitter_org_id,
-                'submit_threat_intelligence',
-                'submission',
-                submission.submission_id,
-                'write',
-                True
-            ))
-            
-            conn.commit()
-            cursor.close()
-            conn.close()
-            
-            self.logger.info(f"Stored submission {submission.submission_id} successfully")
-            return True
-            
-        except Exception as e:
-            self.logger.error(f"Failed to store submission: {e}")
-            if conn:
-                conn.rollback()
-                cursor.close()
-                conn.close()
-            return False
-    
-    async def _update_observable_statistics(self, cursor, observable_hash: str, observable_type: str, 
-                                          observable_value: str, org_id: str, confidence: Optional[int], 
-                                          timestamp: datetime):
-        """Update aggregated statistics for an observable"""
-        try:
-            # Check if statistics record exists
-            cursor.execute("""
-                SELECT total_sightings, unique_organizations, avg_confidence, sectors_json 
-                FROM observable_statistics 
-                WHERE observable_hash = %s
-            """, (observable_hash,))
-            
-            result = cursor.fetchone()
-            
-            if result:
-                # Update existing record
-                total_sightings, unique_orgs, avg_conf, sectors_json = result
-                
-                # Parse existing sectors
-                sectors = json.loads(sectors_json) if sectors_json else []
-                if org_id not in sectors:
-                    sectors.append(org_id)
-                    unique_orgs += 1
-                
-                # Update average confidence
-                if confidence and avg_conf:
-                    new_avg_conf = ((avg_conf * total_sightings) + confidence) / (total_sightings + 1)
-                else:
-                    new_avg_conf = confidence or avg_conf
-                
-                cursor.execute("""
-                    UPDATE observable_statistics 
-                    SET total_sightings = %s, unique_organizations = %s, avg_confidence = %s,
-                        sectors_json = %s, last_seen = %s, updated_at = CURRENT_TIMESTAMP
-                    WHERE observable_hash = %s
-                """, (
-                    total_sightings + 1,
-                    unique_orgs,
-                    new_avg_conf,
-                    json.dumps(sectors),
-                    timestamp,
-                    observable_hash
-                ))
-            else:
-                # Create new statistics record
-                cursor.execute("""
-                    INSERT INTO observable_statistics 
-                    (observable_hash, observable_type, observable_value, total_sightings,
-                     unique_organizations, first_seen, last_seen, avg_confidence, sectors_json)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                """, (
-                    observable_hash,
-                    observable_type,
-                    observable_value,
-                    1,
-                    1,
-                    timestamp,
-                    timestamp,
-                    confidence,
-                    json.dumps([org_id])
-                ))
-                
-        except Exception as e:
-            self.logger.error(f"Failed to update observable statistics: {e}")
-    
-    async def get_submission(self, submission_id: str) -> Optional[MinimalSubmission]:
-        """Retrieve a submission by ID"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT full_submission_json FROM submissions WHERE submission_id = %s
-            """, (submission_id,))
-            
-            result = cursor.fetchone()
-            cursor.close()
-            conn.close()
-            
-            if result:
-                return MinimalSubmission.parse_raw(result[0])
-            return None
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get submission: {e}")
-            return None
-    
-    async def list_submissions(self, org_id: str, limit: int = 100) -> List[MinimalSubmission]:
-        """List submissions for an organization"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            cursor.execute("""
-                SELECT full_submission_json FROM submissions 
-                WHERE submitter_org_id = %s 
-                ORDER BY submission_timestamp DESC 
-                LIMIT %s
-            """, (org_id, limit))
-            
-            results = cursor.fetchall()
-            cursor.close()
-            conn.close()
-            
-            submissions = []
-            for result in results:
-                submissions.append(MinimalSubmission.parse_raw(result[0]))
-            
-            return submissions
-            
-        except Exception as e:
-            self.logger.error(f"Failed to list submissions: {e}")
-            return []
-    
-    async def get_platform_statistics(self, requesting_org_id: str) -> Dict[str, Any]:
-        """Get platform statistics - adapted from spikes/004_sqlite.py"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            
-            # Total submissions
-            cursor.execute("SELECT COUNT(*) FROM submissions")
-            total_submissions = cursor.fetchone()[0]
-            
-            # Active organizations
-            cursor.execute("SELECT COUNT(DISTINCT submitter_org_id) FROM submissions")
-            active_orgs = cursor.fetchone()[0]
-            
-            # Total observables
-            cursor.execute("SELECT COUNT(*) FROM observables")
-            total_observables = cursor.fetchone()[0]
-            
-            # Top observable types
-            cursor.execute("""
-                SELECT observable_type, COUNT(*) as count 
-                FROM observables 
-                GROUP BY observable_type 
-                ORDER BY count DESC 
-                LIMIT 5
-            """)
-            top_types = {row[0]: row[1] for row in cursor.fetchall()}
-            
-            # Recent activity (last 7 days)
-            cursor.execute("""
-                SELECT COUNT(*) FROM submissions 
-                WHERE submission_timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY)
-            """)
-            recent_submissions = cursor.fetchone()[0]
-            
-            cursor.close()
-            conn.close()
-            
-            return {
-                'total_submissions': total_submissions,
-                'active_organizations': active_orgs,
-                'total_observables': total_observables,
-                'top_observable_types': top_types,
-                'recent_submissions_7_days': recent_submissions,
-                'requesting_org': requesting_org_id
-            }
-            
-        except Exception as e:
-            self.logger.error(f"Failed to get platform statistics: {e}")
-            return {}
-    
-    async def health_check(self) -> bool:
-        """Check database connectivity"""
-        try:
-            conn = self.get_connection()
-            cursor = conn.cursor()
-            cursor.execute("SELECT 1")
-            cursor.close()
-            conn.close()
-            return True
-        except Exception as e:
-            self.logger.error(f"Database health check failed: {e}")
-            return False
-
-# ================================
 # FASTAPI APPLICATION
 # ================================
 
 # Initialize configuration and database
 config = FrankConfig()
-frank_db = FRANKDatabase(config)
+frank_db = create_mysql_database(config.rds_host, config.rds_port, config.rds_database, config.rds_username, config.rds_password, logger)
 
 # Create FastAPI app
 app = FastAPI(
     title="FRANK Platform - Stage 2",
     description="RDS/MariaDB Implementation with LocalStack",
-    version="2.0.0"
+    version=__version__,
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # Add CORS middleware
@@ -643,186 +155,519 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.on_event("startup")
-async def startup_event():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
-    await frank_db.initialize_schema()
+    frank_db.initialize()
+    load_database()
+    logger.info(f"Database Initialization complete")
+    yield
 
-# ================================
-# API ENDPOINTS
-# ================================
 
-@app.get("/")
-async def root():
-    """Root endpoint with system information"""
-    return {
-        "service": "FRANK Platform",
-        "stage": "Stage 2 - RDS/MariaDB Implementation",
-        "environment": config.environment,
-        "database_type": config.database_type,
-        "version": __version__,
-        "features": [
-            "RDS/MariaDB integration",
-            "LocalStack simulation",
-            "SQLite schema compatibility",
-            "Minimal submission model",
-            "Performance monitoring"
-        ]
-    }
+# Authentication and authorization functions
+async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
+    """
+    Extract user information from JWT token.
+    In a real implementation, this would validate the JWT and extract claims.
+    For this spike, we'll mock the user data.
+    """
+    # Check if credentials were provided
+    if credentials is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Authentication required"
+        )
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    db_healthy = await frank_db.health_check()
+    # Mock user data for spike - in production, decode and validate JWT
+    token = credentials.credentials
     
-    return {
-        "status": "healthy" if db_healthy else "unhealthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": {
-            "type": config.database_type,
-            "status": "healthy" if db_healthy else "unhealthy",
-            "endpoint": f"{config.rds_host}:{config.rds_port}" if hasattr(config, 'rds_host') else "local"
+    # Simple mock based on token prefix for demonstration
+    if token.startswith("observer_"):
+        return {
+            "organization_id": "demo-observer-org",
+            "tier": TierLevel.OBSERVER,
+            "sector": "technology"
         }
-    }
+    elif token.startswith("contributor_"):
+        return {
+            "organization_id": "demo-contributor-org", 
+            "tier": TierLevel.CONTRIBUTOR,
+            "sector": "financial"
+        }
+    elif token.startswith("partner_"):
+        return {
+            "organization_id": "demo-partner-org",
+            "tier": TierLevel.PARTNER, 
+            "sector": "cybersecurity_services"
+        }
+    elif token.startswith("core_"):
+        return {
+            "organization_id": "demo-core-org",
+            "tier": TierLevel.CORE_MEMBER,
+            "sector": "government"
+        }
+    else:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid authentication token"
+        )
 
-@app.post("/v1/submissions", response_model=SubmissionResponse)
-async def submit_threat_intelligence(submission: MinimalSubmission):
-    """Submit threat intelligence data"""
-    import time
-    start_time = time.time()
+def check_submission_permissions(user: Dict[str, Any]) -> bool:
+    """Check if user can submit threat intelligence"""
+    allowed_tiers = [TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER]
+    return user.get("tier") in allowed_tiers
+
+def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
+    """Check if user tier meets required access level"""
+    tier_hierarchy = {
+        TierLevel.PUBLIC: 0,
+        TierLevel.OBSERVER: 1,
+        TierLevel.CONTRIBUTOR: 2,
+        TierLevel.PARTNER: 3,
+        TierLevel.CORE_MEMBER: 4
+    }
+    
+    user_level = tier_hierarchy.get(user_tier, 0)
+    required_level_num = tier_hierarchy.get(required_level, 0)
+    
+    return user_level >= required_level_num
+
+# Rate limiting (simplified for spike)
+class RateLimiter:
+    def __init__(self):
+        self.requests = {}
+    
+    def check_rate_limit(self, user_id: str, tier: str) -> bool:
+        # Simplified rate limiting - in production use Redis or similar
+        # For spike, we'll just return True
+        return True
+
+rate_limiter = RateLimiter()
+
+# API Endpoints
+
+@app.post("/v1/submission", response_model=SubmissionResponse)
+async def submit_threat_intelligence(
+    request: Request,
+    submission_request: SubmissionRequest = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user)
+):
+    """
+    Submit threat intelligence sighting to the platform.
+    Requires Contributor, Partner, or Core Member access level.
+    """
+    
+    # Check permissions
+    if not check_submission_permissions(current_user):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient access level for submission"
+        )
+    
+    # Check rate limiting
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded"
+        )
     
     try:
-        success = await frank_db.store_submission(submission)
+     
+        # Store in database
+        success = frank_db.store_submission(submission_request.submission)
         
         if not success:
-            raise HTTPException(status_code=500, detail="Failed to store submission")
+            raise HTTPException(
+                status_code=500,
+                detail="Failed to store submission"
+            )
         
-        total_time = (time.time() - start_time) * 1000
+        # Calculate contribution score impact (simplified)
+        score_impact = calculate_contribution_score(submission_request.submission)
         
         return SubmissionResponse(
-            status="success",
-            submission_id=submission.submission_id,
-            message=f"Submission stored successfully in {config.database_type}",
-            database_used=config.database_type,
-            performance_ms=total_time
+            status="accepted",
+            submission_id=submission_request.submission.submission_id,
+            contribution_score_impact=score_impact,
+            processing_status="queued",
+            validation_required=False,
+            estimated_processing_time="2-5 minutes"
         )
         
+    except Exception as e:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Submission validation failed: {str(e)}"
+        )
+
+@app.get("/v1/sighting", response_model=SightingSearchResponse)
+async def search_threat_sightings(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    observable: Optional[str] = Query(None, description="Specific IoC to search for"),
+    type: Optional[ObservableType] = Query(None, description="Observable type filter"),
+    start_date: Optional[datetime] = Query(None, description="Search start date"),
+    end_date: Optional[datetime] = Query(None, description="Search end date"),
+    sector: Optional[str] = Query(None, description="Target sector filter"),
+    confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score"),
+    tlp_level: Optional[TLPLevel] = Query(None, description="Traffic Light Protocol level"),
+    campaign: Optional[str] = Query(None, description="Threat campaign identifier"),
+    limit: Optional[int] = Query(50, ge=1, le=1000, description="Maximum results to return"),
+    offset: Optional[int] = Query(0, ge=0, description="Pagination offset"),
+    format: Optional[str] = Query("summary", description="Response format")
+):
+    """
+    Retrieve threat intelligence sightings based on search criteria.
+    Available to Observer, Contributor, Partner, and Core Member tiers.
+    """
+    
+    # Check rate limiting
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+        raise HTTPException(
+            status_code=429,
+            detail="Rate limit exceeded"
+        )
+    
+    try:
+        # Validate date range
+        if start_date and end_date and start_date >= end_date:
+            raise HTTPException(
+                status_code=400,
+                detail={
+                    "error": {
+                        "code": "INVALID_QUERY_PARAMETERS",
+                        "message": "Invalid date range: start_date must be before end_date",
+                        "details": {
+                            "start_date": start_date.isoformat() if start_date else None,
+                            "end_date": end_date.isoformat() if end_date else None
+                        },
+                        "timestamp": datetime.now(timezone.utc).isoformat(),
+                        "request_id": f"req-{uuid.uuid4()}"
+                    }
+                }
+            )
+        
+        # Build query parameters
+        query_params = {
+            "org_id": current_user["organization_id"],
+            "access_level": current_user["tier"],
+            "limit": limit
+        }
+        
+        # Add filters if provided
+        if type:
+            query_params["observable_type"] = type.value
+        if confidence_min:
+            query_params["min_confidence"] = confidence_min
+        if sector:
+            query_params["sectors"] = [sector]
+        if start_date or end_date:
+            # Calculate days back from start_date if provided
+            if start_date:
+                days_back = (datetime.now(timezone.utc) - start_date).days
+                query_params["days_back"] = max(1, days_back)
+        
+        # Search by specific observable if provided
+        if observable:
+            results = frank_db.search_observables_by_value(
+                current_user["organization_id"],
+                observable,
+                current_user["tier"]
+            )
+        else:
+            # General query
+            results = frank_db.query_observables(**query_params)
+        
+        # Apply pagination
+        total_results = len(results)
+        paginated_results = results[offset:offset + limit]
+        
+        # Build response based on access level and format
+        sightings = []
+        for result in paginated_results:
+            sighting = format_sighting_response(result, current_user["tier"], format)
+            sightings.append(sighting)
+        
+        response = SightingSearchResponse(
+            total_results=total_results,
+            returned_results=len(sightings),
+            sightings=sightings
+        )
+        
+        # Add aggregations for contributor and above
+        if check_access_level(current_user["tier"], TierLevel.CONTRIBUTOR):
+            response.aggregations = generate_aggregations(results, current_user["tier"])
+        
+        # Add threat context for partner and above
+        if check_access_level(current_user["tier"], TierLevel.PARTNER):
+            response.threat_context = generate_threat_context(results)
+        
+        # Add pagination info
+        if total_results > offset + limit:
+            response.pagination = {
+                "has_next": True,
+                "next_offset": offset + limit,
+                "has_previous": offset > 0,
+                "previous_offset": max(0, offset - limit)
+            }
+        
+        return response
+        
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to submit threat intelligence: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(
+            status_code=500,
+            detail=f"Search failed: {str(e)}"
+        )
 
-@app.get("/v1/submissions/{submission_id}")
-async def get_submission(submission_id: str):
-    """Get a specific submission by ID"""
-    try:
-        submission = await frank_db.get_submission(submission_id)
-        
-        if not submission:
-            raise HTTPException(status_code=404, detail="Submission not found")
-        
-        return {
-            "submission": submission,
-            "database_used": config.database_type
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Failed to get submission: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# Health and status endpoints
+@app.get("/v1/health")
+async def health_check():
+    """Health check endpoint"""
+    health_status = frank_db.health_check()
+    return {
+        "status": "healthy" if health_status["status"] == "healthy" else "unhealthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "database": health_status,
+        "version": __version__
+    }
 
-@app.get("/v1/organizations/{org_id}/submissions")
-async def list_organization_submissions(org_id: str, limit: int = 100):
-    """List submissions for an organization"""
-    try:
-        submissions = await frank_db.list_submissions(org_id, limit)
-        
-        return {
-            "organization_id": org_id,
-            "submission_count": len(submissions),
-            "submissions": submissions,
-            "database_used": config.database_type
-        }
-        
-    except Exception as e:
-        logger.error(f"Failed to list submissions: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+# @app.middleware("http")
+# async def log_requests(request: Request, call_next):
+#     if request.url.path == "/health":
+#         logger.warning(f"Request to /health from {request.client} - should be /v1/health")
+#     response = await call_next(request)
+#     return response
 
 @app.get("/v1/statistics")
-async def get_platform_statistics(org_id: str = "anonymous"):
-    """Get platform statistics"""
-    try:
-        stats = await frank_db.get_platform_statistics(org_id)
-        
-        return {
-            "statistics": stats,
-            "database_used": config.database_type,
-            "generated_at": datetime.now(timezone.utc).isoformat()
+async def get_platform_statistics(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
+):
+    """Get platform usage statistics"""
+    if not check_access_level(current_user["tier"], TierLevel.OBSERVER):
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient access level"
+        )
+    
+    stats = frank_db.get_statistics_summary(current_user["organization_id"], days)
+    
+    # Filter stats based on access level
+    if current_user["tier"] == TierLevel.OBSERVER:
+        # Remove sensitive information for observers
+        filtered_stats = {
+            "total_submissions": stats.get("total_submissions", 0),
+            "observable_types": stats.get("observable_types", {}),
+            "daily_activity": stats.get("daily_activity", {})
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to get statistics: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        return filtered_stats
+    
+    return stats
 
-@app.post("/v1/test/generate-sample-data")
-async def generate_sample_data(count: int = 10):
-    """Generate sample threat intelligence data for testing"""
-    try:
-        generated_submissions = []
-        
-        sample_orgs = ["bank-alpha", "retail-beta", "tech-gamma", "gov-delta"]
-        sample_observables = [
-            {"type": "ipv4", "value": "192.168.1.100"},
-            {"type": "domain", "value": "malicious-site.com"},
-            {"type": "file_hash", "value": "a1b2c3d4e5f6"},
-            {"type": "url", "value": "http://evil.example.com/payload"},
-            {"type": "email", "value": "attacker@evil.com"}
-        ]
-        
-        for i in range(count):
-            # Create random submission
-            submission = MinimalSubmission(
-                submitter_org_id=sample_orgs[i % len(sample_orgs)],
-                observables=[
-                    SimpleObservable(
-                        type=obs["type"],
-                        value=f"{obs['value']}-{i}",
-                        confidence=80 + (i % 20)
-                    ) for obs in sample_observables[:((i % 3) + 1)]
-                ],
-                confidence=70 + (i % 30),
-                severity=['low', 'medium', 'high'][i % 3]
-            )
-            
-            # Save to database
-            await frank_db.store_submission(submission)
-            generated_submissions.append(submission.submission_id)
-        
+# Helper functions
+def calculate_contribution_score(submission: Submission) -> int:
+    """Calculate contribution score impact for a submission"""
+    base_score = 10
+    
+    # Add points for observables
+    obs = submission.sighting.observables
+    observable_count = len(obs.network or []) + len(obs.file or []) + len(obs.process or [])
+    score = base_score + observable_count * 2
+    
+    # Add points for SIGMA detection
+    if submission.sighting.sigma_detection:
+        score += 5
+    
+    # Add points for threat context
+    if submission.sighting.threat_context:
+        score += 3
+    
+    # Add points for impact data
+    if submission.sighting.impact:
+        score += 2
+    
+    return min(score, 25)  # Cap at 25 points
+
+def format_sighting_response(result: Dict[str, Any], access_level: str, format_type: str) -> Dict[str, Any]:
+    """Format sighting data based on access level and format type"""
+    
+    if access_level == "observer":
+        # Minimal data for observers
         return {
-            "status": "success",
-            "generated_count": count,
-            "submission_ids": generated_submissions,
-            "message": f"Generated {count} sample submissions",
-            "database_used": config.database_type
+            "sighting_id": f"sighting-masked-{result.get('observable_hash', 'unknown')[:8]}",
+            "timestamp": result.get("last_seen", datetime.now(timezone.utc).isoformat()),
+            "observable_type": result.get("observable_type"),
+            "observable_value": mask_observable_value(result.get("observable_value", ""), result.get("observable_type", "")),
+            "confidence": result.get("avg_confidence", 50),
+            "geographic_region": "masked"
         }
-        
-    except Exception as e:
-        logger.error(f"Failed to generate sample data: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+    elif access_level == "contributor":
+        # Partial data for contributors
+        return {
+            "sighting_id": f"sighting-{result.get('observable_hash', 'unknown')[:12]}",
+            "timestamp": result.get("last_seen"),
+            "observable": {
+                "type": result.get("observable_type"),
+                "value": result.get("observable_value"),
+            },
+            "confidence": result.get("avg_confidence"),
+            "total_sightings": result.get("total_sightings"),
+            "sectors": result.get("sectors", [])
+        }
+    else:
+        # Full data for partners and core members
+        return {
+            "sighting_id": f"sighting-{result.get('observable_hash')}",
+            "timestamp": result.get("last_seen"),
+            "observable": {
+                "type": result.get("observable_type"),
+                "value": result.get("observable_value"),
+            },
+            "confidence": result.get("avg_confidence"),
+            "total_sightings": result.get("total_sightings"),
+            "unique_organizations": result.get("unique_organizations"),
+            "first_seen": result.get("first_seen"),
+            "sectors": result.get("sectors", []),
+            "regions": result.get("regions", [])
+        }
 
-# ================================
-# MAIN EXECUTION
-# ================================
+def mask_observable_value(value: str, obs_type: str) -> str:
+    """Mask observable values for lower access tiers"""
+    if obs_type == "ipv4" and "." in value:
+        parts = value.split(".")
+        if len(parts) == 4:
+            return f"{parts[0]}.{parts[1]}.{parts[2]}.***"
+    elif obs_type == "domain":
+        return f"{'*' * (len(value) // 2)}{value[len(value) // 2:]}"
+    elif len(value) > 10:
+        return f"{value[:10]}..."
+    return value
+
+def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> Dict[str, Any]:
+    """Generate statistical aggregations from results"""
+    if not results:
+        return {}
+    
+    # Count unique organizations (simplified)
+    total_orgs = len(set(result.get("observable_hash") for result in results))
+    
+    # Confidence distribution
+    confidence_dist = {"high": 0, "medium": 0, "low": 0}
+    for result in results:
+        conf = result.get("avg_confidence", 0) or 0
+        if conf >= 80:
+            confidence_dist["high"] += 1
+        elif conf >= 60:
+            confidence_dist["medium"] += 1
+        else:
+            confidence_dist["low"] += 1
+    
+    return {
+        "total_organizations": total_orgs,
+        "confidence_distribution": confidence_dist,
+        "total_sightings": sum(result.get("total_sightings", 0) for result in results)
+    }
+
+def generate_threat_context(results: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Generate threat context information for high-tier users"""
+    # This would typically involve querying campaign and threat actor data
+    # For the spike, we'll return mock context
+    return {
+        "campaigns_involved": ["banking_campaign_2025", "phishing_wave_q1"],
+        "threat_actors": ["unknown_cybercriminal_group"],
+        "mitre_attack": {
+            "techniques": ["T1566.001", "T1071.001"],
+            "tactics": ["initial_access", "command_and_control"]
+        },
+        "affected_sectors": ["financial", "healthcare", "retail"]
+    }
+
+# initialize demo data
+def load_database():
+    """Initialize the database and load with some demo data"""
+    logger.info(f"Initialiazing FRANK API server database.")
+    
+    # Create some demo organizations
+    demo_orgs = [
+        {
+            "organization_id": "demo-observer-org",
+            "tier": "observer",
+            "sector": "technology",
+            "region": "nl_north_holland"
+        },
+        {
+            "organization_id": "demo-contributor-org", 
+            "tier": "contributor",
+            "sector": "financial",
+            "region": "nl_north_holland"
+        },
+        {
+            "organization_id": "demo-partner-org",
+            "tier": "partner",
+            "sector": "cybersecurity_services",
+            "region": "nl_north_holland"
+        },
+        {
+            "organization_id": "demo-core-org",
+            "tier": "core_member",
+            "sector": "government",
+            "region": "nl_north_holland"
+        }
+    ]
+    
+    for org in demo_orgs:
+        frank_db.upsert_organization(org)
+    
+    # Create some demo submissions
+    for i in range(5):
+        demo_submission = generate_minimal_submission(
+            org_id="demo-partner-org",
+            tier="partner",
+            confidence=70 + i * 5
+        )
+        frank_db.store_submission(demo_submission)
+    
+    print("Demo data initialized")
+
+# Error handlers
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request: Request, exc: HTTPException):
+    """Custom HTTP exception handler"""
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": {
+                "code": "HTTP_ERROR",
+                "message": exc.detail,
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "request_id": f"req-{uuid.uuid4()}"
+            }
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request: Request, exc: Exception):
+    """General exception handler"""
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": {
+                "code": "INTERNAL_SERVER_ERROR", 
+                "message": "An internal server error occurred",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "request_id": f"req-{uuid.uuid4()}"
+            }
+        }
+    )
 
 if __name__ == "__main__":
     import argparse
     
     parser = argparse.ArgumentParser(description="FRANK Platform Stage 2 Server")
-    parser.add_argument("--environment", choices=["local", "localstack", "aws"], 
-                       default="localstack", help="Environment to run in")
+    parser.add_argument("--environment", choices=["hybrid", "localstack", "aws"], 
+                       default="hybrid", help="Environment to run in")
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
@@ -835,8 +680,8 @@ if __name__ == "__main__":
     logger.info(f"Starting FRANK Platform Stage 2")
     logger.info(f"Environment: {args.environment}")
     logger.info(f"Database type: {config.database_type}")
-    
-    # Run server
+
+    # Run the server
     uvicorn.run(
         "frank_stage2:app",
         host=args.host,

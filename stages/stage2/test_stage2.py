@@ -17,7 +17,7 @@
 # @pytest.mark.asyncio
 # async def test_health_endpoint(client):
 #     """Test health check endpoint"""
-#     response = await client.get("/health")
+#     response = await client.get("/v1/health")
 #     assert response.status_code == 200
 #     data = response.json()
 #     assert "status" in data

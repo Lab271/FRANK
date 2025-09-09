@@ -41,6 +41,9 @@ dev:$(VIRTUALENV)/bin/python  ## Install this for development
 unittests:  ## Run all unittests
 	@pytest tests
 
+integration:  ## Run all integration tests
+	@cd tests/integration && behave
+
 lint: test ## Static code checking
 	@ruff check .
 

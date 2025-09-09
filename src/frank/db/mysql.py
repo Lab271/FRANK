@@ -188,10 +188,11 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     effectiveness_score DECIMAL(5,2) NULL,
-                    false_positive_rate DECIMAL(5,2) NULL,
-                    FOREIGN KEY (created_by_org) REFERENCES organizations (organization_id) ON DELETE SET NULL
+                    false_positive_rate DECIMAL(5,2) NULL
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
+            # FOREIGN KEY (created_by_org) REFERENCES organizations (organization_id) ON DELETE SET NULL
+
             
             # Campaign tracking table
             cursor.execute("""
@@ -246,9 +247,9 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             sighting = submission.sighting
 
             # Store or update organization
-            self._upsert_organization(cursor, submitter.model_dump(
-                    exclude_none=True,
-                    by_alias=True), org_type='cyber_partner')
+            self._upsert_organization(
+                cursor, submitter.model_dump(exclude_none=True, by_alias=True), org_type="cyber_partner"
+            )
             
             # Store hit target if present
             hit_target_id = None
@@ -836,7 +837,66 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             if conn:
                 conn.close()
         return False
-    
+
+    def search_observables_by_value(self, org_id: str, search_value: str, 
+                                access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Dict[str, Any]]:
+        """
+        Search for observables by partial value match.
+        
+        Args:
+            org_id: Organization performing the search
+            search_value: Value to search for (supports wildcards)
+            access_level: Access level for filtering
+            
+        Returns:
+            List of matching observables
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+            
+            cursor.execute("""
+                SELECT os.* FROM observable_statistics os
+                WHERE os.observable_value LIKE %s
+                ORDER BY os.total_sightings DESC
+                LIMIT 100
+            """, (f"%{search_value}%",))
+            
+            results = []
+            for row in cursor.fetchall():
+                result = dict(row)
+                result = self._filter_observable_by_access_level(result, access_level)
+                
+                # Parse JSON fields
+                try:
+                    result['sectors'] = json.loads(result['sectors_json']) if result['sectors_json'] else []
+                    result['regions'] = json.loads(result['regions_json']) if result['regions_json'] else []
+                    del result['sectors_json']
+                    del result['regions_json']
+                except:
+                    result['sectors'] = []
+                    result['regions'] = []
+                
+                results.append(result)
+            
+            # Log access
+            self._log_access(cursor, org_id, 'SEARCH', 'observables', details={'search_value': search_value})
+            conn.commit()
+            cursor.close()
+            
+            return results
+                
+        except pymysql.Error as e:
+            if conn:
+                conn.rollback()
+            self.logger.error(f"Error searching observables: {e}")
+            raise FRANKQueryError(f"Failed to search observables: {e}")
+        finally:
+            if conn:
+                conn.close()
+
+
     def _log_access(self, cursor, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> None:
