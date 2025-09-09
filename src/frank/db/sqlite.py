@@ -768,6 +768,33 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             json.dumps(details) if details else None
         ))
        
+    def log_access(self, org_id: str, action: str, 
+                   resource_type: str = None, resource_id: str = None, 
+                   details: Dict[str, Any] = None) -> bool:
+        """
+        Log an access event for auditing purposes.
+        
+        Args:
+            org_id: Organization ID performing the action
+            action: Action performed (e.g., 'READ', 'SUBMIT', 'QUERY')
+            resource_type: Type of resource accessed (optional)
+            resource_id: ID of the resource accessed (optional)
+            details: Additional details as a dictionary (optional)
+        
+        Returns:
+            True if the log entry was successfully written, False otherwise
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                self._log_access(conn, org_id, action, resource_type, resource_id, details)
+                conn.commit()
+                return True
+        except sqlite3.Error as e:
+            self.logger.error(f"Error logging access: {e}")
+            return False
+        
     def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter submission data based on access level."""
         # TODO: Upgrade this to Pydantic classes

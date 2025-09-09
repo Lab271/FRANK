@@ -5,6 +5,8 @@ FRANK Platform - FastAPI Spike Solution
 A working prototype API server implementing the FRANK threat intelligence platform
 using FastAPI and the MySQL database backend.
 
+This is inspired by spikes/005_server.py
+
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
@@ -137,13 +139,24 @@ class FrankConfig:
 config = FrankConfig()
 frank_db = create_mysql_database(config.rds_host, config.rds_port, config.rds_database, config.rds_username, config.rds_password, logger)
 
+# Initialize system once server is setup
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Initialize database on startup"""
+    logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
+    frank_db.initialize()
+    load_database()
+    logger.info(f"Database Initialization complete")
+    yield
+
 # Create FastAPI app
 app = FastAPI(
     title="FRANK Platform - Stage 2",
     description="RDS/MariaDB Implementation with LocalStack",
     version=__version__,
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
 # Add CORS middleware
@@ -155,14 +168,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize database on startup"""
-    logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
-    frank_db.initialize()
-    load_database()
-    logger.info(f"Database Initialization complete")
-    yield
+
 
 
 # Authentication and authorization functions

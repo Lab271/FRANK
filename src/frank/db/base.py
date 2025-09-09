@@ -61,6 +61,12 @@ class BaseFRANKDatabase(ABC):
         """Get platform statistics summary."""
         pass
 
+    def log_access(self, org_id: str, action: str, 
+                   resource_type: str = None, resource_id: str = None, 
+                   details: Dict[str, Any] = None) -> bool:
+        """Log an access event for auditing purposes."""
+        pass
+
     @abstractmethod
     def health_check(self) -> Dict[str, Any]:
         """Perform a health check on the database."""
