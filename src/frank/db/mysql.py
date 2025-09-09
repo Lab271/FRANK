@@ -809,6 +809,34 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             if conn:
                 conn.close()
 
+    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
+        """
+        Insert or update organization information.
+        
+        Args:
+            org_data: Organization data dictionary
+            
+        Returns:
+            True if successful
+        """
+        conn = None
+        try:
+            conn = self.get_connection()
+            cursor = conn.cursor()
+
+            self._upsert_organization(conn, org_data)
+            conn.commit()
+            return True
+        except pymysql.Error as e:
+            if conn:
+                conn.rollback()
+            self.logger.error(f"Error getting statistics: {e}")
+            raise FRANKQueryError(f"Failed to get statistics: {e}")
+        finally:
+            if conn:
+                conn.close()
+        return False
+    
     def _log_access(self, cursor, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> None:
