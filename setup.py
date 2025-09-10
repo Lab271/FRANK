@@ -18,9 +18,9 @@ with open("README.md", "r") as f:
 
 def get_version():
     version = {}
-    with open(os.path.join(os.path.dirname(__file__), 'src', PACKAGE, '__init__.py')) as f:
+    with open(os.path.join(os.path.dirname(__file__), 'src', PACKAGE, '__version__.py')) as f:
         exec(f.read(), version)
-    return version['__version__']
+    return version['version']
 
 setup(
     name=PACKAGE,
@@ -33,7 +33,7 @@ setup(
     maintainer='Ilja Heitlager',
     maintainer_email='iheitlager@schubergphilis.com',
     keywords=["security-tools"],
-    url='https://github.com/iheitlager/frank',
+    url='https://github.com/LAB271/FRANK',
     packages=find_packages('src'),
     package_dir={'': 'src'},
     test_suite="tests/unittest",

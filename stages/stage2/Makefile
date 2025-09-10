@@ -1,3 +1,7 @@
+# FRANK Platform - Setup Script
+
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
 # ================================
 # Makefile - Development Commands
 # ================================
@@ -15,7 +19,16 @@ build-simple:
 	docker-compose -f docker-compose.simple.yml build
 
 up:  ## Start all services
-	docker-compose up -d
+	docker-compose -f docker-compose.mysql.yml up -d
+	@echo "Waiting for services to be ready..."
+	@echo "Services started:"
+	@echo "- FRANK API: http://localhost:8000"
+	@echo "- Adminer (RDS): http://localhost:8080"
+	@echo "- DynamoDB Admin: http://localhost:8001"
+	@echo "- LocalStack: http://localhost:4566"
+
+up-hybrid:  ## Start all services
+	docker-compose -f docker-compose.hybrid.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"

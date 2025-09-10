@@ -1063,16 +1063,14 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 'database_host': self.connection_params['host'],
                 'database_name': self.connection_params['database'],
                 'database_size_mb': float(db_size_mb),
-                'table_counts': table_counts,
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'table_counts': table_counts
             }
                 
         except Exception as e:
             self.logger.error(f"Health check failed: {e}")
             return {
                 'status': 'unhealthy',
-                'error': str(e),
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'error': str(e)
             }
         finally:
             if conn:

@@ -14,7 +14,6 @@ SPDX-License-Identifier: Apache-2.0
 import os
 import uuid
 import logging
-import pymysql
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -31,6 +30,7 @@ from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.db.mysql import create_mysql_database
+from frank.db.dynamodb import create_dynamodb_database
 from frank.utils.sample_builder import generate_minimal_submission
 from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
@@ -104,6 +104,8 @@ class FrankConfig:
         self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
         self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
 
+        self.table_name = "frank_table"
+
     def setup_localstack_config(self):
         """LocalStack RDS configuration"""
         self.database_type = "rds"
@@ -141,7 +143,7 @@ config = FrankConfig()
 frank_db = create_mysql_database(
     config.rds_host, config.rds_port, config.rds_database, config.rds_username, config.rds_password, logger
 )
-
+frank_dynamodb = create_dynamodb_database(table_name=config.table_name, region=config.aws_region)
 
 # Initialize system once server is setup
 @asynccontextmanager
@@ -397,11 +399,12 @@ async def search_threat_sightings(
 @app.get("/v1/health")
 async def health_check():
     """Health check endpoint"""
-    health_status = frank_db.health_check()
+    mysql_health_status = frank_db.health_check()
+    dynamodb_health_status = frank_dynamodb.health_check()
     return {
-        "status": "healthy" if health_status["status"] == "healthy" else "unhealthy",
+        "status": "healthy" if mysql_health_status["status"] == "healthy" and dynamodb_health_status["status"] == "healthy" else "unhealthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": health_status,
+        "database": [mysql_health_status, dynamodb_health_status],
         "version": __version__,
     }
 
@@ -661,4 +664,4 @@ if __name__ == "__main__":
     logger.info(f"Database type: {config.database_type}")
 
     # Run the server
-    uvicorn.run("frank_stage2:app", host=args.host, port=args.port, reload=args.reload, log_level="info")
+    uvicorn.run("frank_stage2_hybrid:app", host=args.host, port=args.port, reload=args.reload, log_level="info")

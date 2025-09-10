@@ -1,3 +1,12 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Pydantic Models (v2 Compatible)
+
+Unit tests for sample builders
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
 import unittest
 
 from frank.utils.sample_builder import generate_minimal_submission

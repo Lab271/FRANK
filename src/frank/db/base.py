@@ -61,6 +61,7 @@ class BaseFRANKDatabase(ABC):
         """Get platform statistics summary."""
         pass
 
+    @abstractmethod
     def log_access(self, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> bool:

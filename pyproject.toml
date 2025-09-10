@@ -1,10 +1,16 @@
+##
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+##
 [build-system]
 requires = ["setuptools>=64", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "frank"
-version = "0.3.0"
+dynamic = [
+  "version",
+]
 description = "Vulnerability platform"
 readme = "README.md"
 license = {text = "Apache 2.0"}
@@ -25,7 +31,7 @@ requires-python = ">=3.11"
 dependencies = []
 
 [project.urls]
-Homepage = "https://github.com/iheitlager/frank"
+Homepage = "https://github.com/LAB271/FRANK"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -33,6 +39,8 @@ where = ["src"]
 [tool.setuptools.package-dir]
 "" = "src"
 
+[tool.setuptools_scm]
+write_to = "src/frank/__version__.py"
 
 [tool.ruff]
 # Allow lines to be as long as 120.

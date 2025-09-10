@@ -39,7 +39,15 @@ dev:$(VIRTUALENV)/bin/python  ## Install this for development
 	@$(PYTHON) -m pip install coverage
 
 unittests:  ## Run all unittests
-	@pytest tests
+	@pytest tests/unit/ \
+          --verbose \
+          --tb=short \
+          --cov=src/ \
+          --cov-report=xml \
+          --cov-report=html \
+          --cov-report=term-missing \
+          --cov-fail-under=50 \
+          --junitxml=test-results.xml
 
 integration:  ## Run all integration tests
 	@cd tests/integration && behave

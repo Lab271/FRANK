@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Unit tests for FRANK Enum module
+FRANK Platform - Unit tests for FRANK Enum module
+
 Tests enum values, serialization behavior, and use_enum_values=True|False config setting
 
 Copyright (c) 2025 Schuberg Philis B.V.
