@@ -36,7 +36,7 @@ setup(
     url='https://github.com/iheitlager/frank',
     packages=find_packages('src'),
     package_dir={'': 'src'},
-    test_suite="tests",
+    test_suite="tests/unittest",
     platforms=["any"],
     classifiers=[
         "Development Status :: 2 - Pre-Alpha",

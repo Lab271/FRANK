@@ -21,6 +21,7 @@ import os
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from frank.core.models import Submission
+from frank.core.enum import ObservableType, TierLevel
 from frank.db.sqlite import SQLiteFRANKDatabase, create_sqlite_database
 
 
@@ -33,7 +34,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.temp_db.close()
         self.db_path = self.temp_db.name
         # self.db_path = ":memory:"
-        self.db = SQLiteFRANKDatabase(self.db_path)
+        self.db = SQLiteFRANKDatabase({'db_path': self.db_path})
 
     def tearDown(self):
         """Clean up after each test"""
@@ -86,7 +87,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         
         result = self.db.upsert_organization(org_data)
         self.assertTrue(result)
-        
+
         # Verify organization was stored
         stored_org = self.db.get_organization_info("test-org-1")
         self.assertIsNotNone(stored_org)
@@ -245,14 +246,14 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.assertGreaterEqual(len(results), 2)
         
         # Query with type filter
-        ip_results = self.db.query_observables("test-org-3", observable_type="ipv4")
+        ip_results = self.db.query_observables("test-org-3", observable_type=ObservableType.IPV4)
         self.assertGreaterEqual(len(ip_results), 1)
         
         # Query with confidence filter
         high_conf_results = self.db.query_observables(
             "test-org-3", 
             min_confidence=80,
-            access_level="contributor"
+            access_level=TierLevel.CONTRIBUTOR
         )
         # Should return empty since our submission has confidence 75
         self.assertEqual(len(high_conf_results), 0)
@@ -290,10 +291,10 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.db.store_submission(Submission(**submission_dict['submission']))
 
         # Test different access levels
-        public_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "public")
-        observer_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "observer")
-        contributor_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "contributor")
-        partner_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", "partner")
+        public_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.PUBLIC)
+        observer_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.OBSERVER)
+        contributor_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.CONTRIBUTOR)
+        partner_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.PARTNER)
         
         # Public should have minimal data
         self.assertIsInstance(public_data, Submission)
@@ -394,41 +395,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         # Verify some basic counts
         self.assertGreaterEqual(stats['total_submissions'], 3)
         self.assertGreaterEqual(stats['active_organizations'], 3)
-    
-    def test_cleanup_old_data(self):
-        """Test data cleanup functionality"""
-        # Store some test data
-        submission = {
-            "submission": {
-                "submitter": {
-                    "organization_id": "test-org-cleanup",
-                    "tier": "contributor"
-                },
-                "sighting": {
-                    "sighting_id": "test-sighting-cleanup",
-                    "confidence": 85,
-                    "observables": {
-                        "network": [
-                            {
-                                "id": "test-obs-cleanup",
-                                "type": "ipv4",
-                                "value": "10.0.0.99"
-                            }
-                        ]
-                    }
-                },
-                "metadata": {
-                    "submission_id": "test-sub-cleanup"
-                }
-            }
-        }
-        
-        self.db.store_submission(Submission(**submission['submission']))
-        
-        # Test cleanup (with 0 days to clean everything)
-        deleted_count = self.db.cleanup_old_data(0)
-        self.assertGreaterEqual(deleted_count, 0)
-    
+       
     def test_health_check(self):
         """Test database health check"""
         health_status = self.db.health_check()
@@ -463,7 +430,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         try:
             db = create_sqlite_database(temp_path)
             self.assertIsInstance(db, SQLiteFRANKDatabase)
-            self.assertEqual(db.db_path, temp_path)
+            self.assertEqual(db.connection_params['db_path'], temp_path)
         finally:
             if os.path.exists(temp_path):
                 os.unlink(temp_path)

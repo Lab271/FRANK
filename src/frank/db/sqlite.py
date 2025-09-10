@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 import json
 import sqlite3
 import uuid
-import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
@@ -20,10 +19,9 @@ import logging
 from pathlib import Path
 
 from frank.core.models import Submission, Sighting, Submitter
-from frank.utils import NullLogger
+from frank.core.enum import ObservableType, TierLevel
 from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
-
 
 class SQLiteFRANKDatabase(BaseFRANKDatabase):
     """
@@ -31,24 +29,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     Provides full functionality with file-based storage and supports
     the complete FRANK access tier model.
     """
-    
-    def __init__(self, db_path: str = "/tmp/frank_local.db", logger: Optional[logging.Logger] = None) -> None:
-        """
-        Initialize SQLite database connection.
-        
-        Args:
-            db_path: Path to SQLite database file
-            logger: Optional logger instance for logging
-        """
-        self.db_path = db_path
-        self.logger = logger or NullLogger()
-
-        self.initialize()
-    
+      
     def initialize(self) -> None:
         """Initialize the SQLite database with FRANK schema."""
+        db_path = self.connection_params['db_path']
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
                 conn.execute("PRAGMA journal_mode = WAL")  # Better concurrency
                 
@@ -199,7 +185,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 self._create_indexes(conn)
                 
                 conn.commit()
-                self.logger.info(f"Database initialized at {self.db_path}")
+                self.logger.info(f"Database initialized at {db_path}")
                 
         except sqlite3.Error as e:
             self.logger.error(f"Database initialization error: {e}")
@@ -241,11 +227,6 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             except sqlite3.Error as e:
                 self.logger.warning(f"Failed to create index: {e}")
     
-    def hash_observable(self, observable_type: str, observable_value: str) -> str:
-        """Create a hash for observable deduplication and quick lookups."""
-        combined = f"{observable_type}:{observable_value}".lower()
-        return hashlib.sha256(combined.encode()).hexdigest()
-
     def store_submission(self, submission: Submission) -> bool:
         """
         Store a complete submission in the database with full normalization.
@@ -257,8 +238,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             True if stored successfully, False otherwise
         """
         self.logger.info(f"Storing submission: {submission.model_dump_json(exclude_none=True, exclude_defaults=True,by_alias=True)}...")
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
                 
                 # Extract main submission data
@@ -517,7 +500,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 json.dumps(regions)
             ))
     
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
         
@@ -529,8 +512,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Filtered Submission or None if not found
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
@@ -558,8 +543,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error retrieving submission {submission_id}: {e}")
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
     
-    def query_observables(self, org_id: str, observable_type: str = None, 
-                         limit: int = 100, access_level: str = 'contributor',
+    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
                          min_confidence: int = None, sectors: List[str] = None,
                          days_back: int = None) -> List[Dict[str, Any]]:
         """
@@ -577,8 +562,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of filtered observable statistics
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 # Build query based on access level and filters
@@ -594,7 +581,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 
                 if observable_type:
                     where_clauses.append("COALESCE(os.observable_type, \"\") = ?")
-                    params.append(observable_type)
+                    params.append(observable_type.value)
                 
                 if min_confidence:
                     self.logger.info(f"finding min_confidence: {min_confidence}")
@@ -643,7 +630,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 self._log_access(conn, org_id, 'QUERY', 'observables')
                 conn.commit()
                 
-                self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level})")
+                self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level.value})")
                 return results
                 
         except sqlite3.Error as e:
@@ -661,8 +648,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Statistics summary dictionary
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 stats = {}
@@ -752,39 +741,17 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             True if successful
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 self._upsert_organization(conn, org_data)
                 conn.commit()
                 return True
         except sqlite3.Error as e:
             self.logger.error(f"Error upserting organization: {e}")
             return False
-    
-    def log_access(self, org_id: str, action: str, resource_type: str = None, 
-                   resource_id: str = None, details: Dict[str, Any] = None) -> bool:
-        """
-        Log access for auditing purposes.
-        
-        Args:
-            org_id: Organization ID performing the action
-            action: Action being performed
-            resource_type: Type of resource being accessed
-            resource_id: ID of specific resource
-            details: Additional details to log
-            
-        Returns:
-            True if logged successfully
-        """
-        try:
-            with sqlite3.connect(self.db_path) as conn:
-                self._log_access(conn, org_id, action, resource_type, resource_id, details)
-                conn.commit()
-                return True
-        except sqlite3.Error as e:
-            self.logger.error(f"Error logging access: {e}")
-            return False
-    
+   
     def _log_access(self, conn: sqlite3.Connection, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> None:
@@ -800,65 +767,40 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             resource_id,
             json.dumps(details) if details else None
         ))
-    
-    def cleanup_old_data(self, days: int = 90) -> int:
+       
+    def log_access(self, org_id: str, action: str, 
+                   resource_type: str = None, resource_id: str = None, 
+                   details: Dict[str, Any] = None) -> bool:
         """
-        Clean up old data according to retention policies.
+        Log an access event for auditing purposes.
         
         Args:
-            days: Remove data older than this many days
-            
+            org_id: Organization ID performing the action
+            action: Action performed (e.g., 'READ', 'SUBMIT', 'QUERY')
+            resource_type: Type of resource accessed (optional)
+            resource_id: ID of the resource accessed (optional)
+            details: Additional details as a dictionary (optional)
+        
         Returns:
-            Number of records deleted
+            True if the log entry was successfully written, False otherwise
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
-                # Clean up old submissions (cascades to sightings and observables)
-                cursor = conn.execute("""
-                    DELETE FROM submissions 
-                    WHERE submission_timestamp < datetime('now', '-{} days')
-                """.format(days))
-                
-                deleted_submissions = cursor.rowcount
-                
-                # Clean up old access logs
-                cursor = conn.execute("""
-                    DELETE FROM access_logs 
-                    WHERE timestamp < datetime('now', '-{} days')
-                """.format(days))
-                
-                deleted_logs = cursor.rowcount
-                
-                # Clean up orphaned statistics (where no recent sightings exist)
-                cursor = conn.execute("""
-                    DELETE FROM observable_statistics 
-                    WHERE last_seen < datetime('now', '-{} days')
-                    AND observable_hash NOT IN (
-                        SELECT DISTINCT observable_hash 
-                        FROM observables o
-                        JOIN sightings s ON o.sighting_id = s.sighting_id
-                        JOIN submissions sub ON s.submission_id = sub.submission_id
-                        WHERE sub.submission_timestamp >= datetime('now', '-{} days')
-                    )
-                """.format(days, days))
-                
-                deleted_stats = cursor.rowcount
-                
+            with sqlite3.connect(db_path) as conn:
+                self._log_access(conn, org_id, action, resource_type, resource_id, details)
                 conn.commit()
-                
-                total_deleted = deleted_submissions + deleted_logs + deleted_stats
-                self.logger.info(f"Cleaned up {total_deleted} old records")
-                return total_deleted
-                
+                return True
         except sqlite3.Error as e:
-            self.logger.error(f"Error during cleanup: {e}")
-            raise FRANKStorageError(f"Failed to cleanup old data: {e}")
-    
-    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: str) -> Dict[str, Any]:
+            self.logger.error(f"Error logging access: {e}")
+            return False
+        
+    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter submission data based on access level."""
-        self.logger.info(f"Filtering submission for access level: {access_level}")
+        # TODO: Upgrade this to Pydantic classes
+        self.logger.info(f"Filtering submission for access level: {access_level.value}")
         self.logger.debug(f"Original submission data: {submission}")
-        if access_level == 'public':
+        if access_level == TierLevel.PUBLIC:
             # Only basic statistics
             return {
                 'submission': {
@@ -871,7 +813,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     }
                 }
             }
-        elif access_level == 'observer':
+        elif access_level == TierLevel.OBSERVER:
             # Add some observable types but mask values
             filtered = self._deep_copy(submission)
             observables = filtered['sighting'].get('observables', {})
@@ -886,7 +828,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             filtered.pop('tlp_level', None)
 
             return {'submission': filtered}
-        elif access_level == 'contributor':
+        elif access_level == TierLevel.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
             
@@ -901,15 +843,15 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         # Partner and core_member get full access
         return {'submission': submission}
 
-    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: str) -> Dict[str, Any]:
+    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter observable data based on access level."""
-        if access_level == 'public':
+        if access_level == TierLevel.PUBLIC:
             return {
                 'observable_type': observable['observable_type'],
                 'total_sightings': observable['total_sightings'],
                 'last_seen': observable['last_seen']
             }
-        elif access_level == 'observer':
+        elif access_level == TierLevel.OBSERVER:
             filtered = dict(observable)
             # Mask observable value
             if 'observable_value' in filtered:
@@ -930,7 +872,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             return obj
     
     def search_observables_by_value(self, org_id: str, search_value: str, 
-                                   access_level: str = 'contributor') -> List[Dict[str, Any]]:
+                                   access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Dict[str, Any]]:
         """
         Search for observables by partial value match.
         
@@ -942,8 +884,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of matching observables
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
@@ -990,8 +934,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Organization data or None if not found
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
@@ -1031,8 +977,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of SIGMA rule dictionaries
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 query = "SELECT * FROM sigma_rules"
@@ -1070,8 +1018,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of campaign dictionaries
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 query = "SELECT * FROM campaigns"
@@ -1119,8 +1069,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of access log entries
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
                 
                 query = """
@@ -1168,8 +1120,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Health status dictionary
         """
+        db_path = self.connection_params['db_path']
+
         try:
-            with sqlite3.connect(self.db_path) as conn:
+            with sqlite3.connect(db_path) as conn:
                 # Basic connectivity test
                 cursor = conn.execute("SELECT 1")
                 cursor.fetchone()
@@ -1194,11 +1148,11 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 table_counts = dict(cursor.fetchall())
                 
                 # Check database size
-                db_size = Path(self.db_path).stat().st_size if Path(self.db_path).exists() else 0
+                db_size = Path(db_path).stat().st_size if Path(db_path).exists() else 0
                 
                 return {
                     'status': 'healthy',
-                    'database_path': self.db_path,
+                    'database_path': db_path,
                     'database_size_bytes': db_size,
                     'table_counts': table_counts,
                     'timestamp': datetime.now(timezone.utc).isoformat()
@@ -1215,7 +1169,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
 
 # Factory function for easy instantiation
-def create_sqlite_database(db_path: str = "/tmp/frank_local.db") -> SQLiteFRANKDatabase:
+def create_sqlite_database(db_path: str = "/tmp/frank_local.db",
+                           logger: Optional[logging.Logger] = None) -> SQLiteFRANKDatabase:
     """
     Factory function to create a SQLiteFRANKDatabase instance.
     
@@ -1226,11 +1181,16 @@ def create_sqlite_database(db_path: str = "/tmp/frank_local.db") -> SQLiteFRANKD
         Configured SQLiteFRANKDatabase instance
     """
 
-    # Set up logging
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
-    logger = logging.getLogger(__name__)
+    connection_params = {
+        "db_path": db_path
+    }
 
-    return SQLiteFRANKDatabase(db_path, logger=logger)
+    # Set up logging
+    if not logger:
+        logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
+        logger = logging.getLogger(__name__)
+
+    return SQLiteFRANKDatabase(connection_params, logger=logger)
 
 
     

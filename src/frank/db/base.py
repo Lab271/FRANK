@@ -11,10 +11,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 import hashlib
+import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 from frank.core.models import Submission, Observable
+from frank.core.enum import ObservableType, TierLevel
+from frank.utils import NullLogger
 
 class BaseFRANKDatabase(ABC):
     """
@@ -22,13 +25,19 @@ class BaseFRANKDatabase(ABC):
     Supports both SQLite and DynamoDB implementations with consistent API.
     """
     
-    def __init__(self, connection_params: Dict[str, Any]):
+    def __init__(self, connection_params: Dict[str, Any], logger: Optional[logging.Logger] = None):
         self.connection_params = connection_params
+        self.logger = logger or NullLogger()
         self.initialize()
     
     @abstractmethod
     def initialize(self) -> None:
         """Initialize database connection and schema."""
+        pass
+
+    @abstractmethod
+    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
+        """Insert or update organization information."""
         pass
     
     @abstractmethod
@@ -37,13 +46,13 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: str = 'contributor') -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
         """Retrieve a specific submission with access level filtering."""
         pass
     
     @abstractmethod
-    def query_observables(self, org_id: str, observable_type: str = None, 
-                         limit: int = 100, access_level: str = 'contributor') -> List[Observable]:
+    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Observable]:
         """Query observables with access level filtering."""
         pass
     
@@ -51,22 +60,18 @@ class BaseFRANKDatabase(ABC):
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """Get platform statistics summary."""
         pass
-    
-    @abstractmethod
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """Insert or update organization information."""
+
+    def log_access(self, org_id: str, action: str, 
+                   resource_type: str = None, resource_id: str = None, 
+                   details: Dict[str, Any] = None) -> bool:
+        """Log an access event for auditing purposes."""
         pass
-    
+
     @abstractmethod
-    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None) -> bool:
-        """Log access for auditing purposes."""
+    def health_check(self) -> Dict[str, Any]:
+        """Perform a health check on the database."""
         pass
-    
-    @abstractmethod
-    def cleanup_old_data(self, days: int = 90) -> int:
-        """Clean up old data according to retention policies."""
-        pass
-    
+     
     def hash_observable(self, observable_type: str, observable_value: str) -> str:
         """Create a hash for observable deduplication and quick lookups."""
         combined = f"{observable_type}:{observable_value}".lower()

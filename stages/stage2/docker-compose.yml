@@ -65,6 +65,12 @@ services:
         condition: service_healthy
       localstack:
         condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
     volumes:
       - "./logs:/app/logs"    # Live logs folder
       - "../../src:/src"      # Live src/ package development

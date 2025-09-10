@@ -1,3 +1,7 @@
+#! behave
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+
 Feature: FRANK Platform Threat Intelligence API
   As a cybersecurity professional
   I want to submit and query threat intelligence
