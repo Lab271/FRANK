@@ -256,6 +256,7 @@ async def submit_threat_intelligence(
     Submit threat intelligence sighting to the platform.
     Requires Contributor, Partner, or Core Member access level.
     """
+    submission = submission_request.submission
 
     # Check permissions
     if not check_submission_permissions(current_user):
@@ -267,17 +268,18 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
-        success = frank_db.store_submission(submission_request.submission)
+        success = frank_db.store_submission(submission)
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
 
+        success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
         # Calculate contribution score impact (simplified)
-        score_impact = calculate_contribution_score(submission_request.submission)
+        score_impact = calculate_contribution_score(submission)
 
         return SubmissionResponse(
             status="accepted",
-            submission_id=submission_request.submission.submission_id,
+            submission_id=submission.submission_id,
             contribution_score_impact=score_impact,
             processing_status="queued",
             validation_required=False,

@@ -12,12 +12,12 @@ SPDX-License-Identifier: Apache-2.0
 import boto3
 from typing import Dict, Any, List, Optional
 from decimal import Decimal
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from botocore.exceptions import ClientError
 
 import logging
 
-from frank.db.exceptions import FRANKConnectionError
+from frank.db.exceptions import FRANKConnectionError, FRANKQueryError
 from frank.db.base import BaseFRANKDatabase
 from frank.core.models import Submission, Observable
 from frank.core.enum import ObservableType, TierLevel
@@ -79,22 +79,22 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 self.dynamodb = boto3.resource(
                     "dynamodb",
                     region_name=self.region,
-                    aws_access_key_id=self.connection_params.get(
-                        "AWS_ACCESS_KEY_ID", "test"
-                    ),  # LocalStack dummy credentials
-                    aws_secret_access_key=self.connection_params.get(
-                        "AWS_SECRET_ACCESS_KEY", "test"
-                    ),  # LocalStack dummy credentials)
+                    # aws_access_key_id=self.connection_params.get(
+                    #     "AWS_ACCESS_KEY_ID", "test"
+                    # ),  # LocalStack dummy credentials
+                    # aws_secret_access_key=self.connection_params.get(
+                    #     "AWS_SECRET_ACCESS_KEY", "test"
+                    # ),  # LocalStack dummy credentials)
                 )
                 self.client = boto3.client(
                     "dynamodb",
                     region_name=self.region,
-                    aws_access_key_id=self.connection_params.get(
-                        "AWS_ACCESS_KEY_ID", "test"
-                    ),  # LocalStack dummy credentials
-                    aws_secret_access_key=self.connection_params.get(
-                        "AWS_SECRET_ACCESS_KEY", "test"
-                    ),  # LocalStack dummy credentials)
+                    # aws_access_key_id=self.connection_params.get(
+                    #     "AWS_ACCESS_KEY_ID", "test"
+                    # ),  # LocalStack dummy credentials
+                    # aws_secret_access_key=self.connection_params.get(
+                    #     "AWS_SECRET_ACCESS_KEY", "test"
+                    # ),  # LocalStack dummy credentials)
                 )
             self.table = self.dynamodb.Table(self.table_name)
             
@@ -231,11 +231,39 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """Get platform statistics summary."""
         pass
 
-    def log_access(self, org_id: str, action: str, 
-                   resource_type: str = None, resource_id: str = None, 
-                   details: Dict[str, Any] = None) -> bool:
-        """Log an access event for auditing purposes."""
-        pass
+    def _log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> None:
+        """Internal method to log access in DynamoDB single table design."""
+        timestamp = datetime.now(timezone.utc).isoformat()
+        log_item = {
+            'PK': f"LOG#{org_id}",
+            'SK': f"LOG#{timestamp}",
+            'GSI1PK': f"ACTION#{action}",
+            'GSI1SK': timestamp,
+            'EntityType': 'AccessLog',
+            'organization_id': org_id,
+            'action': action,
+            'resource_type': resource_type,
+            'resource_id': resource_id,
+            'timestamp': timestamp,
+            'success': True,
+            'TTL': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
+        }
+        if details:
+            log_item['details'] = details
+        try:
+            self.table.put_item(Item=log_item)
+        except ClientError as e:
+            self.logger.error(f"Error logging access: {e}")
+            raise FRANKQueryError(f"Failed to log access: {e}")
+
+    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> bool:
+        """Log an access event for auditing purposes in DynamoDB."""
+        try:
+            self._log_access(org_id, action, resource_type, resource_id, details)
+            return True
+        except Exception as e:
+            self.logger.error(f"Error logging access: {e}")
+            return False
 
     def health_check(self) -> Dict[str, Any]:
         """Perform a health check on the database."""

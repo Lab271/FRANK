@@ -934,16 +934,21 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             conn = self.get_connection()
             cursor = conn.cursor()
             self._log_access(cursor, org_id, action, resource_type, resource_id, details)
-            return True
+            result = True
         except pymysql.Error as e:
             if conn:
                 conn.rollback()
             self.logger.error(f"Error searching observables: {e}")
             raise FRANKQueryError(f"Failed to search observables: {e}")
+        except Exception as e:
+            if conn:
+                conn.rollback()
+            self.logger.error(f"Unexpected error in log_access: {e}")
+            result = False
         finally:
             if conn:
                 conn.close()
-        return False
+        return result
 
     def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
         """Filter submission data based on access level."""

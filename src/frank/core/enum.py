@@ -17,12 +17,12 @@ class TierLevel(str, Enum):
     PARTNER = "partner"
     CORE_MEMBER = "core_member"
 
-    def __lt__(self, other):
-        if self.__class__ is other.__class__:
-            # Define order by enum definition order
-            members = list(self.__class__)
-            return members.index(self) < members.index(other)
-        return NotImplemented
+    # def __lt__(self, other):
+    #     if self.__class__ is other.__class__:
+    #         # Define order by enum definition order
+    #         members = list(self.__class__)
+    #         return members.index(self) < members.index(other)
+    #     return NotImplemented
     
     
 class ObservableType(str, Enum):
