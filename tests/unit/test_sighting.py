@@ -11,12 +11,14 @@ SPDX-License-Identifier: Apache-2.0
 
 import unittest
 from unittest.mock import patch
+
 import uuid
 from datetime import datetime, timezone, timedelta
 import json
 
 # Import the models (adjust import path as needed)
 from frank.core.models import Sighting, SeverityLevel, Observables, Observable
+from frank.core.models import ThreatContext, Impact, Campaign, SigmaDetection
 from pydantic import ValidationError
 
 
@@ -657,6 +659,82 @@ class TestSightingPerformance(unittest.TestCase):
         # Should parse timestamps quickly
         self.assertLess(elapsed, 0.5)  # Less than 0.5 seconds
         self.assertEqual(len(sightings), 150)
+
+class TestSerializationModels(unittest.TestCase):
+    """Unit tests for serialization and deserialization of Submission submodels."""
+
+    def test_threat_context_serialization(self):
+        """Test ThreatContext serialization and deserialization."""
+        campaign = Campaign(name="APT-Example", attribution="EvilCorp")
+        tc = ThreatContext(campaign=campaign, mitre_attack={"tactic": "TA0001"}, malware_family={"name": "TrickBot"})
+        tc_json = tc.model_dump_json()
+        tc2 = ThreatContext.model_validate_json(tc_json)
+        self.assertIsInstance(tc2.campaign, Campaign)
+        self.assertEqual(tc2.campaign.name, "APT-Example")
+        self.assertEqual(tc2.campaign.attribution, "EvilCorp")
+        self.assertEqual(tc2.mitre_attack["tactic"], "TA0001")
+        self.assertEqual(tc2.malware_family["name"], "TrickBot")
+
+    def test_impact_serialization(self):
+        """Test Impact serialization and deserialization."""
+        impact = Impact(affected_systems=42, compromised_accounts=5, containment_time="2h", financial_impact_eur=10000)
+        impact_json = impact.model_dump_json()
+        impact2 = Impact.model_validate_json(impact_json)
+        self.assertEqual(impact2.affected_systems, 42)
+        self.assertEqual(impact2.compromised_accounts, 5)
+        self.assertEqual(impact2.containment_time, "2h")
+        self.assertEqual(impact2.financial_impact_eur, 10000)
+
+    def test_campaign_serialization(self):
+        """Test Campaign serialization and deserialization."""
+        campaign = Campaign(
+            name="Spring Offensive",
+            attribution="APT-Example",
+            target_sectors=["finance", "energy"],
+            attack_vector="phishing",
+            payload_type="malware",
+            campaign_start=datetime(2024, 3, 1, 8, 0, 0, tzinfo=timezone.utc),
+            estimated_victims=1000,
+            confidence=85
+        )
+        campaign_json = campaign.model_dump_json()
+        campaign2 = Campaign.model_validate_json(campaign_json)
+        self.assertEqual(campaign2.name, "Spring Offensive")
+        self.assertEqual(campaign2.attribution, "APT-Example")
+        self.assertEqual(campaign2.target_sectors, ["finance", "energy"])
+        self.assertEqual(campaign2.attack_vector, "phishing")
+        self.assertEqual(campaign2.payload_type, "malware")
+        self.assertEqual(campaign2.campaign_start, datetime(2024, 3, 1, 8, 0, 0, tzinfo=timezone.utc))
+        self.assertEqual(campaign2.estimated_victims, 1000)
+        self.assertEqual(campaign2.confidence, 85)
+        self.assertTrue(hasattr(campaign2, "id"))
+        self.assertTrue(campaign2.id.startswith("campaign--"))
+
+    def test_campaign_implicit_id_generation(self):
+        """Test implicit ID generation for Campaign."""
+        campaign = Campaign(name="Autumn Offensive")
+        self.assertTrue(hasattr(campaign, "id"))
+        self.assertTrue(campaign.id.startswith("campaign--"))
+
+    def test_sigma_detection_serialization(self):
+        """Test SigmaDetection serialization and deserialization."""
+        sigma = SigmaDetection(rule_id=f"sigma--{uuid.uuid4()}", rule_name="Suspicious Login", rule_version="1.0", rule_status="active", sigma_yaml="rule: ...", rule_effectiveness=0.9, false_positive_rate=0.01)
+        sigma_json = sigma.model_dump_json()
+        sigma2 = SigmaDetection.model_validate_json(sigma_json)
+        self.assertEqual(sigma2.rule_name, "Suspicious Login")
+        self.assertEqual(sigma2.rule_version, "1.0")
+        self.assertEqual(sigma2.rule_status, "active")
+        self.assertEqual(sigma2.sigma_yaml, "rule: ...")
+        self.assertEqual(sigma2.rule_effectiveness, 0.9)
+        self.assertEqual(sigma2.false_positive_rate, 0.01)
+        self.assertTrue(hasattr(sigma2, "rule_id"))
+        self.assertIn("sigma--", sigma2.rule_id)
+
+    def test_sigma_detection_implicit_id_generation(self):
+        """Test implicit ID generation for SigmaDetection."""
+        sigma = SigmaDetection(rule_name="Suspicious Login")
+        self.assertTrue(hasattr(sigma, "rule_id"))
+        self.assertTrue(sigma.rule_id.startswith("sigma--"))
 
 
 if __name__ == "__main__":

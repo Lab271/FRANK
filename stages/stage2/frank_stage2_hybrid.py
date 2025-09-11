@@ -90,7 +90,7 @@ class FrankConfig:
     def setup_localstack_hybrid_config(self):
         """Hybrid LocalStack with external MySQL configuration"""
         self.database_type = "mysql"
-        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
+        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
 
         # MySQL Configuration (external)
         self.rds_host = os.getenv("RDS_HOST", "mysql")
@@ -103,8 +103,7 @@ class FrankConfig:
         self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
         self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
         self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
-
-        self.table_name = "frank_table"
+        self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
 
     def setup_localstack_config(self):
         """LocalStack RDS configuration"""
@@ -143,7 +142,14 @@ config = FrankConfig()
 frank_db = create_mysql_database(
     config.rds_host, config.rds_port, config.rds_database, config.rds_username, config.rds_password, logger
 )
-frank_dynamodb = create_dynamodb_database(table_name=config.table_name, region=config.aws_region)
+frank_dynamodb = create_dynamodb_database(
+    table_name=config.table_name,
+    region=config.aws_region,
+    endpoint=config.localstack_endpoint,
+    aws_access_key_id=config.aws_access_key,
+    aws_secret_access_key=config.aws_secret_key,
+)
+
 
 # Initialize system once server is setup
 @asynccontextmanager

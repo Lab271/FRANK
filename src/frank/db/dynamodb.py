@@ -45,67 +45,40 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             region: AWS region
             logger: Optional logger instance for logging
         """
+        aws_access_key_id=self.connection_params.get("AWS_ACCESS_KEY_ID", "test")
+        aws_secret_access_key=self.connection_params.get("AWS_SECRET_ACCESS_KEY", "test")
+
         self.table_name = self.connection_params.get("DYNAMODB_TABLE", "frank_table")
         self.region = self.connection_params.get("AWS_DEFAULT_REGION", "eu-west-1")
-
-        # LocalStack endpoint configuration
-        localstack_endpoint = self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localhost:4566")
-        environment = self.connection_params.get("FRANK_ENVIRONMENT", "localstack")
+        self.environment = self.connection_params.get("FRANK_ENVIRONMENT", "localstack")
 
         # Initialize AWS DynamoDB client
         try:
-            if environment == "localstack":
+            if self.environment == "localstack":
                 # LocalStack configuration with dummy credentials
                 self.dynamodb = boto3.resource(
                     "dynamodb",
-                    endpoint_url=localstack_endpoint,
+                    endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localstack:4566"),
                     region_name=self.region,
-                    aws_access_key_id=self.connection_params.get(
-                        "AWS_ACCESS_KEY_ID", "test"
-                    ),  # LocalStack dummy credentials
-                    aws_secret_access_key=self.connection_params.get(
-                        "AWS_SECRET_ACCESS_KEY", "test"
-                    ),  # LocalStack dummy credentials
-                )
-                self.client = boto3.client(
-                    "dynamodb",
-                    endpoint_url=localstack_endpoint,
-                    region_name=self.region,
-                    aws_access_key_id=self.connection_params.get("AWS_ACCESS_KEY_ID", "test"),
-                    aws_secret_access_key=self.connection_params.get("AWS_SECRET_ACCESS_KEY", "test"),
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key
                 )
             else:
                 # Production AWS environment (uses actual credentials)
                 self.dynamodb = boto3.resource(
                     "dynamodb",
+                    endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localhost:4566"),
                     region_name=self.region,
-                    aws_access_key_id=self.connection_params.get(
-                        "AWS_ACCESS_KEY_ID", "test"
-                    ),  # LocalStack dummy credentials
-                    aws_secret_access_key=self.connection_params.get(
-                        "AWS_SECRET_ACCESS_KEY", "test"
-                    ),  # LocalStack dummy credentials)
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key
                 )
-                self.client = boto3.client(
-                    "dynamodb",
-                    region_name=self.region,
-                    aws_access_key_id=self.connection_params.get(
-                        "AWS_ACCESS_KEY_ID", "test"
-                    ),  # LocalStack dummy credentials
-                    aws_secret_access_key=self.connection_params.get(
-                        "AWS_SECRET_ACCESS_KEY", "test"
-                    ),  # LocalStack dummy credentials)
-                )
-            self.table = self.dynamodb.Table(self.table_name)
             
         except Exception as e:
             self.logger.error(f"Failed to initialize DynamoDB: {e}")
             raise FRANKConnectionError(f"DynamoDB connection failed: {e}")
 
-        self.logger.info(f"DynamoDB connection initialized for table: {self.table_name} (environment: {environment})")
-
         # Verify connection and create table if needed (LocalStack only)
-        if environment == 'localstack':
+        if self.environment == 'localstack':
             self._ensure_table_exists()
 
 
@@ -140,9 +113,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         Returns:
             True if table created successfully
         """
-        try:
-            dynamodb = boto3.client('dynamodb', region_name=self.region)
-            
+        try:       
             # Create table with single table design
             table_definition = {
                 'TableName': self.table_name,
@@ -164,7 +135,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                             {'AttributeName': 'GSI1SK', 'KeyType': 'RANGE'}
                         ],
                         'Projection': {'ProjectionType': 'ALL'},
-                        'BillingMode': 'PAY_PER_REQUEST'
                     }
                 ],
                 'BillingMode': 'PAY_PER_REQUEST',
@@ -178,32 +148,35 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     {'Key': 'DataClassification', 'Value': 'confidential'}
                 ]
             }
-            
-            # Create the table
-            response = dynamodb.create_table(**table_definition)
-            
-            # Wait for table to be created
-            waiter = dynamodb.get_waiter('table_exists')
-            waiter.wait(TableName=self.table_name)
+
+            try:
+                # Try to get table
+                self.table = self.dynamodb.Table(self.table_name)
+                self.table.load()
+                self.logger.info(f"✅ Table '{self.table_name}' already exists")
+            except self.dynamodb.meta.client.exceptions.ResourceNotFoundException:
+
+                # Create the table
+                response = self.dynamodb.create_table(**table_definition)
+                
+                # Wait for table to be created
+                waiter = self.table.meta.client.get_waiter('table_exists')
+                waiter.wait(TableName=self.table_name)
+                self.logger.info(f"✅ Table '{self.table_name}' created successfully")
+
             
             # Enable TTL on the TTL attribute
-            dynamodb.update_time_to_live(
+            self.dynamodb.meta.client.update_time_to_live(
                 TableName=self.table_name,
                 TimeToLiveSpecification={
                     'AttributeName': 'TTL',
                     'Enabled': True
                 }
             )
-            
-            self.logger.info(f"✅ FRANK DynamoDB table '{table_name}' created successfully")
-            self.logger.debug(f"📊 Table ARN: {response['TableDescription']['TableArn']}")
+            self.logger.info(f"✅ FRANK DynamoDB table '{self.table_name}' created successfully")
             return True
             
         except ClientError as e:
-            if e.response['Error']['Code'] == 'ResourceInUseException':
-                self.logger.error(f"⚠️  Table '{table_name}' already exists")
-                return True
-            else:
                 self.logger.error(f"❌ Failed to create table: {e}")
                 return False
         except Exception as e:
@@ -260,6 +233,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """Log an access event for auditing purposes in DynamoDB."""
         try:
             self._log_access(org_id, action, resource_type, resource_id, details)
+            self.logger.info(f"Access stored for {org_id}")
             return True
         except Exception as e:
             self.logger.error(f"Error logging access: {e}")
@@ -268,10 +242,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     def health_check(self) -> Dict[str, Any]:
         """Perform a health check on the database."""
         return {
-                'status': 'healthy',
-                'database_table': self.table_name,
-                'database_region': self.region,
-          }
+            'status': 'healthy',
+            'database_table': self.table_name,
+            'database_region': self.region,
+            "stack": self.environment
+        }
+    
 # def store_submission(self, submission: Submission) -> bool:
 #     """
 #     Store a complete submission directly as a dict in DynamoDB using single table design.
@@ -738,6 +714,9 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 # Factory function for easy instantiation
 def create_dynamodb_database(table_name: str = "frank-platform", 
                             region: str = "eu-west-1",
+                            endpoint: str = "http://localstack:4566",
+                            aws_access_key_id = "test",
+                            aws_secret_access_key = "test",
                             logger: Optional[logging.Logger] = None) -> DynamoDBFRANKDatabase:
     """
     Factory function to create a DynamoDBFRANKDatabase instance.
@@ -756,8 +735,9 @@ def create_dynamodb_database(table_name: str = "frank-platform",
 
     config = {
         "DYNAMODB_TABLE": table_name,
-        "AWS_ACCESS_KEY_ID": "test",
-        "AWS_SECRET_ACCESS_KEY": "test",
+        "LOCALSTACK_ENDPOINT": endpoint,
+        "AWS_ACCESS_KEY_ID": aws_access_key_id, 
+        "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
         "AWS_DEFAULT_REGION": region
     }
     return DynamoDBFRANKDatabase(connection_params=config, logger=logger)

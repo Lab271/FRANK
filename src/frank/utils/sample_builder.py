@@ -15,7 +15,7 @@ import uuid
 from typing import Dict, Any, List
 from datetime import datetime, timezone
 
-# from frank.core.submission import FRANKSubmission, FRANKValidator
+from frank import __version__
 from frank.core.enum import TierLevel, ObservableType
 from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
@@ -163,7 +163,7 @@ def generate_minimal_submission_dict(org_id: str = None,
 
 def generate_minimal_submission(org_id: str = None, tier: str = "partner", observables: list = None, confidence: int = None) -> Submission:
     """
-    Generate a minimal FRANKSubmission instance with only required fields.
+    Generate a minimal Submission instance with only required fields.
 
     Args:
         org_id: Organization identifier (generated if None)
@@ -172,103 +172,103 @@ def generate_minimal_submission(org_id: str = None, tier: str = "partner", obser
         confidence: Confidence level 0-100 (uses default if None)
 
     Returns:
-        FRANKSubmission instance containing minimal valid submission
-    Raises:
-        FRANKValidationError: If invalid values provided
+        Submission instance containing minimal valid submission
     """
     submission_dict = generate_minimal_submission_dict(org_id=org_id, tier=tier, observables=observables, confidence=confidence)
     return Submission(**submission_dict["submission"])
 
 
-# def generate_comprehensive_submission(
-#     org_id: str = None,
-#     tier: str = "partner",
-#     hit_target_org: str = None,
-#     observables: list = None,
-#     severity: str = "high",
-#     confidence: int = 92,
-#     campaign_context: dict = None,
-#     sigma_detection: dict = None,
-#     impact_data: dict = None,
-#     sharing: dict = None
-# ) -> FRANKSubmission:
-#     """
-#     Generate a comprehensive FRANKSubmission instance with all major fields populated.
+def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> Submission:
+    """
+    Generate a sample FRANKSubmission object for testing or demonstration purposes.
 
-#     Args:
-#         org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
-#         tier (str, optional): Organization tier level. Defaults to "partner".
-#         hit_target_org (str, optional): Organization ID of the target (if applicable).
-#         observables (list, optional): List of observable objects. If None, default observables are generated.
-#         severity (str, optional): Sighting severity. Defaults to "high".
-#         confidence (int, optional): Confidence level 0-100. Defaults to 92.
-#         campaign_context (dict, optional): Dictionary with campaign/actor context.
-#         sigma_detection (dict, optional): Dictionary with sigma rule detection info.
-#         impact_data (dict, optional): Dictionary with impact/severity/affected systems.
-#         sharing (dict, optional): Dictionary with sharing preferences (e.g., distribution_level, anonymization_level).
+    Args:
+        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+        sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
+        **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
 
-#     Returns:
-#         FRANKSubmission instance containing a comprehensive valid submission
-#     """
-#     if org_id is None:
-#         org_id = f"identity-{uuid.uuid4()}"
-#     if observables is None:
-#         observables = get_default_observables()
-#     now = datetime.now(timezone.utc)
-#     submission = {
-#         "submission": {
-#             "submitter": {
-#                 "organization_id": org_id,
-#                 "tier": tier
-#             },
-#             "sighting": {
-#                 "sighting_id": f"sighting-{uuid.uuid4()}",
-#                 "timestamp": now.isoformat(),
-#                 "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
-#                 "last_observed": now.isoformat(),
-#                 "confidence": confidence,
-#                 "severity": severity,
-#                 "observables": {
-#                     "network": observables
-#                 }
-#             },
-#             "metadata": {
-#                 "submission_id": f"submission-{uuid.uuid4()}",
-#                 "format_version": "1.0"
-#             }
-#         }
-#     }
-#     if hit_target_org:
-#         submission["submission"]["hit_target"] = {"organization_id": hit_target_org}
-#     if campaign_context:
-#         submission["submission"]["sighting"]["threat_context"] = campaign_context
-#     if sigma_detection:
-#         submission["submission"]["sighting"]["sigma_detection"] = sigma_detection
-#     if impact_data:
-#         submission["submission"]["sighting"]["impact"] = impact_data
-#     if sharing:
-#         submission["submission"]["sharing"] = sharing
+    Returns:
+        FRANKSubmission: Instance containing a sample valid submission.
 
-#     logger.info(f"Generated comprehensive submission for org {org_id}")
-#     return FRANKSubmission.from_dict(submission)
+    """
+    sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
+    return Submission(**sample_dict["submission"])
 
+def generate_comprehensive_submission(
+    org_id: str = None,
+    tier: str = "partner",
+    hit_target_org: str = None,
+    sector: str = None,
+    observables: list = None,
+    severity: str = "high",
+    confidence: int = 92,
+    campaign_context: dict = None,
+    sigma_detection: dict = None,
+    impact_data: dict = None,
+    tlp_level: str = None
+) -> Submission:
+    """
+    Generate a comprehensive Submission instance with all major fields populated.
 
-# def generate_sample_submission(org_id: str = None, sample_type: str = "default", **kwargs) -> FRANKSubmission:
-#     """
-#     Generate a sample FRANKSubmission object for testing or demonstration purposes.
+    Args:
+        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+        tier (str, optional): Organization tier level. Defaults to "partner".
+        hit_target_org (str, optional): Organization ID of the target (if applicable).
+        observables (list, optional): List of observable objects. If None, default observables are generated.
+        severity (str, optional): Sighting severity. Defaults to "high".
+        confidence (int, optional): Confidence level 0-100. Defaults to 92.
+        campaign_context (dict, optional): Dictionary with campaign/actor context.
+        sigma_detection (dict, optional): Dictionary with sigma rule detection info.
+        impact_data (dict, optional): Dictionary with impact/severity/affected systems.
+        tlp_level (str, optional): Dictionary with sharing preferences.
 
-#     Args:
-#         org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
-#         sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
-#         **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
+    Returns:
+        Submission instance containing a comprehensive valid submission
+    """
+    if org_id is None:
+        org_id = f"identity-{uuid.uuid4()}"
+    if observables is None:
+        observables = get_default_observables()
+    now = datetime.now(timezone.utc)
+    submission = {
+        "submission_id": f"submission-{uuid.uuid4()}",
+        "format_version": __version__,
+        "submission_method": "api",
+        "processing_nodes": "comprehensive message for testing",
+        "submitter": {
+            "organization_id": org_id,
+            "tier": tier
+        },
+        "sighting": {
+            "sighting_id": f"sighting-{uuid.uuid4()}",
+            "timestamp": now.isoformat(),
+            "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
+            "last_observed": now.isoformat(),
+            "confidence": confidence,
+            "severity": severity,
+            "observables": {
+                "network": observables
+            }
+        },
 
-#     Returns:
-#         FRANKSubmission: Instance containing a sample valid submission.
+    }
+    if hit_target_org:
+        submission["hit_target"] = {
+            "organization_id": hit_target_org, 
+            "sector": sector or "finance",
+            "region": "europe",
+            "anonymization_level": "low"
+        }
 
-#     """
-#     sample_dict = generate_minimal_submission_dict(org_id=org_id, observables=get_observables_by_category(None, sample_type), **kwargs)
-#     logger.info(f"Generated sample submission for org {org_id} with sample_type '{sample_type}'")
-#     return FRANKSubmission().from_dict(sample_dict)
+    if tlp_level:
+        submission["tlp_level"] = tlp_level
+    if sigma_detection:
+        submission["sighting"]["sigma_detection"] = sigma_detection
+    if campaign_context:
+        submission["sighting"]["threat_context"] = {'campaign': campaign_context}
+    if impact_data:
+        submission["sighting"]["impact"] = impact_data
+    return Submission(**submission)
 
 # Example usage and testing functions
 def example_usage():
@@ -283,6 +283,33 @@ def example_usage():
         tier="partner"
     )
     print("✓ Minimal submission created")
+
+    # 2. Create sample submission
+    print("2. Creating sample submission...")
+    sample = generate_sample_submission(
+        org_id=f"identity--{uuid.uuid4()}",
+        sample_type="malware",
+        tier="partner",
+        confidence=80
+    )
+    print("✓ Sample submission created")
+
+    # 3. Create comprehensive submission
+    print("3. Creating comprehensive submission...")
+    comprehensive = generate_comprehensive_submission(
+        org_id=f"identity--{uuid.uuid4()}",
+        tier="partner",
+        hit_target_org=f"identity--{uuid.uuid4()}",
+        observables=get_default_observables(),
+        severity="high",
+        confidence=95,
+        campaign_context={"name": "test_campaign", "actor": "test_actor"},
+        sigma_detection={"rule_id": "test-rule-123", "rule_name": "sigma_rule-12", "confidence": 0.95},
+        impact_data={"severity": "high", "affected_systems": 5},
+        tlp_level="TLP:AMBER"
+    )
+    print("✓ Comprehensive submission created")
+
     
 if __name__ == "__main__":
     example_usage()

@@ -27,17 +27,28 @@ services:
       
   # LocalStack - AWS Services Simulation
   localstack:
-    image: localstack/localstack:latest
+    # image: localstack/localstack:latest
+    image: localstack/localstack:2.0
     container_name: frank-localstack-stage2
     ports:
       - "4566:4566"  # LocalStack API
       - "4571:4571"  # LocalStack Dashboard (optional)
     environment:
-      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
+#      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
+      - SERVICES=dynamodb
       - DEBUG=1
+      - AWS_DEFAULT_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test 
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
-      - "./localstack_init:/etc/localstack/init/ready.d"
+    #   - "./localstack_init:/etc/localstack/init/ready.d"
     networks:
       - frank-network
 
@@ -88,9 +99,24 @@ services:
     environment:
       - ADMINER_DEFAULT_SERVER=mysql:3306
     depends_on:
-      - localstack
+      - mysql
     networks:
       - frank-network
+
+  # dynamodb-local-web:
+  #   container_name: dynamodb-local-web
+  #   image: amazon/dynamodb-local:latest
+  #   ports:
+  #     - "8081:8000"
+  #   command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+  #   environment:
+  #     - AWS_ACCESS_KEY_ID=test
+  #     - AWS_SECRET_ACCESS_KEY=test
+  #     - AWS_DEFAULT_REGION=eu-west-1
+  #   depends_on:
+  #     - localstack
+  #   networks:
+  #     - frank-network
 
 networks:
   frank-network:

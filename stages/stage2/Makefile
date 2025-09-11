@@ -15,8 +15,12 @@ setup:  ## Initial setup - create directories and set permissions
 	chmod +x localstack_init/*.sh
 	cp .env.stage2 .env
 
-build-simple:
+build-simple: ## Build application container - simple
 	docker-compose -f docker-compose.simple.yml build
+
+build:  ## Build application container - hybrid
+	docker-compose -f docker-compose.hybrid.yml build frank-app
+
 
 up:  ## Start all services
 	docker-compose -f docker-compose.mysql.yml up -d
@@ -24,7 +28,7 @@ up:  ## Start all services
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"
 	@echo "- Adminer (RDS): http://localhost:8080"
-	@echo "- DynamoDB Admin: http://localhost:8001"
+	@echo "- DynamoDB Admin: http://localhost:8081"
 	@echo "- LocalStack: http://localhost:4566"
 
 up-hybrid:  ## Start all services
@@ -45,7 +49,7 @@ up-simple:  ## Start all services simple
 	@echo "- MySQL: http://localhost:4566"
 
 down:  ## Stop all services
-	docker-compose -f docker-compose.simple.yml down
+	docker-compose --file docker-compose.simple.yml down
 	docker-compose down
 
 restart:  ## Restart all services
@@ -54,13 +58,13 @@ restart:  ## Restart all services
 	docker-compose up -d
 
 logs:  ## Show logs from all services
-	docker-compose logs -f
+	docker-compose --file docker-compose.hybrid.yml logs -f
 
 logs-app:  ## Show logs from FRANK app only
-	docker-compose logs -f frank-app
+	docker-compose --file docker-compose.hybrid.yml logs -f frank-app
 
 logs-localstack:  ## Show logs from LocalStack only
-	docker-compose logs -f localstack
+	docker-compose --file docker-compose.hybrid.yml logs -f localstack
 
 test:  ## Run tests
 	docker-compose exec frank-app python -m pytest tests/ -v
@@ -72,7 +76,7 @@ test-api:  ## Test API endpoints
 	curl -s http://localhost:8000/ | python -m json.tool
 
 test-submission:  ## Submit a test threat intelligence submission
-	curl -X POST "http://localhost:8000/v1/submission" \
+	curl -s -X POST "http://localhost:8000/v1/submission" \
 		-H "Content-Type: application/json" \
 		-H "Authorization: Bearer core_test_token" \
 		-d '{ \
@@ -109,9 +113,6 @@ clean:  ## Clean up containers and volumes
 	rm -rf localstack_data logs mysql_init
 	rm -f .env
 
-
-build:  ## Build application container
-	docker-compose build frank-app
 
 shell:  ## Open shell in application container
 	docker-compose exec frank-app bash
