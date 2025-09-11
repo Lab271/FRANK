@@ -32,7 +32,7 @@ up:  ## Start all services
 	@echo "- LocalStack: http://localhost:4566"
 
 up-hybrid:  ## Start all services
-	docker-compose -f docker-compose.hybrid.yml up -d
+	docker-compose --file docker-compose.hybrid.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"
@@ -50,6 +50,7 @@ up-simple:  ## Start all services simple
 
 down:  ## Stop all services
 	docker-compose --file docker-compose.simple.yml down
+	docker-compose --file docker-compose.hybrid.yml down
 	docker-compose down
 
 restart:  ## Restart all services
