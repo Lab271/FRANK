@@ -33,7 +33,7 @@ services:
       - "4566:4566"  # LocalStack API
       - "4571:4571"  # LocalStack Dashboard (optional)
     environment:
-      - SERVICES=s3,secretsmanager,iam,sts
+      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
       - DEBUG=1
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"

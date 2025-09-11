@@ -50,7 +50,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         # LocalStack endpoint configuration
         localstack_endpoint = self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localhost:4566")
-        environment = self.connection_params.get("FRANK_ENVIRONMENT", "local")
+        environment = self.connection_params.get("FRANK_ENVIRONMENT", "localstack")
 
         # Initialize AWS DynamoDB client
         try:
@@ -79,22 +79,22 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 self.dynamodb = boto3.resource(
                     "dynamodb",
                     region_name=self.region,
-                    # aws_access_key_id=self.connection_params.get(
-                    #     "AWS_ACCESS_KEY_ID", "test"
-                    # ),  # LocalStack dummy credentials
-                    # aws_secret_access_key=self.connection_params.get(
-                    #     "AWS_SECRET_ACCESS_KEY", "test"
-                    # ),  # LocalStack dummy credentials)
+                    aws_access_key_id=self.connection_params.get(
+                        "AWS_ACCESS_KEY_ID", "test"
+                    ),  # LocalStack dummy credentials
+                    aws_secret_access_key=self.connection_params.get(
+                        "AWS_SECRET_ACCESS_KEY", "test"
+                    ),  # LocalStack dummy credentials)
                 )
                 self.client = boto3.client(
                     "dynamodb",
                     region_name=self.region,
-                    # aws_access_key_id=self.connection_params.get(
-                    #     "AWS_ACCESS_KEY_ID", "test"
-                    # ),  # LocalStack dummy credentials
-                    # aws_secret_access_key=self.connection_params.get(
-                    #     "AWS_SECRET_ACCESS_KEY", "test"
-                    # ),  # LocalStack dummy credentials)
+                    aws_access_key_id=self.connection_params.get(
+                        "AWS_ACCESS_KEY_ID", "test"
+                    ),  # LocalStack dummy credentials
+                    aws_secret_access_key=self.connection_params.get(
+                        "AWS_SECRET_ACCESS_KEY", "test"
+                    ),  # LocalStack dummy credentials)
                 )
             self.table = self.dynamodb.Table(self.table_name)
             
