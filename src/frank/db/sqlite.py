@@ -1154,16 +1154,14 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     'status': 'healthy',
                     'database_path': db_path,
                     'database_size_bytes': db_size,
-                    'table_counts': table_counts,
-                    'timestamp': datetime.now(timezone.utc).isoformat()
+                    'table_counts': table_counts
                 }
                 
         except Exception as e:
             self.logger.error(f"Health check failed: {e}")
             return {
                 'status': 'unhealthy',
-                'error': str(e),
-                'timestamp': datetime.now(timezone.utc).isoformat()
+                'error': str(e)
             }
 
 

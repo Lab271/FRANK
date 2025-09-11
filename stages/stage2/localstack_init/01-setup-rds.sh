@@ -52,7 +52,7 @@ awslocal iam create-role \
         ]
     }'
 
-echo "LocalStack RDS initialization complete!"
+echo "LocalStack initialization complete!"
 echo "Note: Using direct MySQL instead of RDS for development"
 # echo "Connect to RDS at: $RDS_ENDPOINT:3306"
 # echo "Database: frank"

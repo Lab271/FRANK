@@ -14,7 +14,6 @@ SPDX-License-Identifier: Apache-2.0
 import os
 import uuid
 import logging
-import pymysql
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -661,4 +660,4 @@ if __name__ == "__main__":
     logger.info(f"Database type: {config.database_type}")
 
     # Run the server
-    uvicorn.run("frank_stage2:app", host=args.host, port=args.port, reload=args.reload, log_level="info")
+    uvicorn.run("frank_stage2_mysql:app", host=args.host, port=args.port, reload=args.reload, log_level="info")

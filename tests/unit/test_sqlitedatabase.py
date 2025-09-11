@@ -403,7 +403,6 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.assertEqual(health_status['status'], 'healthy')
         self.assertIn('database_path', health_status)
         self.assertIn('table_counts', health_status)
-        self.assertIn('timestamp', health_status)
     
     def test_log_access(self):
         """Test access logging functionality"""
@@ -436,4 +435,4 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 os.unlink(temp_path)
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2, buffer=True)

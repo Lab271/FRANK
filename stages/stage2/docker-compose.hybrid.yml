@@ -1,0 +1,127 @@
+# ================================
+# docker-compose.yml - Stage 2 RDS/MariaDB Setup (Updated)
+# ================================
+
+services:
+  # MySQL Database (Not part of Localstack free tier)
+  mysql:
+    image: mysql:8.0
+    container_name: frank-mysql-stage2
+    ports:
+      - "3306:3306"
+    environment:
+      - MYSQL_ROOT_PASSWORD=frank_root_pass
+      - MYSQL_DATABASE=frank
+      - MYSQL_USER=frank_user
+      - MYSQL_PASSWORD=frank_pass
+    volumes:
+      - mysql_data:/var/lib/mysql
+      - ./mysql_init:/docker-entrypoint-initdb.d
+    networks:
+      - frank-network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "frank_user", "-pfrank_pass"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      
+  # LocalStack - AWS Services Simulation
+  localstack:
+    # image: localstack/localstack:latest
+    image: localstack/localstack:2.0
+    container_name: frank-localstack-stage2
+    ports:
+      - "4566:4566"  # LocalStack API
+      - "4571:4571"  # LocalStack Dashboard (optional)
+    environment:
+#      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
+      - SERVICES=dynamodb
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test 
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    #   - "./localstack_init:/etc/localstack/init/ready.d"
+    networks:
+      - frank-network
+
+  # FRANK Application
+  frank-app:
+    build:
+      context: ../..  # Need to do this to include the src package
+      dockerfile: stages/stage2/Dockerfile.hybrid.stage2
+    container_name: frank-app-stage2
+    ports:
+      - "8000:8000"
+    environment:
+      - FRANK_ENVIRONMENT=hybrid
+      - LOCALSTACK_ENDPOINT=http://localstack:4566
+      - RDS_HOST=mysql
+      - RDS_PORT=3306
+      - RDS_DATABASE=frank
+      - RDS_USERNAME=frank_user
+      - RDS_PASSWORD=frank_pass
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+      - DYNAMODB_TABLE=frank_table
+    depends_on:
+      mysql:
+        condition: service_healthy
+      localstack:
+        condition: service_started
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - "./logs:/app/logs"    # Live logs folder
+      - "../../src:/src"      # Live src/ package development
+      - ".:/app/stage2"       # Live stage2/ application development
+    networks:
+      - frank-network
+
+  # Optional: Database GUI for RDS inspection
+  adminer:
+    image: adminer
+    container_name: adminer
+    ports:
+      - "8080:8080"
+    environment:
+      - ADMINER_DEFAULT_SERVER=mysql:3306
+    depends_on:
+      - mysql
+    networks:
+      - frank-network
+
+  # dynamodb-local-web:
+  #   container_name: dynamodb-local-web
+  #   image: amazon/dynamodb-local:latest
+  #   ports:
+  #     - "8081:8000"
+  #   command: ["-jar", "DynamoDBLocal.jar", "-sharedDb", "-inMemory"]
+  #   environment:
+  #     - AWS_ACCESS_KEY_ID=test
+  #     - AWS_SECRET_ACCESS_KEY=test
+  #     - AWS_DEFAULT_REGION=eu-west-1
+  #   depends_on:
+  #     - localstack
+  #   networks:
+  #     - frank-network
+
+networks:
+  frank-network:
+    driver: bridge
+
+volumes:
+  mysql_data:
+  logs:

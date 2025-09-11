@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
-Unit tests for FRANK HitTarget model
+FRANK Platform - Unit tests for FRANK HitTarget model
+
 Tests the "be forgiving on what you receive, strong on what you return" principle
 
 Copyright (c) 2025 Schuberg Philis B.V.

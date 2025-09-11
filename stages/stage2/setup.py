@@ -1,12 +1,20 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Setup Script
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
+
 from setuptools import setup, find_packages
 
 PACKAGE = 'frank'
 
 def get_version():
     version = {}
-    with open(os.path.join(os.path.dirname(__file__), PACKAGE, '__init__.py')) as f:
+    with open(os.path.join(os.path.dirname(__file__), PACKAGE, '__version__.py')) as f:
         exec(f.read(), version)
-    return version['__version__']
+    return version['version']
 
 setup(
     name=PACKAGE,
@@ -21,6 +29,7 @@ setup(
         "pymysql>=1.1.0",
         "requests>=2.31.0",
         "python-multipart>=0.0.6",
+        "boto3>=1.40.0"
     ],
     extras_require={
         "dev": [

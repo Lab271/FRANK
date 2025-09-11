@@ -38,4 +38,4 @@ EXPOSE 8000
 WORKDIR /app/stage2
 
 # Default command
-CMD ["python", "frank_stage2.py"]
+CMD ["python", "frank_stage2_mysql.py"]

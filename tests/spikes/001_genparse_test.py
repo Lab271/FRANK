@@ -11,6 +11,17 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
+import unittest
+class TestRunSpike(unittest.TestCase):
+    """Wrapper to run spike in Unittest framework."""
+
+    def test_runspike(self):
+        """Minimal Spike Testrun Wrapper"""
+        try:
+            result = run_spike()
+            self.assertTrue(result)
+        except Exception as e:
+            self.fail(f"spike failed: {e}")
 
 @dataclass
 class NetworkObservable:
@@ -321,9 +332,7 @@ class FrankSightingParser:
         # Contributors and above get full data
         return anonymized
 
-
-# Example usage and testing
-if __name__ == "__main__":
+def run_spike():
     # Generate a minimal sighting
     generator = FrankSightingGenerator()
     minimal_sighting = generator.create_minimal_sighting(
@@ -375,3 +384,11 @@ if __name__ == "__main__":
     anonymized = parser.anonymize_submission(parsed_sighting, "observer")
     print(f"\n=== Anonymized for Observer ===")
     print(anonymized.to_yaml())
+    return True
+
+
+
+
+# Example usage and testing
+if __name__ == "__main__":
+    run_spike()
