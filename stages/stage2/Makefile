@@ -22,7 +22,7 @@ build:  ## Build application container - hybrid
 	docker-compose -f docker-compose.hybrid.yml build frank-app
 
 
-up:  ## Start all services
+up-mysql:  ## Start all services
 	docker-compose -f docker-compose.mysql.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
@@ -31,7 +31,7 @@ up:  ## Start all services
 	@echo "- DynamoDB Admin: http://localhost:8081"
 	@echo "- LocalStack: http://localhost:4566"
 
-up-hybrid:  ## Start all services
+up:  ## Start all services
 	docker-compose --file docker-compose.hybrid.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
@@ -39,14 +39,6 @@ up-hybrid:  ## Start all services
 	@echo "- Adminer (RDS): http://localhost:8080"
 	@echo "- DynamoDB Admin: http://localhost:8001"
 	@echo "- LocalStack: http://localhost:4566"
-
-up-simple:  ## Start all services simple
-	docker-compose -f docker-compose.simple.yml up -d
-	@echo "Waiting for services to be ready..."
-	@echo "Services started:"
-	@echo "- FRANK API: http://localhost:8000"
-	@echo "- Adminer (RDS): http://localhost:8080"
-	@echo "- MySQL: http://localhost:4566"
 
 down:  ## Stop all services
 	docker-compose --file docker-compose.simple.yml down

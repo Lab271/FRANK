@@ -279,7 +279,14 @@ async def submit_threat_intelligence(
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
 
-        success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
+        # Store in database
+        success = frank_dynamodb.store_submission(submission)
+
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to store submission")
+        
+        # success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
+
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission)
 

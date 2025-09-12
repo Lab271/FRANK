@@ -10,6 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import boto3
+import uuid
 from typing import Dict, Any, List, Optional
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
@@ -17,7 +18,7 @@ from botocore.exceptions import ClientError
 
 import logging
 
-from frank.db.exceptions import FRANKConnectionError, FRANKQueryError
+from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from frank.db.base import BaseFRANKDatabase
 from frank.core.models import Submission, Observable
 from frank.core.enum import ObservableType, TierLevel
@@ -63,6 +64,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     aws_access_key_id=aws_access_key_id,
                     aws_secret_access_key=aws_secret_access_key
                 )
+                self.client = boto3.client(
+                    "dynamodb",
+                    endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localstack:4566"),
+                    region_name=self.region,
+                    aws_access_key_id=aws_access_key_id,
+                    aws_secret_access_key=aws_secret_access_key
+                )
             else:
                 # Production AWS environment (uses actual credentials)
                 self.dynamodb = boto3.resource(
@@ -72,6 +80,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     aws_access_key_id=aws_access_key_id,
                     aws_secret_access_key=aws_secret_access_key
                 )
+                # self.client = boto3.client(
+                #     "dynamodb",
+                #     endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localhost:4566"),
+                #     region_name=self.region,
+                #     aws_access_key_id=aws_access_key_id,
+                #     aws_secret_access_key=aws_secret_access_key
+                # )
             
         except Exception as e:
             self.logger.error(f"Failed to initialize DynamoDB: {e}")
@@ -189,8 +204,112 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     
     def store_submission(self, submission: Submission) -> bool:
         """Store a complete submission in the database."""
-        pass
-    
+
+        timestamp = submission.timestamp or datetime.now(timezone.utc)
+        timestamp_str = timestamp.isoformat()
+        
+        # Serialize the complete submission to JSON
+        submission_json = submission.model_dump_json(by_alias=True, exclude_none=True)
+        
+        # Create the main submission item
+        submission_item = {
+            'PK': f"SUB#{submission.submission_id}",
+            'SK': 'SUB',
+            'GSI1PK': f"ORG#{submission.submitter.organization_id}",
+            'GSI1SK': timestamp_str,
+            'EntityType': 'Submission',
+            'submission_id': submission.submission_id,
+            'submitter_org_id': submission.submitter.organization_id,
+            'submission_timestamp': timestamp_str,
+            'confidence': submission.sighting.confidence,
+            'severity': submission.sighting.severity,
+            'tlp_level': submission.tlp_level,
+            'submission_data': submission_json,  # Complete submission as JSON
+            'processed_at': timestamp_str,
+            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+        }
+        
+        # Store organization info for querying
+        org_item = {
+            'PK': f"ORG#{submission.submitter.organization_id}",
+            'SK': 'ORG',
+            'GSI1PK': f"TIER#{submission.submitter.tier}",
+            'GSI1SK': timestamp_str,
+            'EntityType': 'Organization',
+            'organization_id': submission.submitter.organization_id,
+            'tier': submission.submitter.tier,
+            'sector': submission.submitter.sector,
+            'region': submission.submitter.region,
+            'last_active': timestamp_str,
+            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+        }
+        
+        # Store access log
+        access_log_item = {
+            'PK': f"LOG#{submission.submitter.organization_id}",
+            'SK': f"LOG#{timestamp_str}#{uuid.uuid4()}",
+            'GSI1PK': 'ACTION#SUBMIT',
+            'GSI1SK': timestamp_str,
+            'EntityType': 'AccessLog',
+            'organization_id': submission.submitter.organization_id,
+            'action': 'SUBMIT',
+            'resource_type': 'submission',
+            'resource_id': submission.submission_id,
+            'timestamp': timestamp_str,
+            'success': True,
+            'TTL': int((timestamp + timedelta(days=90)).timestamp())
+        }
+        
+        # Batch write all items
+        # items_to_write = [submission_item, org_item, access_log_item]
+
+        try:
+            self.table.put_item(Item=submission_item)
+
+            self.logger.info(f"Submisssion item stored for {submission.submission_id}")
+            
+            self.table.put_item(Item=org_item)
+
+            self.logger.info(f"Organisation item stored for {submission.submitter.organization_id}")
+            
+            self.table.put_item(Item=access_log_item)
+
+            self.logger.info(f"Access stored for {submission.submission_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error logging access: {e}")
+            return False
+
+    # def _batch_write_items(self, items: List[Dict]) -> None:
+    #     """Execute batch write operation with automatic retry for unprocessed items."""
+    #     # DynamoDB batch write limit is 25 items
+    #     chunk_size = 25
+        
+    #     for i in range(0, len(items), chunk_size):
+    #         chunk = items[i:i + chunk_size]
+            
+    #         request_items = {
+    #             self.table_name: [
+    #                 {'PutRequest': {'Item': self._convert_floats_to_decimal(item)}}
+    #                 for item in chunk
+    #             ]
+    #         }
+            
+    #         try:
+    #             response = self.client.batch_write_item(RequestItems=request_items)
+                
+    #             # Handle unprocessed items
+    #             unprocessed_items = response.get('UnprocessedItems', {})
+    #             while unprocessed_items:
+    #                 self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
+    #                 response = self.client.batch_write_item(RequestItems=unprocessed_items)
+    #                 unprocessed_items = response.get('UnprocessedItems', {})
+                    
+    #         except ClientError as e:
+    #             self.logger.error(f"Batch write failed: {e}")
+    #             raise FRANKStorageError(f"Batch write operation failed: {e}")
+
+
     def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
         """Retrieve a specific submission with access level filtering."""
         pass
