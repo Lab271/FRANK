@@ -220,10 +220,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Database initialization error: {e}")
             raise FRANKConnectionError(f"Failed to initialize database: {e}")
     
-    def hash_observable(self, observable_type: str, observable_value: str) -> str:
-        """Create a hash for observable deduplication and quick lookups."""
-        combined = f"{observable_type}:{observable_value}".lower()
-        return hashlib.sha256(combined.encode()).hexdigest()
+    # def hash_observable(self, observable_type: str, observable_value: str) -> str:
+    #     """Create a hash for observable deduplication and quick lookups."""
+    #     combined = f"{observable_type}:{observable_value}".lower()
+    #     return hashlib.sha256(combined.encode()).hexdigest()
 
     def store_submission(self, submission: Submission) -> bool:
         """
@@ -950,80 +950,80 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 conn.close()
         return result
 
-    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
-        """Filter submission data based on access level."""
-        self.logger.info(f"Filtering submission for access level: {access_level.value}")
-        self.logger.debug(f"Original submission data: {submission}")
-        if access_level == TierLevel.PUBLIC:
-            # Only basic statistics
-            return {
-                'submission': {
-                    'submission_id': submission.get('submission_id'),
-                    'timestamp': submission.get('timestamp'),
-                    'sighting': {
-                        'confidence': submission['sighting'].get('confidence'),
-                        'timestamp': submission['sighting'].get('timestamp'),
-                        'observation_count': submission['sighting'].get('observation_count')
-                    }
-                }
-            }
-        elif access_level == TierLevel.OBSERVER:
-            # Add some observable types but mask values
-            filtered = self._deep_copy(submission)
-            observables = filtered['sighting'].get('observables', {})
-            for category, obs_list in observables.items():
-                if isinstance(obs_list, list):
-                    for obs in obs_list:
-                        if 'value' in obs:
-                            obs['value'] = obs['value'][:10] + "..." if len(obs['value']) > 10 else obs['value']
+    # def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
+    #     """Filter submission data based on access level."""
+    #     self.logger.info(f"Filtering submission for access level: {access_level.value}")
+    #     self.logger.debug(f"Original submission data: {submission}")
+    #     if access_level == TierLevel.PUBLIC:
+    #         # Only basic statistics
+    #         return {
+    #             'submission': {
+    #                 'submission_id': submission.get('submission_id'),
+    #                 'timestamp': submission.get('timestamp'),
+    #                 'sighting': {
+    #                     'confidence': submission['sighting'].get('confidence'),
+    #                     'timestamp': submission['sighting'].get('timestamp'),
+    #                     'observation_count': submission['sighting'].get('observation_count')
+    #                 }
+    #             }
+    #         }
+    #     elif access_level == TierLevel.OBSERVER:
+    #         # Add some observable types but mask values
+    #         filtered = self._deep_copy(submission)
+    #         observables = filtered['sighting'].get('observables', {})
+    #         for category, obs_list in observables.items():
+    #             if isinstance(obs_list, list):
+    #                 for obs in obs_list:
+    #                     if 'value' in obs:
+    #                         obs['value'] = obs['value'][:10] + "..." if len(obs['value']) > 10 else obs['value']
             
-            # Remove sensitive sections
-            filtered.pop('hit_target', None)
-            filtered.pop('tlp_level', None)
+    #         # Remove sensitive sections
+    #         filtered.pop('hit_target', None)
+    #         filtered.pop('tlp_level', None)
 
-            return {'submission': filtered}
-        elif access_level == TierLevel.CONTRIBUTOR:
-            # Remove only the most sensitive information
-            filtered = self._deep_copy(submission)
+    #         return {'submission': filtered}
+    #     elif access_level == TierLevel.CONTRIBUTOR:
+    #         # Remove only the most sensitive information
+    #         filtered = self._deep_copy(submission)
             
-            # Anonymize hit target details
-            if 'hit_target' in filtered:
-                hit_target = filtered['hit_target']
-                hit_target.pop('organization_id', None)
-                hit_target['sector'] = hit_target.get('sector', 'unknown')
+    #         # Anonymize hit target details
+    #         if 'hit_target' in filtered:
+    #             hit_target = filtered['hit_target']
+    #             hit_target.pop('organization_id', None)
+    #             hit_target['sector'] = hit_target.get('sector', 'unknown')
 
-            return {'submission': filtered}
+    #         return {'submission': filtered}
 
-        # Partner and core_member get full access
-        return {'submission': submission}
+    #     # Partner and core_member get full access
+    #     return {'submission': submission}
 
-    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
-        """Filter observable data based on access level."""
-        if access_level == TierLevel.PUBLIC:
-            return {
-                'observable_type': observable['observable_type'],
-                'total_sightings': observable['total_sightings'],
-                'last_seen': observable['last_seen']
-            }
-        elif access_level == TierLevel.OBSERVER:
-            filtered = dict(observable)
-            # Mask observable value
-            if 'observable_value' in filtered:
-                value = filtered['observable_value']
-                filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
-            return filtered
+    # def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
+    #     """Filter observable data based on access level."""
+    #     if access_level == TierLevel.PUBLIC:
+    #         return {
+    #             'observable_type': observable['observable_type'],
+    #             'total_sightings': observable['total_sightings'],
+    #             'last_seen': observable['last_seen']
+    #         }
+    #     elif access_level == TierLevel.OBSERVER:
+    #         filtered = dict(observable)
+    #         # Mask observable value
+    #         if 'observable_value' in filtered:
+    #             value = filtered['observable_value']
+    #             filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
+    #         return filtered
         
-        # Contributor and above get full access
-        return observable
+    #     # Contributor and above get full access
+    #     return observable
     
-    def _deep_copy(self, obj: Any) -> Any:
-        """Create a deep copy of an object."""
-        if isinstance(obj, dict):
-            return {k: self._deep_copy(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self._deep_copy(item) for item in obj]
-        else:
-            return obj
+    # def _deep_copy(self, obj: Any) -> Any:
+    #     """Create a deep copy of an object."""
+    #     if isinstance(obj, dict):
+    #         return {k: self._deep_copy(v) for k, v in obj.items()}
+    #     elif isinstance(obj, list):
+    #         return [self._deep_copy(item) for item in obj]
+    #     else:
+    #         return obj
 
     def health_check(self) -> Dict[str, Any]:
         """

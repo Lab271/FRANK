@@ -31,11 +31,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     the complete FRANK access tier model.
     
     Single Table Design Pattern:
-    PK (Partition Key) | SK (Sort Key) | GSI1PK | GSI1SK | Entity Type | Description
-    ORG#{org_id}      | ORG           | TIER#{tier} | #{timestamp} | Organization | Organization metadata
-    SUB#{sub_id}      | SUB           | ORG#{org_id} | #{timestamp} | Submission | Complete submission with nested data
-    LOG#{org_id}      | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log | Audit trail for actions
-    """
+    PK (Partition Key) | SK (Sort Key).  | GSI1PK          | GSI1SK       | Entity Type     | Description
+    ORG#{org_id}       | ORG             | TIER#{tier}     | #{timestamp} | Organization    | Organization metadata
+    SUB#{sub_id}       | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
+    LOG#{org_id}       | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
+    OBS#{obs_hash}.    | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
+
+        """
     
     def initialize(self) -> None:
         """
@@ -64,13 +66,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     aws_access_key_id=aws_access_key_id,
                     aws_secret_access_key=aws_secret_access_key
                 )
-                self.client = boto3.client(
-                    "dynamodb",
-                    endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localstack:4566"),
-                    region_name=self.region,
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key
-                )
             else:
                 # Production AWS environment (uses actual credentials)
                 self.dynamodb = boto3.resource(
@@ -80,17 +75,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     aws_access_key_id=aws_access_key_id,
                     aws_secret_access_key=aws_secret_access_key
                 )
-                # self.client = boto3.client(
-                #     "dynamodb",
-                #     endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localhost:4566"),
-                #     region_name=self.region,
-                #     aws_access_key_id=aws_access_key_id,
-                #     aws_secret_access_key=aws_secret_access_key
-                # )
             
         except Exception as e:
             self.logger.error(f"Failed to initialize DynamoDB: {e}")
             raise FRANKConnectionError(f"DynamoDB connection failed: {e}")
+
+        self.client = self.dynamodb.meta.client
 
         # Verify connection and create table if needed (LocalStack only)
         if self.environment == 'localstack':
@@ -172,8 +162,9 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             except self.dynamodb.meta.client.exceptions.ResourceNotFoundException:
 
                 # Create the table
-                response = self.dynamodb.create_table(**table_definition)
-                
+                _ = self.dynamodb.create_table(**table_definition)
+                self.table = self.dynamodb.Table(self.table_name)
+
                 # Wait for table to be created
                 waiter = self.table.meta.client.get_waiter('table_exists')
                 waiter.wait(TableName=self.table_name)
@@ -199,11 +190,53 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             return False
 
     def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """Insert or update organization information."""
-        pass
+        """
+        Insert or update organization information in DynamoDB.
+
+        Args:
+            org_data (Dict[str, Any]): Dictionary containing organization fields. Must include 'organization_id'.
+                Expected keys: organization_id, tier, sector, region, last_active (optional).
+
+        Returns:
+            bool: True if the operation succeeded, False if there was a ClientError.
+
+        Raises:
+            Logs error and returns False if DynamoDB put_item fails.
+        """
+        try:
+            timestamp = org_data.get('last_active') or datetime.now(timezone.utc).isoformat()
+            org_item = {
+                'PK': f"ORG#{org_data['organization_id']}",
+                'SK': 'ORG',
+                'GSI1PK': f"TIER#{org_data.get('tier', 'unknown')}",
+                'GSI1SK': timestamp,
+                'EntityType': 'Organization',
+                'organization_id': org_data.get('organization_id', ''),
+                'tier': org_data.get('tier', ''),
+                'sector': org_data.get('sector', ''),
+                'region': org_data.get('region', ''),
+                'last_active': timestamp,
+                'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
+            }
+            self.table.put_item(Item=org_item)
+            return True
+        except ClientError as e:
+            self.logger.error(f"Error upserting organization: {e}")
+            return False
     
     def store_submission(self, submission: Submission) -> bool:
-        """Store a complete submission in the database."""
+        """
+        Store a complete submission in the DynamoDB database.
+
+        Args:
+            submission (Submission): Submission object containing all required fields and nested data.
+
+        Returns:
+            bool: True if the operation succeeded, False if there was a FRANKStorageError.
+
+        Raises:
+            Logs error and returns False if batch write fails.
+        """
 
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
@@ -261,63 +294,206 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         }
         
         # Batch write all items
-        # items_to_write = [submission_item, org_item, access_log_item]
+        items_to_write = [submission_item, org_item, access_log_item]
+
+        observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
+        
+        for obs_category, obs_list in observables.items():
+            if isinstance(obs_list, list):
+                for obs in obs_list:
+                    if 'type' not in obs or 'value' not in obs:
+                        continue
+                    
+                    obs_hash = self.hash_observable(obs['type'], obs['value'])
+                    
+                    # Create observable index item
+                    observable_index_item = {
+                        'PK': f"OBS#{obs_hash}",
+                        'SK': f"SUB#{submission.submission_id}",
+                        'GSI1PK': f"TYPE#{obs['type']}",
+                        'GSI1SK': timestamp_str,
+                        'EntityType': 'ObservableIndex',
+                        'observable_hash': obs_hash,
+                        'observable_type': obs['type'],
+                        'observable_value': obs['value'],
+                        'submission_id': submission.submission_id,
+                        'submitter_org_id': submission.submitter.organization_id,
+                        'sighting_id': submission.sighting.sighting_id,
+                        'confidence': submission.sighting.confidence,
+                        'severity': submission.sighting.severity,
+                        'role': obs.get('role'),
+                        'port': obs.get('port'),
+                        'first_seen': obs.get('first_seen'),
+                        'timestamp': timestamp_str,
+                        'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+                    }
+                    items_to_write.append(observable_index_item)
 
         try:
-            self.table.put_item(Item=submission_item)
-
-            self.logger.info(f"Submisssion item stored for {submission.submission_id}")
-            
-            self.table.put_item(Item=org_item)
-
-            self.logger.info(f"Organisation item stored for {submission.submitter.organization_id}")
-            
-            self.table.put_item(Item=access_log_item)
-
-            self.logger.info(f"Access stored for {submission.submission_id}")
+            self._batch_write_items(items_to_write)
             return True
-        except Exception as e:
-            self.logger.error(f"Error logging access: {e}")
+        except FRANKStorageError:
             return False
+    
 
-    # def _batch_write_items(self, items: List[Dict]) -> None:
-    #     """Execute batch write operation with automatic retry for unprocessed items."""
-    #     # DynamoDB batch write limit is 25 items
-    #     chunk_size = 25
+    def _batch_write_items(self, items: List[Dict]) -> None:
+        """Execute batch atomic write operation with automatic retry for unprocessed items."""
+        # DynamoDB batch write limit is 25 items
+        chunk_size = 25
         
-    #     for i in range(0, len(items), chunk_size):
-    #         chunk = items[i:i + chunk_size]
+        for i in range(0, len(items), chunk_size):
+            chunk = items[i:i + chunk_size]
             
-    #         request_items = {
-    #             self.table_name: [
-    #                 {'PutRequest': {'Item': self._convert_floats_to_decimal(item)}}
-    #                 for item in chunk
-    #             ]
-    #         }
+            transact_items = [
+                {'Put': 
+                    {
+                        'TableName': self.table_name,
+                        'Item': self._convert_floats_to_decimal(item)
+                    }
+                }
+                for item in chunk
+            ]
             
-    #         try:
-    #             response = self.client.batch_write_item(RequestItems=request_items)
+            try:
+                response = self.client.transact_write_items(TransactItems=transact_items)
                 
-    #             # Handle unprocessed items
-    #             unprocessed_items = response.get('UnprocessedItems', {})
-    #             while unprocessed_items:
-    #                 self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
-    #                 response = self.client.batch_write_item(RequestItems=unprocessed_items)
-    #                 unprocessed_items = response.get('UnprocessedItems', {})
+                # Handle unprocessed items
+                unprocessed_items = response.get('UnprocessedItems', {})
+                while unprocessed_items:
+                    self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
+                    response = self.client.transact_write_items(TransactItems=unprocessed_items)
+                    unprocessed_items = response.get('UnprocessedItems', {})
                     
-    #         except ClientError as e:
-    #             self.logger.error(f"Batch write failed: {e}")
-    #             raise FRANKStorageError(f"Batch write operation failed: {e}")
+            except ClientError as e:
+                self.logger.error(f"Batch write failed: {e}")
+                raise FRANKStorageError(f"Batch write operation failed: {e}")
 
 
     def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
-        """Retrieve a specific submission with access level filtering."""
-        pass
+        """
+        Retrieve a specific submission with access level filtering.
+
+        Args:
+            submission_id: Submission ID to retrieve
+            org_id: Organization ID making the request
+            access_level: Access level for filtering
+
+        Returns:
+            Filtered Submission or None if not found
+        """
+        try:
+            response = self.table.get_item(
+                Key={
+                    'PK': f"SUB#{submission_id}",
+                    'SK': 'SUB'
+                }
+            )
+            if 'Item' not in response:
+                return None
+
+            # Deserialize and filter
+            item = self._convert_decimals_to_float(response['Item'])
+            submission_json = item.get('submission_data')
+            if not submission_json:
+                return None
+
+            # If stored as JSON string, parse it
+            if isinstance(submission_json, str):
+                import json
+                submission_dict = json.loads(submission_json)
+            else:
+                submission_dict = submission_json
+
+            filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
+
+            # Log access
+            self._log_access(org_id, 'READ', 'submission', submission_id)
+
+            return Submission(**filtered_submission)
+        except ClientError as e:
+            self.logger.error(f"Error retrieving submission {submission_id}: {e}")
+            raise FRANKQueryError(f"Failed to retrieve submission: {e}")
     
     def query_observables(self, org_id: str, observable_type: ObservableType = None, 
                          limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Observable]:
         """Query observables with access level filtering."""
-        pass
+        try:
+            # Query by observable_type using GSI1 if provided, else scan all ObservableIndex
+            if observable_type:
+                response = self.table.query(
+                    IndexName='GSI1',
+                    KeyConditionExpression='GSI1PK = :type_key',
+                    FilterExpression='EntityType = :entity_type',
+                    ExpressionAttributeValues={
+                        ':type_key': f"TYPE#{observable_type.value if hasattr(observable_type, 'value') else str(observable_type)}",
+                        ':entity_type': 'ObservableIndex'
+                    },
+                    Limit=limit,
+                    ScanIndexForward=False
+                )
+            else:
+                response = self.table.scan(
+                    FilterExpression='EntityType = :entity_type',
+                    ExpressionAttributeValues={':entity_type': 'ObservableIndex'},
+                    Limit=limit
+                )
+
+            # Aggregate and deduplicate by observable_hash
+            observables_map = {}
+            for item in response.get('Items', []):
+                item = self._convert_decimals_to_float(item)
+                obs_hash = item.get('observable_hash')
+                if not obs_hash:
+                    continue
+
+                # Initialize aggregation entry
+                if obs_hash not in observables_map:
+                    observables_map[obs_hash] = {
+                        'observable_hash': obs_hash,
+                        'observable_type': item.get('observable_type'),
+                        'observable_value': item.get('observable_value'),
+                        'total_sightings': 0,
+                        'first_seen': item.get('timestamp'),
+                        'last_seen': item.get('timestamp'),
+                        'unique_organizations': set(),
+                        'confidence_values': []
+                    }
+
+                obs_entry = observables_map[obs_hash]
+                obs_entry['total_sightings'] += 1
+                org_id_val = item.get('submitter_org_id')
+                if org_id_val:
+                    obs_entry['unique_organizations'].add(org_id_val)
+                obs_entry['confidence_values'].append(item.get('confidence', 0))
+
+                # Update time bounds
+                ts = item.get('timestamp')
+                if ts:
+                    if obs_entry['first_seen'] is None or ts < obs_entry['first_seen']:
+                        obs_entry['first_seen'] = ts
+                    if obs_entry['last_seen'] is None or ts > obs_entry['last_seen']:
+                        obs_entry['last_seen'] = ts
+
+            # Convert to final format
+            results = []
+            for obs_hash, obs_data in observables_map.items():
+                obs_data['unique_organizations'] = len(obs_data['unique_organizations'])
+                obs_data['avg_confidence'] = (
+                    sum(obs_data['confidence_values']) / len(obs_data['confidence_values'])
+                    if obs_data['confidence_values'] else 0
+                )
+                del obs_data['confidence_values']
+
+                # Apply access level filtering if needed
+                filtered_obs = self._filter_observable_by_access_level(obs_data, access_level)
+                results.append(filtered_obs)
+
+            # Log access
+            self._log_access(org_id, 'QUERY', 'observables')
+            return results[:limit]
+        except ClientError as e:
+            self.logger.error(f"Error querying observables: {e}")
+            raise FRANKQueryError(f"Failed to query observables: {e}")
     
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """Get platform statistics summary."""
@@ -367,94 +543,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             "stack": self.environment
         }
     
-# def store_submission(self, submission: Submission) -> bool:
-#     """
-#     Store a complete submission directly as a dict in DynamoDB using single table design.
-    
-#     Args:
-#         submission: Complete FRANK submission object
-        
-#     Returns:
-#         True if stored successfully, False otherwise
-#     """
-#     self.logger.info(f"Storing submission: {submission.submission_id}")
-    
-#     try:
-#         timestamp = datetime.now(timezone.utc)
-#         timestamp_str = timestamp.isoformat()
-        
-#         # Convert submission to dict and handle float->Decimal conversion for DynamoDB
-#         submission_dict = submission.model_dump(by_alias=True, exclude_none=True)
-#         submission_data = self._convert_floats_to_decimal(submission_dict)
-        
-#         # Create the main submission item
-#         submission_item = {
-#             'PK': f"SUB#{submission.submission_id}",
-#             'SK': 'SUB',
-#             'GSI1PK': f"ORG#{submission.submitter.organization_id}",
-#             'GSI1SK': submission.timestamp or timestamp_str,
-#             'EntityType': 'Submission',
-#             'submission_id': submission.submission_id,
-#             'submitter_org_id': submission.submitter.organization_id,
-#             'submission_timestamp': submission.timestamp or timestamp_str,
-#             'confidence': submission.sighting.confidence,
-#             'severity': submission.sighting.severity,
-#             'tlp_level': submission.tlp_level,
-#             'submission_data': submission_data,  # Complete submission as native DynamoDB dict
-#             'processed_at': timestamp_str,
-#             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-#         }
-        
-#         # Store organization info for querying
-#         org_item = {
-#             'PK': f"ORG#{submission.submitter.organization_id}",
-#             'SK': 'ORG',
-#             'GSI1PK': f"TIER#{submission.submitter.tier}",
-#             'GSI1SK': timestamp_str,
-#             'EntityType': 'Organization',
-#             'organization_id': submission.submitter.organization_id,
-#             'tier': submission.submitter.tier,
-#             'sector': submission.submitter.sector,
-#             'region': submission.submitter.region,
-#             'last_active': timestamp_str,
-#             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-#         }
-        
-#         # Store access log
-#         access_log_item = {
-#             'PK': f"LOG#{submission.submitter.organization_id}",
-#             'SK': f"LOG#{timestamp_str}#{uuid.uuid4()}",
-#             'GSI1PK': 'ACTION#SUBMIT',
-#             'GSI1SK': timestamp_str,
-#             'EntityType': 'AccessLog',
-#             'organization_id': submission.submitter.organization_id,
-#             'action': 'SUBMIT',
-#             'resource_type': 'submission',
-#             'resource_id': submission.submission_id,
-#             'timestamp': timestamp_str,
-#             'success': True,
-#             'TTL': int((timestamp + timedelta(days=90)).timestamp())
-#         }
-        
-#         # Batch write all items
-#         items_to_write = [submission_item, org_item, access_log_item]
-
-#         # Additionally create observable index entries
-#         observable_items = self._create_observable_index_items(submission)
-#         items_to_write.extend(observable_items)
-
-#         self._batch_write_items(items_to_write)
-        
-#         self.logger.info(f"Successfully stored submission {submission.submission_id}")
-#         return True
-        
-#     except Exception as e:
-#         self.logger.error(f"Error storing submission: {e}")
-#         if isinstance(e, (FRANKStorageError, FRANKConnectionError)):
-#             raise
-#         raise FRANKStorageError(f"Failed to store submission: {e}")
-
-
 # def _create_observable_index_items(self, submission: Submission) -> List[Dict]:
 #     """Create separate index items for observables."""
 #     items = []
@@ -638,64 +726,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #             self.logger.error(f"Error getting access logs: {e}")
 #             raise FRANKQueryError(f"Failed to get access logs: {e}")
 
-#     def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: str) -> Dict[str, Any]:
-#         """Filter submission data based on access level."""
-#         if access_level == 'public':
-#             return {
-#                 'submission_id': submission.get('submission_id'),
-#                 'timestamp': submission.get('timestamp'),
-#                 'sighting': {
-#                     'confidence': submission.get('sighting', {}).get('confidence'),
-#                     'timestamp': submission.get('sighting', {}).get('timestamp'),
-#                     'observation_count': submission.get('sighting', {}).get('observation_count')
-#                 }
-#             }
-#         elif access_level == 'observer':
-#             filtered = self._deep_copy(submission)
-#             # Apply observer-level filtering
-#             if 'hit_target' in filtered:
-#                 filtered.pop('hit_target', None)
-#             if 'tlp_level' in filtered:
-#                 filtered.pop('tlp_level', None)
-#             return filtered
-#         elif access_level == 'contributor':
-#             filtered = self._deep_copy(submission)
-#             # Apply contributor-level filtering
-#             if 'hit_target' in filtered:
-#                 hit_target = filtered['hit_target']
-#                 hit_target.pop('organization_id', None)
-#             return filtered
-        
-#         # Partner and core_member get full access
-#         return submission
-
-#     def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: str) -> Dict[str, Any]:
-#         """Filter observable data based on access level."""
-#         if access_level == 'public':
-#             return {
-#                 'observable_type': observable.get('observable_type'),
-#                 'total_sightings': observable.get('total_sightings'),
-#                 'last_seen': observable.get('last_seen')
-#             }
-#         elif access_level == 'observer':
-#             filtered = dict(observable)
-#             # Mask observable value
-#             if 'observable_value' in filtered:
-#                 value = filtered['observable_value']
-#                 filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
-#             return filtered
-        
-#         # Contributor and above get full access
-#         return observable
-    
-#     def _deep_copy(self, obj: Any) -> Any:
-#         """Create a deep copy of an object."""
-#         if isinstance(obj, dict):
-#             return {k: self._deep_copy(v) for k, v in obj.items()}
-#         elif isinstance(obj, list):
-#             return [self._deep_copy(item) for item in obj]
-#         else:
-#             return obj
 
 #     def search_observables_by_value(self, org_id: str, search_value: str, 
 #                                    access_level: str = 'contributor') -> List[Dict[str, Any]]:
