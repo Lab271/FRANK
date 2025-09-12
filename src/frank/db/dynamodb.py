@@ -31,11 +31,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     the complete FRANK access tier model.
     
     Single Table Design Pattern:
-    PK (Partition Key) | SK (Sort Key).  | GSI1PK          | GSI1SK       | Entity Type     | Description
-    ORG#{org_id}       | ORG             | TIER#{tier}     | #{timestamp} | Organization    | Organization metadata
-    SUB#{sub_id}       | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
-    LOG#{org_id}       | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
-    OBS#{obs_hash}.    | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
+    PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
+    ORG#{org_id}        | ORG             | TIER#{tier}     | #{timestamp} | Organization    | Organization metadata
+    SUB#{sub_id}        | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
+    LOG#{org_id}        | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
+    OBS#{obs_hash}      | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
+    SIGHT#{sighting_id} | SUB#{sub_id}    | ORG#{org_id}    | #{timestamp} | Sighting        | Sighting details (confidence, severity, observables)
 
         """
     
@@ -252,7 +253,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'GSI1SK': timestamp_str,
             'EntityType': 'Submission',
             'submission_id': submission.submission_id,
-            'submitter_org_id': submission.submitter.organization_id,
+            'submitter_id': submission.submitter.organization_id,
             'submission_timestamp': timestamp_str,
             'confidence': submission.sighting.confidence,
             'severity': submission.sighting.severity,
@@ -262,6 +263,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
         
+        items_to_write = [submission_item]
+
         # Store organization info for querying
         org_item = {
             'PK': f"ORG#{submission.submitter.organization_id}",
@@ -276,7 +279,29 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'last_active': timestamp_str,
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
+
+        items_to_write.append(org_item)
+
+        # Store sighting info as a separate item
+        sighting = submission.sighting
+        sighting_item = {
+            'PK': f"SIGHT#{sighting.sighting_id}",
+            'SK': f"SUB#{submission.submission_id}",
+            'GSI1PK': f"ORG#{submission.submitter.organization_id}",
+            'GSI1SK': timestamp_str,
+            'EntityType': 'Sighting',
+            'sighting_id': sighting.sighting_id,
+            'submission_id': submission.submission_id,
+            'submitter_id': submission.submitter.organization_id,
+            'confidence': sighting.confidence,
+            'severity': sighting.severity,
+            'timestamp': timestamp_str,
+            'observables': sighting.observables.model_dump(exclude_none=True, by_alias=True),
+            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+        }
         
+        items_to_write.append(sighting_item)
+
         # Store access log
         access_log_item = {
             'PK': f"LOG#{submission.submitter.organization_id}",
@@ -294,7 +319,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         }
         
         # Batch write all items
-        items_to_write = [submission_item, org_item, access_log_item]
+        items_to_write.append(access_log_item)
 
         observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
         
@@ -317,13 +342,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'observable_type': obs['type'],
                         'observable_value': obs['value'],
                         'submission_id': submission.submission_id,
-                        'submitter_org_id': submission.submitter.organization_id,
+                        'submitter_id': submission.submitter.organization_id,
                         'sighting_id': submission.sighting.sighting_id,
                         'confidence': submission.sighting.confidence,
                         'severity': submission.sighting.severity,
                         'role': obs.get('role'),
                         'port': obs.get('port'),
-                        'first_seen': obs.get('first_seen'),
+                        'first_seen': obs.get('first_seen', timestamp).isoformat(),
                         'timestamp': timestamp_str,
                         'TTL': int((timestamp + timedelta(days=2555)).timestamp())
                     }
@@ -496,8 +521,49 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             raise FRANKQueryError(f"Failed to query observables: {e}")
     
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
-        """Get platform statistics summary."""
-        pass
+        """
+        Get platform statistics summary for an organization, including totals of observables by type.
+
+        Args:
+            org_id (str): The organization ID to get statistics for.
+            days (int, optional): Number of days to include in the summary (default: 30).
+
+        Returns:
+            Dict[str, Any]: Dictionary containing summary statistics.
+        """
+        try:
+            cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
+            # Scan for ObservableIndex items (OBS#)
+            response = self.table.scan(
+                FilterExpression='begins_with(PK, :obs_prefix) AND EntityType = :entity_type AND #ts >= :cutoff',
+                ExpressionAttributeNames={'#ts': 'timestamp'},
+                ExpressionAttributeValues={
+                    ':obs_prefix': 'OBS#',
+                    ':entity_type': 'ObservableIndex',
+                    ':cutoff': cutoff_date.isoformat()
+                }
+            )
+            totals_by_type = {}
+            for item in response.get('Items', []):
+                item = self._convert_decimals_to_float(item)
+                obs_type = item.get('observable_type', 'unknown')
+                totals_by_type[obs_type] = totals_by_type.get(obs_type, 0) + 1
+
+            return {
+                'organization_id': org_id,
+                'days': days,
+                'observable_totals': totals_by_type,
+                'total_observables': sum(totals_by_type.values())
+            }
+        except ClientError as e:
+            self.logger.error(f"Error calculating statistics summary: {e}")
+            return {
+                'organization_id': org_id,
+                'days': days,
+                'observable_totals': {},
+                'total_observables': 0,
+                'error': str(e)
+            }
 
     def _log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> None:
         """Internal method to log access in DynamoDB single table design."""

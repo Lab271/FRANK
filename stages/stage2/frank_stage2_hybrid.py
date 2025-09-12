@@ -441,7 +441,7 @@ async def get_platform_statistics(
     if not check_access_level(current_user["tier"], TierLevel.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
-    stats = frank_db.get_statistics_summary(current_user["organization_id"], days)
+    stats = frank_dynamodb.get_statistics_summary(current_user["organization_id"], days)
 
     # Filter stats based on access level
     if current_user["tier"] == TierLevel.OBSERVER:

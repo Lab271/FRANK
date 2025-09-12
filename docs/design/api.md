@@ -60,19 +60,19 @@ submission:
     timestamp: "2025-01-20T14:30:22Z"
     confidence: 87
     severity: "high"
-  observables:
-    network:
-      - type: "ipv4"
-        value: "185.220.102.45"
-        role: "c2_server"
-        port: 443
-      - type: "domain"
-        value: "secure-bank-verify.nl"
-        role: "phishing_domain"
-    files:
-      - type: "executable"
-        name: "banking_update.exe"
-        hash_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    observables:
+      network:
+        - type: "ipv4"
+          value: "185.220.102.45"
+          role: "c2_server"
+          port: 443
+        - type: "domain"
+          value: "secure-bank-verify.nl"
+          role: "phishing_domain"
+      files:
+        - type: "executable"
+          name: "banking_update.exe"
+          hash_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 ```
 
 ### Response Structure
