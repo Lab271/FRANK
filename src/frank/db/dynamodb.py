@@ -228,8 +228,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
             'processed_at': timestamp_str,
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-        }
-        
+        }    
         items_to_write = [submission_item]
 
         # Store organization info for querying
@@ -246,8 +245,25 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'last_active': timestamp_str,
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
-
         items_to_write.append(org_item)
+
+        # Store hit_target as another ORG# item if present
+        hit_target = getattr(submission, 'hit_target', None)
+        if hit_target and hasattr(hit_target, 'organization_id'):
+            ht_org_item = {
+                'PK': f"ORG#{hit_target.organization_id}",
+                'SK': 'ORG',
+                'GSI1PK': f"TIER#{getattr(hit_target, 'tier', 'unknown')}",
+                'GSI1SK': timestamp_str,
+                'EntityType': 'Organization',
+                'organization_id': hit_target.organization_id,
+                'tier': getattr(hit_target, 'tier', 'unknown'),
+                'sector': getattr(hit_target, 'sector', 'unknown'),
+                'region': getattr(hit_target, 'region', 'unknown'),
+                'last_active': timestamp_str,
+                'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+            }
+            items_to_write.append(ht_org_item)
 
         # Store sighting info as a separate item
         sighting = submission.sighting
@@ -263,11 +279,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'confidence': sighting.confidence,
             'severity': sighting.severity,
             'timestamp': timestamp_str,
-            'observables': sighting.observables.model_dump(exclude_none=True, by_alias=True),
+            'sighting': sighting.model_dump(exclude_none=True, by_alias=True),
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
-        
         items_to_write.append(sighting_item)
+
+        # Create observable index items
+        items_to_write.extend(self._extract_observables(submission))
 
         # Store access log
         access_log_item = {
@@ -287,9 +305,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         
         # Batch write all items
         items_to_write.append(access_log_item)
-
-        # Create observable index items
-        items_to_write.extend(self._extract_observables(submission))
 
         try:
             self._batch_write_items(items_to_write)

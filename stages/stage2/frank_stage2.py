@@ -419,7 +419,10 @@ async def health_check():
     return {
         "status": "healthy" if mysql_health_status["status"] == "healthy" and dynamodb_health_status["status"] == "healthy" else "unhealthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": [mysql_health_status, dynamodb_health_status],
+        "database": {
+            "mysql": mysql_health_status,
+            "dynamodb": dynamodb_health_status
+        },
         "version": __version__,
     }
 
@@ -671,4 +674,4 @@ if __name__ == "__main__":
     logger.info(f"Database type: {config.database_type}")
 
     # Run the server
-    uvicorn.run("frank_stage2_hybrid:app", host=args.host, port=args.port, reload=args.reload, log_level="info")
+    uvicorn.run("frank_stage2:app", host=args.host, port=args.port, reload=args.reload, log_level="info")

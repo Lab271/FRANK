@@ -142,4 +142,4 @@ status:  ## Show service status
 	@echo "Docker containers:"
 	@docker-compose -f docker-compose.simple.yml ps
 	@echo "\nService health:"
-	@curl -s http://localhost:8000/v1/health | python -c "import sys, json; data=json.load(sys.stdin); print(f\"Overall: {data['status']}\"); [print(f\"{db}: {info['status']}\") for db, info in data['databases'].items()]" 2>/dev/null || echo "API not responding"
+	@curl -s http://localhost:8000/v1/health | python -c "import sys, json; data=json.load(sys.stdin); print(f\"Overall: {data['status']}\"); [print(f\"{db}: {info['status']}\") for db, info in data['database'].items()]" 2>/dev/null || echo "API not responding"
