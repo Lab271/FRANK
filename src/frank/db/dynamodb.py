@@ -185,7 +185,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     'Enabled': True
                 }
             )
-            self.logger.info(f"✅ FRANK DynamoDB table '{self.table_name}' created successfully")
+            # self.logger.info(f"✅ FRANK DynamoDB table '{self.table_name}' created successfully")
             return True
             
         except ClientError as e:
@@ -420,8 +420,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
                         timestamp_str=timestamp_str
                     )
-                    if stats_item:
-                        observables_list.append(stats_item)
+                    # if stats_item:
+                    #     observables_list.append(stats_item)
         return observables_list
 
     def _upsert_observable_statistics(
@@ -454,7 +454,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         try:
             response = self.table.get_item(
-                Key={'PK': f'STAT#{obs_hash}', 'SK': 'STAT'}
+                Key={'PK': f'STAT#{obs_hash}', f'SK': 'STAT#{obs_type}'}
             )
             item = response.get('Item')
         except ClientError as e:
@@ -484,7 +484,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 ':sectors': list(sectors)
             }
             self.table.update_item(
-                Key={'PK': f'STAT#{obs_hash}', 'SK': 'STAT'},
+                Key={'PK': f'STAT#{obs_hash}', 'SK': f'STAT#{obs_type}'},
                 UpdateExpression=update_expr,
                 ExpressionAttributeValues=expr_attr_vals
             )
@@ -497,7 +497,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         else:
             stat_item = {
                 'PK': f'STAT#{obs_hash}',
-                'SK': 'STAT',
+                'SK': f'STAT#{obs_type}',
                 'observable_hash': obs_hash,
                 'observable_type': obs_type,
                 'observable_value': obs_value,
@@ -508,7 +508,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 'total_hits': 1,
                 'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
             }
-            # self.table.put_item(Item=stat_item)
+            self.table.put_item(Item=stat_item)
             return stat_item
 
     def _batch_write_items(self, items: List[Dict]) -> None:

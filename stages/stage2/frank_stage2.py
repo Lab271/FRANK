@@ -32,7 +32,7 @@ from frank.core.models import Submission
 from frank.db.mysql import create_mysql_database
 from frank.db.dynamodb import create_dynamodb_database
 from frank.utils.sample_builder import generate_minimal_submission
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
+from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
 from frank import __version__
 
 # Configure logging
@@ -409,6 +409,36 @@ async def search_threat_sightings(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
+
+@app.get("/v1/observations", response_model=ObservationsResponse)
+def get_observations(
+    org_id: str = Query(..., description="Organization ID"),
+    days: int = Query(30, description="Number of days to include in stats"),
+    observable_type: str = Query(None, description="Filter by observable type"),
+    limit: int = Query(100, description="Max number of results")
+):
+    """
+    Get observable statistics and details for the platform.
+    """
+    # Example: Replace with actual DB call
+    stats = frank_dynamodb.get_statistics_summary(org_id, days=days)
+    # Optionally filter by observable_type
+    observations = []
+    for obs_type, count in stats.get('observable_totals', {}).items():
+        if observable_type and obs_type != observable_type:
+            continue
+        observations.append({
+            'observable_type': obs_type,
+            'count': count
+        })
+    return ObservationsResponse(
+        total_results=len(observations),
+        returned_results=len(observations),
+        observations=observations,
+        stats=stats,
+        observable_types=list(stats.get('observable_totals', {}).keys()),
+        pagination=None
+    )
 
 # Health and status endpoints
 @app.get("/v1/health")

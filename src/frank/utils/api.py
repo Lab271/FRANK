@@ -55,3 +55,13 @@ class SightingSearchResponse(BaseModel):
     aggregations: Optional[Dict[str, Any]] = Field(None, description="Statistical summaries")
     threat_context: Optional[Dict[str, Any]] = Field(None, description="Threat context data")
     pagination: Optional[Dict[str, Any]] = Field(None, description="Pagination information")
+
+
+# Dedicated response model for Observations (Observable statistics/details)
+class ObservationsResponse(BaseModel):
+    total_results: int = Field(..., description="Total number of matching observations")
+    returned_results: int = Field(..., description="Number of observations in this response")
+    observations: List[Dict[str, Any]] = Field(..., description="Array of observation/observable objects")
+    stats: Optional[Dict[str, Any]] = Field(None, description="Aggregated statistics for observables")
+    observable_types: Optional[List[str]] = Field(None, description="List of observable types included")
+    pagination: Optional[Dict[str, Any]] = Field(None, description="Pagination information")
