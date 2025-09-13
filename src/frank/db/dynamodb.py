@@ -47,6 +47,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         Initialize DynamoDB database connection for LocalStack environment.
 
+
         Args:
             table_name: DynamoDB table name
             region: AWS region
@@ -209,6 +210,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             Logs error and returns False if batch write fails.
         """
 
+        # TODO: consider the TTL strategy for different entities
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
         
@@ -230,7 +232,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         }    
         items_to_write = [submission_item]
 
-        # Store organization info for querying
+        # Store submitter info for querying
         org_item = {
             'PK': f"ORG#{submission.submitter.organization_id}",
             'SK': 'ORG',
@@ -410,7 +412,104 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'TTL': int((timestamp + timedelta(days=2555)).timestamp())
                     }
                     observables_list.append(observable_index_item)
+                    stats_item = self._upsert_observable_statistics(
+                        obs_hash=obs_hash,
+                        obs_type=obs['type'],
+                        obs_value=obs['value'],
+                        hit_target_id=getattr(submission.hit_target, 'organization_id', None),  # Safe access to hit_target
+                        sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
+                        timestamp_str=timestamp_str
+                    )
+                    if stats_item:
+                        observables_list.append(stats_item)
         return observables_list
+
+    def _upsert_observable_statistics(
+                                        self,
+                                        obs_hash: str,
+                                        obs_type: str,
+                                        obs_value: str,
+                                        hit_target_id: Optional[str] = None,
+                                        sector: Optional[str] = None,
+                                        timestamp_str: Optional[str] = None,
+                                    ) -> dict:
+        """
+        Upsert (insert or update) an observable statistics item in DynamoDB.
+
+        This method retrieves the statistics item for a given observable hash. If the item exists, it updates
+        the last_seen timestamp, increments the total_hits counter, and adds new hit_target_id and sector values
+        to their respective sets (avoiding duplicates). If the item does not exist, it creates a new statistics item
+        with initial values. The updated or newly created item is returned for further processing or aggregation.
+
+        Args:
+            obs_hash (str): Hash of the observable.
+            obs_type (str): Type of the observable (e.g., 'ipv4', 'domain').
+            obs_value (str): Value of the observable.
+            hit_target_id (str, optional): Organization ID of the hit target, if available.
+            sector (str, optional): Sector associated with the observable, if available.
+            timestamp_str (str, optional): ISO timestamp string for the current sighting.
+
+        Returns:
+            dict: The updated or newly created statistics item for the observable.
+        """
+        try:
+            response = self.table.get_item(
+                Key={'PK': f'STAT#{obs_hash}', 'SK': 'STAT'}
+            )
+            item = response.get('Item')
+        except ClientError as e:
+            self.logger.error(f"Error reading observable statistics: {e}")
+            item = None
+
+        hit_targets = set(item.get('hit_targets', [])) if item else set()
+        sectors = set(item.get('sectors', [])) if item else set()
+
+        if hit_target_id:
+            hit_targets.add(hit_target_id)
+        if sector:
+            sectors.add(sector)
+
+        if item:
+            update_expr = (
+                "SET last_seen = :last_seen, "
+                "total_hits = if_not_exists(total_hits, :zero) + :inc, "
+                "hit_targets = :hit_targets, "
+                "sectors = :sectors"
+            )
+            expr_attr_vals = {
+                ':last_seen': timestamp_str,
+                ':inc': 1,
+                ':zero': 0,
+                ':hit_targets': list(hit_targets),
+                ':sectors': list(sectors)
+            }
+            self.table.update_item(
+                Key={'PK': f'STAT#{obs_hash}', 'SK': 'STAT'},
+                UpdateExpression=update_expr,
+                ExpressionAttributeValues=expr_attr_vals
+            )
+            # Return the updated item (merge changes)
+            item['last_seen'] = timestamp_str
+            item['total_hits'] = item.get('total_hits', 0) + 1
+            item['hit_targets'] = list(hit_targets)
+            item['sectors'] = list(sectors)
+            return None
+        else:
+            stat_item = {
+                'PK': f'STAT#{obs_hash}',
+                'SK': 'STAT',
+                'observable_hash': obs_hash,
+                'observable_type': obs_type,
+                'observable_value': obs_value,
+                'first_seen': timestamp_str,
+                'last_seen': timestamp_str,
+                'hit_targets': list(hit_targets),
+                'sectors': list(sectors),
+                'total_hits': 1,
+                'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
+            }
+            # self.table.put_item(Item=stat_item)
+            return stat_item
 
     def _batch_write_items(self, items: List[Dict]) -> None:
         """
