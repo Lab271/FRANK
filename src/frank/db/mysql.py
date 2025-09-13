@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 import json
 import pymysql
 import uuid
-import hashlib
 from datetime import datetime, timezone
 from typing import Dict, Any, List, Optional
 
