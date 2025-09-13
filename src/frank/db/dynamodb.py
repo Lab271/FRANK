@@ -221,9 +221,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'EntityType': 'Submission',
             'submission_id': submission.submission_id,
             'submitter_id': submission.submitter.organization_id,
+            'tier': submission.submitter.tier, # make sure this is explicitly stored
             'submission_timestamp': timestamp_str,
-            'confidence': submission.sighting.confidence,
-            'severity': submission.sighting.severity,
             'tlp_level': submission.tlp_level,
             'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
             'processed_at': timestamp_str,
@@ -235,12 +234,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         org_item = {
             'PK': f"ORG#{submission.submitter.organization_id}",
             'SK': 'ORG',
-            'GSI1PK': f"TIER#{submission.submitter.tier}",
+            'GSI1PK': f"TIER#SUBMITTER",
             'GSI1SK': timestamp_str,
             'EntityType': 'Organization',
             'organization_id': submission.submitter.organization_id,
-            'sector': submission.submitter.sector,
-            'region': submission.submitter.region,
+            'sector': submission.submitter.sector or 'cyber_partner',
+            'region': submission.submitter.region or 'unknown',
             'last_active': timestamp_str,
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
@@ -252,7 +251,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             ht_org_item = {
                 'PK': f"ORG#{hit_target.organization_id}",
                 'SK': 'ORG',
-                'GSI1PK': f"TIER#{getattr(hit_target, 'tier', 'unknown')}",
+                'GSI1PK': f"TIER#TARGET",
                 'GSI1SK': timestamp_str,
                 'EntityType': 'Organization',
                 'organization_id': hit_target.organization_id,
