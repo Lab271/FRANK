@@ -30,15 +30,18 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     Provides full functionality with NoSQL scalability and supports
     the complete FRANK access tier model.
     
-    Single Table Design Pattern:
+    Single Table Design Pattern - General table:
     PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
     ORG#{org_id}        | ORG             | TIER#{tier}     | #{timestamp} | Organization    | Organization metadata
     SUB#{sub_id}        | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
-    LOG#{org_id}        | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
     OBS#{obs_hash}      | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
     SIGHT#{sighting_id} | SUB#{sub_id}    | ORG#{org_id}    | #{timestamp} | Sighting        | Sighting details (confidence, severity, observables)
 
-        """
+    Log table (separate entity for access logs):
+    PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
+    LOG#{org_id}        | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
+
+    """
     
     def initialize(self) -> None:
         """
@@ -81,6 +84,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Failed to initialize DynamoDB: {e}")
             raise FRANKConnectionError(f"DynamoDB connection failed: {e}")
 
+        # Get a direct handle to the low-level client
         self.client = self.dynamodb.meta.client
 
         # Verify connection and create table if needed (LocalStack only)
@@ -190,40 +194,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"❌ Unexpected error: {e}")
             return False
 
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """
-        Insert or update organization information in DynamoDB.
-
-        Args:
-            org_data (Dict[str, Any]): Dictionary containing organization fields. Must include 'organization_id'.
-                Expected keys: organization_id, tier, sector, region, last_active (optional).
-
-        Returns:
-            bool: True if the operation succeeded, False if there was a ClientError.
-
-        Raises:
-            Logs error and returns False if DynamoDB put_item fails.
-        """
-        try:
-            timestamp = org_data.get('last_active') or datetime.now(timezone.utc).isoformat()
-            org_item = {
-                'PK': f"ORG#{org_data['organization_id']}",
-                'SK': 'ORG',
-                'GSI1PK': f"TIER#{org_data.get('tier', 'unknown')}",
-                'GSI1SK': timestamp,
-                'EntityType': 'Organization',
-                'organization_id': org_data.get('organization_id', ''),
-                'tier': org_data.get('tier', ''),
-                'sector': org_data.get('sector', ''),
-                'region': org_data.get('region', ''),
-                'last_active': timestamp,
-                'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
-            }
-            self.table.put_item(Item=org_item)
-            return True
-        except ClientError as e:
-            self.logger.error(f"Error upserting organization: {e}")
-            return False
     
     def store_submission(self, submission: Submission) -> bool:
         """
@@ -327,7 +297,41 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         except FRANKStorageError:
             return False
 
-    
+    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
+        """
+        Insert or update organization information in DynamoDB.
+
+        Args:
+            org_data (Dict[str, Any]): Dictionary containing organization fields. Must include 'organization_id'.
+                Expected keys: organization_id, tier, sector, region, last_active (optional).
+
+        Returns:
+            bool: True if the operation succeeded, False if there was a ClientError.
+
+        Raises:
+            Logs error and returns False if DynamoDB put_item fails.
+        """
+        try:
+            timestamp = org_data.get('last_active') or datetime.now(timezone.utc).isoformat()
+            org_item = {
+                'PK': f"ORG#{org_data['organization_id']}",
+                'SK': 'ORG',
+                'GSI1PK': f"TIER#{org_data.get('tier', 'unknown')}",
+                'GSI1SK': timestamp,
+                'EntityType': 'Organization',
+                'organization_id': org_data.get('organization_id', ''),
+                'tier': org_data.get('tier', ''),
+                'sector': org_data.get('sector', ''),
+                'region': org_data.get('region', ''),
+                'last_active': timestamp,
+                'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
+            }
+            self.table.put_item(Item=org_item)
+            return True
+        except ClientError as e:
+            self.logger.error(f"Error upserting organization: {e}")
+            return False
+
     def _extract_observables(self, submission: Submission) -> List[Dict]:
         """
         Extract observables from a submission for DynamoDB indexing.
@@ -361,7 +365,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
         
-        observables = []
+        observables_list = []
         observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
         
         for obs_category, obs_list in observables.items():
@@ -393,8 +397,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'timestamp': timestamp_str,
                         'TTL': int((timestamp + timedelta(days=2555)).timestamp())
                     }
-                    observables.append(observable_index_item)
-        return observables
+                    observables_list.append(observable_index_item)
+        return observables_list
 
     def _batch_write_items(self, items: List[Dict]) -> None:
         """
@@ -430,7 +434,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 {'Put': 
                     {
                         'TableName': self.table_name,
-                        'Item': self._convert_floats_to_decimal(item)
+                        'Item': item
                     }
                 }
                 for item in chunk

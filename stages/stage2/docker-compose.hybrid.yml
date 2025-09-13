@@ -56,7 +56,7 @@ services:
   frank-app:
     build:
       context: ../..  # Need to do this to include the src package
-      dockerfile: stages/stage2/Dockerfile.hybrid.stage2
+      dockerfile: stages/stage2/Dockerfile.stage2
     container_name: frank-app-stage2
     ports:
       - "8000:8000"

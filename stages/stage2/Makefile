@@ -85,12 +85,10 @@ test-submission:  ## Submit a test threat intelligence submission
 					"observables": { \
 						"network": [ \
 							{ \
-								"id": "ipv4-addr-c4e54321-1234-5678-9abc-def012345678", \
 								"type": "ipv4", \
 								"value": "185.220.102.45" \
 							}, \
 							{ \
-								"id": "domain-name-d5f65432-2345-6789-abcd-ef0123456789", \
 								"type": "domain", \
 								"value": "secure-bank-verify.nl" \
 							} \
@@ -99,6 +97,10 @@ test-submission:  ## Submit a test threat intelligence submission
 				} \
 			} \
 		}' | python -m json.tool
+
+statistics:  ## Retrieve platform statistics
+	@curl -s -X GET "http://localhost:8000/v1/statistics" \
+		-H "Authorization: Bearer core_test_token" | python -m json.tool	
 
 clean:  ## Clean up containers and volumes
 	docker-compose down -v
