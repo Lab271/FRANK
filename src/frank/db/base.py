@@ -85,19 +85,23 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
-                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Observable]:
+    def query_observables(self, org_id: str, observable_type: ObservableType = None,
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
+                         min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
         """
-        Query observables with access level filtering.
+        Query observables with access level filtering and additional filters.
 
         Args:
             org_id (str): The organization ID making the request.
             observable_type (ObservableType, optional): Type of observable to filter (default: None).
             limit (int, optional): Maximum number of results to return (default: 100).
             access_level (TierLevel, optional): Access level for filtering (default: CONTRIBUTOR).
+            min_confidence (float, optional): Minimum confidence value to include.
+            sectors (List[str], optional): List of allowed sectors to include.
+            days_back (int, optional): Only include observables seen in the last N days.
 
         Returns:
-            List[Observable]: List of filtered Observable objects.
+            List[Observable]: List of filtered Observable objects matching the filters.
         """
         pass
     

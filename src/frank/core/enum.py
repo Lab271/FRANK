@@ -17,6 +17,10 @@ class TierLevel(str, Enum):
     PARTNER = "partner"
     CORE_MEMBER = "core_member"
 
+    def can_submit(self) -> bool:
+        """Check if this tier level can submit data."""
+        return self in {TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER}    
+
     # def __lt__(self, other):
     #     if self.__class__ is other.__class__:
     #         # Define order by enum definition order

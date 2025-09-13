@@ -265,7 +265,7 @@ async def submit_threat_intelligence(
     submission = submission_request.submission
 
     # Check permissions
-    if not check_submission_permissions(current_user):
+    if not TierLevel.can_submit(current_user["tier"]):
         raise HTTPException(status_code=403, detail="Insufficient access level for submission")
 
     # Check rate limiting
@@ -369,7 +369,7 @@ async def search_threat_sightings(
             )
         else:
             # General query
-            results = frank_db.query_observables(**query_params)
+            results = frank_dynamodb.query_observables(**query_params)
 
         # Apply pagination
         total_results = len(results)
@@ -422,14 +422,6 @@ async def health_check():
         "database": [mysql_health_status, dynamodb_health_status],
         "version": __version__,
     }
-
-
-# @app.middleware("http")
-# async def log_requests(request: Request, call_next):
-#     if request.url.path == "/health":
-#         logger.warning(f"Request to /health from {request.client} - should be /v1/health")
-#     response = await call_next(request)
-#     return response
 
 
 @app.get("/v1/statistics")
@@ -615,12 +607,12 @@ def load_database():
     ]
 
     for org in demo_orgs:
-        frank_db.upsert_organization(org)
+        frank_dynamodb.upsert_organization(org)
 
     # Create some demo submissions
     for i in range(5):
         demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
-        frank_db.store_submission(demo_submission)
+        frank_dynamodb.store_submission(demo_submission)
 
     print("Demo data initialized")
 

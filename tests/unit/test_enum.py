@@ -104,6 +104,14 @@ class TestTierLevel(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     TierLevel(invalid_val)
 
+    def test_tier_level_can_submit(self):
+        """Test the can_submit method of TierLevel"""
+        self.assertFalse(TierLevel.PUBLIC.can_submit())
+        self.assertFalse(TierLevel.OBSERVER.can_submit())
+        self.assertTrue(TierLevel.CONTRIBUTOR.can_submit())
+        self.assertTrue(TierLevel.PARTNER.can_submit())
+        self.assertTrue(TierLevel.CORE_MEMBER.can_submit())
+
 
 class TestObservableType(unittest.TestCase):
     """Test ObservableType enumeration"""

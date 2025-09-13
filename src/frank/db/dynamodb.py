@@ -242,9 +242,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
         
-        # Serialize the complete submission to JSON
-        submission_json = submission.model_dump_json(by_alias=True, exclude_none=True)
-        
         # Create the main submission item
         submission_item = {
             'PK': f"SUB#{submission.submission_id}",
@@ -258,7 +255,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'confidence': submission.sighting.confidence,
             'severity': submission.sighting.severity,
             'tlp_level': submission.tlp_level,
-            'submission_data': submission_json,  # Complete submission as JSON
+            'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
             'processed_at': timestamp_str,
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
@@ -321,6 +318,50 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         # Batch write all items
         items_to_write.append(access_log_item)
 
+        # Create observable index items
+        items_to_write.extend(self._extract_observables(submission))
+
+        try:
+            self._batch_write_items(items_to_write)
+            return True
+        except FRANKStorageError:
+            return False
+
+    
+    def _extract_observables(self, submission: Submission) -> List[Dict]:
+        """
+        Extract observables from a submission for DynamoDB indexing.
+
+        This method processes the observables contained within a submission's sighting object and generates
+        DynamoDB items for each observable, following the single table design pattern. Each observable is
+        indexed for efficient cross-referencing and querying by type, value, and submission context.
+
+        Indexing Logic:
+            - Each observable is hashed and stored as a separate item with PK 'OBS#{obs_hash}' and SK 'SUB#{submission_id}'.
+            - GSI1PK is set to 'TYPE#{obs_type}' for type-based queries.
+            - Additional metadata (confidence, severity, role, port, first_seen, etc.) is included for analytics.
+            - TTL is set for long-term retention (default: ~7 years).
+
+        Args:
+            submission (Submission): The submission object containing sighting and observables.
+
+        Returns:
+            List[Dict]: List of DynamoDB items representing indexed observables.
+
+        Edge Cases & Notes:
+            - Observables missing 'type' or 'value' are skipped.
+            - Handles empty or malformed observables gracefully.
+            - Uses submission timestamp for time-based fields if not explicitly provided.
+            - Designed for bulk ingestion and supports downstream analytics and deduplication.
+
+        Example:
+            >>> items = self._extract_observables(submission)
+            >>> self._batch_write_items(items)
+        """
+        timestamp = submission.timestamp or datetime.now(timezone.utc)
+        timestamp_str = timestamp.isoformat()
+        
+        observables = []
         observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
         
         for obs_category, obs_list in observables.items():
@@ -352,17 +393,33 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'timestamp': timestamp_str,
                         'TTL': int((timestamp + timedelta(days=2555)).timestamp())
                     }
-                    items_to_write.append(observable_index_item)
-
-        try:
-            self._batch_write_items(items_to_write)
-            return True
-        except FRANKStorageError:
-            return False
-    
+                    observables.append(observable_index_item)
+        return observables
 
     def _batch_write_items(self, items: List[Dict]) -> None:
-        """Execute batch atomic write operation with automatic retry for unprocessed items."""
+        """
+        Execute batch atomic write operation with automatic retry for unprocessed items.
+
+        This method writes items to DynamoDB in chunks of 25 (the maximum allowed by DynamoDB's batch API).
+        It uses transact_write_items for atomicity, ensuring that either all items in a chunk are written or none are.
+        If any items are unprocessed (due to throttling, capacity limits, or other transient errors),
+        it will automatically retry those items until all are processed or a fatal error occurs.
+
+        DynamoDB Limitations:
+            - Maximum 25 items per batch write operation.
+            - Each item must be under 400KB in size.
+            - Batch operations are not strictly transactional across chunks; atomicity is per chunk.
+
+        Practical Usage:
+            - Use for bulk ingestion of submissions, observables, and logs.
+            - Handles retry logic for unprocessed items, reducing risk of data loss during high-throughput operations.
+
+        Args:
+            items (List[Dict]): List of items to write to DynamoDB.
+
+        Raises:
+            FRANKStorageError: If the batch write operation fails and cannot be retried.
+        """
         # DynamoDB batch write limit is 25 items
         chunk_size = 25
         
@@ -416,19 +473,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             if 'Item' not in response:
                 return None
 
-            # Deserialize and filter
-            item = self._convert_decimals_to_float(response['Item'])
-            submission_json = item.get('submission_data')
-            if not submission_json:
+            # TODO: Transform to Submission directly
+            submission_dict = response['Item'].get('submission_data')
+            if not submission_dict:
                 return None
 
-            # If stored as JSON string, parse it
-            if isinstance(submission_json, str):
-                import json
-                submission_dict = json.loads(submission_json)
-            else:
-                submission_dict = submission_json
-
+            # Apply access level filtering
+            # TODO: move this client side, not db processing
             filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
 
             # Log access
@@ -440,8 +491,33 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
     
     def query_observables(self, org_id: str, observable_type: ObservableType = None, 
-                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Observable]:
-        """Query observables with access level filtering."""
+                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
+                         min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
+        """
+        Query observables with access level filtering and additional filters.
+
+        This method retrieves observables from DynamoDB, supporting the following filters:
+        - observable_type: Only return observables of the specified type (uses GSI for efficient query).
+        - min_confidence: Only include observables with confidence >= min_confidence.
+        - sectors: Only include observables where the 'sector' field matches one of the provided sectors.
+        - days_back: Only include observables seen in the last N days (based on 'timestamp' field).
+        - limit: Maximum number of results to return.
+        - access_level: Apply access level filtering to each observable (see FRANK access tier model).
+
+        Args:
+            org_id (str): Organization ID making the request (used for access logging).
+            observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
+            limit (int, optional): Maximum number of results to return (default: 100).
+            access_level (TierLevel, optional): Access level for filtering (default: CONTRIBUTOR).
+            min_confidence (float, optional): Minimum confidence value to include.
+            sectors (List[str], optional): List of allowed sectors to include.
+            days_back (int, optional): Only include observables seen in the last N days.
+
+        Returns:
+            List[Observable]: List of observables matching the filters, deduplicated by observable_hash.
+
+        Access events are logged for auditing, including all filter parameters.
+        """
         try:
             # Query by observable_type using GSI1 if provided, else scan all ObservableIndex
             if observable_type:
@@ -465,8 +541,33 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
             # Aggregate and deduplicate by observable_hash
             observables_map = {}
+            cutoff = None
+            if days_back:
+                cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+
             for item in response.get('Items', []):
                 item = self._convert_decimals_to_float(item)
+
+                # Filter by min_confidence
+                if min_confidence is not None and item.get('confidence', 0) < min_confidence:
+                    continue
+
+                # Filter by sector
+                if sectors:
+                    sector = item.get('sector')
+                    if sector not in sectors:
+                        continue
+
+                # Filter by days_back
+                if cutoff:
+                    ts = item.get('timestamp')
+                    try:
+                        item_time = datetime.fromisoformat(ts)
+                    except Exception:
+                        item_time = None
+                    if not item_time or item_time < cutoff:
+                        continue
+
                 obs_hash = item.get('observable_hash')
                 if not obs_hash:
                     continue
@@ -514,46 +615,155 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 results.append(filtered_obs)
 
             # Log access
-            self._log_access(org_id, 'QUERY', 'observables')
+            self._log_access(org_id, 'QUERY', 'observables', details={
+                'observable_type': observable_type.value if observable_type else None,
+                'min_confidence': min_confidence,
+                'sectors': sectors,
+                'days_back': days_back
+            })
             return results[:limit]
         except ClientError as e:
             self.logger.error(f"Error querying observables: {e}")
             raise FRANKQueryError(f"Failed to query observables: {e}")
-    
+
+
+    def search_observables_by_value(self, org_id: str, search_value: str,
+                                   access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Dict[str, Any]]:
+        """
+        Search for observables by partial value match using DynamoDB scan.
+
+        Args:
+            org_id (str): Organization performing the search
+            search_value (str): Value to search for (substring match)
+            access_level (TierLevel, optional): Access level for filtering (default: CONTRIBUTOR)
+
+        Returns:
+            List[Dict[str, Any]]: List of matching observables, filtered by access level
+        """
+        try:
+            response = self.table.scan(
+                FilterExpression='EntityType = :entity_type AND contains(observable_value, :search_value)',
+                ExpressionAttributeValues={
+                    ':entity_type': 'ObservableIndex',
+                    ':search_value': search_value
+                },
+                Limit=100
+            )
+
+            results = []
+            for item in response.get('Items', []):
+                item = self._convert_decimals_to_float(item)
+                result = self._filter_observable_by_access_level(item, access_level)
+                results.append(result)
+
+            # Log access
+            self._log_access(org_id, 'SEARCH', 'observables', details={'search_value': search_value})
+
+            return results
+
+        except ClientError as e:
+            self.logger.error(f"Error searching observables: {e}")
+            raise FRANKQueryError(f"Failed to search observables: {e}")
+
+
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
         Get platform statistics summary for an organization, including totals of observables by type.
+
+        This method calculates the following statistics for the given organization and time window:
+        - Total number of organizations in the platform.
+        - Total number of submissions within the time window.
+        - Total number of sightings within the time window.
+        - Total number of observables indexed within the time window.
+        - Breakdown of observables by type (e.g., ipv4, domain, url, etc.), using the ObservableType enum.
+        
+        For each observable type, the count is calculated efficiently using DynamoDB's GSI and Select='COUNT'.
 
         Args:
             org_id (str): The organization ID to get statistics for.
             days (int, optional): Number of days to include in the summary (default: 30).
 
         Returns:
-            Dict[str, Any]: Dictionary containing summary statistics.
+            Dict[str, Any]: Dictionary containing summary statistics
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            # Scan for ObservableIndex items (OBS#)
-            response = self.table.scan(
+            # Count organizations
+            org_response = self.table.scan(
+                FilterExpression='begins_with(PK, :org_prefix) AND EntityType = :org_entity_type',
+                ExpressionAttributeValues={
+                    ':org_prefix': 'ORG#',
+                    ':org_entity_type': 'Organization'
+                },
+                Select='COUNT'
+            )
+            total_organizations = org_response.get('Count', 0)
+
+            # Count submissions
+            submission_response = self.table.scan(
+                FilterExpression='begins_with(PK, :sub_prefix) AND EntityType = :sub_entity_type AND #ts >= :cutoff',
+                ExpressionAttributeNames={'#ts': 'submission_timestamp'},
+                ExpressionAttributeValues={
+                    ':sub_prefix': 'SUB#',
+                    ':sub_entity_type': 'Submission',
+                    ':cutoff': cutoff_date.isoformat()
+                },
+                Select='COUNT'
+            )
+            total_submissions = submission_response.get('Count', 0)
+
+            # Count sightings
+            sighting_response = self.table.scan(
+                FilterExpression='begins_with(PK, :sight_prefix) AND EntityType = :sight_entity_type AND #ts >= :cutoff',
+                ExpressionAttributeNames={'#ts': 'timestamp'},
+                ExpressionAttributeValues={
+                    ':sight_prefix': 'SIGHT#',
+                    ':sight_entity_type': 'Sighting',
+                    ':cutoff': cutoff_date.isoformat()
+                },
+                Select='COUNT'
+            )
+            total_sightings = sighting_response.get('Count', 0)
+
+            # Count observables (total)
+            obs_response = self.table.scan(
                 FilterExpression='begins_with(PK, :obs_prefix) AND EntityType = :entity_type AND #ts >= :cutoff',
                 ExpressionAttributeNames={'#ts': 'timestamp'},
                 ExpressionAttributeValues={
                     ':obs_prefix': 'OBS#',
                     ':entity_type': 'ObservableIndex',
                     ':cutoff': cutoff_date.isoformat()
-                }
+                },
+                Select='COUNT'
             )
+            total_observables = obs_response.get('Count', 0)
+
+            # For observable type breakdown, query per type using GSI and Select='COUNT'
+            from frank.core.enum import ObservableType
             totals_by_type = {}
-            for item in response.get('Items', []):
-                item = self._convert_decimals_to_float(item)
-                obs_type = item.get('observable_type', 'unknown')
-                totals_by_type[obs_type] = totals_by_type.get(obs_type, 0) + 1
+            for obs_type in ObservableType:
+                response = self.table.query(
+                    IndexName='GSI1',
+                    KeyConditionExpression='GSI1PK = :type_key',
+                    FilterExpression='EntityType = :entity_type AND #ts >= :cutoff',
+                    ExpressionAttributeNames={'#ts': 'timestamp'},
+                    ExpressionAttributeValues={
+                        ':type_key': f"TYPE#{obs_type.value}",
+                        ':entity_type': 'ObservableIndex',
+                        ':cutoff': cutoff_date.isoformat()
+                    },
+                    Select='COUNT'
+                )
+                totals_by_type[obs_type.value] = response.get('Count', 0)
 
             return {
                 'organization_id': org_id,
                 'days': days,
-                'observable_totals': totals_by_type,
-                'total_observables': sum(totals_by_type.values())
+                'total_organizations': total_organizations,
+                'total_submissions': total_submissions,
+                'total_sightings': total_sightings,
+                'total_observables': total_observables, 
+                'observable_totals': totals_by_type
             }
         except ClientError as e:
             self.logger.error(f"Error calculating statistics summary: {e}")
@@ -562,6 +772,9 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 'days': days,
                 'observable_totals': {},
                 'total_observables': 0,
+                'total_sightings': 0,
+                'total_submissions': 0,
+                'total_organizations': 0,
                 'error': str(e)
             }
 
@@ -609,43 +822,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             "stack": self.environment
         }
     
-# def _create_observable_index_items(self, submission: Submission) -> List[Dict]:
-#     """Create separate index items for observables."""
-#     items = []
-#     timestamp = datetime.now(timezone.utc)
-    
-#     observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
-    
-#     for obs_category, obs_list in observables.items():
-#         if isinstance(obs_list, list):
-#             for obs in obs_list:
-#                 if 'type' not in obs or 'value' not in obs:
-#                     continue
-                
-#                 obs_hash = self.hash_observable(obs['type'], obs['value'])
-                
-#                 # Create observable index item
-#                 obs_item = {
-#                     'PK': f"OBSIDX#{obs_hash}",
-#                     'SK': f"SUB#{submission.submission_id}",
-#                     'GSI1PK': f"TYPE#{obs['type']}",
-#                     'GSI1SK': submission.timestamp or timestamp.isoformat(),
-#                     'EntityType': 'ObservableIndex',
-#                     'observable_hash': obs_hash,
-#                     'observable_type': obs['type'],
-#                     'observable_value': obs['value'],
-#                     'submission_id': submission.submission_id,
-#                     'submitter_org_id': submission.submitter.organization_id,
-#                     'confidence': submission.sighting.confidence,
-#                     'severity': submission.sighting.severity,
-#                     'first_seen': obs.get('first_seen'),
-#                     'timestamp': submission.timestamp or timestamp.isoformat(),
-#                     'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-#                 }
-#                 items.append(obs_item)
-    
-#     return items
-
 # def query_observables(self, org_id: str, observable_type: str = None, 
 #                      limit: int = 100, access_level: str = 'contributor',
 #                      min_confidence: int = None, sectors: List[str] = None,
@@ -793,43 +969,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #             raise FRANKQueryError(f"Failed to get access logs: {e}")
 
 
-#     def search_observables_by_value(self, org_id: str, search_value: str, 
-#                                    access_level: str = 'contributor') -> List[Dict[str, Any]]:
-#         """
-#         Search for observables by partial value match using DynamoDB scan.
-        
-#         Args:
-#             org_id: Organization performing the search
-#             search_value: Value to search for
-#             access_level: Access level for filtering
-            
-#         Returns:
-#             List of matching observables
-#         """
-#         try:
-#             response = self.table.scan(
-#                 FilterExpression='EntityType = :entity_type AND contains(observable_value, :search_value)',
-#                 ExpressionAttributeValues={
-#                     ':entity_type': 'ObservableStatistics',
-#                     ':search_value': search_value
-#                 },
-#                 Limit=100
-#             )
-            
-#             results = []
-#             for item in response.get('Items', []):
-#                 item = self._convert_decimals_to_float(item)
-#                 result = self._filter_observable_by_access_level(item, access_level)
-#                 results.append(result)
-            
-#             # Log access
-#             self._log_access_async(org_id, 'SEARCH', 'observables', details={'search_value': search_value})
-            
-#             return results
-            
-#         except ClientError as e:
-#             self.logger.error(f"Error searching observables: {e}")
-#             raise FRANKQueryError(f"Failed to search observables: {e}")
+
 
 #     def get_organization_info(self, org_id: str) -> Optional[Dict[str, Any]]:
 #         """
@@ -956,9 +1096,3 @@ def create_dynamodb_database(table_name: str = "frank-platform",
         "AWS_DEFAULT_REGION": region
     }
     return DynamoDBFRANKDatabase(connection_params=config, logger=logger)
-
-if __name__ == "__main__":
-    # Example usage and table creation
-    import sys
-    
-    create_dynamodb_database(table_name='frank_table', region="eu-west-1")

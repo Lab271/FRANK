@@ -119,6 +119,7 @@ class Submitter(BaseModel):
             return v
 
         # Normalize common sector variations
+        # TODO: outside model in separate file
         sector_mappings = {
             "finance": "financial",
             "banking": "financial",
@@ -180,6 +181,7 @@ class HitTarget(BaseModel):
         if v is None:
             return v
 
+        # TODO: outside model in separate file
         size_mappings = {
             "small": "small",
             "sme": "small",
@@ -219,6 +221,11 @@ class SigmaDetection(BaseModel):
     SIGMA rule detection metadata.
     """
 
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True,
+    )
+
     rule_id: str = Field(default_factory=lambda: f"sigma--{uuid.uuid4()}", description="SIGMA rule identifier")
     rule_name: str = Field(..., min_length=1, description="SIGMA rule name")
     rule_version: Optional[str] = Field(None, description="Rule version")
@@ -233,6 +240,11 @@ class Campaign(BaseModel):
     Threat campaign metadata.
     """
 
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True,
+    )
+    
     id: str = Field(default_factory=lambda: f"campaign--{uuid.uuid4()}", description="Campaign identifier")
     name: Optional[str] = Field(None, description="Campaign name")
     attribution: Optional[str] = Field(None, description="Attributed threat actor")
@@ -249,6 +261,11 @@ class ThreatContext(BaseModel):
     Threat context including campaign and MITRE mapping.
     """
 
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True,
+    )
+    
     campaign: Optional[Campaign] = Field(None, description="Campaign information")
     mitre_attack: Optional[Dict[str, Any]] = Field(None, description="MITRE ATT&CK mapping")
     malware_family: Optional[Dict[str, Any]] = Field(None, description="Malware family data")
@@ -258,6 +275,11 @@ class Impact(BaseModel):
     """
     Impact assessment metadata.
     """
+
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True,
+    )
 
     affected_systems: Optional[int] = Field(None, description="Number of affected systems")
     compromised_accounts: Optional[int] = Field(None, description="Compromised accounts")
@@ -276,10 +298,7 @@ class Sighting(BaseModel):
     )
 
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="When threat was observed",
-    )
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When threat was observed")
     confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
     observation_count: int = Field(default=1, ge=1, description="Number of observations")
     observables: Optional[Observables] = Field(None, description="Threat observables")
@@ -361,23 +380,23 @@ class Submission(BaseModel):
         extra="ignore",  # Be forgiving on input
         use_enum_values=True,
     )
+
     submission_id: Optional[str] = Field(None, description="Unique submission identifier")
     format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
-    timestamp: datetime = Field(
-        default_factory=lambda: datetime.now(timezone.utc),
-        description="Submission timestamp",
-    )
+    timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc),  description="Submission timestamp")
 
     # Optional metadata - be forgiving on input
+    submitter: Optional[Submitter] = Field(None, description="Submitting organization")
     submission_method: Optional[str] = Field(default="api", description="Submission method")
     processing_notes: Optional[str] = Field(None, description="Processing notes")
+
+    sighting: Sighting = Field(..., description="Sighting details")
+    # TODO: Move this to sighting?
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organization")
     tlp_level: Optional[str] = Field("GREEN", description="TLP classification")
     confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
     severity: Optional[str] = Field(None, description="Threat severity")
 
-    submitter: Optional[Submitter] = Field(None, description="Submitting organization")
-    hit_target: Optional[HitTarget] = Field(None, description="Affected organization")
-    sighting: Sighting = Field(..., description="Sighting details")
 
     @field_serializer("timestamp", when_used="always")
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
@@ -405,24 +424,6 @@ class Submission(BaseModel):
 
         return self
 
-    # def to_api_format(self) -> Dict[str, Any]:
-    #     """Convert to API format - 'strong on what you return'"""
-    #     submission = {
-    #         "submission": {
-    #             "submitter": self.submitter.model_dump(
-    #                 exclude_none=True,
-    #                 by_alias=True
-    #             ),
-    #             "sighting": self.sighting.model_dump(
-    #                 exclude_none=True,
-    #                 by_alias=True
-    #             ),
-    #         }
-    #     }
-    #     if self.hit_target:
-    #         submission['hit_target'] = self.hit_target.model_dump()
-    #     return submission
-
     def to_yaml(self) -> str:
         """Convert to YAML with proper formatting"""
         import yaml
@@ -437,6 +438,9 @@ class Submission(BaseModel):
         data = {"submission": self.model_dump(exclude_none=True, by_alias=True)}
         return json.dumps(data)
 
+    # TODO: add from_yaml/from_json classmethods
+
+    # Move this to sighting?
     def extract_iocs(self) -> Dict[str, List[str]]:
         """Extract IoCs for threat intelligence processing"""
         iocs = {"ip_addresses": [], "domains": [], "urls": [], "emails": []}
@@ -450,33 +454,10 @@ class Submission(BaseModel):
                 iocs["urls"].append(obs.value)
             elif obs.type == ObservableType.EMAIL:
                 iocs["emails"].append(obs.value)
+            # TODO: extend for other types
 
         return iocs
 
-    def anonymize_for_tier(self, access_tier: TierLevel) -> "Submission":
-        """Anonymize submission based on access tier - 'strong on return'"""
-        import copy
-
-        anonymized = copy.deepcopy(self)
-
-        if access_tier == TierLevel.PUBLIC:
-            # Heavy anonymization for public access
-            for obs in anonymized.observables.network:
-                obs.value = f"hash_{hash(obs.value) % 10000:04d}"
-            # Remove detailed metadata
-            anonymized.hit_target.organization_id = "redacted"
-            anonymized.submitter.organization_id = "redacted"
-
-        elif access_tier == TierLevel.OBSERVER:
-            # Partial anonymization
-            for obs in anonymized.observables.network:
-                if obs.type == ObservableType.IPV4:
-                    parts = obs.value.split(".")
-                    obs.value = f"{parts[0]}.{parts[1]}.x.x"
-                elif obs.type == ObservableType.DOMAIN:
-                    obs.value = f"*.{'.'.join(obs.value.split('.')[1:])}"
-
-        return anonymized
 
     @classmethod
     def create_minimal(
@@ -504,6 +485,7 @@ class Submission(BaseModel):
         )
 
     @classmethod
+    # TODO: Improve this and use Sightings/Observables
     def from_legacy_dict(cls, data: Dict[str, Any]) -> "Submission":
         """
         Parse from legacy format - handles your current dataclass format.
@@ -529,32 +511,31 @@ class Submission(BaseModel):
             # Build sighting
             sighting_data = submission_data.get("sighting", {})
 
-            # Handle observables nested in sighting (legacy format)
-            if "observables" in sighting_data:
-                observables_data = sighting_data.pop("observables")
+            # Handle observables nested in sighting (legacy formats)
+            if "observables" in submission_data:
+                observables_data = submission_data.pop("observables")
+            elif "observables" in sighting_data:
+                observables_data = sighting_data.pop("observables", {})
             else:
-                observables_data = submission_data.get("observables", {})
-
-            sighting = Sighting(**sighting_data)
+                observables_data = {}
 
             # Build observables - be forgiving on format
-            network_obs = []
-            if observables_data.get("network"):
-                for obs_data in observables_data["network"]:
-                    try:
-                        network_obs.append(Observable(**obs_data))
-                    except Exception as e:
-                        # Log warning but continue - be forgiving
-                        print(f"Warning: Skipping invalid observable: {e}")
-                        continue
+            obs = {}
+            for obs_type in ["network", "file", "process"]:
+                obs[obs_type] = []  
+                if observables_data.get(obs_type):
+                    for obs_data in observables_data[obs_type]:
+                        try:
+                            obs[obs_type].append(Observable(**obs_data))
+                        except Exception:
+                            continue
 
-            observables = Observables(network=network_obs)
+            sighting = Sighting(observables=Observables(**obs), **sighting_data)
 
             return cls(
                 submitter=submitter,
                 hit_target=hit_target,
-                sighting=sighting,
-                observables=observables,
+                sighting=sighting
             )
 
         except Exception as e:
@@ -587,51 +568,54 @@ def example_usage():
     except ValueError as e:
         print(f"✓ Validation caught invalid IP: {e}")
 
-    # # 3. Demonstrate 'be forgiving' parsing
-    # print("\n3. Testing 'be forgiving' legacy format parsing...")
-    # legacy_data = {
-    #     "submission": {
-    #         "submitter": {"tier": "partner"},  # Missing org_id - will be generated
-    #         "hit_target": {"sector": "finance"},  # Will be normalized to "financial"
-    #         "sighting": {
-    #             "confidence": 85,
-    #             "observables": {  # Nested format - will be handled
-    #                 "network": [
-    #                     {"type": "ipv4", "value": "203.0.113.1"}
-    #                 ]
-    #             }
-    #         }
-    #     }
-    # }
+    # 3. Demonstrate 'be forgiving' parsing
+    print("\n3. Testing 'be forgiving' legacy format parsing...")
+    legacy_data = {
+        "submission": {
+            "submitter": {"tier": "partner"},  # Missing org_id - will be generated
+            "hit_target": {"sector": "finance"},  # Will be normalized to "financial"
+            "sighting": {
+                "confidence": 85
+            },
+            "observables": {  # Old format in Submission
+                "network": [
+                    {"type": "ipv4", "value": "203.0.113.1"}
+                ]
+            }
+        }
+    }
 
-    # parsed = FRANKSubmission.from_legacy_dict(legacy_data)
-    # print(f"✓ Legacy format parsed successfully")
-    # print(f"  - Generated org IDs: {parsed.submitter.organization_id[:12]}...")
-    # print(f"  - Normalized sector: {parsed.hit_target.sector}")
+    parsed = Submission.from_legacy_dict(legacy_data)
+    print(f"✓ Legacy format parsed successfully")
+    print(f"  - Generated org IDs: {parsed.submitter.organization_id[:12]}...")
+    print(f"  - Normalized sector: {parsed.hit_target.sector}")
 
-    # # 4. Demonstrate 'strong on return'
-    # print("\n4. Testing 'strong on return' output...")
-    # api_output = parsed.to_api_format()
-    # print("✓ Strict API format generated")
+    # 4. Demonstrate 'strong on return'
+    print("\n4. Testing 'strong on return' output ...")
+    api_output = parsed.model_dump(exclude_none=True, by_alias=True)
+    print("✓ Strict API format generated")
 
-    # # 5. Demonstrate access-based anonymization
-    # print("\n5. Testing tier-based anonymization...")
-    # public_view = parsed.anonymize_for_tier(TierLevel.PUBLIC)
-    # observer_view = parsed.anonymize_for_tier(TierLevel.OBSERVER)
+    # 5. Demonstrate serialization
+    print("\n5. Testing serialization to JSON/YAML ...")
+    json_output = parsed.to_json()
+    yaml_output = parsed.to_yaml()
+    print(f"✓ JSON output length: {len(json_output)} characters")
+    print(f"✓ YAML output length: {len(yaml_output)} characters")
 
-    # print(f"  - Original IP: {parsed.observables.network[0].value}")
-    # print(f"  - Observer view: {observer_view.observables.network[0].value}")
-    # print(f"  - Public view: {public_view.observables.network[0].value}")
+    # 6. Demonstrate 'strong on return' output
+    print("\n6. Testing 'strong on return' output ...")
+    strong_output = parsed.model_dump(exclude_none=True, by_alias=True)
+    print("✓ Strong output format generated")  
+    print(f"  - Keys in output: {list(strong_output.keys())}")
+    
 
-    # print("\n=== Pydantic v2 Benefits Demonstrated ===")
-    # print("✓ Updated validation with helpful error messages")
-    # print("✓ Type safety and IDE support")
-    # print("✓ Flexible input parsing ('be forgiving')")
-    # print("✓ Strict output formatting ('strong on return')")
-    # print("✓ Built-in serialization to JSON/YAML")
-    # print("✓ Factory methods for common use cases")
-    # print("✓ Access-tier based data filtering")
-    # print("✓ Fixed @root_validator deprecation warnings")
+    print("\n=== Pydantic v2 Benefits Demonstrated ===")
+    print("✓ Updated validation with helpful error messages")
+    print("✓ Type safety and IDE support")
+    print("✓ Flexible input parsing ('be forgiving')")
+    print("✓ Strict output formatting ('strong on return')")
+    print("✓ Built-in serialization to JSON/YAML")
+    print("✓ Factory methods for common use cases")
 
 
 if __name__ == "__main__":

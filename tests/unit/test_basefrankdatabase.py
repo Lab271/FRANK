@@ -34,9 +34,11 @@ class DummyDatabase(BaseFRANKDatabase):
         super().get_submission_by_id(submission_id, org_id, access_level)
         return None
 
-    def query_observables(self, org_id, observable_type=None, limit=100, access_level=None):
+    def query_observables(self, org_id, observable_type=None, limit=100, access_level=None,
+                         min_confidence=None, sectors=None, days_back=None):
         # Not recommended: calling super() abstract method for coverage only
-        super().query_observables(org_id, observable_type, limit, access_level)
+        super().query_observables(org_id, observable_type, limit, access_level,
+                                 min_confidence, sectors, days_back)
         return []
 
     def get_statistics_summary(self, org_id, days=30):
@@ -94,8 +96,17 @@ class TestBaseFRANKDatabase(unittest.TestCase):
         self.assertIsNone(self.db.get_submission_by_id("subid", "orgid"))
 
     def test_query_observables(self):
-        """Test query_observables method."""
-        self.assertEqual(self.db.query_observables("orgid"), [])
+        """Test query_observables method with all parameters."""
+        result = self.db.query_observables(
+            "orgid",
+            observable_type=None,
+            limit=100,
+            access_level=None,
+            min_confidence=None,
+            sectors=None,
+            days_back=None
+        )
+        self.assertEqual(result, [])
 
     def test_get_statistics_summary(self):
         """Test get_statistics_summary method."""
