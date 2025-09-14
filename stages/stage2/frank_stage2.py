@@ -249,9 +249,15 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
+<<<<<<< HEAD
         success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], submission)
 
         # TODO: simplify error handling in client, propagate Exceptions, not status flags
+=======
+        success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], ubmission)
+
+        # TODO: simplify error handling in client, propage Exceptions, not status flags
+>>>>>>> ad17d2e ( some cleanup)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
 
