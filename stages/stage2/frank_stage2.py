@@ -38,7 +38,9 @@ from frank import __version__
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger('uvicorn.error')
+
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 # curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
@@ -331,8 +333,8 @@ async def search_threat_sightings(
 
 
         total_results, sightings, aggregations, threat_context = frank_client.query_threats(
-            org_id=current_user["organization_id"], tier=current_user["tier"], 
-            format=format, offset=offset, limit=limit,
+            # org_id=current_user["organization_id"], tier=current_user["tier"], 
+            format=format, offset=offset,
             observable=observable, **query_params
         )
 
@@ -405,27 +407,6 @@ async def get_platform_statistics(
         tier=current_user["tier"]
     )  
     return stats
-
-# ===============================
-# Helper functions
-# ===============================
-
-# # initialize demo data
-# def load_database():
-#     """Initialize the database and load with some demo data"""
-#     logger.info(f"Initialiazing FRANK API server database.")
-
-
-#     for org in create_demo_orgs(id_fixed=True):
-#         frank_dynamodb.upsert_organization(org)
-
-#     # Create some demo submissions
-#     for i in range(5):
-#         demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
-#         frank_dynamodb.store_submission(demo_submission)
-
-#     logger.info("Demo data initialized")
-
 
 # Error handlers
 @app.exception_handler(HTTPException)

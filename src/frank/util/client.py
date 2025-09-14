@@ -59,7 +59,7 @@ class FRANKClient:
 
 
     def query_threats(self, org_id: str, 
-        tier: AccessTier, limit: int, offset: int, format: Optional[str], 
+        access_level: AccessTier, limit: int, offset: int, format: Optional[str], 
         observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
         """
         Query threat intelligence records for a given organization, applying access level filtering, pagination, and formatting.
@@ -71,7 +71,7 @@ class FRANKClient:
 
         Args:
             org_id (str): Organization ID making the query.
-            tier (AccessTier): Access tier for filtering and formatting results.
+            access_level (AccessTier): Access tier for filtering and formatting results.
             limit (int): Maximum number of results to return.
             offset (int): Pagination offset.
             format (Optional[str]): Response format type.
@@ -88,7 +88,7 @@ class FRANKClient:
 
         # Search by specific observable if provided
         if observable:
-            results = self.database.search_observables_by_value(org_id, observable, tier)
+            results = self.database.search_observables_by_value(org_id, observable, access_level)
         else:
             # General query
             results = self.database.query_observables(**filters)
@@ -99,17 +99,17 @@ class FRANKClient:
         # Build response based on access level and format
         sightings = []
         for result in paginated_results:
-            sighting = format_sighting_response(result, tier, format)
+            sighting = format_sighting_response(result, access_level, format)
             sightings.append(sighting)
 
         aggregations = {}
         threat_context = {}
         # Add aggregations for contributor and above
-        if tier.check_access_level(AccessTier.CONTRIBUTOR):
-            aggregations = generate_aggregations(results, tier)
+        if access_level.check_access_level(AccessTier.CONTRIBUTOR):
+            aggregations = generate_aggregations(results, access_level)
 
         # Add threat context for partner and above
-        if tier.check_access_level(AccessTier.PARTNER):
+        if access_level.check_access_level(AccessTier.PARTNER):
             threat_context = generate_threat_context(results)
 
         return (total_results, sightings, aggregations, threat_context)

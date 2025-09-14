@@ -3,7 +3,9 @@
 Unit tests for BaseFRANKDatabase abstract base class in base.py
 """
 import unittest
-from frank.storage.base import BaseFRANKDatabase
+from unittest.mock import MagicMock
+from frank.core.enum import AccessTier
+from frank.storage import BaseFRANKDatabase
 
 class DummyDatabase(BaseFRANKDatabase):
     """
@@ -56,7 +58,10 @@ class DummyDatabase(BaseFRANKDatabase):
         super().health_check()
         return {"status": "ok"}
 
-class TestBaseFRANKDatabase(unittest.TestCase):
+class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
+    """
+    Unit tests for the BaseFRANKDatabase abstract base class.
+    """
 
     def setUp(self):
         """Set up DummyDatabase instance."""
@@ -122,6 +127,122 @@ class TestBaseFRANKDatabase(unittest.TestCase):
         """Test health_check method."""
         status = self.db.health_check()
         self.assertEqual(status["status"], "ok")
+
+
+class TestBaseFRANKDatabase(unittest.TestCase):
+    """
+    Unit tests for the BaseFRANKDatabase methods.
+    """
+
+    def setUp(self):
+        """Set up DummyDatabase instance."""
+        connection_params = {"test_param": "value"}
+        mock_logger = MagicMock()
+        self.db = DummyDatabase(connection_params=connection_params, logger=mock_logger)
+
+
+    def test_filter_submission_by_access_level_public(self):
+        """Test _filter_submission_by_access_level for PUBLIC tier."""
+        submission = {
+            'submission_id': 'subid',
+            'timestamp': '2025-09-14T00:00:00Z',
+            'sighting': {
+                'confidence': 80,
+                'timestamp': '2025-09-14T00:00:00Z',
+                'observation_count': 5,
+                'observables': {}
+            }
+        }
+        result = self.db._filter_submission_by_access_level(submission, AccessTier.PUBLIC)
+        self.assertIn('submission', result)
+        self.assertIn('sighting', result['submission'])
+        self.assertEqual(result['submission']['sighting']['confidence'], 80)
+
+    def test_filter_submission_by_access_level_observer(self):
+        """Test _filter_submission_by_access_level for OBSERVER tier."""
+        submission = {
+            'submission_id': 'subid',
+            'timestamp': '2025-09-14T00:00:00Z',
+            'sighting': {
+                'confidence': 80,
+                'timestamp': '2025-09-14T00:00:00Z',
+                'observation_count': 5,
+                'observables': {
+                    'ip': [{'value': '1.2.3.4.5.6.7.8.9.10'}]
+                }
+            },
+            'hit_target': {'organization_id': 'orgid'},
+            'tlp_level': 'red'
+        }
+        result = self.db._filter_submission_by_access_level(submission, AccessTier.OBSERVER)
+        self.assertIn('submission', result)
+        obs_val = result['submission']['sighting']['observables']['ip'][0]['value']
+        self.assertTrue(obs_val.endswith('...'))
+        self.assertNotIn('hit_target', result['submission'])
+        self.assertNotIn('tlp_level', result['submission'])
+
+    def test_filter_submission_by_access_level_contributor(self):
+        """Test _filter_submission_by_access_level for CONTRIBUTOR tier."""
+        submission = {
+            'submission_id': 'subid',
+            'timestamp': '2025-09-14T00:00:00Z',
+            'sighting': {
+                'confidence': 80,
+                'timestamp': '2025-09-14T00:00:00Z',
+                'observation_count': 5,
+                'observables': {}
+            },
+            'hit_target': {'organization_id': 'orgid', 'sector': 'finance'}
+        }
+        result = self.db._filter_submission_by_access_level(submission, AccessTier.CONTRIBUTOR)
+        self.assertIn('submission', result)
+        hit_target = result['submission']['hit_target']
+        self.assertNotIn('organization_id', hit_target)
+        self.assertEqual(hit_target['sector'], 'finance')
+
+    def test_filter_submission_by_access_level_partner(self):
+        """Test _filter_submission_by_access_level for PARTNER tier (full access)."""
+        submission = {'submission_id': 'subid', 'sighting': {}}
+        result = self.db._filter_submission_by_access_level(submission, AccessTier.PARTNER)
+        self.assertIn('submission', result)
+        self.assertEqual(result['submission'], submission)
+
+    def test_filter_observable_by_access_level_public(self):
+        """Test _filter_observable_by_access_level for PUBLIC tier."""
+        observable = {
+            'observable_type': 'ip',
+            'total_sightings': 10,
+            'last_seen': '2025-09-14T00:00:00Z',
+            'observable_value': '1.2.3.4'
+        }
+        result = self.db._filter_observable_by_access_level(observable, AccessTier.PUBLIC)
+        self.assertIn('observable_type', result)
+        self.assertIn('total_sightings', result)
+        self.assertIn('last_seen', result)
+        self.assertNotIn('observable_value', result)
+
+    def test_filter_observable_by_access_level_observer(self):
+        """Test _filter_observable_by_access_level for OBSERVER tier."""
+        observable = {
+            'observable_type': 'ip',
+            'total_sightings': 10,
+            'last_seen': '2025-09-14T00:00:00Z',
+            'observable_value': '1.2.3.4.5.6.7.8.9.10'
+        }
+        result = self.db._filter_observable_by_access_level(observable, AccessTier.OBSERVER)
+        self.assertIn('observable_value', result)
+        self.assertTrue(result['observable_value'].endswith('...'))
+
+    def test_filter_observable_by_access_level_contributor(self):
+        """Test _filter_observable_by_access_level for CONTRIBUTOR tier (full access)."""
+        observable = {
+            'observable_type': 'ip',
+            'total_sightings': 10,
+            'last_seen': '2025-09-14T00:00:00Z',
+            'observable_value': '1.2.3.4'
+        }
+        result = self.db._filter_observable_by_access_level(observable, AccessTier.CONTRIBUTOR)
+        self.assertEqual(result, observable)
 
     def test_hash_observable(self):
         """Test hash_observable method."""
