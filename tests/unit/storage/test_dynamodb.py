@@ -82,8 +82,9 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         patcher_resource = patch('boto3.resource')
         self.mock_resource = patcher_resource.start()
         self.addCleanup(patcher_resource.stop)
-
-        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=None)
+        # Patch logger if needed
+        self.logger = MagicMock()
+        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
         self.db.table = MagicMock()
         self.db.client = MagicMock()
         self.db.logger = MagicMock()
@@ -192,8 +193,9 @@ class TestDynamoDBFRANKDatabaseBatchWriteError(unittest.TestCase):
         patcher_resource = patch('boto3.resource')
         self.mock_resource = patcher_resource.start()
         self.addCleanup(patcher_resource.stop)
-
-        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=None)
+        # Patch logger if needed
+        self.logger = MagicMock()
+        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
         self.db.table = MagicMock()
         self.db.client = MagicMock()
         self.db.logger = MagicMock()
@@ -210,7 +212,10 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
         self.mock_resource = patcher_resource.start()
         self.addCleanup(patcher_resource.stop)
 
-        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=None)
+        # Patch logger if needed
+        self.logger = MagicMock()
+
+        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
         self.db.table = MagicMock()
         self.db.client = MagicMock()
         self.db.logger = MagicMock()

@@ -10,15 +10,12 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
+from unittest.mock import MagicMock
 import tempfile
+
 import os
 import sqlite3
 from datetime import datetime, timezone
-
-# Import the modules we're testing
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from frank.core.models import Submission
 from frank.core.enum import ObservableType, TierLevel
@@ -33,8 +30,9 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.temp_db = tempfile.NamedTemporaryFile(delete=False)
         self.temp_db.close()
         self.db_path = self.temp_db.name
-        # self.db_path = ":memory:"
-        self.db = SQLiteFRANKDatabase({'db_path': self.db_path})
+        # Patch logger if needed
+        self.logger = MagicMock()
+        self.db = SQLiteFRANKDatabase({'db_path': self.db_path}, logger=self.logger)
 
     def tearDown(self):
         """Clean up after each test"""

@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional
 import logging
 from datetime import datetime, timezone
 
-from frank.core.models import Submission, Sightings, Observables
+from frank.core.models import Submission
 from frank.core.enum import TierLevel
 from frank.storage import BaseFRANKDatabase
 from frank.storage import FRANKDatabaseError, FRANKConfigurationError, FRANKConnectionError

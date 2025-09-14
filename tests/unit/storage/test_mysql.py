@@ -20,7 +20,9 @@ class TestMySQLFRANKDatabaseLogAccess(unittest.TestCase):
         self.mock_cursor = MagicMock()
         self.mock_get_connection.return_value = self.mock_conn
         self.mock_conn.cursor.return_value = self.mock_cursor
-        self.db = MySQLFRANKDatabase(connection_params={"database": "frank", "host": "localhost"}, logger=None)
+        # Patch logger if needed
+        self.logger = MagicMock()
+        self.db = MySQLFRANKDatabase(connection_params={"database": "frank", "host": "localhost"}, logger=self.logger)
 
     @patch.object(MySQLFRANKDatabase, '_log_access')
     def test_log_access_calls__log_access(self, mock_log_access):
