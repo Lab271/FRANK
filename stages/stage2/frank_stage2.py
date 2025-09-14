@@ -287,8 +287,8 @@ async def search_threat_sightings(
 
 
         total_results, sightings, aggregations, threat_context = frank_client.query_threats(
-            org_id=current_user["organization_id"], access_level=current_user["access_level"], 
-            format=format, offset=offset, limit=limit,
+            # org_id=current_user["organization_id"], access_level=current_user["access_level"], limit=limit, 
+            format=format, offset=offset,
             observable=observable, **query_params
         )
 
