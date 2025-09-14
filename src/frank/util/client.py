@@ -104,7 +104,7 @@ class FRANKClient:
             results = self.database.search_observables_by_value(org_id, observable, access_level)
         else:
             # General query
-            results = self.database.query_observables(**filters)
+            results = self.database.query_observables(org_id=org_id, **filters)
 
         total_results = len(results)
         paginated_results = results[offset : offset + limit]
