@@ -42,7 +42,7 @@ The FRANK platform's core functionality centers around two primary API endpoints
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `submission.submitter.organization_id` | string | ✅ | Unique identifier for submitting organization |
-| `submission.submitter.tier` | string | ✅ | Access tier: `contributor`, `partner`, `core_member` |
+| `submission.submitter.access_level` | string | ✅ | Access tier: `contributor`, `partner`, `core_member` |
 | `submission.sighting.sighting_id` | string | ✅ | UUID for the sighting event |
 | `submission.sighting.timestamp` | ISO 8601 | ✅ | When the threat was observed |
 | `submission.sighting.confidence` | integer | ✅ | Confidence score (0-100) |

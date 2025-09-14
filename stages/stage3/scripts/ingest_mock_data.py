@@ -24,7 +24,7 @@ class MockDataGenerator:
         
         # Mock data pools
         self.sectors = ['finance', 'healthcare', 'manufacturing', 'government', 'technology', 'energy', 'retail', 'education']
-        self.tiers = ['partner', 'premium', 'enterprise', 'community']
+        self.access_levels = ['partner', 'premium', 'enterprise', 'community']
         self.observable_types = ['ipv4', 'domain', 'url', 'file_hash', 'email']
         self.roles = ['c2_server', 'phishing_domain', 'malicious_ip', 'botnet_member', 'drop_zone', 'exfiltration_point']
         
@@ -154,7 +154,7 @@ class MockDataGenerator:
             "submission": {
                 "submitter": {
                     "organization_id": org_id,
-                    "access_level": random.choice(self.tiers),
+                    "access_level": random.choice(self.access_levels),
                     "sector": random.choice(self.sectors)
                 },
                 "sighting": {

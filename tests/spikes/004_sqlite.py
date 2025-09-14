@@ -395,7 +395,7 @@ class FRANKDatabase:
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
-                    SELECT s.*, o.tier as submitter_tier
+                    SELECT s.*, o.access_level as submitter_tier
                     FROM submissions s
                     JOIN organizations o ON s.submitter_org_id = o.organization_id
                     WHERE s.submission_id = ?
@@ -514,7 +514,7 @@ class FRANKSubmission:
     # Required fields for minimal submission
     REQUIRED_FIELDS = {
         'submission.submitter.organization_id',
-        'submission.submitter.tier', 
+        'submission.submitter.access_level', 
         'submission.sighting.sighting_id',
         'submission.sighting.timestamp',
         'submission.sighting.observables'
@@ -534,7 +534,7 @@ class FRANKSubmission:
     
     def generate_minimal_submission(self, 
                                   org_id: str = None,
-                                  tier: str = "partner",
+                                  access_level: str = "partner",
                                   observables: List[Dict] = None) -> Dict[str, Any]:
         """
         Generate a minimal FRANK submission with only required fields.
@@ -593,7 +593,7 @@ class FRANKSubmission:
         # Store in database
         return self.db.store_submission(submission)
     
-    def query_threats(self, org_id: str, tier: str = "contributor", 
+    def query_threats(self, org_id: str, access_level: str = "contributor", 
                      observable_type: str = None, limit: int = 100) -> List[Dict[str, Any]]:
         """
         Query threat intelligence with access level filtering.
@@ -782,7 +782,7 @@ def run_tests():
     for i, org in enumerate(test_orgs):
         test_submission = frank.generate_minimal_submission(
             org_id=org,
-            tier="partner",
+            access_level="partner",
             observables=test_observables[i]
         )
         if frank.submit_to_database(test_submission):
@@ -796,7 +796,7 @@ def run_tests():
     # Test different access levels
     access_levels = ["public", "observer", "contributor", "partner"]
     for level in access_levels:
-        threats = frank.query_threats("org-alpha", tier=level, limit=10)
+        threats = frank.query_threats("org-alpha", access_level=level, limit=10)
         print(f"  {level.capitalize()}: Retrieved {len(threats)} threats")
     
     # Test 6: Platform statistics
@@ -839,8 +839,8 @@ def run_tests():
     
     # Test 11: Access level filtering
     print("\n11. Testing access level filtering...")
-    public_threats = frank.query_threats("test-org", tier="public", limit=5)
-    partner_threats = frank.query_threats("test-org", tier="partner", limit=5)
+    public_threats = frank.query_threats("test-org", access_level="public", limit=5)
+    partner_threats = frank.query_threats("test-org", access_level="partner", limit=5)
     
     print(f"✓ Public access: {len(public_threats)} threats (filtered)")
     print(f"✓ Partner access: {len(partner_threats)} threats (full access)")
@@ -918,7 +918,7 @@ def run_database_demo():
     for i, org in enumerate(organizations):
         submission = frank.generate_minimal_submission(
             org_id=org["id"],
-            tier=org["access_level"],
+            access_level=org["access_level"],
             observables=[{
                 "id": f"shared-threat-{i}",
                 "type": "ipv4",
@@ -948,7 +948,7 @@ def run_database_demo():
     ]
     
     for level, description in access_levels:
-        threats = frank.query_threats("demo-org", tier=level, limit=3)
+        threats = frank.query_threats("demo-org", access_level=level, limit=3)
         print(f"  {level.upper():12} ({description}): {len(threats)} threats visible")
         
         if threats:
@@ -1033,7 +1033,7 @@ def run_database_demo():
         
         submission = frank.generate_minimal_submission(
             org_id=f"security-team-{i+1}",
-            tier="contributor",
+            access_level="contributor",
             observables=[{
                 "id": f"file-{uuid.uuid4()}",
                 "type": "file_hash",

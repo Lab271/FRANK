@@ -59,7 +59,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Create programmatic test data
         self.test_submitter = Submitter(
             organization_id="identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-            tier=AccessTier.PARTNER
+            access_level=AccessTier.PARTNER
         )
         
         self.test_observables = [
@@ -94,7 +94,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Verify submitter
         self.assertEqual(submission.submitter.organization_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
-        self.assertEqual(submission.submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)
         
         # Verify sighting
         self.assertEqual(submission.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
@@ -190,7 +190,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Verify YAML structure and content
         self.assertIn("submission:", yaml_str)
         self.assertIn("submitter:", yaml_str)
-        self.assertIn("tier: partner", yaml_str)
+        self.assertIn("access_level: partner", yaml_str)
         self.assertIn("confidence: 87", yaml_str)
         self.assertIn("type: ipv4", yaml_str)
         self.assertIn("type: domain", yaml_str)
@@ -202,7 +202,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         submission:
           submitter:
             organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
-            tier: "partner"
+            access_level: "partner"
           sighting:
             sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
             timestamp: "2025-01-20T14:30:22Z"
@@ -221,7 +221,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         submission = Submission(**parsed_yaml["submission"])
         
         # Verify parsing worked correctly
-        self.assertEqual(submission.submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submission.sighting.confidence, 87)
         self.assertEqual(len(submission.sighting.observables.network), 2)
 
@@ -423,7 +423,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Should be able to roundtrip
         roundtrip_submission = Submission(**export_wrapped["submission"])
         
-        self.assertEqual(submission.submitter.tier, roundtrip_submission.submitter.tier)
+        self.assertEqual(submission.submitter.access_level, roundtrip_submission.submitter.access_level)
         self.assertEqual(submission.sighting.confidence, roundtrip_submission.sighting.confidence)
 
     def test_complex_roundtrip_scenario(self):
@@ -453,7 +453,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Check key invariants across all formats
         for sub in submissions:
             self.assertEqual(sub.submitter.organization_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
-            self.assertEqual(sub.submitter.tier, AccessTier.PARTNER)
+            self.assertEqual(sub.submitter.access_level, AccessTier.PARTNER)
             self.assertEqual(sub.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
             self.assertEqual(sub.sighting.confidence, 87)
             self.assertEqual(len(sub.sighting.observables.network), 2)

@@ -206,7 +206,7 @@ def check_submission_permissions(user: Dict[str, Any]) -> bool:
     return user.get("access_level") in allowed_tiers
 
 
-def check_access_level(user_tier: AccessTier, required_level: AccessTier) -> bool:
+def check_access_level(user_access_level: AccessTier, required_level: AccessTier) -> bool:
     """Check if user tier meets required access level"""
     tier_hierarchy = {
         AccessTier.PUBLIC: 0,
@@ -222,7 +222,7 @@ def check_access_level(user_tier: AccessTier, required_level: AccessTier) -> boo
     return user_level >= required_level_num
 
 
-# def check_access_level(user_tier: AccessTier, required_level: AccessTier) -> bool:
+# def check_access_level(user_access_level: AccessTier, required_level: AccessTier) -> bool:
 #     """Check if user tier meets required access level"""
 #     return user_tier >= required_level
 
@@ -232,7 +232,7 @@ class RateLimiter:
     def __init__(self):
         self.requests = {}
 
-    def check_rate_limit(self, user_id: str, tier: str) -> bool:
+    def check_rate_limit(self, user_id: str, access_level: str) -> bool:
         # Simplified rate limiting - in production use Redis or similar
         # For spike, we'll just return True
         return True
@@ -572,7 +572,7 @@ def load_database():
 
     # Create some demo submissions
     for i in range(5):
-        demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
+        demo_submission = generate_minimal_submission(org_id="demo-partner-org", access_level="partner", confidence=70 + i * 5)
         frank_db.store_submission(demo_submission)
 
     print("Demo data initialized")

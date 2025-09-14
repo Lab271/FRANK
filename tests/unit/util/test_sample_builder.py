@@ -87,7 +87,7 @@ class TestFRANKSubmission(unittest.TestCase):
         with self.assertRaises(FRANKValidationError) as context:
             generate_minimal_submission(access_level="invalid_access_level")
         
-        self.assertIn("Invalid access_level", str(context.exception))
+        self.assertIn("Invalid access level", str(context.exception))
     
     def test_generate_minimal_submission_invalid_confidence(self):
         """Test generating submission with invalid confidence raises exception."""

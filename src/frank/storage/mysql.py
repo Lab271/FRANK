@@ -581,7 +581,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             cursor = conn.cursor()
             
             cursor.execute("""
-                SELECT s.*, o.tier as submitter_tier
+                SELECT s.*, o.access_level as submitter_tier
                 FROM submissions s
                 JOIN organizations o ON s.submitter_org_id = o.organization_id
                 WHERE s.submission_id = %s

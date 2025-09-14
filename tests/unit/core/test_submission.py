@@ -30,7 +30,7 @@ class TestSubmission(unittest.TestCase):
         ]
         
         self.valid_submitter = Submitter.create(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial"
         )
         
@@ -63,7 +63,7 @@ class TestSubmission(unittest.TestCase):
         self.assertIsInstance(submission.sighting.observables, Observables)
         
         # Verify submitter properties
-        self.assertEqual(submission.submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submission.submitter.sector, "financial")
         self.assertIsNotNone(submission.submitter.organization_id)
         self.assertTrue(submission.submitter.organization_id.startswith("identity--"))
@@ -123,7 +123,7 @@ class TestSubmission(unittest.TestCase):
         self.assertIsNone(submission.hit_target)
         
         # Verify default values from factory method
-        self.assertEqual(submission.submitter.tier, AccessTier.PARTNER)  # Default from factory
+        self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)  # Default from factory
         self.assertEqual(submission.sighting.confidence, 69)            # Default from Sighting
         self.assertEqual(len(submission.sighting.observables.network), 2)        # Default IPs from factory
         
@@ -139,13 +139,13 @@ class TestSubmission(unittest.TestCase):
         
         # Test with custom parameters
         custom_submission = Submission.create_minimal(
-            submitter_tier=AccessTier.CORE_MEMBER,
+            submitter_access_level=AccessTier.CORE_MEMBER,
             target_sector="technology",
             threat_ips=["198.51.100.1", "203.0.113.50", "192.0.2.100"]
         )
         
         # Verify custom values
-        self.assertEqual(custom_submission.submitter.tier, AccessTier.CORE_MEMBER)
+        self.assertEqual(custom_submission.submitter.access_level, AccessTier.CORE_MEMBER)
         self.assertEqual(len(custom_submission.sighting.observables.network), 3)
         
         custom_ips = [obs.value for obs in custom_submission.sighting.observables.network]
@@ -172,7 +172,7 @@ class TestSubmission(unittest.TestCase):
         
         same_org_submitter = Submitter(
             organization_id=same_org_id,
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial"
         )
         
@@ -198,7 +198,7 @@ class TestSubmission(unittest.TestCase):
         submissions = []
         for i in range(10):
             submission = Submission.create_minimal(
-                submitter_tier=AccessTier.CONTRIBUTOR,
+                submitter_access_level=AccessTier.CONTRIBUTOR,
                 target_sector=f"sector_{i}"
             )
             submissions.append(submission)
@@ -231,7 +231,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         ]
         
         self.valid_submitter = Submitter.create(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial"
         )
         

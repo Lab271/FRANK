@@ -102,7 +102,7 @@ class Submitter(BaseModel):
     """Submitting organization with validation and auto-generation."""
     organization_id: Optional[str] = Field(None, description="STIX identity for organization")
     organization_type: str = Field(default="cyber_partner", description="Organization type")
-    tier: Optional[str] = Field(None, description="Organization tier")
+    access_level: Optional[str] = Field(None, description="Organization tier")
     sector: Optional[str] = Field(None, description="Industry sector")
     region: Optional[str] = Field(None, description="Geographic region")    
 
@@ -121,10 +121,10 @@ class Submitter(BaseModel):
         return self
 
     @classmethod
-    def create(cls, tier: str, organization_type: str = "cyber_partner", sector: str = None, region: str = None):
+    def create(cls, access_level: str, organization_type: str = "cyber_partner", sector: str = None, region: str = None):
         """Factory method for creating submitters"""
         return cls(
-            tier=tier,
+            access_level=tier,
             organization_type=organization_type,
             sector=sector,
             region=region
@@ -239,7 +239,7 @@ class FrankSightingGenerator:
     
     @staticmethod
     def create_minimal_sighting(
-        submitter_tier: str,
+        submitter_access_level: str,
         confidence: int,
         ip_address: str,
         target_sector: str = None,
@@ -247,7 +247,7 @@ class FrankSightingGenerator:
     ) -> Submission:
         """Create a minimal FRANK sighting submission."""
         
-        submitter = Submitter.create(tier=submitter_tier)
+        submitter = Submitter.create(access_level=submitter_tier)
         if target_sector:
             hit_target = HitTarget.create(sector=target_sector)
         else:
@@ -267,13 +267,13 @@ class FrankSightingGenerator:
 
     # @staticmethod
     # def create_banking_threat_sighting(
-    #     submitter_tier: str = "partner",
+    #     submitter_access_level: str = "partner",
     #     confidence: int = 87
     # ) -> FrankSubmission:
     #     """Create a sample banking threat sighting."""
         
     #     submitter = Submitter.create(
-    #         tier=submitter_tier,
+    #         access_level=submitter_tier,
     #         sector="cybersecurity_services",
     #         region="nl_north_holland"
     #     )
@@ -334,8 +334,8 @@ class FrankSightingGenerator:
         
 #         # Validate tier
 #         valid_tiers = ["public", "observer", "contributor", "partner", "core_member"]
-#         if submission.submitter.tier not in valid_tiers:
-#             errors.append(f"Invalid tier: {submission.submitter.tier}")
+#         if submission.submitter.access_level not in valid_tiers:
+#             errors.append(f"Invalid access_level: {submission.submitter.access_level}")
         
 #         # Validate network observables
 #         if not submission.observables.get("network"):
@@ -397,7 +397,7 @@ if __name__ == "__main__":
     # Generate a minimal sighting
     generator = FrankSightingGenerator()
     minimal_sighting = generator.create_minimal_sighting(
-        submitter_tier="partner",
+        submitter_access_level="partner",
         confidence=87,
         ip_address="185.220.102.45",
         domain="secure-bank-verify.nl"
@@ -407,7 +407,7 @@ if __name__ == "__main__":
     print(minimal_sighting.to_yaml())
     
     minimal_sighting = generator.create_minimal_sighting(
-        submitter_tier="partner",
+        submitter_access_level="partner",
         target_sector="financial_services",
         confidence=87,
         ip_address="185.220.102.45",
@@ -422,7 +422,7 @@ if __name__ == "__main__":
     parsed_submission = Submission.from_yaml(yaml_string)
 
     print("\n=== Parsed Sighting (Round-trip test) ===")
-    print(f"Submitter Tier: {parsed_submission.submitter.tier}")
+    print(f"Submitter Tier: {parsed_submission.submitter.access_level}")
     print(f"Target Sector: {parsed_submission.hit_target.sector}")
     print(f"Confidence: {parsed_submission.sighting.confidence}")
     print(f"Network Observables: {len(parsed_submission.sighting.observables.network)}")

@@ -33,10 +33,10 @@ class TestSubmitter(unittest.TestCase):
 
     def test_create_minimal_submitter(self):
         """Test creating a submitter with minimal required fields"""
-        submitter = Submitter(tier=AccessTier.PARTNER)
+        submitter = Submitter(access_level=AccessTier.PARTNER)
         
         # Check that required fields are set
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.organization_type, "cyber_partner")  # default
         
         # Check that organization_id is auto-generated
@@ -49,7 +49,7 @@ class TestSubmitter(unittest.TestCase):
         org_id = f"identity--{uuid.uuid4()}"
         submitter = Submitter(
             organization_id=org_id,
-            tier=AccessTier.CORE_MEMBER,
+            access_level=AccessTier.CORE_MEMBER,
             organization_type="mssp",
             sector="technology",
             region="north_america",
@@ -57,7 +57,7 @@ class TestSubmitter(unittest.TestCase):
         )
         
         self.assertEqual(submitter.organization_id, org_id)
-        self.assertEqual(submitter.tier, AccessTier.CORE_MEMBER)
+        self.assertEqual(submitter.access_level, AccessTier.CORE_MEMBER)
         self.assertEqual(submitter.organization_type, "mssp")
         self.assertEqual(submitter.sector, "technology")
         self.assertEqual(submitter.region, "north_america")
@@ -66,12 +66,12 @@ class TestSubmitter(unittest.TestCase):
     def test_organization_id_auto_generation(self):
         """Test that organization_id is auto-generated when not provided"""
         # Test with None
-        submitter1 = Submitter(tier=AccessTier.PARTNER, organization_id=None)
+        submitter1 = Submitter(access_level=AccessTier.PARTNER, organization_id=None)
         self.assertIsNotNone(submitter1.organization_id)
         self.assertTrue(submitter1.organization_id.startswith("identity--"))
         
         # Test with empty string
-        submitter2 = Submitter(tier=AccessTier.PARTNER, organization_id="")
+        submitter2 = Submitter(access_level=AccessTier.PARTNER, organization_id="")
         self.assertIsNotNone(submitter2.organization_id)
         self.assertTrue(submitter2.organization_id.startswith("identity--"))
         
@@ -96,12 +96,12 @@ class TestSubmitter(unittest.TestCase):
         
         for input_sector, expected_output in test_cases:
             with self.subTest(input_sector=input_sector):
-                submitter = Submitter(tier=AccessTier.PARTNER, sector=input_sector)
+                submitter = Submitter(access_level=AccessTier.PARTNER, sector=input_sector)
                 self.assertEqual(submitter.sector, expected_output)
 
     def test_sector_none_handling(self):
         """Test that None sector is handled properly"""
-        submitter = Submitter(tier=AccessTier.PARTNER, sector=None)
+        submitter = Submitter(access_level=AccessTier.PARTNER, sector=None)
         self.assertIsNone(submitter.sector)
 
     def test_tier_validation(self):
@@ -116,18 +116,18 @@ class TestSubmitter(unittest.TestCase):
         ]
         
         for tier in valid_tiers:
-            with self.subTest(tier=tier):
-                submitter = Submitter(tier=tier)
-                self.assertEqual(submitter.tier, tier)
+            with self.subTest(access_level=tier):
+                submitter = Submitter(access_level=tier)
+                self.assertEqual(submitter.access_level, tier)
         
         # Test with string values (should work with enum)
-        submitter = Submitter(tier="partner")
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        submitter = Submitter(access_level="partner")
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
 
     def test_invalid_tier_raises_error(self):
         """Test that invalid tier raises validation error"""
         with self.assertRaises(ValidationError) as context:
-            Submitter(tier="invalid_tier")
+            Submitter(access_level="invalid_tier")
         
         self.assertIn("access_level", str(context.exception))
 
@@ -137,31 +137,31 @@ class TestSubmitter(unittest.TestCase):
         valid_counts = [0, 1, 100, 10000]
         for count in valid_counts:
             with self.subTest(count=count):
-                submitter = Submitter(tier=AccessTier.PARTNER, client_count=count)
+                submitter = Submitter(access_level=AccessTier.PARTNER, client_count=count)
                 self.assertEqual(submitter.client_count, count)
         
         # Invalid client count (negative)
         with self.assertRaises(ValidationError):
-            Submitter(tier=AccessTier.PARTNER, client_count=-1)
+            Submitter(access_level=AccessTier.PARTNER, client_count=-1)
 
     def test_factory_method_create(self):
         """Test the create factory method"""
         submitter = Submitter.create(
-            tier=AccessTier.CONTRIBUTOR,
+            access_level=AccessTier.CONTRIBUTOR,
             sector="healthcare",
             region="asia_pacific"
         )
         
-        self.assertEqual(submitter.tier, AccessTier.CONTRIBUTOR)
+        self.assertEqual(submitter.access_level, AccessTier.CONTRIBUTOR)
         self.assertEqual(submitter.sector, "health")  # Should be normalized
         self.assertEqual(submitter.region, "asia_pacific")
         self.assertIsNotNone(submitter.organization_id)
 
     def test_factory_method_minimal(self):
         """Test factory method with minimal parameters"""
-        submitter = Submitter.create(tier=AccessTier.OBSERVER)
+        submitter = Submitter.create(access_level=AccessTier.OBSERVER)
         
-        self.assertEqual(submitter.tier, AccessTier.OBSERVER)
+        self.assertEqual(submitter.access_level, AccessTier.OBSERVER)
         self.assertIsNone(submitter.sector)
         self.assertIsNone(submitter.region)
         self.assertIsNotNone(submitter.organization_id)
@@ -169,7 +169,7 @@ class TestSubmitter(unittest.TestCase):
     def test_model_dump(self):
         """Test serialization to dictionary"""
         submitter = Submitter(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial",
             region="europe",
             client_count=50
@@ -193,7 +193,7 @@ class TestSubmitter(unittest.TestCase):
 
     def test_model_dump_exclude_none(self):
         """Test serialization excluding None values"""
-        submitter = Submitter(tier=AccessTier.PARTNER)  # sector, region, client_count will be None
+        submitter = Submitter(access_level=AccessTier.PARTNER)  # sector, region, client_count will be None
         
         data = submitter.model_dump(exclude_none=True)
         
@@ -209,7 +209,7 @@ class TestSubmitter(unittest.TestCase):
     def test_json_serialization(self):
         """Test JSON serialization"""
         submitter = Submitter(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="technology"
         )
         
@@ -222,13 +222,13 @@ class TestSubmitter(unittest.TestCase):
         """Test that extra fields are ignored (be forgiving)"""
         # This should not raise an error due to extra="ignore"
         submitter = Submitter(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial",
             unknown_field="should_be_ignored",
             another_extra_field=123
         )
         
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.sector, "financial")
         # Extra fields should not be accessible
         self.assertFalse(hasattr(submitter, 'unknown_field'))
@@ -239,13 +239,13 @@ class TestSubmitter(unittest.TestCase):
         
         submitter1 = Submitter(
             organization_id=org_id,
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial"
         )
         
         submitter2 = Submitter(
             organization_id=org_id,
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="financial"
         )
         
@@ -254,15 +254,15 @@ class TestSubmitter(unittest.TestCase):
 
     def test_submitter_inequality(self):
         """Test submitter inequality"""
-        submitter1 = Submitter(tier=AccessTier.PARTNER, sector="financial")
-        submitter2 = Submitter(tier=AccessTier.CONTRIBUTOR, sector="financial")
+        submitter1 = Submitter(access_level=AccessTier.PARTNER, sector="financial")
+        submitter2 = Submitter(access_level=AccessTier.CONTRIBUTOR, sector="financial")
         
         # Different tiers should not be equal
         self.assertNotEqual(submitter1, submitter2)
 
     def test_repr_and_str(self):
         """Test string representations"""
-        submitter = Submitter(tier=AccessTier.PARTNER, sector="financial")
+        submitter = Submitter(access_level=AccessTier.PARTNER, sector="financial")
         
         repr_str = repr(submitter)
         str_str = str(submitter)
@@ -275,7 +275,7 @@ class TestSubmitter(unittest.TestCase):
         """Test edge cases and boundary conditions"""
         # Empty strings should be handled
         submitter = Submitter(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="",  # Empty string
             region=""   # Empty string
         )
@@ -285,7 +285,7 @@ class TestSubmitter(unittest.TestCase):
         
         # Very long strings (should be accepted)
         long_sector = "a" * 1000
-        submitter_long = Submitter(tier=AccessTier.PARTNER, sector=long_sector)
+        submitter_long = Submitter(access_level=AccessTier.PARTNER, sector=long_sector)
         self.assertEqual(submitter_long.sector, long_sector)
 
 
@@ -295,16 +295,16 @@ class TestSubmitterIntegration(unittest.TestCase):
     def test_submitter_in_submission_context(self):
         """Test submitter validation in the context of a full submission"""
         # This tests that the submitter works properly as part of larger validation
-        submitter = Submitter(tier=AccessTier.PARTNER, sector="financial")
+        submitter = Submitter(access_level=AccessTier.PARTNER, sector="financial")
         
         # Should be able to access all required properties for submission validation
         self.assertIsNotNone(submitter.organization_id)
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.sector, "financial")
 
     def test_multiple_submitters_unique_ids(self):
         """Test that multiple submitters get unique IDs"""
-        submitters = [Submitter(tier=AccessTier.PARTNER) for _ in range(10)]
+        submitters = [Submitter(access_level=AccessTier.PARTNER) for _ in range(10)]
         
         # All IDs should be unique
         ids = [s.organization_id for s in submitters]
@@ -330,7 +330,7 @@ class TestSubmitterPerformance(unittest.TestCase):
         
         for i in range(100):
             submitter = Submitter(
-                tier=AccessTier.PARTNER,
+                access_level=AccessTier.PARTNER,
                 sector="financial",
                 client_count=i
             )
@@ -381,7 +381,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         """Test creating Submitter from minimal dictionary."""
         submitter = Submitter(**self.minimal_data)
         
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.organization_type, "cyber_partner")  # Default value
         self.assertIsNotNone(submitter.organization_id)
         self.assertTrue(submitter.organization_id.startswith("identity--"))
@@ -391,7 +391,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitter = Submitter(**self.full_data)
         
         self.assertEqual(submitter.organization_id, self.full_data["organization_id"])
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.organization_type, "cyber_partner")
         self.assertEqual(submitter.sector, "financial")
         self.assertEqual(submitter.region, "north_america")
@@ -427,7 +427,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         roundtrip_submitter = Submitter(**result_dict)
         
         self.assertEqual(submitter.organization_id, roundtrip_submitter.organization_id)
-        self.assertEqual(submitter.tier, roundtrip_submitter.tier)
+        self.assertEqual(submitter.access_level, roundtrip_submitter.access_level)
         self.assertEqual(submitter.sector, roundtrip_submitter.sector)
         self.assertEqual(submitter.region, roundtrip_submitter.region)
         self.assertEqual(submitter.client_count, roundtrip_submitter.client_count)
@@ -449,7 +449,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         parsed_dict = json.loads(json_str)
         submitter = Submitter(**parsed_dict)
         
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.sector, "financial")
         self.assertEqual(submitter.client_count, 150)
 
@@ -463,7 +463,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         roundtrip = Submitter(**parsed_dict)
         
         self.assertEqual(original.organization_id, roundtrip.organization_id)
-        self.assertEqual(original.tier, roundtrip.tier)
+        self.assertEqual(original.access_level, roundtrip.access_level)
         self.assertEqual(original.sector, roundtrip.sector)
         self.assertEqual(original.region, roundtrip.region)
         self.assertEqual(original.client_count, roundtrip.client_count)
@@ -475,14 +475,14 @@ class TestSubmitterSerialization(unittest.TestCase):
         yaml_str = yaml.dump(data, default_flow_style=False)
         
         # Verify YAML is valid and contains expected content
-        self.assertIn("tier: partner", yaml_str)
+        self.assertIn("access_level: partner", yaml_str)
         self.assertIn("sector: financial", yaml_str)
         self.assertIn("client_count: 150", yaml_str)
 
     def test_yaml_deserialization(self):
         """Test YAML deserialization."""
         yaml_str = """
-        tier: "observer"
+        access_level: "observer"
         sector: "technology"
         region: "europe"
         client_count: 75
@@ -491,7 +491,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         parsed_dict = yaml.safe_load(yaml_str)
         submitter = Submitter(**parsed_dict)
         
-        self.assertEqual(submitter.tier, AccessTier.OBSERVER)
+        self.assertEqual(submitter.access_level, AccessTier.OBSERVER)
         self.assertEqual(submitter.sector, "technology")
         self.assertEqual(submitter.region, "europe")
         self.assertEqual(submitter.client_count, 75)
@@ -507,7 +507,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         roundtrip = Submitter(**parsed_dict)
         
         self.assertEqual(original.organization_id, roundtrip.organization_id)
-        self.assertEqual(original.tier, roundtrip.tier)
+        self.assertEqual(original.access_level, roundtrip.access_level)
         self.assertEqual(original.sector, roundtrip.sector)
         self.assertEqual(original.region, roundtrip.region)
 
@@ -542,7 +542,7 @@ class TestSubmitterSerialization(unittest.TestCase):
     def test_factory_method_serialization(self):
         """Test factory method creates submitters that serialize correctly."""
         submitter = Submitter.create(
-            tier=AccessTier.PARTNER,
+            access_level=AccessTier.PARTNER,
             sector="healthcare",
             region="north_america"
         )
@@ -555,7 +555,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Test roundtrip
         roundtrip = Submitter(**data)
-        self.assertEqual(submitter.tier, roundtrip.tier)
+        self.assertEqual(submitter.access_level, roundtrip.access_level)
         self.assertEqual(submitter.sector, roundtrip.sector)
         self.assertEqual(submitter.region, roundtrip.region)
 
@@ -619,7 +619,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Should not raise an error
         submitter = Submitter(**data_with_extra)
-        self.assertEqual(submitter.tier, AccessTier.PARTNER)
+        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         
         # Extra fields should not appear in output
         data = submitter.model_dump(exclude_none=True)
@@ -635,11 +635,11 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Invalid client_count (negative)
         with self.assertRaises(Exception):
-            Submitter(tier="partner", client_count=-5)
+            Submitter(access_level="partner", client_count=-5)
         
         # Invalid tier value
         with self.assertRaises(Exception):
-            Submitter(tier="invalid_tier")
+            Submitter(access_level="invalid_tier")
 
     def test_none_values_excluded(self):
         """Test that None values are properly excluded."""
@@ -680,7 +680,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitters = [from_dict, from_json, from_yaml]
         for sub in submitters:
             self.assertEqual(sub.organization_id, original.organization_id)
-            self.assertEqual(sub.tier, original.tier)
+            self.assertEqual(sub.access_level, original.access_level)
             self.assertEqual(sub.sector, original.sector)
             self.assertEqual(sub.region, original.region)
             self.assertEqual(sub.client_count, original.client_count)
@@ -700,7 +700,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         parsed = yaml.safe_load(yaml_str)
         roundtrip = Submitter(**parsed["submitter"])
         
-        self.assertEqual(submitter.tier, roundtrip.tier)
+        self.assertEqual(submitter.access_level, roundtrip.access_level)
         self.assertEqual(submitter.organization_type, roundtrip.organization_type)
 
     def test_enum_serialization_consistency(self):
@@ -709,8 +709,8 @@ class TestSubmitterSerialization(unittest.TestCase):
         tiers = [AccessTier.PARTNER, AccessTier.CORE_MEMBER, AccessTier.CONTRIBUTOR, AccessTier.OBSERVER, AccessTier.PUBLIC]
         
         for tier in tiers:
-            with self.subTest(tier=tier):
-                submitter = Submitter(tier=tier)
+            with self.subTest(access_level=tier):
+                submitter = Submitter(access_level=tier)
                 
                 # Dict output should use enum value
                 dict_data = submitter.model_dump()
@@ -722,13 +722,13 @@ class TestSubmitterSerialization(unittest.TestCase):
                 
                 # Roundtrip should work
                 roundtrip = Submitter(**dict_data)
-                self.assertEqual(roundtrip.tier, tier)
+                self.assertEqual(roundtrip.access_level, tier)
 
     def test_complex_serialization_scenario(self):
         """Test a complex scenario with factory method, normalization, and multiple formats."""
         # Create with factory method and data that needs normalization
         submitter = Submitter.create(
-            tier=AccessTier.OBSERVER,
+            access_level=AccessTier.OBSERVER,
             sector="Banking",  # Should normalize to "financial"
             region="north_america"
         )
@@ -753,7 +753,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         for format_name, data in formats_data.items():
             with self.subTest(format=format_name):
                 reconstructed = Submitter(**data)
-                self.assertEqual(reconstructed.tier, AccessTier.OBSERVER)
+                self.assertEqual(reconstructed.access_level, AccessTier.OBSERVER)
                 self.assertEqual(reconstructed.sector, "financial")  # Normalized
                 self.assertEqual(reconstructed.region, "north_america")
                 self.assertEqual(reconstructed.client_count, 500)

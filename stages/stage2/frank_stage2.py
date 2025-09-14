@@ -37,8 +37,9 @@ from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingS
 from frank import __version__
 
 # Configure logging
+# logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn.error")
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger(__name__)
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 # curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"

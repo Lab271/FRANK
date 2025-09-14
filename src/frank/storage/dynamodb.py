@@ -888,6 +888,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """Perform a health check on the database."""
         return {
             'status': 'healthy',
+            'database': 'dynamodb',
             'database_table': self.table_name,
             'database_region': self.region,
             "stack": self.environment

@@ -97,7 +97,7 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         submission.model_dump_json.return_value = '{}'
         submission.submission_id = 'sub1'
         submission.submitter.organization_id = 'org1'
-        submission.submitter.tier = 'partner'
+        submission.submitter.access_level = 'partner'
         submission.submitter.sector = 'finance'
         submission.submitter.region = 'eu-west-1'
         submission.sighting.confidence = 80
@@ -115,7 +115,7 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         submission.model_dump_json.return_value = '{}'
         submission.submission_id = 'sub1'
         submission.submitter.organization_id = 'org1'
-        submission.submitter.tier = 'partner'
+        submission.submitter.access_level = 'partner'
         submission.submitter.sector = 'finance'
         submission.submitter.region = 'eu-west-1'
         submission.sighting.confidence = 80

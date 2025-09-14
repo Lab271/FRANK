@@ -165,7 +165,7 @@ class FRANKClient:
 
         This method queries the database for summary statistics related to submissions, observables,
         and activity for the specified organization and number of days. The returned statistics are
-        filtered based on the user's access tier:
+        filtered based on the user's access access_level:
         - Observers receive only non-sensitive, aggregate statistics.
         - Higher tiers receive full statistics as provided by the database.
 
@@ -211,7 +211,7 @@ class FRANKClient:
         return {
             "status": health_status["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            self.database.name: health_status,
+            "database": health_status,
             "version": __version__  # Present the proper library version
         }
 

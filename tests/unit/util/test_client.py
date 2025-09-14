@@ -75,10 +75,9 @@ class TestFRANKClient(unittest.TestCase):
 
     def test_health_check(self):
         self.mock_db.health_check.return_value = {"status": "healthy"}
-        self.mock_db.name = "mockdb"
         result = self.client.health_check()
         self.assertEqual(result["status"], "healthy")
-        self.assertIn("mockdb", result)
+        self.assertIn("database", result)
         self.assertIn("version", result)
 
     def test_seed_database_success(self):

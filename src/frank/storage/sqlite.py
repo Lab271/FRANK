@@ -54,7 +54,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     CREATE TABLE IF NOT EXISTS organizations (
                         organization_id TEXT PRIMARY KEY,
                         organization_type TEXT NOT NULL CHECK (organization_type IN ('cyber_partner', 'customer')),
-                        tier TEXT CHECK (tier IN ('public', 'observer', 'contributor', 'partner', 'core_member')),
+                        access_level TEXT CHECK (access_level IN ('public', 'observer', 'contributor', 'partner', 'core_member')),
                         sector TEXT,
                         region TEXT,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -432,7 +432,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         
         conn.execute("""
             INSERT OR REPLACE INTO organizations 
-            (organization_id, organization_type, tier, sector, region, 
+            (organization_id, organization_type, access_level, sector, region, 
              last_active, client_count, metadata_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -530,7 +530,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 conn.row_factory = sqlite3.Row
                 
                 cursor = conn.execute("""
-                    SELECT s.*, o.tier as submitter_tier
+                    SELECT s.*, o.access_level as submitter_tier
                     FROM submissions s
                     JOIN organizations o ON s.submitter_org_id = o.organization_id
                     WHERE s.submission_id = ?

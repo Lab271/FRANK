@@ -43,7 +43,7 @@ class SampleDataSeeder(FRANKDatabaseSeeder):
 
         # Create some demo submissions
         for i in range(5):
-            demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
+            demo_submission = generate_minimal_submission(org_id="demo-partner-org", access_level="partner", confidence=70 + i * 5)
             db_client.store_submission(demo_submission)
 
         return True
@@ -118,7 +118,7 @@ def get_observables_by_category(cls, category: str) -> List[Dict[str, Any]]:
     return generator()
 
 def generate_minimal_submission_dict(org_id: str = None,
-                                tier: str = "partner",
+                                access_level: str = "partner",
                                 observables: List[Dict] = None,
                                 confidence: int = None) -> Dict[str, Any]:
     """
@@ -126,7 +126,7 @@ def generate_minimal_submission_dict(org_id: str = None,
     
     Args:
         org_id: Organization identifier (generated if None)
-        tier: Organization tier level
+        access_level: Organization tier level
         observables: List of observable objects (default generated if None)
         confidence: Confidence level 0-100 (uses default if None)
         
@@ -137,10 +137,10 @@ def generate_minimal_submission_dict(org_id: str = None,
         FRANKValidationError: If invalid values provided
     """ 
     # Validate inputs
-    all_tiers = [level.value for level in AccessTier]
-    if tier not in all_tiers:
-        raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {all_tiers}")
-    
+    all_access_levels = [level.value for level in AccessTier]
+    if access_level not in all_access_levels:
+        raise FRANKValidationError(f"Invalid access level '{access_level}'. Must be one of: {all_access_levels}")
+
     if confidence is not None and not (0 <= confidence <= 100):
         raise FRANKValidationError(f"Confidence {confidence} out of range [0-100]")
     
@@ -172,7 +172,7 @@ def generate_minimal_submission_dict(org_id: str = None,
         "submission": {
             "submitter": {
                 "organization_id": org_id,
-                "access_level": tier
+                "access_level": access_level,
             },
             "sighting": {
                 "sighting_id": f"sighting-{uuid.uuid4()}",
@@ -188,20 +188,20 @@ def generate_minimal_submission_dict(org_id: str = None,
     return submission
     
 
-def generate_minimal_submission(org_id: str = None, tier: str = "partner", observables: list = None, confidence: int = None) -> Submission:
+def generate_minimal_submission(org_id: str = None, access_level: str = "partner", observables: list = None, confidence: int = None) -> Submission:
     """
     Generate a minimal Submission instance with only required fields.
 
     Args:
         org_id: Organization identifier (generated if None)
-        tier: Organization tier level
+        access_level: Organization tier level
         observables: List of observable objects (default generated if None)
         confidence: Confidence level 0-100 (uses default if None)
 
     Returns:
         Submission instance containing minimal valid submission
     """
-    submission_dict = generate_minimal_submission_dict(org_id=org_id, tier=tier, observables=observables, confidence=confidence)
+    submission_dict = generate_minimal_submission_dict(org_id=org_id, access_level=access_level, observables=observables, confidence=confidence)
     return Submission(**submission_dict["submission"])
 
 
@@ -223,7 +223,7 @@ def generate_sample_submission(org_id: str = None, sample_type: str = "default",
 
 def generate_comprehensive_submission(
     org_id: str = None,
-    tier: str = "partner",
+    access_level: str = "partner",
     hit_target_org: str = None,
     sector: str = None,
     observables: list = None,
@@ -264,7 +264,7 @@ def generate_comprehensive_submission(
         "processing_nodes": "comprehensive message for testing",
         "submitter": {
             "organization_id": org_id,
-            "access_level": tier
+            "access_level": access_level,
         },
         "sighting": {
             "sighting_id": f"sighting-{uuid.uuid4()}",
@@ -344,7 +344,7 @@ def example_usage():
     print("1. Creating minimal submission...")
     minimal = generate_minimal_submission(
         org_id=f"identity--{uuid.uuid4()}",
-        tier="partner"
+        access_level="partner"
     )
     print("✓ Minimal submission created")
 
@@ -353,7 +353,7 @@ def example_usage():
     sample = generate_sample_submission(
         org_id=f"identity--{uuid.uuid4()}",
         sample_type="malware",
-        tier="partner",
+        access_level="partner",
         confidence=80
     )
     print("✓ Sample submission created")
@@ -362,7 +362,7 @@ def example_usage():
     print("3. Creating comprehensive submission...")
     comprehensive = generate_comprehensive_submission(
         org_id=f"identity--{uuid.uuid4()}",
-        tier="partner",
+        access_level="partner",
         hit_target_org=f"identity--{uuid.uuid4()}",
         observables=get_default_observables(),
         severity="high",
