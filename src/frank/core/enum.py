@@ -22,19 +22,9 @@ class AccessTier(str, Enum):
         return self in {AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER}    
 
     def check_access_level(self, required_level) -> bool:
-        """Check if user tier meets required access level"""
-        tier_hierarchy = {
-            AccessTier.PUBLIC: 0,
-            AccessTier.OBSERVER: 1,
-            AccessTier.CONTRIBUTOR: 2,
-            AccessTier.PARTNER: 3,
-            AccessTier.CORE_MEMBER: 4,
-        }
-
-        user_level = tier_hierarchy.get(self, 0)
-        required_level_num = tier_hierarchy.get(required_level, 0)
-
-        return user_level >= required_level_num
+        """Check if user tier meets required access level using enum order."""
+        members = list(type(self))
+        return members.index(self) >= members.index(required_level)
 
     # def __lt__(self, other):
     #     if self.__class__ is other.__class__:

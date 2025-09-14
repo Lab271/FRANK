@@ -38,9 +38,7 @@ from frank import __version__
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-# logger = logging.getLogger(__name__)
-logger = logging.getLogger('uvicorn.error')
-
+logger = logging.getLogger(__name__)
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 # curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
@@ -173,6 +171,8 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+app.logger = logger  # Attach our external logger
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -249,15 +249,11 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
-        success, score_impact = frank_client.submit_threat_intelligence(submission)
+        success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], submission)
 
+        # TODO: simplify error handling in client, propagate Exceptions, not status flags
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
-        # Log access
-        success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
-    
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to log access")
 
         return SubmissionResponse(
             status="accepted",
@@ -333,8 +329,8 @@ async def search_threat_sightings(
 
 
         total_results, sightings, aggregations, threat_context = frank_client.query_threats(
-            # org_id=current_user["organization_id"], tier=current_user["tier"], 
-            format=format, offset=offset,
+            org_id=current_user["organization_id"], tier=current_user["tier"], 
+            format=format, offset=offset, limit=limit,
             observable=observable, **query_params
         )
 
@@ -407,6 +403,11 @@ async def get_platform_statistics(
         tier=current_user["tier"]
     )  
     return stats
+
+# ===============================
+# Helper functions
+# ===============================
+
 
 # Error handlers
 @app.exception_handler(HTTPException)

@@ -36,11 +36,12 @@ class FRANKClient:
         self.database = database
         self.database.logger = self.logger
 
-    def submit_threat_intelligence(self, submission: Submission) -> (bool, int):
+    def submit_threat_intelligence(self, user_id: str, submission: Submission) -> (bool, int):
         """
         Submit threat intelligence to the FRANK platform.
         
         Args:
+            user_id (str): Identifier for the user submitting the threat intelligence.
             submission: Threat intelligence submission dictionary
             
         Returns:
@@ -50,10 +51,14 @@ class FRANKClient:
         
         # Store in database
         success = self.database.store_submission(submission)
-
+        if not success: 
+            return (False, 0)
+            
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission)
                 
+        success = self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
+
         # Extract submission ID
         return (success, score_impact)
 
@@ -105,6 +110,7 @@ class FRANKClient:
         aggregations = {}
         threat_context = {}
         # Add aggregations for contributor and above
+
         if access_level.check_access_level(AccessTier.CONTRIBUTOR):
             aggregations = generate_aggregations(results, access_level)
 
@@ -145,7 +151,7 @@ class FRANKClient:
         return observations[:limit], stats
         
 
-    def get_platform_statistics(self, org_id: str, days: int, tier: AccessTier) -> Dict[str, Any]:
+    def get_platform_statistics(self, org_id: str, days: int, access_level: AccessTier) -> Dict[str, Any]:
         """
         Retrieve platform statistics for a given organization and time window.
 
@@ -158,7 +164,7 @@ class FRANKClient:
         Args:
             org_id (str): The organization ID for which to retrieve statistics.
             days (int): Number of days to include in the statistics summary.
-            tier (AccessTier): The user's access tier, used to filter sensitive data.
+            access_level (AccessTier): The user's access tier, used to filter sensitive data.
 
         Returns:
             Dict[str, Any]: Dictionary containing platform statistics, filtered by access level.
@@ -167,7 +173,7 @@ class FRANKClient:
         stats = self.database.get_statistics_summary(org_id, days=days)
 
         # Filter stats based on access level
-        if tier == AccessTier.OBSERVER:
+        if access_level == AccessTier.OBSERVER:
             # Remove sensitive information for observers
             filtered_stats = {
                 "total_submissions": stats.get("total_submissions", 0),
