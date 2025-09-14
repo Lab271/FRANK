@@ -370,7 +370,7 @@ def create_test_submission(ip_address, confidence, sector="technology"):
         "submission": {
             "submitter": {
                 "organization_id": f"test-org-{hash(ip_address)}",
-                "tier": "partner",
+                "access_level": "partner",
                 "sector": sector
             },
             "sighting": {
@@ -397,7 +397,7 @@ def create_comprehensive_submission(sighting_data):
         "submission": {
             "submitter": {
                 "organization_id": "test-comprehensive-org",
-                "tier": "core_member",
+                "access_level": "core_member",
                 "sector": "cybersecurity_services"
             },
             "sighting": {

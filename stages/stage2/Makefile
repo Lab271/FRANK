@@ -19,7 +19,7 @@ build-simple: ## Build application container - simple
 	docker-compose -f docker-compose.simple.yml build
 
 build:  ## Build application container - hybrid
-	docker-compose -f docker-compose.hybrid.yml build frank-app
+	docker-compose -f docker-compose.yml build frank-app
 
 
 up-mysql:  ## Start all services
@@ -32,7 +32,7 @@ up-mysql:  ## Start all services
 	@echo "- LocalStack: http://localhost:4566"
 
 up:  ## Start all services
-	docker-compose --file docker-compose.hybrid.yml up -d
+	docker-compose --file docker-compose.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"
@@ -42,7 +42,7 @@ up:  ## Start all services
 
 down:  ## Stop all services
 	docker-compose --file docker-compose.simple.yml down
-	docker-compose --file docker-compose.hybrid.yml down
+	docker-compose --file docker-compose.yml down
 	docker-compose down
 
 restart:  ## Restart all services
@@ -51,13 +51,13 @@ restart:  ## Restart all services
 	docker-compose up -d
 
 logs:  ## Show logs from all services
-	docker-compose --file docker-compose.hybrid.yml logs -f
+	docker-compose --file docker-compose.yml logs -f
 
 logs-app:  ## Show logs from FRANK app only
-	docker-compose --file docker-compose.hybrid.yml logs -f frank-app
+	docker-compose --file docker-compose.yml logs -f frank-app
 
 logs-localstack:  ## Show logs from LocalStack only
-	docker-compose --file docker-compose.hybrid.yml logs -f localstack
+	docker-compose --file docker-compose.yml logs -f localstack
 
 test:  ## Run tests
 	docker-compose exec frank-app python -m pytest tests/ -v
@@ -76,7 +76,7 @@ test-submission:  ## Submit a test threat intelligence submission
 			"submission": { \
 				"submitter": { \
 					"organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", \
-					"tier": "partner" \
+					"access_level": "partner" \
 				}, \
 				"sighting": { \
 					"sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75", \

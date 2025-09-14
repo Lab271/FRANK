@@ -229,7 +229,7 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
     #         # "submission": {
     #             "submission_id": "sub1",
     #             "timestamp": "2025-09-12T00:00:00Z",
-    #             "submitter": {"organization_id": "org1", "tier": "partner", "sector": "finance", "region": "eu-west-1"},
+    #             "submitter": {"organization_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
     #             "sighting": {"confidence": 80, "severity": "high"},
     #             "tlp_level": "TLP:AMBER",
     #         # }

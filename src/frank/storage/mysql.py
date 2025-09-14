@@ -469,7 +469,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         """Insert or update organization information."""
         self.logger.debug(f"Upserting organization: {org_data}")
         metadata = {k: v for k, v in org_data.items() 
-                   if k not in ['organization_id', 'organization_type', 'tier', 'sector', 'region', 'client_count']}
+                   if k not in ['organization_id', 'organization_type', 'access_level', 'sector', 'region', 'client_count']}
         
         cursor.execute("""
             INSERT INTO organizations 
@@ -487,7 +487,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         """, (
             org_data['organization_id'],
             org_data.get('organization_type', org_type),
-            org_data.get('tier'),
+            org_data.get('access_level'),
             org_data.get('sector'),
             org_data.get('region'),
             datetime.now(timezone.utc),

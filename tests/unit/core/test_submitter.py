@@ -26,7 +26,7 @@ class TestSubmitter(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method."""
         self.valid_submitter_data = {
-            "tier": AccessTier.PARTNER,
+            "access_level": AccessTier.PARTNER,
             "sector": "financial",
             "region": "europe"
         }
@@ -129,7 +129,7 @@ class TestSubmitter(unittest.TestCase):
         with self.assertRaises(ValidationError) as context:
             Submitter(tier="invalid_tier")
         
-        self.assertIn("tier", str(context.exception))
+        self.assertIn("access_level", str(context.exception))
 
     def test_client_count_validation(self):
         """Test client count validation"""
@@ -179,14 +179,14 @@ class TestSubmitter(unittest.TestCase):
         
         # Check that all fields are present
         self.assertIn("organization_id", data)
-        self.assertIn("tier", data)
+        self.assertIn("access_level", data)
         self.assertIn("organization_type", data)
         self.assertIn("sector", data)
         self.assertIn("region", data)
         self.assertIn("client_count", data)
         
         # Check values
-        self.assertEqual(data["tier"], "partner")  # Enum value
+        self.assertEqual(data["access_level"], "partner")  # Enum value
         self.assertEqual(data["sector"], "financial")
         self.assertEqual(data["region"], "europe")
         self.assertEqual(data["client_count"], 50)
@@ -204,7 +204,7 @@ class TestSubmitter(unittest.TestCase):
         
         # Check that non-None fields are present
         self.assertIn("organization_id", data)
-        self.assertIn("tier", data)
+        self.assertIn("access_level", data)
 
     def test_json_serialization(self):
         """Test JSON serialization"""
@@ -353,12 +353,12 @@ class TestSubmitterSerialization(unittest.TestCase):
     def setUp(self):
         """Set up test data."""
         self.minimal_data = {
-            "tier": "partner"
+            "access_level": "partner"
         }
         
         self.full_data = {
             "organization_id": "identity--12345678-1234-5678-9abc-123456789abc",
-            "tier": "partner",
+            "access_level": "partner",
             "organization_type": "cyber_partner",
             "sector": "financial",
             "region": "north_america",
@@ -366,13 +366,13 @@ class TestSubmitterSerialization(unittest.TestCase):
         }
         
         self.sector_normalization_data = {
-            "tier": "observer",
+            "access_level": "observer",
             "sector": "Banking",  # Should normalize to "financial"
             "region": "europe"
         }
         
         self.factory_data = {
-            "tier": AccessTier.PARTNER,
+            "access_level": AccessTier.PARTNER,
             "sector": "healthcare",
             "region": "asia_pacific"
         }
@@ -402,7 +402,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitter = Submitter(**self.full_data)
         result = submitter.model_dump(exclude_none=True)
         
-        self.assertEqual(result["tier"], "partner")  # use_enum_values=True
+        self.assertEqual(result["access_level"], "partner")  # use_enum_values=True
         self.assertEqual(result["organization_type"], "cyber_partner")
         self.assertEqual(result["sector"], "financial")
         self.assertEqual(result["client_count"], 150)
@@ -414,7 +414,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         result_dict = submitter.model_dump(exclude_none=True)
         
         # Check essential fields survived
-        self.assertEqual(result_dict["tier"], self.minimal_data["tier"])
+        self.assertEqual(result_dict["access_level"], self.minimal_data["access_level"])
         self.assertIn("organization_id", result_dict)
         self.assertEqual(result_dict["organization_type"], "cyber_partner")
 
@@ -439,7 +439,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Verify it's valid JSON
         parsed = json.loads(json_str)
-        self.assertEqual(parsed["tier"], "partner")
+        self.assertEqual(parsed["access_level"], "partner")
         self.assertEqual(parsed["sector"], "financial")
         self.assertEqual(parsed["client_count"], 150)
 
@@ -549,7 +549,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Test it serializes correctly
         data = submitter.model_dump(exclude_none=True)
-        self.assertEqual(data["tier"], "partner")
+        self.assertEqual(data["access_level"], "partner")
         self.assertEqual(data["sector"], "health")  # Should be normalized
         self.assertEqual(data["region"], "north_america")
         
@@ -644,7 +644,7 @@ class TestSubmitterSerialization(unittest.TestCase):
     def test_none_values_excluded(self):
         """Test that None values are properly excluded."""
         data = {
-            "tier": "partner",
+            "access_level": "partner",
             "sector": None,
             "region": None,
             "client_count": None
@@ -659,7 +659,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         self.assertNotIn("client_count", result)
         
         # Required and default fields should be present
-        self.assertIn("tier", result)
+        self.assertIn("access_level", result)
         self.assertIn("organization_type", result)
 
     def test_multiple_format_consistency(self):
@@ -714,11 +714,11 @@ class TestSubmitterSerialization(unittest.TestCase):
                 
                 # Dict output should use enum value
                 dict_data = submitter.model_dump()
-                self.assertEqual(dict_data["tier"], tier.value)
+                self.assertEqual(dict_data["access_level"], tier.value)
                 
                 # JSON output should use enum value
                 json_data = json.loads(submitter.model_dump_json())
-                self.assertEqual(json_data["tier"], tier.value)
+                self.assertEqual(json_data["access_level"], tier.value)
                 
                 # Roundtrip should work
                 roundtrip = Submitter(**dict_data)

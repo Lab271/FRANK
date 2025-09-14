@@ -77,7 +77,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         """Test organization creation and updates"""
         org_data = {
             "organization_id": "test-org-1",
-            "tier": "partner",
+            "access_level": "partner",
             "sector": "finance",
             "region": "nl_north_holland",
             "client_count": 5
@@ -89,7 +89,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         # Verify organization was stored
         stored_org = self.db.get_organization_info("test-org-1")
         self.assertIsNotNone(stored_org)
-        self.assertEqual(stored_org['tier'], 'partner')
+        self.assertEqual(stored_org['access_level'], 'partner')
         self.assertEqual(stored_org['sector'], 'finance')
         self.assertEqual(stored_org['client_count'], 5)
 
@@ -99,7 +99,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             "submission": {
                 "submitter": {
                     "organization_id": "test-org-1",
-                    "tier": "partner"
+                    "access_level": "partner"
                 },
                 "sighting": {
                     "sighting_id": "test-sighting-1",
@@ -136,7 +136,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 "format_version": "1.0",
                 "submitter": {
                     "organization_id": "test-org-2",
-                    "tier": "core_member",
+                    "access_level": "core_member",
                     "sector": "cybersecurity_services"
                 },
                 "hit_target": {
@@ -213,7 +213,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 "submission_id": "test-sub-3",
                 "submitter": {
                     "organization_id": "test-org-3",
-                    "tier": "contributor",
+                    "access_level": "contributor",
                     "sector": "healthcare"
                 },
                 "sighting": {
@@ -264,7 +264,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 "submission_id": "test-sub-4",
                 "submitter": {
                     "organization_id": "test-org-4",
-                    "tier": "partner"
+                    "access_level": "partner"
                 },
                 "hit_target": {
                     "organization_id": "test-victim-2",
@@ -318,7 +318,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             "submission": {
                 "submitter": {
                     "organization_id": "test-org-5",
-                    "tier": "observer"
+                    "access_level": "observer"
                 },
                 "sighting": {
                     "sighting_id": "test-sighting-5",
@@ -357,7 +357,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 "submission": {
                     "submitter": {
                         "organization_id": f"test-org-stats-{i}",
-                        "tier": "contributor",
+                        "access_level": "contributor",
                         "sector": "technology"
                     },
                     "sighting": {

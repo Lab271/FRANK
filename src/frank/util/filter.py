@@ -131,13 +131,13 @@ class FRANKFilter:
 
 
     # # Combine with filter method?
-    # def anonymize_for_tier(self, access_tier: AccessTier) -> "Submission":
+    # def anonymize_for_tier(self, access_level: AccessTier) -> "Submission":
     #     """Anonymize submission based on access tier - 'strong on return'"""
     #     import copy
 
     #     anonymized = copy.deepcopy(self)
 
-    #     if access_tier == AccessTier.PUBLIC:
+    #     if access_level == AccessTier.PUBLIC:
     #         # Heavy anonymization for public access
     #         for obs in anonymized.sighting.observables.network:
     #             obs.value = f"hash_{hash(obs.value) % 10000:04d}"
@@ -145,7 +145,7 @@ class FRANKFilter:
     #         anonymized.hit_target.organization_id = "redacted"
     #         anonymized.submitter.organization_id = "redacted"
 
-    #     elif access_tier == AccessTier.OBSERVER:
+    #     elif access_level == AccessTier.OBSERVER:
     #         # Partial anonymization
 
     #         for obs in anonymized.sighting.observables.network:

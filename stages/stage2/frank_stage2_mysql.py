@@ -189,13 +189,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "tier": AccessTier.OBSERVER, "sector": "technology"}
+        return {"organization_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "tier": AccessTier.CONTRIBUTOR, "sector": "financial"}
+        return {"organization_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "tier": AccessTier.PARTNER, "sector": "cybersecurity_services"}
+        return {"organization_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "tier": AccessTier.CORE_MEMBER, "sector": "government"}
+        return {"organization_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
@@ -203,7 +203,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 def check_submission_permissions(user: Dict[str, Any]) -> bool:
     """Check if user can submit threat intelligence"""
     allowed_tiers = [AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER]
-    return user.get("tier") in allowed_tiers
+    return user.get("access_level") in allowed_tiers
 
 
 def check_access_level(user_tier: AccessTier, required_level: AccessTier) -> bool:
@@ -259,7 +259,7 @@ async def submit_threat_intelligence(
         raise HTTPException(status_code=403, detail="Insufficient access level for submission")
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -306,7 +306,7 @@ async def search_threat_sightings(
     """
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -329,7 +329,7 @@ async def search_threat_sightings(
             )
 
         # Build query parameters
-        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["tier"], "limit": limit}
+        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_level"], "limit": limit}
 
         # Add filters if provided
         if type:
@@ -347,7 +347,7 @@ async def search_threat_sightings(
         # Search by specific observable if provided
         if observable:
             results = frank_db.search_observables_by_value(
-                current_user["organization_id"], observable, current_user["tier"]
+                current_user["organization_id"], observable, current_user["access_level"]
             )
         else:
             # General query
@@ -360,7 +360,7 @@ async def search_threat_sightings(
         # Build response based on access level and format
         sightings = []
         for result in paginated_results:
-            sighting = format_sighting_response(result, current_user["tier"], format)
+            sighting = format_sighting_response(result, current_user["access_level"], format)
             sightings.append(sighting)
 
         response = SightingSearchResponse(
@@ -368,11 +368,11 @@ async def search_threat_sightings(
         )
 
         # Add aggregations for contributor and above
-        if check_access_level(current_user["tier"], AccessTier.CONTRIBUTOR):
-            response.aggregations = generate_aggregations(results, current_user["tier"])
+        if check_access_level(current_user["access_level"], AccessTier.CONTRIBUTOR):
+            response.aggregations = generate_aggregations(results, current_user["access_level"])
 
         # Add threat context for partner and above
-        if check_access_level(current_user["tier"], AccessTier.PARTNER):
+        if check_access_level(current_user["access_level"], AccessTier.PARTNER):
             response.threat_context = generate_threat_context(results)
 
         # Add pagination info
@@ -419,13 +419,13 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
 ):
     """Get platform usage statistics"""
-    if not check_access_level(current_user["tier"], AccessTier.OBSERVER):
+    if not check_access_level(current_user["access_level"], AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
     stats = frank_db.get_statistics_summary(current_user["organization_id"], days)
 
     # Filter stats based on access level
-    if current_user["tier"] == AccessTier.OBSERVER:
+    if current_user["access_level"] == AccessTier.OBSERVER:
         # Remove sensitive information for observers
         filtered_stats = {
             "total_submissions": stats.get("total_submissions", 0),

@@ -35,7 +35,7 @@ def generate_mock_submission(index):
         "submission": {
             "submitter": {
                 "organization_id": f"org-{random.randint(1000, 9999)}-test",
-                "tier": random.choice(tiers),
+                "access_level": random.choice(tiers),
                 "sector": random.choice(sectors)
             },
             "sighting": {

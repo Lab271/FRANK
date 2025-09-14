@@ -32,7 +32,7 @@ class FilterAction(Enum):
 class FilterRule:
     """Defines how to filter a specific field based on access tier."""
     field_path: str
-    access_tier: AccessTier
+    access_level: AccessTier
     action: FilterAction
     parameters: Optional[Dict[str, Any]] = None
 
@@ -186,10 +186,10 @@ class AccessControlFilter:
             ]
         }
     
-    def apply_filters(self, data: Dict[str, Any], access_tier: AccessTier) -> Dict[str, Any]:
+    def apply_filters(self, data: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """Apply access control filters to submission data."""
         filtered_data = self._deep_copy(data)
-        rules = self.rules.get(access_tier, [])
+        rules = self.rules.get(access_level, [])
         
         for rule in rules:
             self._apply_single_rule(filtered_data, rule)
@@ -330,7 +330,7 @@ class FrankQueryEngine:
     
     def query_sightings(
         self, 
-        user_access_tier: AccessTier,
+        user_access_level: AccessTier,
         filters: Dict[str, Any] = None,
         limit: int = 100
     ) -> List[Dict[str, Any]]:
@@ -342,7 +342,7 @@ class FrankQueryEngine:
         # Step 2: Apply access control filtering
         filtered_sightings = []
         for sighting in raw_sightings:
-            filtered_sighting = self.filter_engine.apply_filters(sighting, user_access_tier)
+            filtered_sighting = self.filter_engine.apply_filters(sighting, user_access_level)
             filtered_sightings.append(filtered_sighting)
         
         return filtered_sightings
@@ -362,7 +362,7 @@ if __name__ == "__main__":
             "metadata": {
                 "submitter": {
                     "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-                    "tier": "partner",
+                    "access_level": "partner",
                     "sector": "financial_banking",
                     "region": "nl_amsterdam"
                 },

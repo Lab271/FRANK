@@ -11,7 +11,7 @@ submission:
   submitter:
     organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
     organization_type: "cyber_partner"
-    tier: "partner"
+    access_level: "partner"
     sector: "cybersecurity_services"
     region: "nl_north_holland"
     submission_method: "automated_api"

@@ -32,7 +32,7 @@ class TestSubmissionSerialization(unittest.TestCase):
             "submission": {
                 "submitter": {
                     "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-                    "tier": "partner"
+                    "access_level": "partner"
                 },
                 "sighting": {
                     "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
@@ -129,7 +129,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         self.assertEqual(result["submission_method"], "api")
         
         # Check enum serialization
-        self.assertEqual(result["submitter"]["tier"], "partner")
+        self.assertEqual(result["submitter"]["access_level"], "partner")
 
     def test_dict_roundtrip_minimal(self):
         """Test dictionary roundtrip with minimal data from YAML."""
@@ -157,7 +157,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         parsed = json.loads(json_str)
         self.assertIn("submitter", parsed)
         self.assertIn("sighting", parsed)
-        self.assertEqual(parsed["submitter"]["tier"], "partner")
+        self.assertEqual(parsed["submitter"]["access_level"], "partner")
         self.assertEqual(parsed["sighting"]["confidence"], 87)
 
     def test_json_roundtrip_minimal(self):
@@ -324,7 +324,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # All should have enum values as strings
         for format_name, data in formats_data.items():
             with self.subTest(format=format_name):
-                self.assertEqual(data["submitter"]["tier"], "partner")
+                self.assertEqual(data["submitter"]["access_level"], "partner")
                 
                 # Check observable types
                 for obs in data["sighting"]["observables"]["network"]:
@@ -363,7 +363,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Check nested model data
         submitter_data = result["submitter"]
         self.assertIn("organization_id", submitter_data)
-        self.assertIn("tier", submitter_data)
+        self.assertIn("access_level", submitter_data)
         
         sighting_data = result["sighting"]
         self.assertIn("sighting_id", sighting_data)
@@ -459,6 +459,88 @@ class TestSubmissionSerialization(unittest.TestCase):
             self.assertEqual(len(sub.sighting.observables.network), 2)
             self.assertEqual(sub.format_version, __version__)
             self.assertEqual(sub.submission_method, "api")
+
+class TestLegacySubmissionParsing(unittest.TestCase):
+    """Test parsing legacy submission formats into current Submission model."""
+
+    def test_from_legacy_dict_missing_submission_key(self):
+        """Test parsing when 'submission' key is missing."""
+        legacy_data = {
+            "submitter": {"access_level": "partner"},
+            "hit_target": {"sector": "finance"},
+            "sighting": {"confidence": 85},
+            "observables": {
+                "network": [
+                    {"type": "ipv4", "value": "203.0.113.1"}
+                ]
+            }
+        }
+        parsed = Submission.from_legacy_dict(legacy_data)
+        self.assertIsInstance(parsed, Submission)
+        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertTrue(parsed.sighting.observables.network)
+
+    def test_from_legacy_dict_missing_submission_key(self):
+        """Test parsing when 'submission' key is missing."""
+        legacy_data = {
+            "submitter": {"access_level": "partner"},
+            "hit_target": {"sector": "finance"},
+            "sighting": {
+                "confidence": 85,
+                "observables": {
+                    "network": [
+                        {"type": "ipv4", "value": "203.0.113.1"}
+                    ]
+                }
+            }
+        }
+        parsed = Submission.from_legacy_dict(legacy_data)
+        self.assertIsInstance(parsed, Submission)
+        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertTrue(parsed.sighting.observables.network)
+
+    def test_from_legacy_dict_regular(self):
+        """Test parsing when hit_target sector is missing (should default to 'unknown')."""
+        legacy_data = {
+            "submission": {
+                "submitter": {"access_level": "partner"},
+                "hit_target": {"sector": "finance"},
+                "sighting": {"confidence": 85},
+                "observables": {
+                    "network": [
+                        {"type": "ipv4", "value": "203.0.113.1"}
+                    ]
+                }
+            }
+        }
+        parsed = Submission.from_legacy_dict(legacy_data)
+        self.assertIsInstance(parsed, Submission)
+        self.assertEqual(parsed.hit_target.sector, "finance")
+
+    def test_from_legacy_dict_invalid_observable(self):
+        """Test parsing with an invalid observable (should skip it)."""
+        legacy_data = {
+            "submission": {
+                "submitter": {"access_level": "partner"},
+                "hit_target": {"sector": "finance"},
+                "sighting": {"confidence": 85},
+                "observables": {
+                    "network": [
+                        {"type": "ipv4", "value": "203.0.113.1"},
+                        {"type": "ipv4"}  # Missing value, should be skipped
+                    ]
+                }
+            }
+        }
+        parsed = Submission.from_legacy_dict(legacy_data)
+        self.assertIsInstance(parsed, Submission)
+        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertEqual(len(parsed.sighting.observables.network), 1)
+
+    def test_from_legacy_dict_error(self):
+        """Test parsing with completely invalid data (should raise ValueError)."""
+        with self.assertRaises(ValueError):
+            Submission.from_legacy_dict({"not_a_submission": True})
 
 
 if __name__ == "__main__":

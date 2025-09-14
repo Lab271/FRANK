@@ -96,7 +96,7 @@ class Submitter(BaseModel):
     )
 
     organization_id: Optional[str] = Field(None, description="STIX identity for organization")
-    tier: AccessTier = Field(..., description="Access tier level")
+    access_level: AccessTier = Field(..., description="Access tier level")
     organization_type: str = Field(default="cyber_partner", description="Organization type")
 
     # Optional metadata
@@ -135,9 +135,9 @@ class Submitter(BaseModel):
         return sector_mappings.get(normalized, normalized)
 
     @classmethod
-    def create(cls, tier: AccessTier, sector: str = None, region: str = None):
+    def create(cls, access_level: AccessTier, sector: str = None, region: str = None):
         """Factory method for creating submitters"""
-        return cls(tier=tier, sector=sector, region=region)
+        return cls(access_level=access_level, sector=sector, region=region)
 
 
 class HitTarget(BaseModel):
@@ -462,7 +462,7 @@ class Submission(BaseModel):
     @classmethod
     def create_minimal(
         cls,
-        submitter_tier: AccessTier = AccessTier.PARTNER,
+        submitter_access_level: AccessTier = AccessTier.PARTNER,
         target_sector: str = None,
         threat_ips: List[str] = None,
     ) -> "Submission":
@@ -479,7 +479,7 @@ class Submission(BaseModel):
         hit_target = HitTarget.create(sector=target_sector) if target_sector else None
 
         return cls(
-            submitter=Submitter.create(tier=submitter_tier),
+            submitter=Submitter.create(access_level=submitter_access_level),
             hit_target=hit_target,
             sighting=Sighting.create(observables=network_obs),
         )
@@ -551,7 +551,7 @@ def example_usage():
     # 1. Create minimal submission using factory method
     print("1. Creating minimal submission...")
     minimal = Submission.create_minimal(
-        submitter_tier=AccessTier.PARTNER,
+        submitter_access_level=AccessTier.PARTNER,
         target_sector="financial",
         threat_ips=["192.168.1.100", "malicious.example.com"],
     )
@@ -572,7 +572,7 @@ def example_usage():
     print("\n3. Testing 'be forgiving' legacy format parsing...")
     legacy_data = {
         "submission": {
-            "submitter": {"tier": "partner"},  # Missing org_id - will be generated
+            "submitter": {"access_level": "partner"},  # Missing org_id - will be generated
             "hit_target": {"sector": "finance"},  # Will be normalized to "financial"
             "sighting": {
                 "confidence": 85

@@ -61,7 +61,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - FRANK_ENVIRONMENT=hybrid
+      - FRANK_ENVIRONMENT=localstack
       - LOCALSTACK_ENDPOINT=http://localstack:4566
       - RDS_HOST=mysql
       - RDS_PORT=3306

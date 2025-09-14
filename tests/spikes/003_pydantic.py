@@ -106,7 +106,7 @@ class Submitter(BaseModel):
     sector: Optional[str] = Field(None, description="Industry sector")
     region: Optional[str] = Field(None, description="Geographic region")    
 
-    @field_validator('tier', mode='before')
+    @field_validator('access_level', mode='before')
     def validate_type(cls, v):
         allowed_types = ['partner', 'contributor', 'observer', 'public', 'core_member']
         if v not in allowed_types:

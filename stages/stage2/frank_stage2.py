@@ -156,13 +156,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "access_tier": AccessTier.OBSERVER, "sector": "technology"}
+        return {"organization_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "tier": AccessTier.CONTRIBUTOR, "sector": "financial"}
+        return {"organization_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "access_tier": AccessTier.PARTNER, "sector": "cybersecurity_services"}
+        return {"organization_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "access_tier": AccessTier.CORE_MEMBER, "sector": "government"}
+        return {"organization_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
@@ -173,7 +173,7 @@ class RateLimiter:
     def __init__(self):
         self.requests = {}
 
-    def check_rate_limit(self, user_id: str, access_tier: str) -> bool:
+    def check_rate_limit(self, user_id: str, access_level: str) -> bool:
         # Simplified rate limiting - in production use Redis or similar
         # For spike, we'll just return True
         return True
@@ -197,11 +197,11 @@ async def submit_threat_intelligence(
     submission = submission_request.submission
 
     # Check permissions
-    if not AccessTier.can_submit(current_user["access_tier"]):
+    if not AccessTier.can_submit(current_user["access_level"]):
         raise HTTPException(status_code=403, detail="Insufficient access level for submission")
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -246,7 +246,7 @@ async def search_threat_sightings(
     """
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -269,7 +269,7 @@ async def search_threat_sightings(
             )
 
         # Build query parameters
-        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_tier"], "limit": limit}
+        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_level"], "limit": limit}
 
         # Add filters if provided
         if type:
@@ -286,7 +286,7 @@ async def search_threat_sightings(
 
 
         total_results, sightings, aggregations, threat_context = frank_client.query_threats(
-            org_id=current_user["organization_id"], access_tier=current_user["access_tier"], 
+            org_id=current_user["organization_id"], access_level=current_user["access_level"], 
             format=format, offset=offset, limit=limit,
             observable=observable, **query_params
         )
@@ -351,13 +351,13 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
 ):
     """Get platform usage statistics"""
-    if not current_user["access_tier"].check_access_level(AccessTier.OBSERVER):
+    if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
     stats = frank_client.get_platform_statistics(
         org_id=current_user["organization_id"],
         days=days,
-        access_level=current_user["access_tier"]
+        access_level=current_user["access_level"]
     )  
     return stats
 

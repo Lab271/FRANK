@@ -25,7 +25,7 @@ echo ""
 TEST_SUBMISSION='{
     "submission": {
       "submitter": {
-        "tier": "partner",
+        "access_level": "partner",
         "sector": "finance"
       },
       "sighting": {

@@ -54,7 +54,7 @@ The FRANK platform's core functionality centers around two primary API endpoints
 submission:
   submitter:
     organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
-    tier: "partner"
+    access_level: "partner"
   sighting:
     sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
     timestamp: "2025-01-20T14:30:22Z"
@@ -200,7 +200,7 @@ The response structure varies by access level and format parameter:
       "confidence": 87,
       "severity": "high",
       "submitter": {
-        "tier": "partner",
+        "access_level": "partner",
         "sector": "cybersecurity_services",
         "organization_id": "identity-masked-uuid"
       },

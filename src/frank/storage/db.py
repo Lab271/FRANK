@@ -26,7 +26,7 @@ DEFAULT_CONFIG = {
     'database_type': 'sqlite',
     'database_path': '/tmp/frank.db',
     'log_level': 'INFO',
-    'default_tier': 'contributor',
+    'default_access_level': 'contributor',
     'retention_days': 90
 }
 

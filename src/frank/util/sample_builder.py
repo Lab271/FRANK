@@ -172,7 +172,7 @@ def generate_minimal_submission_dict(org_id: str = None,
         "submission": {
             "submitter": {
                 "organization_id": org_id,
-                "tier": tier
+                "access_level": tier
             },
             "sighting": {
                 "sighting_id": f"sighting-{uuid.uuid4()}",
@@ -264,7 +264,7 @@ def generate_comprehensive_submission(
         "processing_nodes": "comprehensive message for testing",
         "submitter": {
             "organization_id": org_id,
-            "tier": tier
+            "access_level": tier
         },
         "sighting": {
             "sighting_id": f"sighting-{uuid.uuid4()}",
@@ -308,25 +308,25 @@ def create_demo_orgs(id_fixed: bool = True) -> List[Dict[str, Any]]:
     orgs = [
         {
             "organization_id": "demo-observer-org" if id_fixed else f"identity--{uuid.uuid4()}",
-            "tier": "observer",
+            "access_level": "observer",
             "sector": "finance",
             "region": "europe"
         },
         {
             "organization_id": "demo-partner-org" if id_fixed else f"identity--{uuid.uuid4()}",
-            "tier": "partner",
+            "access_level": "partner",
             "sector": "cybersecurity_services",
             "region": "nl"
         },
         {
             "organization_id": "demo-contributor-org" if id_fixed else f"identity--{uuid.uuid4()}",
-            "tier": "contributur",
+            "access_level": "contributur",
             "sector": "healthcare",
             "region": "north_america"
         },
         {
             "organization_id": "demo-core_member-org" if id_fixed else f"identity--{uuid.uuid4()}",
-            "tier": "core_member",
+            "access_level": "core_member",
             "sector": "government",
             "region": "asia_pacific"
         }

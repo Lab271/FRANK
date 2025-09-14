@@ -31,7 +31,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     
     Single Table Design Pattern - General table:
     PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
-    ORG#{org_id}        | ORG             | TIER#{tier}     | #{timestamp} | Organization    | Organization metadata
+    ORG#{org_id}        | ORG             | TIER#{access_level}     | #{timestamp} | Organization    | Organization metadata
     SUB#{sub_id}        | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
     OBS#{obs_hash}      | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
     SIGHT#{sighting_id} | SUB#{sub_id}    | ORG#{org_id}    | #{timestamp} | Sighting        | Sighting details (confidence, severity, observables)
@@ -223,7 +223,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'EntityType': 'Submission',
             'submission_id': submission.submission_id,
             'submitter_id': submission.submitter.organization_id,
-            'tier': submission.submitter.tier, # make sure this is explicitly stored
+            'access_level': submission.submitter.access_level, # make sure this is explicitly stored
             'submission_timestamp': timestamp_str,
             'tlp_level': submission.tlp_level,
             'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
@@ -298,7 +298,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         Args:
             org_data (Dict[str, Any]): Dictionary containing organization fields. Must include 'organization_id'.
-                Expected keys: organization_id, tier, sector, region, last_active (optional).
+                Expected keys: organization_id, access_level, sector, region, last_active (optional).
 
         Returns:
             bool: True if the operation succeeded, False if there was a ClientError.
@@ -311,11 +311,11 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             org_item = {
                 'PK': f"ORG#{org_data['organization_id']}",
                 'SK': 'ORG',
-                'GSI1PK': f"TIER#{org_data.get('tier', 'unknown')}",
+                'GSI1PK': f"TIER#{org_data.get('access_level', 'unknown')}",
                 'GSI1SK': timestamp,
                 'EntityType': 'Organization',
                 'organization_id': org_data.get('organization_id', ''),
-                'tier': org_data.get('tier', ''),
+                'access_level': org_data.get('access_level', ''),
                 'sector': org_data.get('sector', ''),
                 'region': org_data.get('region', ''),
                 'last_active': timestamp,

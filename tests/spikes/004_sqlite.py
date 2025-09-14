@@ -263,7 +263,7 @@ class FRANKDatabase:
         """, (
             org_data['organization_id'],
             org_data.get('organization_type', org_type),
-            org_data.get('tier'),
+            org_data.get('access_level'),
             org_data.get('sector'),
             org_data.get('region'),
             datetime.now(timezone.utc).isoformat(),
@@ -563,7 +563,7 @@ class FRANKSubmission:
             "submission": {
                 "submitter": {
                     "organization_id": org_id,
-                    "tier": tier
+                    "access_level": tier
                 },
                 "sighting": {
                     "sighting_id": f"sighting-{uuid.uuid4()}",
@@ -909,16 +909,16 @@ def run_database_demo():
     
     shared_threat_ip = "203.0.113.42"
     organizations = [
-        {"id": "bank-alpha", "tier": "partner", "sector": "financial"},
-        {"id": "retail-beta", "tier": "contributor", "sector": "retail"},
-        {"id": "tech-gamma", "tier": "partner", "sector": "technology"}
+        {"id": "bank-alpha", "access_level": "partner", "sector": "financial"},
+        {"id": "retail-beta", "access_level": "contributor", "sector": "retail"},
+        {"id": "tech-gamma", "access_level": "partner", "sector": "technology"}
     ]
     
     # Each org reports the same threat
     for i, org in enumerate(organizations):
         submission = frank.generate_minimal_submission(
             org_id=org["id"],
-            tier=org["tier"],
+            tier=org["access_level"],
             observables=[{
                 "id": f"shared-threat-{i}",
                 "type": "ipv4",
@@ -968,7 +968,7 @@ def run_database_demo():
         "submission": {
             "submitter": {
                 "organization_id": "msp-services-inc",
-                "tier": "partner",
+                "access_level": "partner",
                 "sector": "cybersecurity_services"
             },
             "hit_target": {

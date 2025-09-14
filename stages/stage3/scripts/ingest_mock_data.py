@@ -154,7 +154,7 @@ class MockDataGenerator:
             "submission": {
                 "submitter": {
                     "organization_id": org_id,
-                    "tier": random.choice(self.tiers),
+                    "access_level": random.choice(self.tiers),
                     "sector": random.choice(self.sectors)
                 },
                 "sighting": {

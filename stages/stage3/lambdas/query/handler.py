@@ -142,7 +142,7 @@ def handle_sighting_query(dynamodb, query_params):
                 'timestamp': item.get('timestamp'),
                 'confidence': item.get('confidence', 0),
                 'sector': item.get('sector'),
-                'submitter_tier': item.get('tier'),
+                'submitter_tier': item.get('access_level'),
                 'observables': sighting_data.get('observables', {})
             })
         

@@ -26,7 +26,7 @@ class TestFRANKSubmission(unittest.TestCase):
     def setUp(self):
         """Set up default variables for tests using STIX UUID format."""
         self.valid_org_id = stix_uuid("identity")
-        self.valid_tier = "partner"
+        self.valid_access_level = "partner"
         self.valid_observables = [
             {
                 "id": stix_uuid("ipv4-addr"),
@@ -51,7 +51,7 @@ class TestFRANKSubmission(unittest.TestCase):
         # Check required fields
         submitter = submission['submitter']
         self.assertIn('organization_id', submitter)
-        self.assertEqual(submitter['tier'], 'partner')  # default
+        self.assertEqual(submitter['access_level'], 'partner')  # default
         
         sighting = submission['sighting']
         self.assertIn('sighting_id', sighting)
@@ -69,25 +69,25 @@ class TestFRANKSubmission(unittest.TestCase):
         """Test generating minimal submission with custom parameters."""
         submission = generate_minimal_submission(
             org_id=self.valid_org_id,
-            tier=self.valid_tier,
+            access_level=self.valid_access_level,
             observables=self.valid_observables,
             confidence=85
         ).model_dump()
         
         submitter = submission['submitter']
         self.assertEqual(submitter['organization_id'], self.valid_org_id)
-        self.assertEqual(submitter['tier'], self.valid_tier)
+        self.assertEqual(submitter['access_level'], self.valid_access_level)
         
         sighting = submission['sighting']
         self.assertEqual(sighting['confidence'], 85)
         self.assertEqual(len(sighting['observables']['network']), 2)
     
-    def test_generate_minimal_submission_invalid_tier(self):
-        """Test generating submission with invalid tier raises exception."""
+    def test_generate_minimal_submission_invalid_access_level(self):
+        """Test generating submission with invalid access_level raises exception."""
         with self.assertRaises(FRANKValidationError) as context:
-            generate_minimal_submission(tier="invalid_tier")
+            generate_minimal_submission(access_level="invalid_access_level")
         
-        self.assertIn("Invalid tier", str(context.exception))
+        self.assertIn("Invalid access_level", str(context.exception))
     
     def test_generate_minimal_submission_invalid_confidence(self):
         """Test generating submission with invalid confidence raises exception."""
@@ -127,7 +127,7 @@ class TestFRANKSubmission(unittest.TestCase):
         from frank.util.sample_builder import generate_minimal_submission_dict
         # Simulate comprehensive submission using minimal dict and extra fields
         org_id = self.valid_org_id
-        tier = self.valid_tier
+        access_level = self.valid_access_level
         observables = self.valid_observables
         campaign_context = {"name": "test_campaign", "actor": "test_actor"}
         sigma_detection = {"rule_id": "test-rule-123", "rule_name": "sigma_rule", "confidence": 0.95}
@@ -135,7 +135,7 @@ class TestFRANKSubmission(unittest.TestCase):
         tlp_level = "TLP:AMBER"
         submission_dict = generate_minimal_submission_dict(
             org_id=org_id,
-            tier=tier,
+            access_level=access_level,
             observables=observables,
             confidence=92
         )
@@ -180,7 +180,7 @@ class TestFRANKSubmission(unittest.TestCase):
         tlp_level = "TLP:AMBER"
         submission = generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             hit_target_org=hit_target_org,
             observables=observables,
             severity="high",
@@ -225,7 +225,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         observables = sample_builder.get_default_observables()
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             hit_target_org=hit_target_org,
             observables=observables,
             severity="medium",
@@ -246,7 +246,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         observables = sample_builder.get_default_observables()
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             observables=observables,
             severity="low",
             confidence=50
@@ -296,7 +296,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         observables = sample_builder.get_default_observables()
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             hit_target_org=hit_target_org,
             observables=observables,
             severity="medium",
@@ -317,7 +317,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         observables = sample_builder.get_default_observables()
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             observables=observables,
             severity="low",
             confidence=50
@@ -365,7 +365,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         observables = sample_builder.get_default_observables()
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             hit_target_org=hit_target_org,
             observables=observables,
             severity="medium",
@@ -382,7 +382,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         observables = sample_builder.get_default_observables()
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
-            tier="partner",
+            access_level="partner",
             observables=observables,
             severity="low",
             confidence=50

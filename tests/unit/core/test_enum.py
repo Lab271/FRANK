@@ -288,7 +288,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         # Test model_dump()
         data = model.model_dump()
         
-        self.assertEqual(data["tier"], "partner")  # String value
+        self.assertEqual(data["access_level"], "partner")  # String value
         self.assertEqual(data["observable_type"], "ipv4")  # String value
         self.assertEqual(data["severity"], "high")  # String value
         
@@ -296,7 +296,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         json_str = model.model_dump_json()
         parsed_json = json.loads(json_str)
         
-        self.assertEqual(parsed_json["tier"], "partner")
+        self.assertEqual(parsed_json["access_level"], "partner")
         self.assertEqual(parsed_json["observable_type"], "ipv4")
         self.assertEqual(parsed_json["severity"], "high")
 
@@ -312,7 +312,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         data = model.model_dump()
         
         # Should serialize to enum objects, not string values
-        self.assertEqual(data["tier"], AccessTier.PARTNER)
+        self.assertEqual(data["access_level"], AccessTier.PARTNER)
         self.assertEqual(data["observable_type"], ObservableType.IPV4)
         self.assertEqual(data["severity"], SeverityLevel.HIGH)
         
@@ -321,7 +321,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         parsed_json = json.loads(json_str)
         
         # In JSON, enums are typically serialized as their string values regardless
-        self.assertEqual(parsed_json["tier"], "partner")
+        self.assertEqual(parsed_json["access_level"], "partner")
         self.assertEqual(parsed_json["observable_type"], "ipv4")
         self.assertEqual(parsed_json["severity"], "high")
 
@@ -337,7 +337,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         data = model.model_dump()
         
         # Default behavior in Pydantic v2 is typically to use enum values
-        self.assertEqual(data["tier"], "contributor")
+        self.assertEqual(data["access_level"], "contributor")
         self.assertEqual(data["observable_type"], "domain")
         self.assertEqual(data["severity"], "medium")
 
@@ -371,7 +371,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         )
         
         data = model.model_dump()
-        self.assertEqual(data["tier"], "observer")
+        self.assertEqual(data["access_level"], "observer")
         self.assertEqual(data["observable_type"], "email")
         self.assertIsNone(data["severity"])
 
@@ -523,7 +523,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         
         # Test serialization (should use string values)
         data = model.model_dump()
-        self.assertEqual(data["tier"], "partner")
+        self.assertEqual(data["access_level"], "partner")
         self.assertEqual(data["obs_type"], "ipv4")
         self.assertEqual(data["severity"], "high")
 
@@ -554,7 +554,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         # With use_enum_values=False, the exact behavior depends on Pydantic version
         # But the enums should still be accessible
         self.assertTrue(
-            data["tier"] == "contributor" or data["tier"] == AccessTier.CONTRIBUTOR
+            data["access_level"] == "contributor" or data["access_level"] == AccessTier.CONTRIBUTOR
         )
 
     def test_pydantic_invalid_enum_values(self):
@@ -619,10 +619,10 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         data_false = json.loads(json_false)
         
         # Both should contain string values in JSON (this is typical behavior)
-        self.assertEqual(data_true["tier"], "partner")
+        self.assertEqual(data_true["access_level"], "partner")
         self.assertEqual(data_true["severity"], "critical")
         
-        self.assertEqual(data_false["tier"], "partner")
+        self.assertEqual(data_false["access_level"], "partner")
         self.assertEqual(data_false["severity"], "critical")
         
         # But the original enum types should be preserved in the models
