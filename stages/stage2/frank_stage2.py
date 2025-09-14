@@ -15,7 +15,7 @@ import os
 import uuid
 import logging
 from datetime import datetime, timezone
-from typing import Optional, List, Dict, Any
+from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -66,58 +66,17 @@ class FrankConfig:
         """Setup configuration based on environment"""
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
 
-        if self.environment == "local":
-            self.setup_local_config()
-        elif self.environment in ["mysql"]:
-            # Direct MySQL connection
-            self.database_type = "mysql"
-            self.rds_host = os.getenv("RDS_HOST", "localhost")
-            self.rds_port = int(os.getenv("RDS_PORT", "3306"))
-            self.rds_database = os.getenv("RDS_DATABASE", "frank")
-            self.rds_username = os.getenv("RDS_USERNAME", "frank_user")
-            self.rds_password = os.getenv("RDS_PASSWORD", "frank_pass")
-        elif self.environment == "hybrid":
-            self.setup_localstack_hybrid_config()
-        elif self.environment == "localstack":
+        if self.environment == "localstack":
             self.setup_localstack_config()
         elif self.environment == "aws":
             self.setup_aws_config()
         else:
             raise ValueError(f"Unknown environment: {self.environment}")
 
-    def setup_local_config(self):
-        """Local SQLite configuration (fallback)"""
-        self.database_type = "sqlite"
-        self.db_path = os.getenv("SQLITE_PATH", "/tmp/frank_local.db")
-
-    def setup_localstack_hybrid_config(self):
-        """Hybrid LocalStack with external MySQL configuration"""
-        self.database_type = "mysql"
-        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
-
-        # MySQL Configuration (external)
-        self.rds_host = os.getenv("RDS_HOST", "mysql")
-        self.rds_port = int(os.getenv("RDS_PORT", "3306"))
-        self.rds_database = os.getenv("RDS_DATABASE", "frank")
-        self.rds_username = os.getenv("RDS_USERNAME", "frank_user")
-        self.rds_password = os.getenv("RDS_PASSWORD", "frank_pass")
-
-        # AWS Credentials (for LocalStack)
-        self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
-        self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
-        self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
-
     def setup_localstack_config(self):
         """LocalStack RDS configuration"""
-        self.database_type = "rds"
-        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
-
-        # RDS Configuration (via LocalStack)
-        self.rds_host = os.getenv("RDS_HOST", "localhost")
-        self.rds_port = int(os.getenv("RDS_PORT", "4566"))
-        self.rds_database = os.getenv("RDS_DATABASE", "frank")
-        self.rds_username = os.getenv("RDS_USERNAME", "frank_user")
-        self.rds_password = os.getenv("RDS_PASSWORD", "frank_pass")
+        self.database_type = "dynamodb"
+        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
 
         # AWS Credentials (for LocalStack)
         self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
@@ -164,14 +123,12 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app
 app = FastAPI(
     title="FRANK Platform - Stage 2",
-    description="RDS/MariaDB Implementation with LocalStack",
+    description="Dynamodb Implementation with LocalStack",
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
     lifespan=lifespan,
 )
-
-app.logger = logger  # Attach our external logger
 
 # Add CORS middleware
 app.add_middleware(
@@ -199,13 +156,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "tier": AccessTier.OBSERVER, "sector": "technology"}
+        return {"organization_id": "demo-observer-org", "access_tier": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
         return {"organization_id": "demo-contributor-org", "tier": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "tier": AccessTier.PARTNER, "sector": "cybersecurity_services"}
+        return {"organization_id": "demo-partner-org", "access_tier": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "tier": AccessTier.CORE_MEMBER, "sector": "government"}
+        return {"organization_id": "demo-core-org", "access_tier": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
@@ -216,7 +173,7 @@ class RateLimiter:
     def __init__(self):
         self.requests = {}
 
-    def check_rate_limit(self, user_id: str, tier: str) -> bool:
+    def check_rate_limit(self, user_id: str, access_tier: str) -> bool:
         # Simplified rate limiting - in production use Redis or similar
         # For spike, we'll just return True
         return True
@@ -240,7 +197,7 @@ async def submit_threat_intelligence(
     submission = submission_request.submission
 
     # Check permissions
-    if not AccessTier.can_submit(current_user["tier"]):
+    if not AccessTier.can_submit(current_user["access_tier"]):
         raise HTTPException(status_code=403, detail="Insufficient access level for submission")
 
     # Check rate limiting
@@ -249,15 +206,9 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
-<<<<<<< HEAD
         success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], submission)
 
         # TODO: simplify error handling in client, propagate Exceptions, not status flags
-=======
-        success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], ubmission)
-
-        # TODO: simplify error handling in client, propage Exceptions, not status flags
->>>>>>> ad17d2e ( some cleanup)
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
 
@@ -295,7 +246,7 @@ async def search_threat_sightings(
     """
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_tier"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -318,7 +269,7 @@ async def search_threat_sightings(
             )
 
         # Build query parameters
-        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["tier"], "limit": limit}
+        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_tier"], "limit": limit}
 
         # Add filters if provided
         if type:
@@ -335,7 +286,7 @@ async def search_threat_sightings(
 
 
         total_results, sightings, aggregations, threat_context = frank_client.query_threats(
-            org_id=current_user["organization_id"], tier=current_user["tier"], 
+            org_id=current_user["organization_id"], access_tier=current_user["access_tier"], 
             format=format, offset=offset, limit=limit,
             observable=observable, **query_params
         )
@@ -400,22 +351,19 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
 ):
     """Get platform usage statistics"""
-    if not current_user["tier"].check_access_level(AccessTier.OBSERVER):
+    if not current_user["access_tier"].check_access_level(AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
     stats = frank_client.get_platform_statistics(
         org_id=current_user["organization_id"],
         days=days,
-        tier=current_user["tier"]
+        access_level=current_user["access_tier"]
     )  
     return stats
 
 # ===============================
-# Helper functions
-# ===============================
-
-
 # Error handlers
+# ===============================
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
     """Custom HTTP exception handler"""
@@ -453,7 +401,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="FRANK Platform Stage 2 Server")
     parser.add_argument(
-        "--environment", choices=["hybrid", "localstack", "aws"], default="hybrid", help="Environment to run in"
+        "--environment", choices=["localstack", "aws"], default="localstack", help="Environment to run in"
     )
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
@@ -464,7 +412,7 @@ if __name__ == "__main__":
     # Set environment
     os.environ["FRANK_ENVIRONMENT"] = args.environment
 
-    logger.info(f"Starting FRANK Platform Stage 2")
+    logger.info("Starting FRANK Platform Stage 2")
     logger.info(f"Environment: {args.environment}")
     logger.info(f"Database type: {config.database_type}")
 

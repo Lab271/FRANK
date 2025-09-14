@@ -390,7 +390,7 @@ class Submission(BaseModel):
     submission_method: Optional[str] = Field(default="api", description="Submission method")
     processing_notes: Optional[str] = Field(None, description="Processing notes")
 
-    sighting: Sighting = Field(..., description="Sighting details")
+    sighting: Optional[Sighting] = Field(None, description="Sighting details")
     # TODO: Move this to sighting?
     hit_target: Optional[HitTarget] = Field(None, description="Affected organization")
     tlp_level: Optional[str] = Field("GREEN", description="TLP classification")

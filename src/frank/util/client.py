@@ -29,6 +29,14 @@ class FRANKClient:
     
     This is the main interface most users should interact with, providing a simple
     API that handles both submission processing and storage automatically.
+
+    Main features:
+        - submit_threat_intelligence: Submission of threat intelligence data
+        - query_threats: Querying of threat intelligence records
+        - get_observations: Retrieve observable statistics and details
+        - get_platform_statistics: Retrieve platform usage statistics   
+        - check_health: Perform health checks on the database backend
+        - seed_database: Seed the database with initial data
     """
 
     def __init__(self, database: BaseFRANKDatabase, logger: logging.Logger = None):
