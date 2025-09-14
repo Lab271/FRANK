@@ -29,10 +29,10 @@ from frank.core.enum import ObservableType, TLPLevel, TierLevel
 from frank.core.models import Submission
 
 # Import our FRANK database
-from frank.db.mysql import create_mysql_database
-from frank.db.dynamodb import create_dynamodb_database
-from frank.utils.sample_builder import generate_minimal_submission
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
+from frank.storage.mysql import create_mysql_database
+from frank.storage.dynamodb import create_dynamodb_database
+from frank.util.sample_builder import generate_minimal_submission
+from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
 from frank import __version__
 
 # Configure logging
@@ -139,9 +139,6 @@ class FrankConfig:
 
 # Initialize configuration and database
 config = FrankConfig()
-frank_db = create_mysql_database(
-    config.rds_host, config.rds_port, config.rds_database, config.rds_username, config.rds_password, logger
-)
 frank_dynamodb = create_dynamodb_database(
     table_name=config.table_name,
     region=config.aws_region,
@@ -156,7 +153,6 @@ frank_dynamodb = create_dynamodb_database(
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
-    frank_db.initialize()
     load_database()
     logger.info(f"Database Initialization complete")
     yield
@@ -274,21 +270,18 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
-        success = frank_db.store_submission(submission)
-
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to store submission")
-
-        # Store in database
         success = frank_dynamodb.store_submission(submission)
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
         
-        # success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
-
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission)
+
+        success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
+    
+        if not success:
+            raise HTTPException(status_code=500, detail="Failed to log access")
 
         return SubmissionResponse(
             status="accepted",
@@ -364,7 +357,7 @@ async def search_threat_sightings(
 
         # Search by specific observable if provided
         if observable:
-            results = frank_db.search_observables_by_value(
+            results = frank_dynamodb.search_observables_by_value(
                 current_user["organization_id"], observable, current_user["tier"]
             )
         else:
@@ -444,15 +437,11 @@ def get_observations(
 @app.get("/v1/health")
 async def health_check():
     """Health check endpoint"""
-    mysql_health_status = frank_db.health_check()
     dynamodb_health_status = frank_dynamodb.health_check()
     return {
-        "status": "healthy" if mysql_health_status["status"] == "healthy" and dynamodb_health_status["status"] == "healthy" else "unhealthy",
+        "status": dynamodb_health_status["status"],
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "database": {
-            "mysql": mysql_health_status,
-            "dynamodb": dynamodb_health_status
-        },
+        "dynamodb": dynamodb_health_status,
         "version": __version__,
     }
 
@@ -480,8 +469,9 @@ async def get_platform_statistics(
 
     return stats
 
-
+# ===============================
 # Helper functions
+# ===============================
 def calculate_contribution_score(submission: Submission) -> int:
     """Calculate contribution score impact for a submission"""
     base_score = 10

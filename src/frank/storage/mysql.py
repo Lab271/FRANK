@@ -17,10 +17,10 @@ from typing import Dict, Any, List, Optional
 
 import logging
 
-from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
-from frank.db.base import BaseFRANKDatabase
 from frank.core.models import Submission, Sighting, Submitter
 from frank.core.enum import ObservableType, TierLevel
+from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from .base import BaseFRANKDatabase
 
 
 class MySQLFRANKDatabase(BaseFRANKDatabase):

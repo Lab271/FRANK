@@ -11,10 +11,10 @@ SPDX-License-Identifier: Apache-2.0
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
-from frank.core.enum import TierLevel
-from frank.core.models import Submission, Submitter, Sighting
+from frank.core.models import Submission
 
-class SubmissionWrapper(BaseModel):
+# Request models
+class SubmissionRequest(BaseModel):
     """
     API wrapper that handles the nested 'submission' format your API expects.
     """
@@ -22,21 +22,6 @@ class SubmissionWrapper(BaseModel):
         extra="ignore"
     )
     
-    submission: Submission = Field(..., description="The actual FRANK submission")
-
-
-# Validation schemas for different use cases
-class MinimalSubmissionRequest(BaseModel):
-    """Minimal required fields for quick submissions"""
-    model_config = ConfigDict(extra="forbid")  # Strict on input for requests
-    
-    submitter_tier: TierLevel
-    target_sector: str = Field(..., min_length=1)
-    threat_indicators: List[str] = Field(..., min_length=1)
-    confidence: Optional[int] = Field(69, ge=0, le=100)
-
-class SubmissionRequest(BaseModel):
-    """Main Submission Request Handler"""
     submission: Submission = Field(..., description="Submission data")
 
 # Response models

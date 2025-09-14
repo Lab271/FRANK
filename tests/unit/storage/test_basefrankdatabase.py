@@ -3,7 +3,7 @@
 Unit tests for BaseFRANKDatabase abstract base class in base.py
 """
 import unittest
-from frank.db.base import BaseFRANKDatabase
+from frank.storage.base import BaseFRANKDatabase
 
 class DummyDatabase(BaseFRANKDatabase):
     """

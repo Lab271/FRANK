@@ -7,7 +7,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 import unittest
 from unittest.mock import patch, MagicMock
-from frank.db.mysql import MySQLFRANKDatabase
+from frank.storage.mysql import MySQLFRANKDatabase
 
 class TestMySQLFRANKDatabaseLogAccess(unittest.TestCase):
     """Unit tests for MySQLFRANKDatabase.log_access and related access logging."""

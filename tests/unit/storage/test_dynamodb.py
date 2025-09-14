@@ -10,8 +10,8 @@ from unittest.mock import patch, MagicMock
 
 from botocore.exceptions import ClientError
 
-from frank.db.dynamodb import DynamoDBFRANKDatabase
-from frank.db.exceptions import FRANKStorageError, FRANKQueryError
+from frank.storage.dynamodb import DynamoDBFRANKDatabase
+from frank.storage.exceptions import FRANKStorageError, FRANKQueryError
 
 class TestDynamoDBFRANKDatabaseLogAccess(unittest.TestCase):
     """Unit tests for DynamoDBFRANKDatabase.log_access and related access logging."""

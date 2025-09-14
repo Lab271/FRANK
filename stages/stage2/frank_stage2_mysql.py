@@ -29,9 +29,9 @@ from frank.core.enum import ObservableType, TLPLevel, TierLevel
 from frank.core.models import Submission
 
 # Import our FRANK database
-from frank.db.mysql import create_mysql_database
-from frank.utils.sample_builder import generate_minimal_submission
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
+from frank.storage.mysql import create_mysql_database
+from frank.util.sample_builder import generate_minimal_submission
+from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
 
 # Configure logging

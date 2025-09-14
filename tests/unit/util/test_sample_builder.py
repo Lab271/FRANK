@@ -12,12 +12,12 @@ import unittest
 from datetime import datetime, timezone
 
 from frank.core.models import Submission
-from frank.utils.sample_builder import generate_minimal_submission
+from frank.util.sample_builder import generate_minimal_submission
 from frank.core.exceptions import FRANKValidationError
 
 import uuid
-from frank.utils import sample_builder
-    # (removed unused 'import pytest')
+from frank.util import sample_builder
+
 def stix_uuid(object_type: str) -> str:
     """Generate a STIX-compliant UUID for a given object type."""
     return f"{object_type}--{uuid.uuid4()}"
@@ -114,7 +114,7 @@ class TestFRANKSubmission(unittest.TestCase):
 
     def test_get_observables_by_category(self):
         """Test get_observables_by_category returns correct types."""
-        from frank.utils.sample_builder import get_observables_by_category
+        from frank.util.sample_builder import get_observables_by_category
         default_obs = get_observables_by_category(None, 'default')
         malware_obs = get_observables_by_category(None, 'malware')
         phishing_obs = get_observables_by_category(None, 'phishing')
@@ -124,7 +124,7 @@ class TestFRANKSubmission(unittest.TestCase):
 
     def test_generate_comprehensive_submission_dict(self):
         """Test generating comprehensive submission with all parameters."""
-        from frank.utils.sample_builder import generate_minimal_submission_dict
+        from frank.util.sample_builder import generate_minimal_submission_dict
         # Simulate comprehensive submission using minimal dict and extra fields
         org_id = self.valid_org_id
         tier = self.valid_tier
@@ -170,7 +170,7 @@ class TestFRANKSubmission(unittest.TestCase):
 
     def test_generate_comprehensive_submission(self):
         """Test generating comprehensive submission using the function and check model properties."""
-        from frank.utils.sample_builder import generate_comprehensive_submission, get_default_observables
+        from frank.util.sample_builder import generate_comprehensive_submission, get_default_observables
         org_id = stix_uuid("identity")
         hit_target_org = stix_uuid("identity")
         observables = get_default_observables()

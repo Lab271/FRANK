@@ -17,7 +17,7 @@ from typing import Dict, Any, List, Optional
 
 from frank.core.models import Submission, Observable
 from frank.core.enum import ObservableType, TierLevel
-from frank.utils import NullLogger
+from frank.util import NullLogger
 
 class BaseFRANKDatabase(ABC):
     """

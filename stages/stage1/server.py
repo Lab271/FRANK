@@ -27,9 +27,9 @@ from frank.core.enum import ObservableType, TLPLevel, TierLevel
 from frank.core.models import Submission
 
 # Import our FRANK database
-from frank.db.sqlite import create_sqlite_database
-from frank.utils.sample_builder import generate_minimal_submission
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
+from frank.storage.sqlite import create_sqlite_database
+from frank.util.sample_builder import generate_minimal_submission
+from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"

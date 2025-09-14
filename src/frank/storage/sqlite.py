@@ -20,8 +20,8 @@ from pathlib import Path
 
 from frank.core.models import Submission, Sighting, Submitter
 from frank.core.enum import ObservableType, TierLevel
-from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
-from frank.db.base import BaseFRANKDatabase
+from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from .base import BaseFRANKDatabase
 
 class SQLiteFRANKDatabase(BaseFRANKDatabase):
     """

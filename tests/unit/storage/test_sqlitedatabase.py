@@ -22,7 +22,7 @@ sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from frank.core.models import Submission
 from frank.core.enum import ObservableType, TierLevel
-from frank.db.sqlite import SQLiteFRANKDatabase, create_sqlite_database
+from frank.storage.sqlite import SQLiteFRANKDatabase, create_sqlite_database
 
 
 class TestSQLiteFRANKDatabase(unittest.TestCase):

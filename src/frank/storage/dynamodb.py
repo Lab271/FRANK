@@ -10,7 +10,6 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import boto3
-import uuid
 from typing import Dict, Any, List, Optional
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
@@ -18,10 +17,10 @@ from botocore.exceptions import ClientError
 
 import logging
 
-from frank.db.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
-from frank.db.base import BaseFRANKDatabase
 from frank.core.models import Submission, Observable
 from frank.core.enum import ObservableType, TierLevel
+from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from .base import BaseFRANKDatabase
 
 
 class DynamoDBFRANKDatabase(BaseFRANKDatabase):
@@ -285,25 +284,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         # Create observable index items
         items_to_write.extend(self._extract_observables(submission))
-
-        # Store access log
-        access_log_item = {
-            'PK': f"LOG#{submission.submitter.organization_id}",
-            'SK': f"LOG#{timestamp_str}#{uuid.uuid4()}",
-            'GSI1PK': 'ACTION#SUBMIT',
-            'GSI1SK': timestamp_str,
-            'EntityType': 'AccessLog',
-            'organization_id': submission.submitter.organization_id,
-            'action': 'SUBMIT',
-            'resource_type': 'submission',
-            'resource_id': submission.submission_id,
-            'timestamp': timestamp_str,
-            'success': True,
-            'TTL': int((timestamp + timedelta(days=90)).timestamp())
-        }
-        
-        # Batch write all items
-        items_to_write.append(access_log_item)
 
         try:
             self._batch_write_items(items_to_write)
@@ -893,6 +873,25 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 'error': str(e)
             }
 
+    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> bool:
+        """Log an access event for auditing purposes in DynamoDB."""
+        try:
+            self._log_access(org_id, action, resource_type, resource_id, details)
+            self.logger.info(f"Access stored for {org_id}")
+            return True
+        except Exception as e:
+            self.logger.error(f"Error logging access: {e}")
+            return False
+
+    def health_check(self) -> Dict[str, Any]:
+        """Perform a health check on the database."""
+        return {
+            'status': 'healthy',
+            'database_table': self.table_name,
+            'database_region': self.region,
+            "stack": self.environment
+        }
+
     def _log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> None:
         """Internal method to log access in DynamoDB single table design."""
         timestamp = datetime.now(timezone.utc).isoformat()
@@ -918,116 +917,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error logging access: {e}")
             raise FRANKQueryError(f"Failed to log access: {e}")
 
-    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> bool:
-        """Log an access event for auditing purposes in DynamoDB."""
-        try:
-            self._log_access(org_id, action, resource_type, resource_id, details)
-            self.logger.info(f"Access stored for {org_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error logging access: {e}")
-            return False
 
-    def health_check(self) -> Dict[str, Any]:
-        """Perform a health check on the database."""
-        return {
-            'status': 'healthy',
-            'database_table': self.table_name,
-            'database_region': self.region,
-            "stack": self.environment
-        }
     
-# def query_observables(self, org_id: str, observable_type: str = None, 
-#                      limit: int = 100, access_level: str = 'contributor',
-#                      min_confidence: int = None, sectors: List[str] = None,
-#                      days_back: int = None) -> List[Dict[str, Any]]:
-#     """Query observables using the observable index."""
-#     try:
-#         if observable_type:
-#             # Query by type using GSI1
-#             response = self.table.query(
-#                 IndexName='GSI1',
-#                 KeyConditionExpression='GSI1PK = :type_key',
-#                 FilterExpression='EntityType = :entity_type',
-#                 ExpressionAttributeValues={
-#                     ':type_key': f"TYPE#{observable_type}",
-#                     ':entity_type': 'ObservableIndex'
-#                 },
-#                 Limit=limit,
-#                 ScanIndexForward=False
-#             )
-#         else:
-#             # Scan for all observable indexes
-#             response = self.table.scan(
-#                 FilterExpression='EntityType = :entity_type',
-#                 ExpressionAttributeValues={':entity_type': 'ObservableIndex'},
-#                 Limit=limit
-#             )
-        
-#         # Process and deduplicate results
-#         observables_map = {}
-        
-#         for item in response.get('Items', []):
-#             item = self._convert_decimals_to_float(item)
-            
-#             # Apply filters
-#             if min_confidence and item.get('confidence', 0) < min_confidence:
-#                 continue
-                
-#             if days_back:
-#                 item_time = datetime.fromisoformat(item.get('timestamp', '1970-01-01'))
-#                 cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
-#                 if item_time < cutoff:
-#                     continue
-            
-#             obs_hash = item['observable_hash']
-            
-#             # Aggregate by hash (deduplication)
-#             if obs_hash not in observables_map:
-#                 observables_map[obs_hash] = {
-#                     'observable_hash': obs_hash,
-#                     'observable_type': item['observable_type'],
-#                     'observable_value': item['observable_value'],
-#                     'total_sightings': 0,
-#                     'first_seen': item.get('timestamp'),
-#                     'last_seen': item.get('timestamp'),
-#                     'unique_organizations': set(),
-#                     'confidence_values': []
-#                 }
-            
-#             obs_entry = observables_map[obs_hash]
-#             obs_entry['total_sightings'] += 1
-#             obs_entry['unique_organizations'].add(item.get('submitter_org_id'))
-#             obs_entry['confidence_values'].append(item.get('confidence', 0))
-            
-#             # Update time bounds
-#             if item.get('timestamp') < obs_entry['first_seen']:
-#                 obs_entry['first_seen'] = item.get('timestamp')
-#             if item.get('timestamp') > obs_entry['last_seen']:
-#                 obs_entry['last_seen'] = item.get('timestamp')
-        
-#         # Convert to final format
-#         results = []
-#         for obs_hash, obs_data in observables_map.items():
-#             obs_data['unique_organizations'] = len(obs_data['unique_organizations'])
-#             obs_data['avg_confidence'] = (
-#                 sum(obs_data['confidence_values']) / len(obs_data['confidence_values'])
-#                 if obs_data['confidence_values'] else 0
-#             )
-#             del obs_data['confidence_values']
-            
-#             # Apply access level filtering
-#             filtered_obs = self._filter_observable_by_access_level(obs_data, access_level)
-#             results.append(filtered_obs)
-        
-#         # Log access
-#         self._log_access_async(org_id, 'QUERY', 'observables')
-        
-#         return results[:limit]
-        
-#     except ClientError as e:
-#         self.logger.error(f"Error querying observables: {e}")
-#         raise FRANKQueryError(f"Failed to query observables: {e}")
 
 #     def get_access_logs(self, org_id: str, days: int = 7, 
 #                        actions: List[str] = None) -> List[Dict[str, Any]]:
