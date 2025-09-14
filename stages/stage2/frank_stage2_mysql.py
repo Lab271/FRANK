@@ -30,7 +30,7 @@ from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.storage.mysql import create_mysql_database
-from frank.util.sample_builder import generate_minimal_submission
+from frank.util.sample_builder import generate_minimal_submission, create_demo_orgs
 from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
 
@@ -567,35 +567,7 @@ def load_database():
     """Initialize the database and load with some demo data"""
     logger.info(f"Initialiazing FRANK API server database.")
 
-    # Create some demo organizations
-    demo_orgs = [
-        {
-            "organization_id": "demo-observer-org",
-            "tier": "observer",
-            "sector": "technology",
-            "region": "nl_north_holland",
-        },
-        {
-            "organization_id": "demo-contributor-org",
-            "tier": "contributor",
-            "sector": "financial",
-            "region": "nl_north_holland",
-        },
-        {
-            "organization_id": "demo-partner-org",
-            "tier": "partner",
-            "sector": "cybersecurity_services",
-            "region": "nl_north_holland",
-        },
-        {
-            "organization_id": "demo-core-org",
-            "tier": "core_member",
-            "sector": "government",
-            "region": "nl_north_holland",
-        },
-    ]
-
-    for org in demo_orgs:
+    for org in create_demo_orgs(id_fixed=True):
         frank_db.upsert_organization(org)
 
     # Create some demo submissions

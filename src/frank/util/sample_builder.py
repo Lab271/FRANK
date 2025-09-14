@@ -270,6 +270,43 @@ def generate_comprehensive_submission(
         submission["sighting"]["impact"] = impact_data
     return Submission(**submission)
 
+
+def create_demo_orgs(id_fixed: bool = True) -> List[Dict[str, Any]]:
+    """
+    Create a list of sample organizations for demonstration or testing purposes.
+
+    Returns:
+        List of Organization instances with sample data.
+    """
+    orgs = [
+        {
+            "organization_id": "demo-observer-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "tier": "observer",
+            "sector": "finance",
+            "region": "europe"
+        },
+        {
+            "organization_id": "demo-partner-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "tier": "partner",
+            "sector": "cybersecurity_services",
+            "region": "nl"
+        },
+        {
+            "organization_id": "demo-contributor-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "tier": "contributur",
+            "sector": "healthcare",
+            "region": "north_america"
+        },
+        {
+            "organization_id": "demo-core_member-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "tier": "core_member",
+            "sector": "government",
+            "region": "asia_pacific"
+        }
+    ]
+    return orgs
+
+
 # Example usage and testing functions
 def example_usage():
     """Demonstrate Pydantic model usage"""
