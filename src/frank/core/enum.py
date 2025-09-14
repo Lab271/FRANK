@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 from enum import Enum
 
-class TierLevel(str, Enum):
+class AccessTier(str, Enum):
     """Access tier enumeration with validation"""
     PUBLIC = "public"
     OBSERVER = "observer" 
@@ -19,16 +19,16 @@ class TierLevel(str, Enum):
 
     def can_submit(self) -> bool:
         """Check if this tier level can submit data."""
-        return self in {TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER}    
+        return self in {AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER}    
 
     def check_access_level(self, required_level) -> bool:
         """Check if user tier meets required access level"""
         tier_hierarchy = {
-            TierLevel.PUBLIC: 0,
-            TierLevel.OBSERVER: 1,
-            TierLevel.CONTRIBUTOR: 2,
-            TierLevel.PARTNER: 3,
-            TierLevel.CORE_MEMBER: 4,
+            AccessTier.PUBLIC: 0,
+            AccessTier.OBSERVER: 1,
+            AccessTier.CONTRIBUTOR: 2,
+            AccessTier.PARTNER: 3,
+            AccessTier.CORE_MEMBER: 4,
         }
 
         user_level = tier_hierarchy.get(self, 0)

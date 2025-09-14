@@ -15,7 +15,7 @@ import json
 
 # Import the models (adjust import path as needed)
 from frank.core.models import HitTarget
-from frank.core.enum import TierLevel
+from frank.core.enum import AccessTier
 from pydantic import ValidationError
 
 

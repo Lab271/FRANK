@@ -14,14 +14,14 @@ from typing import Any, Dict
 from datetime import datetime, timezone
 import logging
 
-from frank.core.enum import TierLevel  
+from frank.core.enum import AccessTier  
 from frank.core.logger import NullLogger       
 
 class FRANKFilter:
     def __init__(self, logger: logging.Logger = None):
         self.logger = logger or NullLogger()
 
-    def filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
+    def filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter submission data based on the provided access level.
 
@@ -35,14 +35,14 @@ class FRANKFilter:
 
         Args:
             submission (Dict[str, Any]): The full submission data as a dictionary.
-            access_level (TierLevel): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
+            access_level (AccessTier): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
 
         Returns:
             Dict[str, Any]: A dictionary containing the filtered submission data under the 'submission' key.
         """
         self.logger.info(f"Filtering submission for access level: {access_level.value}")
         self.logger.debug(f"Original submission data: {submission}")
-        if access_level == TierLevel.PUBLIC:
+        if access_level == AccessTier.PUBLIC:
             # Only basic statistics
             return {
                 'submission': {
@@ -55,7 +55,7 @@ class FRANKFilter:
                     }
                 }
             }
-        elif access_level == TierLevel.OBSERVER:
+        elif access_level == AccessTier.OBSERVER:
             # Add some observable types but mask values
             filtered = self._deep_copy(submission)
             observables = filtered['sighting'].get('observables', {})
@@ -70,7 +70,7 @@ class FRANKFilter:
             filtered.pop('tlp_level', None)
 
             return {'submission': filtered}
-        elif access_level == TierLevel.CONTRIBUTOR:
+        elif access_level == AccessTier.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
             
@@ -94,7 +94,7 @@ class FRANKFilter:
         else:
             return obj
         
-    def filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
+    def filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter observable data based on the provided access level.
 
@@ -107,18 +107,18 @@ class FRANKFilter:
 
         Args:
             observable (Dict[str, Any]): The full observable summary data as a dictionary.
-            access_level (TierLevel): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
+            access_level (AccessTier): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
 
         Returns:
             Dict[str, Any]: A dictionary containing the filtered observable data.
         """
-        if access_level == TierLevel.PUBLIC:
+        if access_level == AccessTier.PUBLIC:
             return {
                 'observable_type': observable['observable_type'],
                 'total_sightings': observable['total_sightings'],
                 'last_seen': observable['last_seen']
             }
-        elif access_level == TierLevel.OBSERVER:
+        elif access_level == AccessTier.OBSERVER:
             filtered = dict(observable)
             # Mask observable value
             if 'observable_value' in filtered:
@@ -131,13 +131,13 @@ class FRANKFilter:
 
 
     # # Combine with filter method?
-    # def anonymize_for_tier(self, access_tier: TierLevel) -> "Submission":
+    # def anonymize_for_tier(self, access_tier: AccessTier) -> "Submission":
     #     """Anonymize submission based on access tier - 'strong on return'"""
     #     import copy
 
     #     anonymized = copy.deepcopy(self)
 
-    #     if access_tier == TierLevel.PUBLIC:
+    #     if access_tier == AccessTier.PUBLIC:
     #         # Heavy anonymization for public access
     #         for obs in anonymized.sighting.observables.network:
     #             obs.value = f"hash_{hash(obs.value) % 10000:04d}"
@@ -145,7 +145,7 @@ class FRANKFilter:
     #         anonymized.hit_target.organization_id = "redacted"
     #         anonymized.submitter.organization_id = "redacted"
 
-    #     elif access_tier == TierLevel.OBSERVER:
+    #     elif access_tier == AccessTier.OBSERVER:
     #         # Partial anonymization
 
     #         for obs in anonymized.sighting.observables.network:
@@ -162,8 +162,8 @@ class FRANKFilter:
  
    # # 5. Demonstrate access-based anonymization
     # print("\n5. Testing tier-based anonymization...")
-    # public_view = parsed.anonymize_for_tier(TierLevel.PUBLIC)
-    # observer_view = parsed.anonymize_for_tier(TierLevel.OBSERVER)
+    # public_view = parsed.anonymize_for_tier(AccessTier.PUBLIC)
+    # observer_view = parsed.anonymize_for_tier(AccessTier.OBSERVER)
 
     # print(f"  - Original IP: {parsed.sighting.observables.network[0].value}")
     # print(f"  - Observer view: {observer_view.sighting.observables.network[0].value}")
@@ -171,10 +171,10 @@ class FRANKFilter:
         # print("✓ Access-tier based data filtering")
 
 
-    def format_sighting_response(self, result: Dict[str, Any], access_level: TierLevel, format_type: str) -> Dict[str, Any]:
+    def format_sighting_response(self, result: Dict[str, Any], access_level: AccessTier, format_type: str) -> Dict[str, Any]:
         """Format sighting data based on access level and format type"""
 
-        if access_level == TierLevel.OBSERVER:
+        if access_level == AccessTier.OBSERVER:
             # Minimal data for observers
             return {
                 "sighting_id": f"sighting-masked-{result.get('observable_hash', 'unknown')[:8]}",
@@ -186,7 +186,7 @@ class FRANKFilter:
                 "confidence": result.get("avg_confidence", 50),
                 "geographic_region": "masked",
             }
-        elif access_level == TierLevel.CONTRIBUTOR:
+        elif access_level == AccessTier.CONTRIBUTOR:
             # Partial data for contributors
             return {
                 "sighting_id": f"sighting-{result.get('observable_hash', 'unknown')[:12]}",

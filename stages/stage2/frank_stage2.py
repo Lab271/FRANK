@@ -25,7 +25,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 # Import enums from FRANK core
-from frank.core.enum import ObservableType, TLPLevel, TierLevel
+from frank.core.enum import ObservableType, TLPLevel, AccessTier
 
 # Import our FRANK database
 from frank.storage.dynamodb import create_dynamodb_database
@@ -155,7 +155,7 @@ frank_client = create_client(db=frank_dynamodb, logger=logger)
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
-    # load_database()
+    # load_database with sample data
     frank_client.seed_database(SampleDataSeeder())
     logger.info(f"Database Initialization complete")
     yield
@@ -197,13 +197,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "tier": TierLevel.OBSERVER, "sector": "technology"}
+        return {"organization_id": "demo-observer-org", "tier": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "tier": TierLevel.CONTRIBUTOR, "sector": "financial"}
+        return {"organization_id": "demo-contributor-org", "tier": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "tier": TierLevel.PARTNER, "sector": "cybersecurity_services"}
+        return {"organization_id": "demo-partner-org", "tier": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "tier": TierLevel.CORE_MEMBER, "sector": "government"}
+        return {"organization_id": "demo-core-org", "tier": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
@@ -238,7 +238,7 @@ async def submit_threat_intelligence(
     submission = submission_request.submission
 
     # Check permissions
-    if not TierLevel.can_submit(current_user["tier"]):
+    if not AccessTier.can_submit(current_user["tier"]):
         raise HTTPException(status_code=403, detail="Insufficient access level for submission")
 
     # Check rate limiting
@@ -396,7 +396,7 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
 ):
     """Get platform usage statistics"""
-    if not current_user["tier"].check_access_level(TierLevel.OBSERVER):
+    if not current_user["tier"].check_access_level(AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
     stats = frank_client.get_platform_statistics(

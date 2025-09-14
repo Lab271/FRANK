@@ -18,7 +18,7 @@ from botocore.exceptions import ClientError
 import logging
 
 from frank.core.models import Submission, Observable
-from frank.core.enum import ObservableType, TierLevel
+from frank.core.enum import ObservableType, AccessTier
 from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from .base import BaseFRANKDatabase
 
@@ -547,7 +547,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 raise FRANKStorageError(f"Batch write operation failed: {e}")
 
 
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
 
@@ -587,7 +587,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
     
     def query_observables(self, org_id: str, observable_type: ObservableType = None, 
-                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
+                         limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
                          min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
         """
         Query observables with access level filtering and additional filters.
@@ -604,7 +604,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             org_id (str): Organization ID making the request (used for access logging).
             observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
             limit (int, optional): Maximum number of results to return (default: 100).
-            access_level (TierLevel, optional): Access level for filtering (default: CONTRIBUTOR).
+            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
             min_confidence (float, optional): Minimum confidence value to include.
             sectors (List[str], optional): List of allowed sectors to include.
             days_back (int, optional): Only include observables seen in the last N days.
@@ -724,14 +724,14 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
 
     def search_observables_by_value(self, org_id: str, search_value: str,
-                                   access_level: TierLevel = TierLevel.CONTRIBUTOR) -> List[Dict[str, Any]]:
+                                   access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
         """
         Search for observables by partial value match using DynamoDB scan.
 
         Args:
             org_id (str): Organization performing the search
             search_value (str): Value to search for (substring match)
-            access_level (TierLevel, optional): Access level for filtering (default: CONTRIBUTOR)
+            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR)
 
         Returns:
             List[Dict[str, Any]]: List of matching observables, filtered by access level

@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from .client import create_client
-from .logging import NullLogger
+from .logger import NullLogger
 
 
 __all__ = [

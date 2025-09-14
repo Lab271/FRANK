@@ -15,12 +15,12 @@ import logging
 from datetime import datetime, timezone
 
 from frank.core.models import Submission
-from frank.core.enum import TierLevel
+from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
 from frank.storage import FRANKDatabaseError, FRANKConfigurationError, FRANKConnectionError
 
 from .sample_builder import FRANKDatabaseSeeder
-from .logging import NullLogger
+from .logger import NullLogger
 from frank import __version__
     
 class FRANKClient:
@@ -59,7 +59,7 @@ class FRANKClient:
 
 
     def query_threats(self, org_id: str, 
-        tier: TierLevel, limit: int, offset: int, format: Optional[str], 
+        tier: AccessTier, limit: int, offset: int, format: Optional[str], 
         observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
         """
         Query threat intelligence records for a given organization, applying access level filtering, pagination, and formatting.
@@ -71,7 +71,7 @@ class FRANKClient:
 
         Args:
             org_id (str): Organization ID making the query.
-            tier (TierLevel): Access tier for filtering and formatting results.
+            tier (AccessTier): Access tier for filtering and formatting results.
             limit (int): Maximum number of results to return.
             offset (int): Pagination offset.
             format (Optional[str]): Response format type.
@@ -105,11 +105,11 @@ class FRANKClient:
         aggregations = {}
         threat_context = {}
         # Add aggregations for contributor and above
-        if tier.check_access_level(TierLevel.CONTRIBUTOR):
+        if tier.check_access_level(AccessTier.CONTRIBUTOR):
             aggregations = generate_aggregations(results, tier)
 
         # Add threat context for partner and above
-        if tier.check_access_level(TierLevel.PARTNER):
+        if tier.check_access_level(AccessTier.PARTNER):
             threat_context = generate_threat_context(results)
 
         return (total_results, sightings, aggregations, threat_context)
@@ -145,7 +145,7 @@ class FRANKClient:
         return observations[:limit], stats
         
 
-    def get_platform_statistics(self, org_id: str, days: int, tier: TierLevel) -> Dict[str, Any]:
+    def get_platform_statistics(self, org_id: str, days: int, tier: AccessTier) -> Dict[str, Any]:
         """
         Retrieve platform statistics for a given organization and time window.
 
@@ -158,7 +158,7 @@ class FRANKClient:
         Args:
             org_id (str): The organization ID for which to retrieve statistics.
             days (int): Number of days to include in the statistics summary.
-            tier (TierLevel): The user's access tier, used to filter sensitive data.
+            tier (AccessTier): The user's access tier, used to filter sensitive data.
 
         Returns:
             Dict[str, Any]: Dictionary containing platform statistics, filtered by access level.
@@ -167,7 +167,7 @@ class FRANKClient:
         stats = self.database.get_statistics_summary(org_id, days=days)
 
         # Filter stats based on access level
-        if tier == TierLevel.OBSERVER:
+        if tier == AccessTier.OBSERVER:
             # Remove sensitive information for observers
             filtered_stats = {
                 "total_submissions": stats.get("total_submissions", 0),
@@ -222,10 +222,10 @@ class FRANKClient:
 # Helper functions
 # ===============================
 
-def format_sighting_response(result: Dict[str, Any], access_level: TierLevel, format_type: str) -> Dict[str, Any]:
+def format_sighting_response(result: Dict[str, Any], access_level: AccessTier, format_type: str) -> Dict[str, Any]:
     """Format sighting data based on access level and format type"""
 
-    if access_level == TierLevel.OBSERVER:
+    if access_level == AccessTier.OBSERVER:
         # Minimal data for observers
         return {
             "sighting_id": f"sighting-masked-{result.get('observable_hash', 'unknown')[:8]}",
@@ -237,7 +237,7 @@ def format_sighting_response(result: Dict[str, Any], access_level: TierLevel, fo
             "confidence": result.get("avg_confidence", 50),
             "geographic_region": "masked",
         }
-    elif access_level == TierLevel.CONTRIBUTOR:
+    elif access_level == AccessTier.CONTRIBUTOR:
         # Partial data for contributors
         return {
             "sighting_id": f"sighting-{result.get('observable_hash', 'unknown')[:12]}",

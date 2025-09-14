@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 # Assuming these imports exist in your project
 from frank.core.models import Submission, Submitter, Sighting, Observable, Observables
-from frank.core.enum import TierLevel, ObservableType
+from frank.core.enum import AccessTier, ObservableType
 from frank import __version__
 
 
@@ -59,7 +59,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Create programmatic test data
         self.test_submitter = Submitter(
             organization_id="identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-            tier=TierLevel.PARTNER
+            tier=AccessTier.PARTNER
         )
         
         self.test_observables = [
@@ -94,7 +94,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Verify submitter
         self.assertEqual(submission.submitter.organization_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
-        self.assertEqual(submission.submitter.tier, TierLevel.PARTNER)
+        self.assertEqual(submission.submitter.tier, AccessTier.PARTNER)
         
         # Verify sighting
         self.assertEqual(submission.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
@@ -221,7 +221,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         submission = Submission(**parsed_yaml["submission"])
         
         # Verify parsing worked correctly
-        self.assertEqual(submission.submitter.tier, TierLevel.PARTNER)
+        self.assertEqual(submission.submitter.tier, AccessTier.PARTNER)
         self.assertEqual(submission.sighting.confidence, 87)
         self.assertEqual(len(submission.sighting.observables.network), 2)
 
@@ -453,7 +453,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Check key invariants across all formats
         for sub in submissions:
             self.assertEqual(sub.submitter.organization_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
-            self.assertEqual(sub.submitter.tier, TierLevel.PARTNER)
+            self.assertEqual(sub.submitter.tier, AccessTier.PARTNER)
             self.assertEqual(sub.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
             self.assertEqual(sub.sighting.confidence, 87)
             self.assertEqual(len(sub.sighting.observables.network), 2)

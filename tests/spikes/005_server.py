@@ -22,7 +22,7 @@ from contextlib import asynccontextmanager
 import uvicorn
 
 # Import enums from FRANK core
-from frank.core.enum import ObservableType, TLPLevel, TierLevel
+from frank.core.enum import ObservableType, TLPLevel, AccessTier
 from frank.core.models import Submission
 
 # Import our FRANK database
@@ -90,31 +90,31 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "tier": TierLevel.OBSERVER, "sector": "technology"}
+        return {"organization_id": "demo-observer-org", "tier": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "tier": TierLevel.CONTRIBUTOR, "sector": "financial"}
+        return {"organization_id": "demo-contributor-org", "tier": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "tier": TierLevel.PARTNER, "sector": "cybersecurity_services"}
+        return {"organization_id": "demo-partner-org", "tier": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "tier": TierLevel.CORE_MEMBER, "sector": "government"}
+        return {"organization_id": "demo-core-org", "tier": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 
 def check_submission_permissions(user: Dict[str, Any]) -> bool:
     """Check if user can submit threat intelligence"""
-    allowed_tiers = [TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER]
+    allowed_tiers = [AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER]
     return user.get("tier") in allowed_tiers
 
 
-def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
+def check_access_level(user_tier: AccessTier, required_level: AccessTier) -> bool:
     """Check if user tier meets required access level"""
     tier_hierarchy = {
-        TierLevel.PUBLIC: 0,
-        TierLevel.OBSERVER: 1,
-        TierLevel.CONTRIBUTOR: 2,
-        TierLevel.PARTNER: 3,
-        TierLevel.CORE_MEMBER: 4,
+        AccessTier.PUBLIC: 0,
+        AccessTier.OBSERVER: 1,
+        AccessTier.CONTRIBUTOR: 2,
+        AccessTier.PARTNER: 3,
+        AccessTier.CORE_MEMBER: 4,
     }
 
     user_level = tier_hierarchy.get(user_tier, 0)
@@ -262,11 +262,11 @@ async def search_threat_sightings(
         )
 
         # Add aggregations for contributor and above
-        if check_access_level(current_user["tier"], TierLevel.CONTRIBUTOR):
+        if check_access_level(current_user["tier"], AccessTier.CONTRIBUTOR):
             response.aggregations = generate_aggregations(results, current_user["tier"])
 
         # Add threat context for partner and above
-        if check_access_level(current_user["tier"], TierLevel.PARTNER):
+        if check_access_level(current_user["tier"], AccessTier.PARTNER):
             response.threat_context = generate_threat_context(results)
 
         # Add pagination info
@@ -305,13 +305,13 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
 ):
     """Get platform usage statistics"""
-    if not check_access_level(current_user["tier"], TierLevel.OBSERVER):
+    if not check_access_level(current_user["tier"], AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
     stats = db.get_statistics_summary(current_user["organization_id"], days)
 
     # Filter stats based on access level
-    if current_user["tier"] == TierLevel.OBSERVER:
+    if current_user["tier"] == AccessTier.OBSERVER:
         # Remove sensitive information for observers
         filtered_stats = {
             "total_submissions": stats.get("total_submissions", 0),

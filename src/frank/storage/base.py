@@ -17,7 +17,7 @@ import hashlib
 import logging
 
 from frank.core.models import Submission, Observable
-from frank.core.enum import ObservableType, TierLevel
+from frank.core.enum import ObservableType, AccessTier
 
 class BaseFRANKDatabase(ABC):
     """
@@ -70,14 +70,14 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: TierLevel = TierLevel.CONTRIBUTOR) -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
 
         Args:
             submission_id (str): The ID of the submission to retrieve.
             org_id (str): The organization ID making the request.
-            access_level (TierLevel): The access level for filtering (default: CONTRIBUTOR).
+            access_level (AccessTier): The access level for filtering (default: CONTRIBUTOR).
 
         Returns:
             Optional[Submission]: The filtered Submission object, or None if not found.
@@ -86,7 +86,7 @@ class BaseFRANKDatabase(ABC):
     
     @abstractmethod
     def query_observables(self, org_id: str, observable_type: ObservableType = None,
-                         limit: int = 100, access_level: TierLevel = TierLevel.CONTRIBUTOR,
+                         limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
                          min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
         """
         Query observables with access level filtering and additional filters.
@@ -95,7 +95,7 @@ class BaseFRANKDatabase(ABC):
             org_id (str): The organization ID making the request.
             observable_type (ObservableType, optional): Type of observable to filter (default: None).
             limit (int, optional): Maximum number of results to return (default: 100).
-            access_level (TierLevel, optional): Access level for filtering (default: CONTRIBUTOR).
+            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
             min_confidence (float, optional): Minimum confidence value to include.
             sectors (List[str], optional): List of allowed sectors to include.
             days_back (int, optional): Only include observables seen in the last N days.
@@ -162,7 +162,7 @@ class BaseFRANKDatabase(ABC):
         combined = f"{observable_type}:{observable_value}".lower()
         return hashlib.sha256(combined.encode()).hexdigest()
     
-    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
+    def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter submission data based on the provided access level.
 
@@ -176,14 +176,14 @@ class BaseFRANKDatabase(ABC):
 
         Args:
             submission (Dict[str, Any]): The full submission data as a dictionary.
-            access_level (TierLevel): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
+            access_level (AccessTier): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
 
         Returns:
             Dict[str, Any]: A dictionary containing the filtered submission data under the 'submission' key.
         """
         self.logger.info(f"Filtering submission for access level: {access_level.value}")
         self.logger.debug(f"Original submission data: {submission}")
-        if access_level == TierLevel.PUBLIC:
+        if access_level == AccessTier.PUBLIC:
             # Only basic statistics
             return {
                 'submission': {
@@ -196,7 +196,7 @@ class BaseFRANKDatabase(ABC):
                     }
                 }
             }
-        elif access_level == TierLevel.OBSERVER:
+        elif access_level == AccessTier.OBSERVER:
             # Add some observable types but mask values
             filtered = self._deep_copy(submission)
             observables = filtered['sighting'].get('observables', {})
@@ -211,7 +211,7 @@ class BaseFRANKDatabase(ABC):
             filtered.pop('tlp_level', None)
 
             return {'submission': filtered}
-        elif access_level == TierLevel.CONTRIBUTOR:
+        elif access_level == AccessTier.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
             
@@ -235,7 +235,7 @@ class BaseFRANKDatabase(ABC):
         else:
             return obj
         
-    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: TierLevel) -> Dict[str, Any]:
+    def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter observable data based on the provided access level.
 
@@ -248,18 +248,18 @@ class BaseFRANKDatabase(ABC):
 
         Args:
             observable (Dict[str, Any]): The full observable summary data as a dictionary.
-            access_level (TierLevel): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
+            access_level (AccessTier): The access tier to filter for (PUBLIC, OBSERVER, CONTRIBUTOR, etc).
 
         Returns:
             Dict[str, Any]: A dictionary containing the filtered observable data.
         """
-        if access_level == TierLevel.PUBLIC:
+        if access_level == AccessTier.PUBLIC:
             return {
                 'observable_type': observable['observable_type'],
                 'total_sightings': observable['total_sightings'],
                 'last_seen': observable['last_seen']
             }
-        elif access_level == TierLevel.OBSERVER:
+        elif access_level == AccessTier.OBSERVER:
             filtered = dict(observable)
             # Mask observable value
             if 'observable_value' in filtered:

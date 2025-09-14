@@ -18,7 +18,7 @@ import uuid
 from datetime import datetime, timezone
 
 from frank import __version__
-from frank.core.enum import TierLevel, ObservableType
+from frank.core.enum import AccessTier, ObservableType
 from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
 
@@ -137,7 +137,7 @@ def generate_minimal_submission_dict(org_id: str = None,
         FRANKValidationError: If invalid values provided
     """ 
     # Validate inputs
-    all_tiers = [level.value for level in TierLevel]
+    all_tiers = [level.value for level in AccessTier]
     if tier not in all_tiers:
         raise FRANKValidationError(f"Invalid tier '{tier}'. Must be one of: {all_tiers}")
     
@@ -373,6 +373,19 @@ def example_usage():
         tlp_level="TLP:AMBER"
     )
     print("✓ Comprehensive submission created")
+
+    # 4. Demo organizations
+    print("4. Creating demo organizations...")
+    demo_orgs = create_demo_orgs()
+    print(f"✓ {len(demo_orgs)} demo organizations created")  
+
+    # 5. Database seeding example (pseudo-code, requires actual db client)
+    print("5. (Pseudo) Seeding database with sample data...")
+    # db_client = YourDatabaseClient(...)  # Replace with actual database client initialization
+    # client = FRANKClient(db_client)  # Replace with actual database client
+    # seeder = SampleDataSeeder()
+    # client.seed_database(seeder)
+    print("✓ Database seeded with sample data (pseudo-code)")        
 
     
 if __name__ == "__main__":

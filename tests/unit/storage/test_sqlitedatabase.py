@@ -18,7 +18,7 @@ import sqlite3
 from datetime import datetime, timezone
 
 from frank.core.models import Submission
-from frank.core.enum import ObservableType, TierLevel
+from frank.core.enum import ObservableType, AccessTier
 from frank.storage.sqlite import SQLiteFRANKDatabase, create_sqlite_database
 
 
@@ -251,7 +251,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         high_conf_results = self.db.query_observables(
             "test-org-3", 
             min_confidence=80,
-            access_level=TierLevel.CONTRIBUTOR
+            access_level=AccessTier.CONTRIBUTOR
         )
         # Should return empty since our submission has confidence 75
         self.assertEqual(len(high_conf_results), 0)
@@ -289,10 +289,10 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         self.db.store_submission(Submission(**submission_dict['submission']))
 
         # Test different access levels
-        public_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.PUBLIC)
-        observer_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.OBSERVER)
-        contributor_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.CONTRIBUTOR)
-        partner_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", TierLevel.PARTNER)
+        public_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", AccessTier.PUBLIC)
+        observer_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", AccessTier.OBSERVER)
+        contributor_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", AccessTier.CONTRIBUTOR)
+        partner_data = self.db.get_submission_by_id("test-sub-4", "test-org-4", AccessTier.PARTNER)
         
         # Public should have minimal data
         self.assertIsInstance(public_data, Submission)

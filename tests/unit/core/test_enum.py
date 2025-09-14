@@ -9,12 +9,13 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
+
 import json
 from typing import Optional
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 # Import the enums (adjust import path as needed)
-from frank.core.enum import TierLevel, ObservableType, SeverityLevel, TLPLevel
+from frank.core.enum import AccessTier, ObservableType, SeverityLevel, TLPLevel
 
 
 class TestTLPLevel(unittest.TestCase):
@@ -41,39 +42,39 @@ class TestTLPLevel(unittest.TestCase):
         self.assertNotEqual(TLPLevel.GREEN, "YELLOW")
 
 
-class TestTierLevel(unittest.TestCase):
-    """Test TierLevel enumeration"""
+class TestAccessTier(unittest.TestCase):
+    """Test AccessTier enumeration"""
 
     def test_tier_level_values(self):
-        """Test all TierLevel enum values"""
+        """Test all AccessTier enum values"""
         expected_values = {
-            TierLevel.PUBLIC: "public",
-            TierLevel.OBSERVER: "observer",
-            TierLevel.CONTRIBUTOR: "contributor", 
-            TierLevel.PARTNER: "partner",
-            TierLevel.CORE_MEMBER: "core_member"
+            AccessTier.PUBLIC: "public",
+            AccessTier.OBSERVER: "observer",
+            AccessTier.CONTRIBUTOR: "contributor", 
+            AccessTier.PARTNER: "partner",
+            AccessTier.CORE_MEMBER: "core_member"
         }
         
         for tier_enum, expected_str in expected_values.items():
             with self.subTest(tier=tier_enum):
                 self.assertEqual(tier_enum.value, expected_str)
-                self.assertIsInstance(tier_enum, TierLevel)
+                self.assertIsInstance(tier_enum, AccessTier)
 
     def test_tier_level_string_comparison(self):
         """Test that enum values can be compared with strings"""
-        self.assertEqual(TierLevel.PARTNER, "partner")
-        self.assertEqual(TierLevel.CORE_MEMBER, "core_member")
-        self.assertNotEqual(TierLevel.PUBLIC, "private")
+        self.assertEqual(AccessTier.PARTNER, "partner")
+        self.assertEqual(AccessTier.CORE_MEMBER, "core_member")
+        self.assertNotEqual(AccessTier.PUBLIC, "private")
 
     def test_tier_level_ordering(self):
         """Test tier level logical ordering (if applicable)"""
         # Create a list of tiers in expected privilege order
         tiers_by_privilege = [
-            TierLevel.PUBLIC,
-            TierLevel.OBSERVER,
-            TierLevel.CONTRIBUTOR,
-            TierLevel.PARTNER,
-            TierLevel.CORE_MEMBER
+            AccessTier.PUBLIC,
+            AccessTier.OBSERVER,
+            AccessTier.CONTRIBUTOR,
+            AccessTier.PARTNER,
+            AccessTier.CORE_MEMBER
         ]
         
         # Test that we can iterate through them
@@ -82,18 +83,18 @@ class TestTierLevel(unittest.TestCase):
         self.assertEqual(tier_values, expected_values)
 
     def test_tier_level_from_string(self):
-        """Test creating TierLevel from string values"""
+        """Test creating AccessTier from string values"""
         test_cases = [
-            ("public", TierLevel.PUBLIC),
-            ("observer", TierLevel.OBSERVER),
-            ("contributor", TierLevel.CONTRIBUTOR),
-            ("partner", TierLevel.PARTNER),
-            ("core_member", TierLevel.CORE_MEMBER)
+            ("public", AccessTier.PUBLIC),
+            ("observer", AccessTier.OBSERVER),
+            ("contributor", AccessTier.CONTRIBUTOR),
+            ("partner", AccessTier.PARTNER),
+            ("core_member", AccessTier.CORE_MEMBER)
         ]
         
         for string_val, expected_enum in test_cases:
             with self.subTest(string_val=string_val):
-                self.assertEqual(TierLevel(string_val), expected_enum)
+                self.assertEqual(AccessTier(string_val), expected_enum)
 
     def test_tier_level_invalid_value(self):
         """Test that invalid tier level raises ValueError"""
@@ -102,16 +103,44 @@ class TestTierLevel(unittest.TestCase):
         for invalid_val in invalid_values:
             with self.subTest(invalid_val=invalid_val):
                 with self.assertRaises(ValueError):
-                    TierLevel(invalid_val)
+                    AccessTier(invalid_val)
 
     def test_tier_level_can_submit(self):
-        """Test the can_submit method of TierLevel"""
-        self.assertFalse(TierLevel.PUBLIC.can_submit())
-        self.assertFalse(TierLevel.OBSERVER.can_submit())
-        self.assertTrue(TierLevel.CONTRIBUTOR.can_submit())
-        self.assertTrue(TierLevel.PARTNER.can_submit())
-        self.assertTrue(TierLevel.CORE_MEMBER.can_submit())
+        """Test the can_submit method of AccessTier"""
+        self.assertFalse(AccessTier.PUBLIC.can_submit())
+        self.assertFalse(AccessTier.OBSERVER.can_submit())
+        self.assertTrue(AccessTier.CONTRIBUTOR.can_submit())
+        self.assertTrue(AccessTier.PARTNER.can_submit())
+        self.assertTrue(AccessTier.CORE_MEMBER.can_submit())
 
+    def test_can_submit(self):
+        """Test AccessTier.can_submit method."""
+        self.assertTrue(AccessTier.CONTRIBUTOR.can_submit())
+        self.assertTrue(AccessTier.PARTNER.can_submit())
+        self.assertTrue(AccessTier.CORE_MEMBER.can_submit())
+        self.assertFalse(AccessTier.PUBLIC.can_submit())
+        self.assertFalse(AccessTier.OBSERVER.can_submit())
+
+    
+    def test_check_access_level(self):
+        """Test AccessTier.check_access_level method."""
+        table = [
+            (AccessTier.PUBLIC, AccessTier.PUBLIC, True),
+            (AccessTier.PUBLIC, AccessTier.OBSERVER, False),
+            (AccessTier.OBSERVER, AccessTier.PUBLIC, True),
+            (AccessTier.OBSERVER, AccessTier.OBSERVER, True),
+            (AccessTier.OBSERVER, AccessTier.CONTRIBUTOR, False),
+            (AccessTier.CONTRIBUTOR, AccessTier.OBSERVER, True),
+            (AccessTier.CONTRIBUTOR, AccessTier.CONTRIBUTOR, True),
+            (AccessTier.CONTRIBUTOR, AccessTier.PARTNER, False),
+            (AccessTier.PARTNER, AccessTier.CONTRIBUTOR, True),
+            (AccessTier.PARTNER, AccessTier.PARTNER, True),
+            (AccessTier.PARTNER, AccessTier.CORE_MEMBER, False),
+            (AccessTier.CORE_MEMBER, AccessTier.PARTNER, True),
+            (AccessTier.CORE_MEMBER, AccessTier.CORE_MEMBER, True),
+        ]
+        for user_tier, required_tier, expected in table:
+            self.assertEqual(user_tier.check_access_level(required_tier), expected)
 
 class TestObservableType(unittest.TestCase):
     """Test ObservableType enumeration"""
@@ -226,7 +255,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         class ModelWithEnumValues(BaseModel):
             model_config = ConfigDict(use_enum_values=True)
             
-            tier: TierLevel
+            tier: AccessTier
             observable_type: ObservableType
             severity: Optional[SeverityLevel] = None
         
@@ -234,13 +263,13 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         class ModelWithoutEnumValues(BaseModel):
             model_config = ConfigDict(use_enum_values=False)
             
-            tier: TierLevel
+            tier: AccessTier
             observable_type: ObservableType
             severity: Optional[SeverityLevel] = None
         
         # Model with default behavior (should be True by default in most cases)
         class ModelDefault(BaseModel):
-            tier: TierLevel
+            tier: AccessTier
             observable_type: ObservableType
             severity: Optional[SeverityLevel] = None
         
@@ -251,7 +280,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
     def test_use_enum_values_true_serialization(self):
         """Test serialization with use_enum_values=True"""
         model = self.ModelWithEnumValues(
-            tier=TierLevel.PARTNER,
+            tier=AccessTier.PARTNER,
             observable_type=ObservableType.IPV4,
             severity=SeverityLevel.HIGH
         )
@@ -274,7 +303,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
     def test_use_enum_values_false_serialization(self):
         """Test serialization with use_enum_values=False"""
         model = self.ModelWithoutEnumValues(
-            tier=TierLevel.PARTNER,
+            tier=AccessTier.PARTNER,
             observable_type=ObservableType.IPV4,
             severity=SeverityLevel.HIGH
         )
@@ -283,7 +312,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         data = model.model_dump()
         
         # Should serialize to enum objects, not string values
-        self.assertEqual(data["tier"], TierLevel.PARTNER)
+        self.assertEqual(data["tier"], AccessTier.PARTNER)
         self.assertEqual(data["observable_type"], ObservableType.IPV4)
         self.assertEqual(data["severity"], SeverityLevel.HIGH)
         
@@ -299,7 +328,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
     def test_default_enum_serialization_behavior(self):
         """Test default enum serialization behavior"""
         model = self.ModelDefault(
-            tier=TierLevel.CONTRIBUTOR,
+            tier=AccessTier.CONTRIBUTOR,
             observable_type=ObservableType.DOMAIN,
             severity=SeverityLevel.MEDIUM
         )
@@ -316,7 +345,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         """Test that models accept both enum objects and string values"""
         # Test with enum objects
         model1 = self.ModelWithEnumValues(
-            tier=TierLevel.PARTNER,
+            tier=AccessTier.PARTNER,
             observable_type=ObservableType.IPV4,
             severity=SeverityLevel.HIGH
         )
@@ -336,7 +365,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
     def test_none_enum_handling(self):
         """Test handling of None enum values"""
         model = self.ModelWithEnumValues(
-            tier=TierLevel.OBSERVER,
+            tier=AccessTier.OBSERVER,
             observable_type=ObservableType.EMAIL,
             severity=None  # Optional field
         )
@@ -349,7 +378,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
     def test_enum_round_trip_consistency(self):
         """Test that enum values survive round-trip serialization"""
         original_model = self.ModelWithEnumValues(
-            tier=TierLevel.CORE_MEMBER,
+            tier=AccessTier.CORE_MEMBER,
             observable_type=ObservableType.URL,
             severity=SeverityLevel.CRITICAL
         )
@@ -374,21 +403,21 @@ class TestEnumAccessTierFiltering(unittest.TestCase):
         """Test logical privilege hierarchy of tier levels"""
         # Define expected privilege order (lowest to highest)
         privilege_order = [
-            TierLevel.PUBLIC,
-            TierLevel.OBSERVER,
-            TierLevel.CONTRIBUTOR,
-            TierLevel.PARTNER,
-            TierLevel.CORE_MEMBER
+            AccessTier.PUBLIC,
+            AccessTier.OBSERVER,
+            AccessTier.CONTRIBUTOR,
+            AccessTier.PARTNER,
+            AccessTier.CORE_MEMBER
         ]
         
         # Create a privilege mapping function
-        def get_privilege_level(tier: TierLevel) -> int:
+        def get_privilege_level(tier: AccessTier) -> int:
             privilege_map = {
-                TierLevel.PUBLIC: 0,
-                TierLevel.OBSERVER: 1,
-                TierLevel.CONTRIBUTOR: 2,
-                TierLevel.PARTNER: 3,
-                TierLevel.CORE_MEMBER: 4
+                AccessTier.PUBLIC: 0,
+                AccessTier.OBSERVER: 1,
+                AccessTier.CONTRIBUTOR: 2,
+                AccessTier.PARTNER: 3,
+                AccessTier.CORE_MEMBER: 4
             }
             return privilege_map[tier]
         
@@ -454,9 +483,9 @@ class TestEnumAccessTierFiltering(unittest.TestCase):
 
     def test_enum_membership_checks(self):
         """Test checking enum membership"""
-        # Test TierLevel membership
-        self.assertIn(TierLevel.PARTNER, TierLevel)
-        self.assertIn("partner", [tier.value for tier in TierLevel])
+        # Test AccessTier membership
+        self.assertIn(AccessTier.PARTNER, AccessTier)
+        self.assertIn("partner", [tier.value for tier in AccessTier])
         
         # Test ObservableType membership
         self.assertIn(ObservableType.IPV4, ObservableType)
@@ -476,7 +505,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         class TestModel(BaseModel):
             model_config = ConfigDict(use_enum_values=True, extra="forbid")
             
-            tier: TierLevel
+            tier: AccessTier
             obs_type: ObservableType
             severity: Optional[SeverityLevel] = None
         
@@ -488,7 +517,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         )
         
         # Verify enum conversion
-        self.assertEqual(model.tier, TierLevel.PARTNER)
+        self.assertEqual(model.tier, AccessTier.PARTNER)
         self.assertEqual(model.obs_type, ObservableType.IPV4)
         self.assertEqual(model.severity, SeverityLevel.HIGH)
         
@@ -504,7 +533,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         class TestModel(BaseModel):
             model_config = ConfigDict(use_enum_values=False, extra="forbid")
             
-            tier: TierLevel
+            tier: AccessTier
             obs_type: ObservableType
             severity: Optional[SeverityLevel] = None
         
@@ -516,7 +545,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         )
         
         # Verify enum conversion
-        self.assertEqual(model.tier, TierLevel.CONTRIBUTOR)
+        self.assertEqual(model.tier, AccessTier.CONTRIBUTOR)
         self.assertEqual(model.obs_type, ObservableType.DOMAIN)
         self.assertEqual(model.severity, SeverityLevel.MEDIUM)
         
@@ -525,7 +554,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         # With use_enum_values=False, the exact behavior depends on Pydantic version
         # But the enums should still be accessible
         self.assertTrue(
-            data["tier"] == "contributor" or data["tier"] == TierLevel.CONTRIBUTOR
+            data["tier"] == "contributor" or data["tier"] == AccessTier.CONTRIBUTOR
         )
 
     def test_pydantic_invalid_enum_values(self):
@@ -534,7 +563,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         class TestModel(BaseModel):
             model_config = ConfigDict(use_enum_values=True)
             
-            tier: TierLevel
+            tier: AccessTier
             obs_type: ObservableType
             severity: SeverityLevel
         
@@ -568,13 +597,13 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         # Model with use_enum_values=True
         class ModelTrue(BaseModel):
             model_config = ConfigDict(use_enum_values=True)
-            tier: TierLevel
+            tier: AccessTier
             severity: SeverityLevel
         
         # Model with use_enum_values=False  
         class ModelFalse(BaseModel):
             model_config = ConfigDict(use_enum_values=False)
-            tier: TierLevel
+            tier: AccessTier
             severity: SeverityLevel
         
         # Create identical instances
@@ -597,8 +626,8 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         self.assertEqual(data_false["severity"], "critical")
         
         # But the original enum types should be preserved in the models
-        self.assertNotIsInstance(model_true.tier, TierLevel)
-        self.assertIsInstance(model_false.tier, TierLevel)
+        self.assertNotIsInstance(model_true.tier, AccessTier)
+        self.assertIsInstance(model_false.tier, AccessTier)
 
     def test_frank_specific_enum_combinations(self):
         """Test FRANK-specific enum combinations"""
@@ -606,7 +635,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         class FRANKTestModel(BaseModel):
             model_config = ConfigDict(use_enum_values=False)
             
-            submitter_tier: TierLevel
+            submitter_tier: AccessTier
             target_sector: str
             observable_type: ObservableType
             threat_severity: SeverityLevel
@@ -614,19 +643,19 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         # Test realistic FRANK combinations
         frank_scenarios = [
             {
-                "submitter_tier": TierLevel.PARTNER,
+                "submitter_tier": AccessTier.PARTNER,
                 "target_sector": "financial",
                 "observable_type": ObservableType.IPV4,
                 "threat_severity": SeverityLevel.HIGH
             },
             {
-                "submitter_tier": TierLevel.CORE_MEMBER,
+                "submitter_tier": AccessTier.CORE_MEMBER,
                 "target_sector": "healthcare", 
                 "observable_type": ObservableType.DOMAIN,
                 "threat_severity": SeverityLevel.CRITICAL
             },
             {
-                "submitter_tier": TierLevel.CONTRIBUTOR,
+                "submitter_tier": AccessTier.CONTRIBUTOR,
                 "target_sector": "technology",
                 "observable_type": ObservableType.URL,
                 "threat_severity": SeverityLevel.MEDIUM
@@ -638,7 +667,7 @@ class TestPydanticEnumIntegration(unittest.TestCase):
                 model = FRANKTestModel(**scenario)
                 
                 # Verify all enums are properly set
-                self.assertIsInstance(model.submitter_tier, TierLevel)
+                self.assertIsInstance(model.submitter_tier, AccessTier)
                 self.assertIsInstance(model.observable_type, ObservableType)
                 self.assertIsInstance(model.threat_severity, SeverityLevel)
                 
@@ -656,7 +685,7 @@ class TestEnumCompatibility(unittest.TestCase):
         """Test enum case sensitivity"""
         # Enums should be case sensitive
         with self.assertRaises(ValueError):
-            TierLevel("PARTNER")  # Uppercase should fail
+            AccessTier("PARTNER")  # Uppercase should fail
         
         with self.assertRaises(ValueError):
             ObservableType("IPv4")  # Mixed case should fail
@@ -668,7 +697,7 @@ class TestEnumCompatibility(unittest.TestCase):
         """Test enum handling of whitespace"""
         # Enums should not accept whitespace
         with self.assertRaises(ValueError):
-            TierLevel(" partner ")
+            AccessTier(" partner ")
         
         with self.assertRaises(ValueError):
             ObservableType(" ipv4")
@@ -678,8 +707,8 @@ class TestEnumCompatibility(unittest.TestCase):
 
     def test_enum_iteration(self):
         """Test iterating over enum values"""
-        # Test TierLevel iteration
-        tier_values = [tier.value for tier in TierLevel]
+        # Test AccessTier iteration
+        tier_values = [tier.value for tier in AccessTier]
         expected_tiers = ["public", "observer", "contributor", "partner", "core_member"]
         self.assertEqual(tier_values, expected_tiers)
         
@@ -695,12 +724,12 @@ class TestEnumCompatibility(unittest.TestCase):
 
     def test_enum_string_representation(self):
         """Test string representation of enums"""
-        self.assertEqual(str(TierLevel.PARTNER), "TierLevel.PARTNER")
+        self.assertEqual(str(AccessTier.PARTNER), "AccessTier.PARTNER")
         self.assertEqual(str(ObservableType.DOMAIN), "ObservableType.DOMAIN")
         self.assertEqual(str(SeverityLevel.CRITICAL), "SeverityLevel.CRITICAL")
         
         # Test repr
-        self.assertIn("TierLevel", repr(TierLevel.PARTNER))
+        self.assertIn("AccessTier", repr(AccessTier.PARTNER))
         self.assertIn("ObservableType", repr(ObservableType.IPV4))
         self.assertIn("SeverityLevel", repr(SeverityLevel.HIGH))
 

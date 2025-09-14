@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import uuid
 
-from frank.core.enum import ObservableType, TierLevel, SeverityLevel
+from frank.core.enum import ObservableType, AccessTier, SeverityLevel
 from frank import __version__
 
 
@@ -96,7 +96,7 @@ class Submitter(BaseModel):
     )
 
     organization_id: Optional[str] = Field(None, description="STIX identity for organization")
-    tier: TierLevel = Field(..., description="Access tier level")
+    tier: AccessTier = Field(..., description="Access tier level")
     organization_type: str = Field(default="cyber_partner", description="Organization type")
 
     # Optional metadata
@@ -135,7 +135,7 @@ class Submitter(BaseModel):
         return sector_mappings.get(normalized, normalized)
 
     @classmethod
-    def create(cls, tier: TierLevel, sector: str = None, region: str = None):
+    def create(cls, tier: AccessTier, sector: str = None, region: str = None):
         """Factory method for creating submitters"""
         return cls(tier=tier, sector=sector, region=region)
 
@@ -462,7 +462,7 @@ class Submission(BaseModel):
     @classmethod
     def create_minimal(
         cls,
-        submitter_tier: TierLevel = TierLevel.PARTNER,
+        submitter_tier: AccessTier = AccessTier.PARTNER,
         target_sector: str = None,
         threat_ips: List[str] = None,
     ) -> "Submission":
@@ -551,7 +551,7 @@ def example_usage():
     # 1. Create minimal submission using factory method
     print("1. Creating minimal submission...")
     minimal = Submission.create_minimal(
-        submitter_tier=TierLevel.PARTNER,
+        submitter_tier=AccessTier.PARTNER,
         target_sector="financial",
         threat_ips=["192.168.1.100", "malicious.example.com"],
     )
