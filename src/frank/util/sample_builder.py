@@ -11,8 +11,10 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import uuid
+from abc import ABC, abstractmethod
 from typing import Dict, Any, List
+
+import uuid
 from datetime import datetime, timezone
 
 from frank import __version__
@@ -20,6 +22,31 @@ from frank.core.enum import TierLevel, ObservableType
 from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
 
+
+class FRANKDatabaseSeeder(ABC):
+    """Base class for database seeders."""
+
+    @abstractmethod
+    def seed(self, db_client) -> None:
+        """Seed the database with initial data."""
+        pass 
+
+
+class SampleDataSeeder(FRANKDatabaseSeeder):
+    """Class to generate sample data for testing and demonstration."""
+
+    def seed(self, db_client) -> None:
+        """Seed the database with sample data."""
+
+        for org in create_demo_orgs(id_fixed=True):
+            db_client.upsert_organization(org)
+
+        # Create some demo submissions
+        for i in range(5):
+            demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
+            db_client.store_submission(demo_submission)
+
+        return True
 
 def get_default_observables() -> List[Dict[str, Any]]:
     """

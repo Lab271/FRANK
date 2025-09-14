@@ -52,6 +52,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             region: AWS region
             logger: Optional logger instance for logging
         """
+        self.name = 'dynamodb'
         aws_access_key_id=self.connection_params.get("AWS_ACCESS_KEY_ID", "test")
         aws_secret_access_key=self.connection_params.get("AWS_SECRET_ACCESS_KEY", "test")
 

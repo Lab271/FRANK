@@ -10,14 +10,14 @@ with a consistent API.
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-import hashlib
-import logging
 from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
+import hashlib
+import logging
+
 from frank.core.models import Submission, Observable
 from frank.core.enum import ObservableType, TierLevel
-from frank.util import NullLogger
 
 class BaseFRANKDatabase(ABC):
     """
@@ -27,7 +27,7 @@ class BaseFRANKDatabase(ABC):
     
     def __init__(self, connection_params: Dict[str, Any], logger: Optional[logging.Logger] = None):
         self.connection_params = connection_params
-        self.logger = logger or NullLogger()
+        self.logger = logger
         self.initialize()
     
     @abstractmethod

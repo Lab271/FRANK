@@ -26,13 +26,13 @@ import uvicorn
 
 # Import enums from FRANK core
 from frank.core.enum import ObservableType, TLPLevel, TierLevel
-from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.storage.dynamodb import create_dynamodb_database
 
 # Utilities
-from frank.util.sample_builder import generate_minimal_submission, create_demo_orgs
+from frank.util.sample_builder import SampleDataSeeder
+from frank.util import create_client
 from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
 from frank import __version__
 
@@ -64,6 +64,8 @@ class FrankConfig:
 
     def setup_config(self):
         """Setup configuration based on environment"""
+        self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
+
         if self.environment == "local":
             self.setup_local_config()
         elif self.environment in ["mysql"]:
@@ -104,7 +106,6 @@ class FrankConfig:
         self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
         self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
         self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
-        self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
 
     def setup_localstack_config(self):
         """LocalStack RDS configuration"""
@@ -147,14 +148,15 @@ frank_dynamodb = create_dynamodb_database(
     aws_access_key_id=config.aws_access_key,
     aws_secret_access_key=config.aws_secret_key,
 )
-
+frank_client = create_client(db=frank_dynamodb, logger=logger)
 
 # Initialize system once server is setup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
-    load_database()
+    # load_database()
+    frank_client.seed_database(SampleDataSeeder())
     logger.info(f"Database Initialization complete")
     yield
 
@@ -206,32 +208,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
 
-def check_submission_permissions(user: Dict[str, Any]) -> bool:
-    """Check if user can submit threat intelligence"""
-    allowed_tiers = [TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER]
-    return user.get("tier") in allowed_tiers
-
-
-def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
-    """Check if user tier meets required access level"""
-    tier_hierarchy = {
-        TierLevel.PUBLIC: 0,
-        TierLevel.OBSERVER: 1,
-        TierLevel.CONTRIBUTOR: 2,
-        TierLevel.PARTNER: 3,
-        TierLevel.CORE_MEMBER: 4,
-    }
-
-    user_level = tier_hierarchy.get(user_tier, 0)
-    required_level_num = tier_hierarchy.get(required_level, 0)
-
-    return user_level >= required_level_num
-
-
-# def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
-#     """Check if user tier meets required access level"""
-#     return user_tier >= required_level
-
 
 # Rate limiting (simplified for spike)
 class RateLimiter:
@@ -271,14 +247,11 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
-        success = frank_dynamodb.store_submission(submission)
+        success, score_impact = frank_client.submit_threat_intelligence(submission)
 
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
-        
-        # Calculate contribution score impact (simplified)
-        score_impact = calculate_contribution_score(submission)
-
+        # Log access
         success = frank_dynamodb.log_access(current_user["organization_id"], 'SUBMIT', 'submission', submission.submission_id)
     
         if not success:
@@ -356,36 +329,16 @@ async def search_threat_sightings(
                 days_back = (datetime.now(timezone.utc) - start_date).days
                 query_params["days_back"] = max(1, days_back)
 
-        # Search by specific observable if provided
-        if observable:
-            results = frank_dynamodb.search_observables_by_value(
-                current_user["organization_id"], observable, current_user["tier"]
-            )
-        else:
-            # General query
-            results = frank_dynamodb.query_observables(**query_params)
 
-        # Apply pagination
-        total_results = len(results)
-        paginated_results = results[offset : offset + limit]
-
-        # Build response based on access level and format
-        sightings = []
-        for result in paginated_results:
-            sighting = format_sighting_response(result, current_user["tier"], format)
-            sightings.append(sighting)
-
-        response = SightingSearchResponse(
-            total_results=total_results, returned_results=len(sightings), sightings=sightings
+        total_results, sightings, aggregations, threat_context = frank_client.query_threats(
+            org_id=current_user["organization_id"], tier=current_user["tier"], 
+            format=format, offset=offset, limit=limit,
+            observable=observable, **query_params
         )
 
-        # Add aggregations for contributor and above
-        if check_access_level(current_user["tier"], TierLevel.CONTRIBUTOR):
-            response.aggregations = generate_aggregations(results, current_user["tier"])
-
-        # Add threat context for partner and above
-        if check_access_level(current_user["tier"], TierLevel.PARTNER):
-            response.threat_context = generate_threat_context(results)
+        response = SightingSearchResponse(
+            total_results=total_results, returned_results=len(sightings), sightings=sightings, aggregations=aggregations, threat_context=threat_context, pagination=None
+        )
 
         # Add pagination info
         if total_results > offset + limit:
@@ -414,17 +367,13 @@ def get_observations(
     """
     Get observable statistics and details for the platform.
     """
-    # Example: Replace with actual DB call
-    stats = frank_dynamodb.get_statistics_summary(org_id, days=days)
-    # Optionally filter by observable_type
-    observations = []
-    for obs_type, count in stats.get('observable_totals', {}).items():
-        if observable_type and obs_type != observable_type:
-            continue
-        observations.append({
-            'observable_type': obs_type,
-            'count': count
-        })
+    observations, stats = frank_client.get_observations(
+            org_id=org_id,
+            days=days,
+            observable_type=observable_type,
+            limit=limit
+    )
+
     return ObservationsResponse(
         total_results=len(observations),
         returned_results=len(observations),
@@ -438,13 +387,7 @@ def get_observations(
 @app.get("/v1/health")
 async def health_check():
     """Health check endpoint"""
-    dynamodb_health_status = frank_dynamodb.health_check()
-    return {
-        "status": dynamodb_health_status["status"],
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "dynamodb": dynamodb_health_status,
-        "version": __version__,
-    }
+    return frank_client.health_check()
 
 
 @app.get("/v1/statistics")
@@ -453,165 +396,35 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
 ):
     """Get platform usage statistics"""
-    if not check_access_level(current_user["tier"], TierLevel.OBSERVER):
+    if not current_user["tier"].check_access_level(TierLevel.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
-    stats = frank_dynamodb.get_statistics_summary(current_user["organization_id"], days)
-
-    # Filter stats based on access level
-    if current_user["tier"] == TierLevel.OBSERVER:
-        # Remove sensitive information for observers
-        filtered_stats = {
-            "total_submissions": stats.get("total_submissions", 0),
-            "observable_types": stats.get("observable_types", {}),
-            "daily_activity": stats.get("daily_activity", {}),
-        }
-        return filtered_stats
-
+    stats = frank_client.get_platform_statistics(
+        org_id=current_user["organization_id"],
+        days=days,
+        tier=current_user["tier"]
+    )  
     return stats
 
 # ===============================
 # Helper functions
 # ===============================
-def calculate_contribution_score(submission: Submission) -> int:
-    """Calculate contribution score impact for a submission"""
-    base_score = 10
 
-    # Add points for observables
-    obs = submission.sighting.observables
-    observable_count = len(obs.network or []) + len(obs.file or []) + len(obs.process or [])
-    score = base_score + observable_count * 2
-
-    # Add points for SIGMA detection
-    if submission.sighting.sigma_detection:
-        score += 5
-
-    # Add points for threat context
-    if submission.sighting.threat_context:
-        score += 3
-
-    # Add points for impact data
-    if submission.sighting.impact:
-        score += 2
-
-    return min(score, 25)  # Cap at 25 points
+# # initialize demo data
+# def load_database():
+#     """Initialize the database and load with some demo data"""
+#     logger.info(f"Initialiazing FRANK API server database.")
 
 
-def format_sighting_response(result: Dict[str, Any], access_level: TierLevel, format_type: str) -> Dict[str, Any]:
-    """Format sighting data based on access level and format type"""
+#     for org in create_demo_orgs(id_fixed=True):
+#         frank_dynamodb.upsert_organization(org)
 
-    if access_level == TierLevel.OBSERVER:
-        # Minimal data for observers
-        return {
-            "sighting_id": f"sighting-masked-{result.get('observable_hash', 'unknown')[:8]}",
-            "timestamp": result.get("last_seen", datetime.now(timezone.utc).isoformat()),
-            "observable_type": result.get("observable_type"),
-            "observable_value": mask_observable_value(
-                result.get("observable_value", ""), result.get("observable_type", "")
-            ),
-            "confidence": result.get("avg_confidence", 50),
-            "geographic_region": "masked",
-        }
-    elif access_level == TierLevel.CONTRIBUTOR:
-        # Partial data for contributors
-        return {
-            "sighting_id": f"sighting-{result.get('observable_hash', 'unknown')[:12]}",
-            "timestamp": result.get("last_seen"),
-            "observable": {
-                "type": result.get("observable_type"),
-                "value": result.get("observable_value"),
-            },
-            "confidence": result.get("avg_confidence"),
-            "total_sightings": result.get("total_sightings"),
-            "sectors": result.get("sectors", []),
-        }
-    else:
-        # Full data for partners and core members
-        return {
-            "sighting_id": f"sighting-{result.get('observable_hash')}",
-            "timestamp": result.get("last_seen"),
-            "observable": {
-                "type": result.get("observable_type"),
-                "value": result.get("observable_value"),
-            },
-            "confidence": result.get("avg_confidence"),
-            "total_sightings": result.get("total_sightings"),
-            "unique_organizations": result.get("unique_organizations"),
-            "first_seen": result.get("first_seen"),
-            "sectors": result.get("sectors", []),
-            "regions": result.get("regions", []),
-        }
+#     # Create some demo submissions
+#     for i in range(5):
+#         demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
+#         frank_dynamodb.store_submission(demo_submission)
 
-
-def mask_observable_value(value: str, obs_type: str) -> str:
-    """Mask observable values for lower access tiers"""
-    if obs_type == "ipv4" and "." in value:
-        parts = value.split(".")
-        if len(parts) == 4:
-            return f"{parts[0]}.{parts[1]}.{parts[2]}.***"
-    elif obs_type == "domain":
-        return f"{'*' * (len(value) // 2)}{value[len(value) // 2 :]}"
-    elif len(value) > 10:
-        return f"{value[:10]}..."
-    return value
-
-
-def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> Dict[str, Any]:
-    """Generate statistical aggregations from results"""
-    if not results:
-        return {}
-
-    # Count unique organizations (simplified)
-    total_orgs = len(set(result.get("observable_hash") for result in results))
-
-    # Confidence distribution
-    confidence_dist = {"high": 0, "medium": 0, "low": 0}
-    for result in results:
-        conf = result.get("avg_confidence", 0) or 0
-        if conf >= 80:
-            confidence_dist["high"] += 1
-        elif conf >= 60:
-            confidence_dist["medium"] += 1
-        else:
-            confidence_dist["low"] += 1
-
-    return {
-        "total_organizations": total_orgs,
-        "confidence_distribution": confidence_dist,
-        "total_sightings": sum(result.get("total_sightings", 0) for result in results),
-    }
-
-
-def generate_threat_context(results: List[Dict[str, Any]]) -> Dict[str, Any]:
-    """Generate threat context information for high-tier users"""
-    # This would typically involve querying campaign and threat actor data
-    # For the spike, we'll return mock context
-    return {
-        "campaigns_involved": ["banking_campaign_2025", "phishing_wave_q1"],
-        "threat_actors": ["unknown_cybercriminal_group"],
-        "mitre_attack": {
-            "techniques": ["T1566.001", "T1071.001"],
-            "tactics": ["initial_access", "command_and_control"],
-        },
-        "affected_sectors": ["financial", "healthcare", "retail"],
-    }
-
-
-# initialize demo data
-def load_database():
-    """Initialize the database and load with some demo data"""
-    logger.info(f"Initialiazing FRANK API server database.")
-
-
-    for org in create_demo_orgs(id_fixed=True):
-        frank_dynamodb.upsert_organization(org)
-
-    # Create some demo submissions
-    for i in range(5):
-        demo_submission = generate_minimal_submission(org_id="demo-partner-org", tier="partner", confidence=70 + i * 5)
-        frank_dynamodb.store_submission(demo_submission)
-
-    print("Demo data initialized")
+#     logger.info("Demo data initialized")
 
 
 # Error handlers

@@ -21,14 +21,29 @@ class TierLevel(str, Enum):
         """Check if this tier level can submit data."""
         return self in {TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER}    
 
+    def check_access_level(self, required_level) -> bool:
+        """Check if user tier meets required access level"""
+        tier_hierarchy = {
+            TierLevel.PUBLIC: 0,
+            TierLevel.OBSERVER: 1,
+            TierLevel.CONTRIBUTOR: 2,
+            TierLevel.PARTNER: 3,
+            TierLevel.CORE_MEMBER: 4,
+        }
+
+        user_level = tier_hierarchy.get(self, 0)
+        required_level_num = tier_hierarchy.get(required_level, 0)
+
+        return user_level >= required_level_num
+
     # def __lt__(self, other):
     #     if self.__class__ is other.__class__:
     #         # Define order by enum definition order
     #         members = list(self.__class__)
     #         return members.index(self) < members.index(other)
     #     return NotImplemented
-    
-    
+
+
 class ObservableType(str, Enum):
     """Network observable types"""
     IPV4 = "ipv4"

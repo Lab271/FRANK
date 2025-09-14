@@ -40,6 +40,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     
     def initialize(self) -> None:
         """Initialize the MySQL database with FRANK schema."""
+        self.name = 'mysql'
         try:
             conn = self.get_connection()
             cursor = conn.cursor()

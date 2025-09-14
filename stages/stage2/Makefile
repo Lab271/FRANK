@@ -98,10 +98,6 @@ test-submission:  ## Submit a test threat intelligence submission
 			} \
 		}' | python -m json.tool
 
-statistics:  ## Retrieve platform statistics
-	@curl -s -X GET "http://localhost:8000/v1/statistics" \
-		-H "Authorization: Bearer core_test_token" | python -m json.tool	
-
 clean:  ## Clean up containers and volumes
 	docker-compose down -v
 	docker system prune -f
@@ -143,3 +139,14 @@ status:  ## Show service status
 	@docker-compose -f docker-compose.simple.yml ps
 	@echo "\nService health:"
 	@curl -s http://localhost:8000/v1/health | python -c "import sys, json; data=json.load(sys.stdin); print(f\"Overall: {data['status']}\"); [print(f\"{db}: {info['status']}\") for db, info in data['database'].items()]" 2>/dev/null || echo "API not responding"
+
+statistics:  ## Show service statistics
+	@curl -s -X GET "http://localhost:8000/v1/statistics" \
+		-H "Content-Type: application/json" \
+		-H "Authorization: Bearer core_test_token" \
+		| python -m json.tool
+
+health:  ## Show service health
+	@curl -s -X GET "http://localhost:8000/v1/health" \
+		-H "Content-Type: application/json" \
+		| python -m json.tool

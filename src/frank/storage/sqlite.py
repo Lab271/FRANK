@@ -23,6 +23,16 @@ from frank.core.enum import ObservableType, TierLevel
 from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from .base import BaseFRANKDatabase
 
+# Default configuration
+DEFAULT_CONFIG = {
+    'database_type': 'sqlite',
+    'database_path': '/tmp/frank.db',
+    'log_level': 'INFO',
+    'default_tier': 'contributor',
+    'retention_days': 90
+}
+
+
 class SQLiteFRANKDatabase(BaseFRANKDatabase):
     """
     SQLite implementation of FRANK database for local development.
@@ -32,6 +42,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
       
     def initialize(self) -> None:
         """Initialize the SQLite database with FRANK schema."""
+        self.name = 'sqlite'
         db_path = self.connection_params['db_path']
         try:
             with sqlite3.connect(db_path) as conn:
