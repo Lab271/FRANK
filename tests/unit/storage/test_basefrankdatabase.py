@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """
+FRANK Platform - Baseclass database
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
 Unit tests for BaseFRANKDatabase abstract base class in base.py
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 import unittest
 from unittest.mock import MagicMock
@@ -48,6 +54,11 @@ class DummyDatabase(BaseFRANKDatabase):
         super().get_statistics_summary(org_id, days)
         return {"count": 0}
 
+    def search_observables_by_value(self, org_id, search_value, access_level=AccessTier.CONTRIBUTOR):
+        # Not recommended: calling super() abstract method for coverage only
+        super().search_observables_by_value(self, org_id, search_value, access_level)
+        return [{"value":0}]
+    
     def log_access(self, org_id, action, resource_type=None, resource_id=None, details=None):
         # Not recommended: calling super() abstract method for coverage only
         super().log_access(org_id, action, resource_type, resource_id, details)

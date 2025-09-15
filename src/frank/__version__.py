@@ -8,4 +8,4 @@ This is the main version to be included everywhere
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-version = '0.7.0'
+version = '0.8.0'

@@ -120,6 +120,22 @@ class BaseFRANKDatabase(ABC):
         pass
 
     @abstractmethod
+    def search_observables_by_value(self, org_id: str, search_value: str,
+                                   access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
+        """
+        Search for observables by partial value match.
+
+        Args:
+            org_id (str): Organization performing the search
+            search_value (str): Value to search for (substring match)
+            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR)
+
+        Returns:
+            List[Dict[str, Any]]: List of matching observables, filtered by access level
+        """
+        pass
+
+    @abstractmethod
     def log_access(self, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
                    details: Dict[str, Any] = None) -> bool:

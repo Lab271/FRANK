@@ -67,7 +67,7 @@ class FrankConfig:
         """Setup configuration based on environment"""
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
 
-        if self.environment == ["localstack", "aws"]:
+        if self.environment in ["localstack", "aws"]:
             self.database_type = "dynamodb"
             self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
 

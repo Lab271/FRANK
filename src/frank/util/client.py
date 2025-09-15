@@ -11,13 +11,12 @@ SPDX-License-Identifier: Apache-2.0
 """
 from typing import Dict, Any, List, Optional
 
-import logging
 from datetime import datetime, timezone
+import logging
 
 from frank.core.models import Submission
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
-from frank.storage import FRANKDatabaseError, FRANKConfigurationError, FRANKConnectionError
 
 from .sample_builder import FRANKDatabaseSeeder
 from .logger import NullLogger
@@ -39,7 +38,7 @@ class FRANKClient:
         - seed_database: Seed the database with initial data
     """
 
-    def __init__(self, database: BaseFRANKDatabase, logger: logging.Logger = None):
+    def __init__(self, database: BaseFRANKDatabase, logger: Optional[logging.Logger] = None):
         self.logger = logger or NullLogger()
         self.database = database
         self.database.logger = self.logger
@@ -53,8 +52,7 @@ class FRANKClient:
             submission: Threat intelligence submission dictionary
             
         Returns:
-            True if successful
-            
+            True if successful     
         """
         
         # Store in database
@@ -148,6 +146,7 @@ class FRANKClient:
                 - Full statistics dictionary as returned by the database.
         """
         stats = self.database.get_statistics_summary(org_id, days=days)
+
         observations = []
         for obs_type, count in stats.get('observable_totals', {}).items():
             if observable_type and obs_type != observable_type:
@@ -192,7 +191,7 @@ class FRANKClient:
 
         return stats
     
-    def health_check(self) -> Dict[str, str]:
+    def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the FRANK platform database backend.
 
@@ -208,6 +207,7 @@ class FRANKClient:
                 - 'version': FRANK library version
         """
         health_status = self.database.health_check()
+        
         return {
             "status": health_status["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
