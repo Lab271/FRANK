@@ -23,13 +23,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import enums from FRANK core 
-from frank.core.enum import ObservableType, TLPLevel, TierLevel
+from frank.core.enum import ObservableType, TLPLevel, AccessTier
 from frank.core.models import Submission
 
 # Import our FRANK database
-from frank.db.sqlite import create_sqlite_database
-from frank.utils.sample_builder import generate_minimal_submission
-from frank.utils.api import SubmissionRequest, SubmissionResponse, SightingSearchResponse
+from frank.storage.sqlite import create_sqlite_database
+from frank.util.sample_builder import generate_minimal_submission
+from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse
 from frank import __version__
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
@@ -86,25 +86,25 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     if token.startswith("observer_"):
         return {
             "organization_id": "demo-observer-org",
-            "tier": TierLevel.OBSERVER,
+            "access_level": AccessTier.OBSERVER,
             "sector": "technology"
         }
     elif token.startswith("contributor_"):
         return {
             "organization_id": "demo-contributor-org", 
-            "tier": TierLevel.CONTRIBUTOR,
+            "access_level": AccessTier.CONTRIBUTOR,
             "sector": "financial"
         }
     elif token.startswith("partner_"):
         return {
             "organization_id": "demo-partner-org",
-            "tier": TierLevel.PARTNER, 
+            "access_level": AccessTier.PARTNER, 
             "sector": "cybersecurity_services"
         }
     elif token.startswith("core_"):
         return {
             "organization_id": "demo-core-org",
-            "tier": TierLevel.CORE_MEMBER,
+            "access_level": AccessTier.CORE_MEMBER,
             "sector": "government"
         }
     else:
@@ -115,17 +115,17 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
 def check_submission_permissions(user: Dict[str, Any]) -> bool:
     """Check if user can submit threat intelligence"""
-    allowed_tiers = [TierLevel.CONTRIBUTOR, TierLevel.PARTNER, TierLevel.CORE_MEMBER]
-    return user.get("tier") in allowed_tiers
+    allowed_tiers = [AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER]
+    return user.get("access_level") in allowed_tiers
 
-def check_access_level(user_tier: TierLevel, required_level: TierLevel) -> bool:
+def check_access_level(user_access_level: AccessTier, required_level: AccessTier) -> bool:
     """Check if user tier meets required access level"""
     tier_hierarchy = {
-        TierLevel.PUBLIC: 0,
-        TierLevel.OBSERVER: 1,
-        TierLevel.CONTRIBUTOR: 2,
-        TierLevel.PARTNER: 3,
-        TierLevel.CORE_MEMBER: 4
+        AccessTier.PUBLIC: 0,
+        AccessTier.OBSERVER: 1,
+        AccessTier.CONTRIBUTOR: 2,
+        AccessTier.PARTNER: 3,
+        AccessTier.CORE_MEMBER: 4
     }
     
     user_level = tier_hierarchy.get(user_tier, 0)
@@ -138,7 +138,7 @@ class RateLimiter:
     def __init__(self):
         self.requests = {}
     
-    def check_rate_limit(self, user_id: str, tier: str) -> bool:
+    def check_rate_limit(self, user_id: str, access_level: str) -> bool:
         # Simplified rate limiting - in production use Redis or similar
         # For spike, we'll just return True
         return True
@@ -166,7 +166,7 @@ async def submit_threat_intelligence(
         )
     
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded"
@@ -222,7 +222,7 @@ async def search_threat_sightings(
     """
     
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["tier"]):
+    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise HTTPException(
             status_code=429,
             detail="Rate limit exceeded"
@@ -250,7 +250,7 @@ async def search_threat_sightings(
         # Build query parameters
         query_params = {
             "org_id": current_user["organization_id"],
-            "access_level": current_user["tier"],
+            "access_level": current_user["access_level"],
             "limit": limit
         }
         
@@ -272,7 +272,7 @@ async def search_threat_sightings(
             results = db.search_observables_by_value(
                 current_user["organization_id"],
                 observable,
-                current_user["tier"]
+                current_user["access_level"]
             )
         else:
             # General query
@@ -285,7 +285,7 @@ async def search_threat_sightings(
         # Build response based on access level and format
         sightings = []
         for result in paginated_results:
-            sighting = format_sighting_response(result, current_user["tier"], format)
+            sighting = format_sighting_response(result, current_user["access_level"], format)
             sightings.append(sighting)
         
         response = SightingSearchResponse(
@@ -295,11 +295,11 @@ async def search_threat_sightings(
         )
         
         # Add aggregations for contributor and above
-        if check_access_level(current_user["tier"], TierLevel.CONTRIBUTOR):
-            response.aggregations = generate_aggregations(results, current_user["tier"])
+        if check_access_level(current_user["access_level"], AccessTier.CONTRIBUTOR):
+            response.aggregations = generate_aggregations(results, current_user["access_level"])
         
         # Add threat context for partner and above
-        if check_access_level(current_user["tier"], TierLevel.PARTNER):
+        if check_access_level(current_user["access_level"], AccessTier.PARTNER):
             response.threat_context = generate_threat_context(results)
         
         # Add pagination info
@@ -339,7 +339,7 @@ async def get_platform_statistics(
     days: int = Query(30, ge=1, le=365, description="Number of days to analyze")
 ):
     """Get platform usage statistics"""
-    if not check_access_level(current_user["tier"], TierLevel.OBSERVER):
+    if not check_access_level(current_user["access_level"], AccessTier.OBSERVER):
         raise HTTPException(
             status_code=403,
             detail="Insufficient access level"
@@ -348,7 +348,7 @@ async def get_platform_statistics(
     stats = db.get_statistics_summary(current_user["organization_id"], days)
     
     # Filter stats based on access level
-    if current_user["tier"] == TierLevel.OBSERVER:
+    if current_user["access_level"] == AccessTier.OBSERVER:
         # Remove sensitive information for observers
         filtered_stats = {
             "total_submissions": stats.get("total_submissions", 0),
@@ -487,25 +487,25 @@ async def startup_event():
     demo_orgs = [
         {
             "organization_id": "demo-observer-org",
-            "tier": "observer",
+            "access_level": "observer",
             "sector": "technology",
             "region": "nl_north_holland"
         },
         {
             "organization_id": "demo-contributor-org", 
-            "tier": "contributor",
+            "access_level": "contributor",
             "sector": "financial",
             "region": "nl_north_holland"
         },
         {
             "organization_id": "demo-partner-org",
-            "tier": "partner",
+            "access_level": "partner",
             "sector": "cybersecurity_services",
             "region": "nl_north_holland"
         },
         {
             "organization_id": "demo-core-org",
-            "tier": "core_member",
+            "access_level": "core_member",
             "sector": "government",
             "region": "nl_north_holland"
         }
@@ -518,7 +518,7 @@ async def startup_event():
     for i in range(5):
         demo_submission = generate_minimal_submission(
             org_id="demo-partner-org",
-            tier="partner",
+            access_level="partner",
             confidence=70 + i * 5
         )
         db.store_submission(demo_submission)

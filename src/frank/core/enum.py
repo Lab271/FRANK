@@ -9,7 +9,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 from enum import Enum
 
-class TierLevel(str, Enum):
+class AccessTier(str, Enum):
     """Access tier enumeration with validation"""
     PUBLIC = "public"
     OBSERVER = "observer" 
@@ -17,14 +17,15 @@ class TierLevel(str, Enum):
     PARTNER = "partner"
     CORE_MEMBER = "core_member"
 
-    # def __lt__(self, other):
-    #     if self.__class__ is other.__class__:
-    #         # Define order by enum definition order
-    #         members = list(self.__class__)
-    #         return members.index(self) < members.index(other)
-    #     return NotImplemented
-    
-    
+    def can_submit(self) -> bool:
+        """Check if this tier level can submit data."""
+        return self in {AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER}    
+
+    def check_access_level(self, required_level) -> bool:
+        """Check if user tier meets required access level using enum order."""
+        members = list(type(self))
+        return members.index(self) >= members.index(required_level)
+
 class ObservableType(str, Enum):
     """Network observable types"""
     IPV4 = "ipv4"

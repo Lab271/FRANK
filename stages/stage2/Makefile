@@ -19,10 +19,10 @@ build-simple: ## Build application container - simple
 	docker-compose -f docker-compose.simple.yml build
 
 build:  ## Build application container - hybrid
-	docker-compose -f docker-compose.hybrid.yml build frank-app
+	docker-compose -f docker-compose.yml build frank-app
 
 
-up:  ## Start all services
+up-mysql:  ## Start all services
 	docker-compose -f docker-compose.mysql.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
@@ -31,8 +31,8 @@ up:  ## Start all services
 	@echo "- DynamoDB Admin: http://localhost:8081"
 	@echo "- LocalStack: http://localhost:4566"
 
-up-hybrid:  ## Start all services
-	docker-compose -f docker-compose.hybrid.yml up -d
+up:  ## Start all services
+	docker-compose --file docker-compose.yml up -d
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"
@@ -40,16 +40,9 @@ up-hybrid:  ## Start all services
 	@echo "- DynamoDB Admin: http://localhost:8001"
 	@echo "- LocalStack: http://localhost:4566"
 
-up-simple:  ## Start all services simple
-	docker-compose -f docker-compose.simple.yml up -d
-	@echo "Waiting for services to be ready..."
-	@echo "Services started:"
-	@echo "- FRANK API: http://localhost:8000"
-	@echo "- Adminer (RDS): http://localhost:8080"
-	@echo "- MySQL: http://localhost:4566"
-
 down:  ## Stop all services
 	docker-compose --file docker-compose.simple.yml down
+	docker-compose --file docker-compose.yml down
 	docker-compose down
 
 restart:  ## Restart all services
@@ -58,13 +51,13 @@ restart:  ## Restart all services
 	docker-compose up -d
 
 logs:  ## Show logs from all services
-	docker-compose --file docker-compose.hybrid.yml logs -f
+	docker-compose --file docker-compose.yml logs -f
 
 logs-app:  ## Show logs from FRANK app only
-	docker-compose --file docker-compose.hybrid.yml logs -f frank-app
+	docker-compose --file docker-compose.yml logs -f frank-app
 
 logs-localstack:  ## Show logs from LocalStack only
-	docker-compose --file docker-compose.hybrid.yml logs -f localstack
+	docker-compose --file docker-compose.yml logs -f localstack
 
 test:  ## Run tests
 	docker-compose exec frank-app python -m pytest tests/ -v
@@ -83,7 +76,7 @@ test-submission:  ## Submit a test threat intelligence submission
 			"submission": { \
 				"submitter": { \
 					"organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", \
-					"tier": "partner" \
+					"access_level": "partner" \
 				}, \
 				"sighting": { \
 					"sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75", \
@@ -92,12 +85,10 @@ test-submission:  ## Submit a test threat intelligence submission
 					"observables": { \
 						"network": [ \
 							{ \
-								"id": "ipv4-addr-c4e54321-1234-5678-9abc-def012345678", \
 								"type": "ipv4", \
 								"value": "185.220.102.45" \
 							}, \
 							{ \
-								"id": "domain-name-d5f65432-2345-6789-abcd-ef0123456789", \
 								"type": "domain", \
 								"value": "secure-bank-verify.nl" \
 							} \
@@ -147,4 +138,15 @@ status:  ## Show service status
 	@echo "Docker containers:"
 	@docker-compose -f docker-compose.simple.yml ps
 	@echo "\nService health:"
-	@curl -s http://localhost:8000/v1/health | python -c "import sys, json; data=json.load(sys.stdin); print(f\"Overall: {data['status']}\"); [print(f\"{db}: {info['status']}\") for db, info in data['databases'].items()]" 2>/dev/null || echo "API not responding"
+	@curl -s http://localhost:8000/v1/health | python -c "import sys, json; data=json.load(sys.stdin); print(f\"Overall: {data['status']}\"); [print(f\"{db}: {info['status']}\") for db, info in data['database'].items()]" 2>/dev/null || echo "API not responding"
+
+statistics:  ## Show service statistics
+	@curl -s -X GET "http://localhost:8000/v1/statistics" \
+		-H "Content-Type: application/json" \
+		-H "Authorization: Bearer core_test_token" \
+		| python -m json.tool
+
+health:  ## Show service health
+	@curl -s -X GET "http://localhost:8000/v1/health" \
+		-H "Content-Type: application/json" \
+		| python -m json.tool

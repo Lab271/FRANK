@@ -45,7 +45,7 @@ metadata:
 submitter:
   organization_id: string       # Required: UUID format
   organization_type: string     # Optional: "cyber_partner", "customer"
-  tier: string                 # Required: access tier level
+  access_level: string                 # Required: access access_level level
   sector: string               # Optional: industry classification
   region: string               # Optional: geographical identifier
   submission_method: string     # Optional: "automated_api", "manual"
@@ -277,7 +277,7 @@ Technical validation rules and data quality specifications.
 #### 6.1 Required Field Validation
 **Core Required Fields** (enforced by FRANKValidator):
 - `submission.submitter.organization_id`
-- `submission.submitter.tier`
+- `submission.submitter.access_level`
 - `submission.sighting.sighting_id`
 - `submission.sighting.timestamp`
 - `submission.sighting.observables`
@@ -299,7 +299,7 @@ Technical validation rules and data quality specifications.
 - Empty arrays are acceptable but null arrays are not
 
 #### 6.3 Enumerated Value Lists
-**Valid Tiers**: `public`, `observer`, `contributor`, `partner`, `core_member`
+**Valid access_levels**: `public`, `observer`, `contributor`, `partner`, `core_member`
 **Valid Severities**: `low`, `medium`, `high`, `critical`
 **Valid Observable Types**: `ipv4`, `ipv6`, `domain`, `url`, `file_hash`, `email`, `registry_key`
 **Valid TLP Levels**: `RED`, `AMBER+`, `AMBER`, `GREEN`, `CLEAR`

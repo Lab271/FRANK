@@ -12,7 +12,7 @@ The FRANK platform uses a single DynamoDB table to store three primary entity ty
 
 | PK (Partition Key) | SK (Sort Key) | GSI1PK | GSI1SK | Entity Type | Description |
 |-------------------|---------------|---------|---------|-------------|-------------|
-| `ORG#{org_id}` | `ORG` | `TIER#{tier}` | `#{timestamp}` | Organization | Organization metadata and access control |
+| `ORG#{org_id}` | `ORG` | `access_level#{access_level}` | `#{timestamp}` | Organization | Organization metadata and access control |
 | `SUB#{submission_id}` | `SUB` | `ORG#{org_id}` | `#{timestamp}` | Submission | Complete threat intelligence submission |
 | `LOG#{org_id}` | `LOG#{timestamp}#{uuid}` | `ACTION#{action}` | `#{timestamp}` | AccessLog | Audit trail for compliance and monitoring |
 
@@ -21,7 +21,7 @@ The FRANK platform uses a single DynamoDB table to store three primary entity ty
 1. **Get Organization by ID**: `PK = ORG#{org_id}, SK = ORG`
 2. **Get Submission by ID**: `PK = SUB#{submission_id}, SK = SUB`
 3. **List Submissions by Organization**: `GSI1: GSI1PK = ORG#{org_id}`
-4. **List Organizations by Tier**: `GSI1: GSI1PK = TIER#{tier}`
+4. **List Organizations by access_level**: `GSI1: GSI1PK = access_level#{access_level}`
 5. **Get Access Logs for Organization**: `PK = LOG#{org_id}, SK begins_with LOG#`
 6. **Query Access Logs by Action**: `GSI1: GSI1PK = ACTION#{action}`
 
@@ -73,7 +73,7 @@ Single table design provides:
   "GSI1SK": "2025-01-15T10:30:00Z",
   "EntityType": "Organization",
   "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-  "tier": "partner",
+  "access_level": "partner",
   "sector": "financial_services",
   "region": "nl_north_holland",
   "last_active": "2025-01-15T10:30:00Z",
@@ -96,7 +96,7 @@ Single table design provides:
   "severity": "high",
   "tlp_level": "AMBER",
   "submission_data": {
-    "submitter": { "organization_id": "...", "tier": "partner" },
+    "submitter": { "organization_id": "...", "access_level": "partner" },
     "sighting": { "observables": {...}, "impact": {...} },
     "threat_context": {...}
   },
@@ -137,7 +137,7 @@ def upsert_organization(self, org_data: dict) -> bool:
             Item={
                 'PK': f"ORG#{org_data['organization_id']}",
                 'SK': 'ORG',
-                'GSI1PK': f"TIER#{org_data['tier']}",
+                'GSI1PK': f"TIER#{org_data['access_level']}",
                 'GSI1SK': datetime.now(timezone.utc).isoformat(),
                 **org_data,
                 'EntityType': 'Organization',
@@ -165,12 +165,12 @@ def upsert_organization_with_update(self, org_data: dict) -> bool:
                 'PK': f"ORG#{org_data['organization_id']}",
                 'SK': 'ORG'
             },
-            UpdateExpression='SET tier = :tier, sector = :sector, last_active = :timestamp, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk',
+            UpdateExpression='SET access_level = :access_level, sector = :sector, last_active = :timestamp, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk',
             ExpressionAttributeValues={
-                ':tier': org_data['tier'],
+                ':access_level': org_data['access_level'],
                 ':sector': org_data.get('sector'),
                 ':timestamp': datetime.now(timezone.utc).isoformat(),
-                ':gsi1pk': f"TIER#{org_data['tier']}",
+                ':gsi1pk': f"TIER#{org_data['access_level']}",
                 ':gsi1sk': datetime.now(timezone.utc).isoformat()
             }
         )

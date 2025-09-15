@@ -75,7 +75,7 @@ query_results:
       
   detailed_sightings:
     - sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
-      submitter_tier: "partner"
+      submitter_access_level: "partner"
       submitter_sector: "cybersecurity_services"
       hit_target_sector: "financial_services"
       observation_date: "2025-01-15T13:15:00Z"
@@ -87,7 +87,7 @@ query_results:
         - "banking_update.exe"
       
     - sighting_id: "sighting-aa11bb22-3344-5566-7788-99aabbccddee"
-      submitter_tier: "partner"
+      submitter_access_level: "partner"
       submitter_sector: "financial_services"
       hit_target_sector: "financial_services"
       observation_date: "2025-01-18T09:22:00Z"
@@ -99,7 +99,7 @@ query_results:
         - "urgent_banking_notice.pdf"
         
     - sighting_id: "sighting-ff88dd77-9966-1122-3344-556677889900"
-      submitter_tier: "contributor"
+      submitter_access_level: "contributor"
       submitter_sector: "cybersecurity_services"
       hit_target_sector: "manufacturing"
       observation_date: "2025-01-20T11:45:00Z"
@@ -136,7 +136,7 @@ query_results:
   complete_sightings:
     - sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
       submitter_id: "identity-hash-f431f809"
-      submitter_tier: "partner"
+      submitter_access_level: "partner"
       submitter_organization_type: "cyber_partner"
       hit_target_id: "identity-hash-c9b5d123"
       hit_target_sector: "financial_services"
@@ -170,7 +170,7 @@ query_results:
             
     - sighting_id: "sighting-aa11bb22-3344-5566-7788-99aabbccddee"
       submitter_id: "identity-hash-aa11bb22"
-      submitter_tier: "partner"
+      submitter_access_level: "partner"
       hit_target_id: "identity-hash-bb22cc33"
       hit_target_sector: "financial_services"
       
@@ -191,7 +191,7 @@ query_results:
         
     - sighting_id: "sighting-ff88dd77-9966-1122-3344-556677889900"  
       submitter_id: "identity-hash-ff88dd77"
-      submitter_tier: "contributor"
+      submitter_access_level: "contributor"
       hit_target_id: "identity-hash-dd77ee88"
       hit_target_sector: "manufacturing"
       

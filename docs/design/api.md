@@ -42,7 +42,7 @@ The FRANK platform's core functionality centers around two primary API endpoints
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `submission.submitter.organization_id` | string | ✅ | Unique identifier for submitting organization |
-| `submission.submitter.tier` | string | ✅ | Access tier: `contributor`, `partner`, `core_member` |
+| `submission.submitter.access_level` | string | ✅ | Access tier: `contributor`, `partner`, `core_member` |
 | `submission.sighting.sighting_id` | string | ✅ | UUID for the sighting event |
 | `submission.sighting.timestamp` | ISO 8601 | ✅ | When the threat was observed |
 | `submission.sighting.confidence` | integer | ✅ | Confidence score (0-100) |
@@ -54,25 +54,25 @@ The FRANK platform's core functionality centers around two primary API endpoints
 submission:
   submitter:
     organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
-    tier: "partner"
+    access_level: "partner"
   sighting:
     sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
     timestamp: "2025-01-20T14:30:22Z"
     confidence: 87
     severity: "high"
-  observables:
-    network:
-      - type: "ipv4"
-        value: "185.220.102.45"
-        role: "c2_server"
-        port: 443
-      - type: "domain"
-        value: "secure-bank-verify.nl"
-        role: "phishing_domain"
-    files:
-      - type: "executable"
-        name: "banking_update.exe"
-        hash_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    observables:
+      network:
+        - type: "ipv4"
+          value: "185.220.102.45"
+          role: "c2_server"
+          port: 443
+        - type: "domain"
+          value: "secure-bank-verify.nl"
+          role: "phishing_domain"
+      files:
+        - type: "executable"
+          name: "banking_update.exe"
+          hash_sha256: "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
 ```
 
 ### Response Structure
@@ -200,7 +200,7 @@ The response structure varies by access level and format parameter:
       "confidence": 87,
       "severity": "high",
       "submitter": {
-        "tier": "partner",
+        "access_level": "partner",
         "sector": "cybersecurity_services",
         "organization_id": "identity-masked-uuid"
       },

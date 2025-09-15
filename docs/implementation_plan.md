@@ -230,7 +230,7 @@ See [Stage 5/README.md](../stages/stage5/README.md)
 CREATE TABLE organizations (
     organization_id TEXT PRIMARY KEY,
     organization_type TEXT NOT NULL,
-    tier TEXT,
+    access_level TEXT,
     sector TEXT
 );
 

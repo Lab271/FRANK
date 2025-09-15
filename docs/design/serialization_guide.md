@@ -30,7 +30,7 @@ from frank_submissions import FRANKSubmission
 # Create a submission dataclass instance
 submission = FRANKSubmission(
     submitter_org_id="identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-    submitter_tier="partner",
+    submitter_access_level="partner",
     sighting_id="sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
     timestamp="2025-01-20T14:30:22Z",
     observables={
@@ -56,7 +56,7 @@ print(submission_dict)
     'submission': {
         'submitter': {
             'organization_id': 'identity-f431f809-377b-45e0-aa1c-6a4751cae5ff',
-            'tier': 'partner'
+            'access_level': 'partner'
         },
         'sighting': {
             'sighting_id': 'sighting-ee20065d-2555-424f-ad9e-0f8428623c75',
@@ -94,7 +94,7 @@ print(yaml_string)
 submission:
   submitter:
     organization_id: identity-f431f809-377b-45e0-aa1c-6a4751cae5ff
-    tier: partner
+    access_level: partner
   sighting:
     sighting_id: sighting-ee20065d-2555-424f-ad9e-0f8428623c75
     timestamp: '2025-01-20T14:30:22Z'
@@ -121,7 +121,7 @@ print(json_string)
   "submission": {
     "submitter": {
       "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
-      "tier": "partner"
+      "access_level": "partner"
     },
     "sighting": {
       "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
@@ -196,7 +196,7 @@ class FRANKSubmission:
     
     # Core fields with defaults
     submitter_org_id: Optional[str] = None
-    submitter_tier: Optional[str] = None
+    submitter_access_level: Optional[str] = None
     sighting_id: Optional[str] = None
     timestamp: Optional[str] = None
     observables: Optional[Dict[str, List[Dict[str, Any]]]] = None
@@ -215,7 +215,7 @@ class FRANKSubmission:
         
         return cls(
             submitter_org_id=_safe_get(submitter, 'organization_id'),
-            submitter_tier=_safe_get(submitter, 'tier'),
+            submitter_access_level=_safe_get(submitter, 'access_level'),
             sighting_id=_safe_get(sighting, 'sighting_id'),
             # ... map all fields
         )
@@ -228,8 +228,8 @@ class FRANKSubmission:
         submitter = {}
         if self.submitter_org_id:
             submitter['organization_id'] = self.submitter_org_id
-        if self.submitter_tier:
-            submitter['tier'] = self.submitter_tier
+        if self.submitter_access_level:
+            submitter['access_level'] = self.submitter_access_level
             
         # Build sighting section
         sighting = {}
@@ -383,7 +383,7 @@ def main():
     # 1. Create dataclass instance
     original = FRANKSubmission(
         submitter_org_id="identity-test-123",
-        submitter_tier="contributor",
+        submitter_access_level="contributor",
         sighting_id="sighting-test-456", 
         timestamp="2025-01-20T10:00:00Z",
         observables={

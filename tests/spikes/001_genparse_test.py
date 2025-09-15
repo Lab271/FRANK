@@ -11,17 +11,6 @@ from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
 from datetime import datetime
 
-import unittest
-class TestRunSpike(unittest.TestCase):
-    """Wrapper to run spike in Unittest framework."""
-
-    def test_runspike(self):
-        """Minimal Spike Testrun Wrapper"""
-        try:
-            result = run_spike()
-            self.assertTrue(result)
-        except Exception as e:
-            self.fail(f"spike failed: {e}")
 
 @dataclass
 class NetworkObservable:
@@ -61,7 +50,7 @@ class NetworkObservable:
 class Submitter:
     """Represents the submitting organization (cyber partner)."""
     organization_id: str
-    tier: str
+    access_level: str
     organization_type: Optional[str] = "cyber_partner"
     sector: Optional[str] = None
     region: Optional[str] = None
@@ -69,11 +58,11 @@ class Submitter:
     client_count: Optional[int] = None
 
     @classmethod
-    def create(cls, tier: str, sector: str = None, region: str = None) -> 'Submitter':
+    def create(cls, access_level: str, sector: str = None, region: str = None) -> 'Submitter':
         """Create a submitter with auto-generated STIX ID."""
         return cls(
             organization_id=f"identity-{uuid.uuid4()}",
-            tier=tier,
+            access_level=access_level,
             sector=sector,
             region=region
         )
@@ -183,7 +172,7 @@ class FrankSightingGenerator:
     
     @staticmethod
     def create_minimal_sighting(
-        submitter_tier: str,
+        submitter_access_level: str,
         target_sector: str,
         confidence: int,
         ip_address: str,
@@ -191,7 +180,7 @@ class FrankSightingGenerator:
     ) -> FrankSubmission:
         """Create a minimal FRANK sighting submission."""
         
-        submitter = Submitter.create(tier=submitter_tier)
+        submitter = Submitter.create(access_level=submitter_access_level)
         hit_target = HitTarget.create(sector=target_sector)
         sighting = Sighting.create(confidence=confidence)
         
@@ -208,13 +197,13 @@ class FrankSightingGenerator:
 
     @staticmethod
     def create_banking_threat_sighting(
-        submitter_tier: str = "partner",
+        submitter_access_level: str = "partner",
         confidence: int = 87
     ) -> FrankSubmission:
         """Create a sample banking threat sighting."""
         
         submitter = Submitter.create(
-            tier=submitter_tier,
+            access_level=submitter_access_level,
             sector="cybersecurity_services",
             region="nl_north_holland"
         )
@@ -275,8 +264,8 @@ class FrankSightingParser:
         
         # Validate tier
         valid_tiers = ["public", "observer", "contributor", "partner", "core_member"]
-        if submission.submitter.tier not in valid_tiers:
-            errors.append(f"Invalid tier: {submission.submitter.tier}")
+        if submission.submitter.access_level not in valid_tiers:
+            errors.append(f"Invalid access_level: {submission.submitter.access_level}")
         
         # Validate network observables
         if not submission.observables.get("network"):
@@ -332,11 +321,12 @@ class FrankSightingParser:
         # Contributors and above get full data
         return anonymized
 
-def run_spike():
+
+def test_run_spike():
     # Generate a minimal sighting
     generator = FrankSightingGenerator()
     minimal_sighting = generator.create_minimal_sighting(
-        submitter_tier="partner",
+        submitter_access_level="partner",
         target_sector="financial_services",
         confidence=87,
         ip_address="185.220.102.45",
@@ -357,7 +347,7 @@ def run_spike():
     parsed_sighting = FrankSubmission.from_yaml(yaml_string)
     
     print("\n=== Parsed Sighting (Round-trip test) ===")
-    print(f"Submitter Tier: {parsed_sighting.submitter.tier}")
+    print(f"Submitter Tier: {parsed_sighting.submitter.access_level}")
     print(f"Target Sector: {parsed_sighting.hit_target.sector}")
     print(f"Confidence: {parsed_sighting.sighting.confidence}")
     print(f"Network Observables: {len(parsed_sighting.observables['network'])}")
@@ -384,11 +374,9 @@ def run_spike():
     anonymized = parser.anonymize_submission(parsed_sighting, "observer")
     print(f"\n=== Anonymized for Observer ===")
     print(anonymized.to_yaml())
-    return True
-
-
+    assert True
 
 
 # Example usage and testing
 if __name__ == "__main__":
-    run_spike()
+    test_run_spike()
