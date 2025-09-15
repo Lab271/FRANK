@@ -67,33 +67,16 @@ class FrankConfig:
         """Setup configuration based on environment"""
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
 
-        if self.environment == "localstack":
-            self.setup_localstack_config()
-        elif self.environment == "aws":
-            self.setup_aws_config()
+        if self.environment == ["localstack", "aws"]:
+            self.database_type = "dynamodb"
+            self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
+
+            # AWS Credentials (for LocalStack)
+            self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
+            self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
+            self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
         else:
             raise ValueError(f"Unknown environment: {self.environment}")
-
-    def setup_localstack_config(self):
-        """LocalStack RDS configuration"""
-        self.database_type = "dynamodb"
-        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
-
-        # AWS Credentials (for LocalStack)
-        self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
-        self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
-        self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
-
-    def setup_aws_config(self):
-        """Real AWS RDS configuration"""
-        self.database_type = "rds"
-        self.rds_host = os.getenv("RDS_HOST")
-        self.rds_port = int(os.getenv("RDS_PORT", "3306"))
-        self.rds_database = os.getenv("RDS_DATABASE", "frank")
-        self.rds_username = os.getenv("RDS_USERNAME")
-        self.rds_password = os.getenv("RDS_PASSWORD")
-        self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
-
 
 # ================================
 # FASTAPI APPLICATION
@@ -182,8 +165,9 @@ class RateLimiter:
 
 rate_limiter = RateLimiter()
 
+# ================================
 # API Endpoints
-
+# ================================
 
 @app.post("/v1/submission", response_model=SubmissionResponse)
 async def submit_threat_intelligence(

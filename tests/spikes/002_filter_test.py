@@ -353,10 +353,8 @@ class FrankQueryEngine:
         # For now, return empty list
         return []
 
-
-# Example usage and testing
-if __name__ == "__main__":
-    # Sample sighting data (simplified)
+def test_run_spike():
+        # Sample sighting data (simplified)
     sample_sighting = {
         "submission": {
             "metadata": {
@@ -409,3 +407,8 @@ if __name__ == "__main__":
     print("\n=== Partner Access ===")
     partner_filtered = filter_engine.apply_filters(sample_sighting, AccessTier.PARTNER)
     print(f"Financial Impact: {partner_filtered['submission']['sighting']['impact'].get('financial_impact_eur', 'REMOVED')}")
+    assert True
+
+# Example usage and testing
+if __name__ == "__main__":
+    test_run_spike()

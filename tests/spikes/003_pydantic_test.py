@@ -124,7 +124,7 @@ class Submitter(BaseModel):
     def create(cls, access_level: str, organization_type: str = "cyber_partner", sector: str = None, region: str = None):
         """Factory method for creating submitters"""
         return cls(
-            access_level=tier,
+            access_level=access_level,
             organization_type=organization_type,
             sector=sector,
             region=region
@@ -239,7 +239,7 @@ class FrankSightingGenerator:
     
     @staticmethod
     def create_minimal_sighting(
-        submitter_access_level: str,
+        access_level: str,
         confidence: int,
         ip_address: str,
         target_sector: str = None,
@@ -247,7 +247,7 @@ class FrankSightingGenerator:
     ) -> Submission:
         """Create a minimal FRANK sighting submission."""
         
-        submitter = Submitter.create(access_level=submitter_tier)
+        submitter = Submitter.create(access_level=access_level)
         if target_sector:
             hit_target = HitTarget.create(sector=target_sector)
         else:
@@ -391,13 +391,11 @@ class FrankSightingGenerator:
 #         # Contributors and above get full data
 #         return anonymized
 
-
-# Example usage and testing
-if __name__ == "__main__":
+def test_run_spike():
     # Generate a minimal sighting
     generator = FrankSightingGenerator()
     minimal_sighting = generator.create_minimal_sighting(
-        submitter_access_level="partner",
+        access_level="partner",
         confidence=87,
         ip_address="185.220.102.45",
         domain="secure-bank-verify.nl"
@@ -407,7 +405,7 @@ if __name__ == "__main__":
     print(minimal_sighting.to_yaml())
     
     minimal_sighting = generator.create_minimal_sighting(
-        submitter_access_level="partner",
+        access_level="partner",
         target_sector="financial_services",
         confidence=87,
         ip_address="185.220.102.45",
@@ -427,33 +425,6 @@ if __name__ == "__main__":
     print(f"Confidence: {parsed_submission.sighting.confidence}")
     print(f"Network Observables: {len(parsed_submission.sighting.observables.network)}")
 
-
-    # # Generate a complete banking threat sighting
-    # banking_sighting = generator.create_banking_threat_sighting()
-    
-    # print("\n=== Banking Threat Sighting YAML ===")
-    # print(banking_sighting.to_yaml())
-    
-
-    # # Validate submission
-    # parser = FrankSightingParser()
-    # errors = parser.validate_submission(parsed_sighting)
-    
-    # print(f"\n=== Validation Results ===")
-    # if errors:
-    #     print("Validation errors:")
-    #     for error in errors:
-    #         print(f"- {error}")
-    # else:
-    #     print("Submission is valid")
-    
-    # # Extract IoCs
-    # iocs = parser.extract_iocs(parsed_sighting)
-    # print(f"\n=== Extracted IoCs ===")
-    # print(f"IP Addresses: {iocs['ip_addresses']}")
-    # print(f"Domains: {iocs['domains']}")
-    
-    # # Test anonymization
-    # anonymized = parser.anonymize_submission(parsed_sighting, "observer")
-    # print(f"\n=== Anonymized for Observer ===")
-    # print(anonymized.to_yaml())
+# Example usage and testing
+if __name__ == "__main__":
+    test_run_spike()

@@ -241,6 +241,20 @@ class TestSighting(unittest.TestCase):
                     self.assertGreaterEqual(sighting.timestamp, before_test)
                     self.assertLessEqual(sighting.timestamp, after_test)
 
+    def test_timestamp_timezone(self):
+        """Test that Sighting timestamp is timezone-aware."""
+        s = Sighting(confidence=50)
+        assert s.timestamp.tzinfo is not None
+
+    def test_invalid_observation_times(self):
+        """Test that Sighting raises error for invalid observation times."""
+        import pytest
+        from datetime import datetime, timedelta, timezone
+        first = datetime.now(timezone.utc)
+        last = first - timedelta(days=1)
+        with pytest.raises(ValueError):
+            Sighting(confidence=50, first_observed=first, last_observed=last)
+
     def test_confidence_validation(self):
         """Test confidence score validation"""
         # Valid confidence scores

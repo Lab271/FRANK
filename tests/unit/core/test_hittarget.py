@@ -83,6 +83,11 @@ class TestHitTarget(unittest.TestCase):
         # Test different IDs are generated
         self.assertNotEqual(hittarget1.organization_id, hittarget2.organization_id)
 
+        # Test with empty string
+        hittarget3 = HitTarget(sector="retail")
+        self.assertIsNotNone(hittarget3.organization_id)
+        self.assertTrue(hittarget3.organization_id.startswith("identity--"))
+
     def test_sector_validation_required(self):
         """Test that sector is required and validated"""
         # Valid sector

@@ -1,34 +1,15 @@
 # ================================
 # docker-compose.yml - Stage 2 RDS/MariaDB Setup (Updated)
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
 # ================================
 
 services:
-  # MySQL Database (Not part of Localstack free tier)
-  mysql:
-    image: mysql:8.0
-    container_name: frank-mysql-stage2
-    ports:
-      - "3306:3306"
-    environment:
-      - MYSQL_ROOT_PASSWORD=frank_root_pass
-      - MYSQL_DATABASE=frank
-      - MYSQL_USER=frank_user
-      - MYSQL_PASSWORD=frank_pass
-    volumes:
-      - mysql_data:/var/lib/mysql
-      - ./mysql_init:/docker-entrypoint-initdb.d
-    networks:
-      - frank-network
-    healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "frank_user", "-pfrank_pass"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-      
+  
   # LocalStack - AWS Services Simulation
   localstack:
-    # image: localstack/localstack:latest
-    image: localstack/localstack:2.0
+    image: localstack/localstack:latest
+    # image: localstack/localstack:2.0
     container_name: frank-localstack-stage2
     ports:
       - "4566:4566"  # LocalStack API
@@ -63,18 +44,11 @@ services:
     environment:
       - FRANK_ENVIRONMENT=localstack
       - LOCALSTACK_ENDPOINT=http://localstack:4566
-      - RDS_HOST=mysql
-      - RDS_PORT=3306
-      - RDS_DATABASE=frank
-      - RDS_USERNAME=frank_user
-      - RDS_PASSWORD=frank_pass
       - AWS_ACCESS_KEY_ID=test
       - AWS_SECRET_ACCESS_KEY=test
       - AWS_DEFAULT_REGION=eu-west-1
       - DYNAMODB_TABLE=frank_table
     depends_on:
-      mysql:
-        condition: service_healthy
       localstack:
         condition: service_started
     healthcheck:
@@ -90,19 +64,7 @@ services:
     networks:
       - frank-network
 
-  # Optional: Database GUI for RDS inspection
-  adminer:
-    image: adminer
-    container_name: adminer
-    ports:
-      - "8080:8080"
-    environment:
-      - ADMINER_DEFAULT_SERVER=mysql:3306
-    depends_on:
-      - mysql
-    networks:
-      - frank-network
-
+  # DynamoDB Admin UI  
   dynamodb-admin:
     container_name: minimal-dynamodb-admin
     image: aaronshaf/dynamodb-admin:latest
@@ -124,5 +86,4 @@ networks:
     driver: bridge
 
 volumes:
-  mysql_data:
   logs:
