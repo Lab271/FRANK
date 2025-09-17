@@ -3,7 +3,7 @@
 FRANK Platform - Submission Generation and Parsing Library
 Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-This modules provides a high-level client interface combining submission handling
+This modules provides a high-level server interface combining submission handling
 with database operations for easy integration into applications.
 
 Copyright (c) 2025 Schuberg Philis B.V.
@@ -22,9 +22,9 @@ from .sample_builder import FRANKDatabaseSeeder
 from .logger import NullLogger
 from frank import __version__
     
-class FRANKClient:
+class FRANKServer:
     """
-    High-level FRANK client that combines submission handling with database operations.
+    High-level FRANK server that combines submission handling with database operations.
     
     This is the main interface most users should interact with, providing a simple
     API that handles both submission processing and storage automatically.
@@ -191,6 +191,22 @@ class FRANKClient:
 
         return stats
     
+    def get_submission_by_id(self, org_id:str , submission_id: str, access_level: AccessTier) -> Submission:
+        try:
+            submission_dict = self.database.get_submission_by_id()
+
+            # # Apply access level filtering
+            # # TODO: move this server side, not db processing
+            # filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
+
+            # Log access
+            self.database.log_access(org_id, 'READ', 'submission', submission_id)
+
+            return Submission(**filtered_submission)
+        except ClientError as e:
+            self.logger.error(f"Error retrieving submission {submission_id}: {e}")
+            raise FRANKQueryError(f"Failed to retrieve submission: {e}")        
+
     def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the FRANK platform database backend.
@@ -207,7 +223,7 @@ class FRANKClient:
                 - 'version': FRANK library version
         """
         health_status = self.database.health_check()
-        
+
         return {
             "status": health_status["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -220,7 +236,7 @@ class FRANKClient:
         Seed the database with initial data using the provided seeder.
 
         This method invokes the seed method of the provided FRANKDatabaseSeeder instance,
-        passing in the database client. It handles any exceptions and logs errors if seeding fails.
+        passing in the database handler. It handles any exceptions and logs errors if seeding fails.
 
         Args:
             seeder (FRANKDatabaseSeeder): An instance of a database seeder class.  
@@ -364,21 +380,21 @@ def calculate_contribution_score(submission: Submission) -> int:
 # Factory function
 # ===============================
 
-def create_client(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANKClient:
+def create_server(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANKServer:
     """
-    Factory function to create a complete FRANK client with database backend.
+    Factory function to create a complete FRANK server with database backend.
     
     Args:
         config: Configuration dictionary (uses defaults if None)
         
     Returns:
-        Configured FRANK client instance
+        Configured FRANK server instance
         
     Example:
         >>> import frank
-        >>> client = frank.create_frank_client()
-        >>> health = client.health_check()
+        >>> server = frank.create_frank_server()
+        >>> health = server.health_check()
     """
 
-    # Return a client that combines both
-    return FRANKClient(db, logger)
+    # Return a server that combines both
+    return FRANKServer(db, logger)

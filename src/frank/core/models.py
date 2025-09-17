@@ -616,6 +616,26 @@ def example_usage():
     print("✓ Strict output formatting ('strong on return')")
     print("✓ Built-in serialization to JSON/YAML")
     print("✓ Factory methods for common use cases")
+    # print("✓ Strict API format generated")
+
+    # # 5. Demonstrate access-based anonymization
+    # print("\n5. Testing tier-based anonymization...")
+    # public_view = parsed.anonymize_for_tier(TierLevel.PUBLIC)
+    # observer_view = parsed.anonymize_for_tier(TierLevel.OBSERVER)
+
+    # print(f"  - Original IP: {parsed.observables.network[0].value}")
+    # print(f"  - Observer view: {observer_view.observables.network[0].value}")
+    # print(f"  - Public view: {public_view.observables.network[0].value}")
+
+    # print("\n=== Pydantic v2 Benefits Demonstrated ===")
+    # print("✓ Updated validation with helpful error messages")
+    # print("✓ Type safety and IDE support")
+    # print("✓ Flexible input parsing ('be forgiving')")
+    # print("✓ Strict output formatting ('strong on return')")
+    # print("✓ Built-in serialization to JSON/YAML")
+    # print("✓ Factory methods for common use cases")
+    # print("✓ Access-tier based data filtering")
+    # print("✓ Fixed @root_validator deprecation warnings")
 
 
 if __name__ == "__main__":
