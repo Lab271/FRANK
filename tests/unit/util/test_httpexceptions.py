@@ -11,8 +11,10 @@ from datetime import datetime, timezone
 from uuid import UUID
 from frank.util.http_exceptions import (
     BadRequestException,
+    NotFoundException,
     UnauthenticatedException,
     UnauthorizedException,
+    TooManyRequestsException,
     create_error_response
 )
 
@@ -23,6 +25,12 @@ class TestHttpExceptions(unittest.TestCase):
         exc = BadRequestException("bad req")
         self.assertEqual(exc.status_code, 400)
         self.assertEqual(exc.detail, "bad req")
+
+    def test_not_found_exception(self):
+        """NotFoundException sets status_code and detail."""
+        exc = NotFoundException("not found")
+        self.assertEqual(exc.status_code, 404)
+        self.assertEqual(exc.detail, "not found")
 
     def test_unauthenticated_exception(self):
         """UnauthenticatedException sets status_code and detail."""
@@ -35,6 +43,12 @@ class TestHttpExceptions(unittest.TestCase):
         exc = UnauthorizedException("forbidden")
         self.assertEqual(exc.status_code, 403)
         self.assertEqual(exc.detail, "forbidden")
+
+    def test_too_many_requests_exception(self):
+        """TooManyRequestsException sets status_code and detail."""
+        exc = TooManyRequestsException("rate limit")
+        self.assertEqual(exc.status_code, 429)
+        self.assertEqual(exc.detail, "rate limit")
 
 class TestCreateErrorResponse(unittest.TestCase):
     """Test create_error_response utility function."""

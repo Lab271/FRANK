@@ -196,21 +196,18 @@ class FRANKServer:
 
         return stats
 
-    def get_submission_by_id(self, user_id: str, access_level: AccessTier, submission_id: str) -> Submission:
-        try:
-            submission_dict = self.database.get_submission_by_id(user_id, submission_id, access_level)
+    def get_submission_by_id(self, user_id: str, access_level: AccessTier, submission_id: str) -> Optional[Submission]:
+        submission_dict = self.database.get_submission_by_id(submission_id)
+        if not submission_dict:
+            return None
+        filtered_submission = self.filter.submission_by_access_level(submission_dict, access_level)
+        self.logger.debug(f"Filtered submission for access level {access_level}: {filtered_submission}")
 
-            # # Apply access level filtering
-            # # TODO: move this server side, not db processing
-            filtered_submission = self.filter.submission_by_access_level(submission_dict, access_level)
+        # Log access
+        self.database.log_access(user_id, 'READ', 'submission', submission_id)
 
-            # Log access
-            self.database.log_access(user_id, 'READ', 'submission', submission_id)
+        return Submission(**filtered_submission["submission"]) if filtered_submission else None
 
-            return Submission(**filtered_submission)
-        except ClientError as e:
-            self.logger.error(f"Error retrieving submission {submission_id}: {e}")
-            raise FRANKQueryError(f"Failed to retrieve submission: {e}")        
 
     def health_check(self) -> Dict[str, Any]:
         """

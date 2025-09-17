@@ -17,12 +17,16 @@ class BadRequestException(HTTPException):
 	"""Exception for HTTP 400 Bad Request"""
 	def __init__(self, detail: str = "Bad request"):
 		super().__init__(status_code=400, detail=detail)
-		
+
+class NotFoundException(HTTPException):
+	"""Exception for HTTP 404 Not Found"""
+	def __init__(self, detail: str = "Resource not found"):
+		super().__init__(status_code=404, detail=detail)
+
 class UnauthenticatedException(HTTPException):
 	"""Exception for HTTP 401 Unauthenticated"""
 	def __init__(self, detail: str = "Authentication required"):
 		super().__init__(status_code=401, detail=detail)
-
 
 class UnauthorizedException(HTTPException):
 	"""Exception for HTTP 403 Unauthorized/Forbidden"""
@@ -35,11 +39,11 @@ class TooManyRequestsException(HTTPException):
 		super().__init__(status_code=429, detail=detail)
 
 def create_error_response(
-	status_code: int,
-	error_type: str,
-	message: str,
-	details: Optional[Dict[str, Any]] = None
-) -> Dict[str, Any]:
+		status_code: int,
+		error_type: str,
+		message: str,
+		details: Optional[Dict[str, Any]] = None
+	) -> Dict[str, Any]:
 	"""Create a standardized error response dict for API errors."""
 	return {
 		"error": {

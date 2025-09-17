@@ -28,6 +28,7 @@ import uvicorn
 
 # Import enums from FRANK core
 from frank.core.enum import ObservableType, TLPLevel, AccessTier
+from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.storage.dynamodb import create_dynamodb_database
@@ -36,7 +37,7 @@ from frank.storage.dynamodb import create_dynamodb_database
 from frank.util.sample_builder import SampleDataSeeder
 from frank.util import create_server, create_error_response
 from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
-from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException
+from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException, NotFoundException, UnauthenticatedException
 from frank import __version__
 
 # Configure logging
@@ -204,6 +205,25 @@ async def submit_threat_intelligence(
         estimated_processing_time="2-5 minutes",
     )
 
+
+@app.get('/v1/submission/{submission_id}', response_model=Submission, response_model_exclude_none=True)
+async def get_submission(
+    submission_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Retrieve a specific submission by its ID.
+    Only Submitters can access the submission.
+    """
+    # Check permissions
+    if not AccessTier.can_submit(current_user["access_level"]):
+        raise UnauthorizedException("Insufficient access level for submission retrieval")
+
+    submission = frank_server.get_submission_by_id(current_user["organization_id"], current_user["access_level"], submission_id)
+    if not submission:
+        raise NotFoundException(f"Submission {submission_id} not found")
+
+    return submission
 
 
 class SightingSearchQuery(BaseModel):

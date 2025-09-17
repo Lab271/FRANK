@@ -593,10 +593,10 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         Args:
             user_id (str): User ID making the request (used for access logging).
-            observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
-            limit (int, optional): Maximum number of results to return (default: 100).
             access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
+            observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
             min_confidence (float, optional): Minimum confidence value to include.
+            limit (int, optional): Maximum number of results to return (default: 100).
             sectors (List[str], optional): List of allowed sectors to include.
             days_back (int, optional): Only include observables seen in the last N days.
 
