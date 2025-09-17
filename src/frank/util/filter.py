@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 import logging
 
 from frank.core.enum import AccessTier  
-from frank.core.logger import NullLogger       
+from frank.util.logger import NullLogger       
 
 class FRANKFilter:
     def __init__(self, logger: logging.Logger = None):
         self.logger = logger or NullLogger()
 
-    def filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
+    def submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter submission data based on the provided access level.
 

@@ -35,12 +35,12 @@ class DummyDatabase(BaseFRANKDatabase):
     def store_submission(self, submission):
         # Not recommended: calling super() abstract method for coverage only
         super().store_submission(submission)
-        return True
-
-    def get_submission_by_id(self, submission_id, org_id, access_level=None):
-        # Not recommended: calling super() abstract method for coverage only
-        super().get_submission_by_id(submission_id, org_id, access_level)
         return None
+
+    def get_submission_by_id(self, submission_id):
+        # Not recommended: calling super() abstract method for coverage only
+        super().get_submission_by_id(submission_id)
+        return {"submission_id": submission_id} if submission_id == "subid" else None
 
     def query_observables(self, org_id, observable_type=None, limit=100, access_level=None,
                          min_confidence=None, sectors=None, days_back=None):
@@ -105,11 +105,15 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
 
     def test_store_submission(self):
         """Test store_submission method."""
-        self.assertTrue(self.db.store_submission(None))
+        self.assertIsNone(self.db.store_submission(None))
 
     def test_get_submission_by_id(self):
         """Test get_submission_by_id method."""
-        self.assertIsNone(self.db.get_submission_by_id("subid", "orgid"))
+        self.assertIsNone(self.db.get_submission_by_id("none"))
+
+    def test_get_submission_by_id_value(self):
+        """Test get_submission_by_id method."""
+        self.assertIsInstance(self.db.get_submission_by_id("subid"), dict)
 
     def test_query_observables(self):
         """Test query_observables method with all parameters."""

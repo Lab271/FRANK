@@ -42,6 +42,19 @@ class BaseFRANKDatabase(ABC):
             None
         """
         pass
+    
+    @abstractmethod
+    def store_submission(self, submission: Submission) -> None:
+        """
+        Store a complete submission in the database.
+
+        Args:
+            submission (Submission): The submission object to store.
+
+        Returns:
+            None
+        """
+        pass
 
     @abstractmethod
     def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
@@ -57,30 +70,17 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def store_submission(self, submission: Submission) -> bool:
-        """
-        Store a complete submission in the database.
-
-        Args:
-            submission (Submission): The submission object to store.
-
-        Returns:
-            bool: True if stored successfully, False otherwise.
-        """
-        pass
-    
-    @abstractmethod
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:
         """
         Retrieve a specific submission with access level filtering.
 
         Args:
+            user_id (str): The user making the request.
             submission_id (str): The ID of the submission to retrieve.
-            org_id (str): The organization ID making the request.
             access_level (AccessTier): The access level for filtering (default: CONTRIBUTOR).
 
         Returns:
-            Optional[Submission]: The filtered Submission object, or None if not found.
+            Dict[str, Any]: The filtered Submission object, or None if not found.
         """
         pass
     
@@ -138,7 +138,7 @@ class BaseFRANKDatabase(ABC):
     @abstractmethod
     def log_access(self, org_id: str, action: str, 
                    resource_type: str = None, resource_id: str = None, 
-                   details: Dict[str, Any] = None) -> bool:
+                   details: Dict[str, Any] = None) -> None:
         """
         Log an access event for auditing purposes.
 
@@ -150,7 +150,7 @@ class BaseFRANKDatabase(ABC):
             details (Dict[str, Any], optional): Additional details about the access event.
 
         Returns:
-            bool: True if the log was stored successfully, False otherwise.
+            None
         """
         pass
 

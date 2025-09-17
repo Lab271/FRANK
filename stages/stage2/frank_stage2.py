@@ -18,7 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, field_validator, ConfigDict
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
@@ -192,32 +192,32 @@ async def submit_threat_intelligence(
     if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise BadRequestException("Rate limit exceeded")
 
-    try:
-        # Store in database
-        success, score_impact = frank_server.submit_threat_intelligence(current_user["organization_id"], submission)
+    # Store in database
+    score_impact = frank_server.submit_threat_intelligence(current_user["organization_id"], submission)
 
-        # TODO: simplify error handling in server, propagate Exceptions, not status flags
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to store submission")
-
-        return SubmissionResponse(
-            status="accepted",
-            submission_id=submission.submission_id,
-            contribution_score_impact=score_impact,
-            processing_status="queued",
-            validation_required=False,
-            estimated_processing_time="2-5 minutes",
-        )
-
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Submission validation failed: {str(e)}")
+    return SubmissionResponse(
+        status="accepted",
+        submission_id=submission.submission_id,
+        contribution_score_impact=score_impact,
+        processing_status="queued",
+        validation_required=False,
+        estimated_processing_time="2-5 minutes",
+    )
 
 
 
-# Pydantic v2 Query Model for Sighting Search
 class SightingSearchQuery(BaseModel):
+    """Model for sighting search query parameters"""
+
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True,
+        populate_by_name=True,  # Allow both field name and alias
+    )
+
+
     observable: Optional[str] = Query(None, description="Specific IoC to search for")
-    type: Optional[ObservableType] = Query(None, description="Observable type filter")
+    observable_type: Optional[ObservableType] = Query(None, alias="type", description="Observable type filter")
     start_date: Optional[datetime] = Query(None, description="Search start date")
     end_date: Optional[datetime] = Query(None, description="Search end date")
     sector: Optional[str] = Query(None, description="Target sector filter")
@@ -237,6 +237,21 @@ class SightingSearchQuery(BaseModel):
             )
         return end_date
 
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dict excluding None values"""
+        query_params = self.model_dump()
+        # Add sector as list if present
+        if query_params.get("sector"):
+            query_params["sectors"] = [query_params.pop("sector")]
+
+        # Calculate days_back if start_date is present
+        if query_params.get("start_date"):
+            days_back = (datetime.now(timezone.utc) - query_params["start_date"]).days
+            query_params["days_back"] = max(1, days_back)
+
+        return query_params
+
+
 @app.get("/v1/sighting", response_model=SightingSearchResponse)
 async def search_threat_sightings(
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -250,54 +265,39 @@ async def search_threat_sightings(
     if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
         raise TooManyRequestsException("Rate limit exceeded")
 
-    try:
-        # Build query parameters from model_dict
-        query_params = query.model_dump()
-        query_params["org_id"] = current_user["organization_id"]
-        query_params["access_level"] = current_user["access_level"]
-        # Remove keys not needed for frank_server.query_threats
-        observable = query_params.pop("observable", None)
-        offset = query_params.pop("offset", 0)
-        limit = query_params.get("limit", 50)
+    # Build query parameters from model_dict
+    query_params = query.to_dict()
+    # Remove keys not needed for frank_server.query_threats
+    observable = query_params.pop("observable", None)
+    offset = query_params.pop("offset", 0)
+    limit = query_params.pop("limit", 50)
 
-        # Add sector as list if present
-        if query_params.get("sector"):
-            query_params["sectors"] = [query_params.pop("sector")]
 
-        # Calculate days_back if start_date is present
-        if query_params.get("start_date"):
-            days_back = (datetime.now(timezone.utc) - query_params["start_date"]).days
-            query_params["days_back"] = max(1, days_back)
+    total_results, sightings, aggregations, threat_context = frank_server.query_threats(
+        user_id=current_user["organization_id"], access_level=current_user["access_level"],
+        offset=offset, limit=limit,
+        observable=observable, **query_params
+    )
 
-        total_results, sightings, aggregations, threat_context = frank_server.query_threats(
-            # format=format, offset=offset, 
-            observable=observable, **query_params
-        )
+    response = SightingSearchResponse(
+        total_results=total_results,
+        returned_results=len(sightings),
+        sightings=sightings,
+        aggregations=aggregations,
+        threat_context=threat_context,
+        pagination=None
+    )
 
-        response = SightingSearchResponse(
-            total_results=total_results,
-            returned_results=len(sightings),
-            sightings=sightings,
-            aggregations=aggregations,
-            threat_context=threat_context,
-            pagination=None
-        )
+    # Add pagination info
+    if total_results > offset + limit:
+        response.pagination = {
+            "has_next": True,
+            "next_offset": offset + limit,
+            "has_previous": offset > 0,
+            "previous_offset": max(0, offset - limit),
+        }
 
-        # Add pagination info
-        if total_results > offset + limit:
-            response.pagination = {
-                "has_next": True,
-                "next_offset": offset + limit,
-                "has_previous": offset > 0,
-                "previous_offset": max(0, offset - limit),
-            }
-
-        return response
-
-    except BadRequestException as e:
-        raise BadRequestException(str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+    return response
 
 
 @app.get("/v1/observations", response_model=ObservationsResponse)
@@ -343,9 +343,9 @@ async def get_platform_statistics(
         raise UnauthorizedException("Insufficient access level")
 
     stats = frank_server.get_platform_statistics(
-        org_id=current_user["organization_id"],
+        user_id=current_user["organization_id"],
+        access_level=current_user["access_level"],
         days=days,
-        access_level=current_user["access_level"]
     )  
     return stats
 

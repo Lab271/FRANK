@@ -52,18 +52,6 @@ class TestDynamoDBFRANKDatabaseLogAccess(unittest.TestCase):
         self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
         self.db.table = MagicMock()
 
-    @patch.object(DynamoDBFRANKDatabase, '_log_access')
-    def test_log_access_calls_put_item(self, mock_log_access):
-        """Test that log_access calls _log_access with correct arguments."""
-        org_id = 'org123'
-        action = 'QUERY'
-        resource_type = 'submission'
-        resource_id = 'sub456'
-        details = {'foo': 'bar'}
-
-        self.db.log_access(org_id, action, resource_type, resource_id, details)
-        mock_log_access.assert_called_once_with(org_id, action, resource_type, resource_id, details)
-
     def test_log_access_put_item_called(self):
         """Test that log_access results in put_item being called on the table."""
         org_id = 'org123'
@@ -105,8 +93,7 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         submission.tlp_level = 'TLP:AMBER'
 
         self.db._batch_write_items.return_value = None
-        result = self.db.store_submission(submission)
-        self.assertTrue(result)
+        self.db.store_submission(submission)
         self.db._batch_write_items.assert_called_once()
 
     def test_store_submission_failure(self):
@@ -123,8 +110,11 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         submission.tlp_level = 'TLP:AMBER'
 
         self.db._batch_write_items.side_effect = FRANKStorageError('fail')
-        result = self.db.store_submission(submission)
-        self.assertFalse(result)
+        try:
+            self.db.store_submission(submission)
+        except FRANKStorageError:
+            return
+        self.fail("FRANKStorageError not raised")   
 
 
 class TestDynamoDBBatchWrite(unittest.TestCase):
@@ -223,41 +213,39 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
         self.db._convert_decimals_to_float = MagicMock()
         self.db._log_access = MagicMock()
 
-    # def test_get_submission_by_id_found(self):
-    #     # Minimal submission message for FRANK Submission model
-    #     minimal_submission = {
-    #         # "submission": {
-    #             "submission_id": "sub1",
-    #             "timestamp": "2025-09-12T00:00:00Z",
-    #             "submitter": {"organization_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
-    #             "sighting": {"confidence": 80, "severity": "high"},
-    #             "tlp_level": "TLP:AMBER",
-    #         # }
-    #     }
-    #     import json
-    #     self.db.table.get_item.return_value = {'Item': {'submission_data': json.dumps(minimal_submission)}}
-    #     self.db._convert_decimals_to_float.return_value = {'submission_data': json.dumps(minimal_submission)}
-    #     result = self.db.get_submission_by_id('sub1', 'org1')
-    #     self.assertIsNotNone(result)
-    #     self.assertEqual(result.submission_id, "sub1")
-    #     self.assertEqual(result.submitter.organization_id, "org1")
-    #     self.db._log_access.assert_called_once()
+    def test_get_submission_by_id_found(self):
+        # Minimal submission message for FRANK Submission model
+        minimal_submission = {
+            # "submission": {
+                "submission_id": "sub1",
+                "timestamp": "2025-09-12T00:00:00Z",
+                "submitter": {"organization_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
+                "sighting": {"confidence": 80, "severity": "high"},
+                "tlp_level": "TLP:AMBER",
+            # }
+        }
+        import json
+        self.db.table.get_item.return_value = {'Item': {'submission_data': minimal_submission}}
+        result = self.db.get_submission_by_id('sub1')
+        self.assertIsNotNone(result)
+        self.assertEqual(result['submission_id'], "sub1")
+        self.assertEqual(result['submitter']['organization_id'], "org1")
 
     def test_get_submission_by_id_not_found(self):
         self.db.table.get_item.return_value = {}
-        result = self.db.get_submission_by_id('sub1', 'org1')
+        result = self.db.get_submission_by_id('sub1')
         self.assertIsNone(result)
 
     def test_get_submission_by_id_no_submission_data(self):
         self.db.table.get_item.return_value = {'Item': {}}
         self.db._convert_decimals_to_float.return_value = {}
-        result = self.db.get_submission_by_id('sub1', 'org1')
+        result = self.db.get_submission_by_id('sub1')
         self.assertIsNone(result)
 
     def test_get_submission_by_id_client_error(self):
         self.db.table.get_item.side_effect = ClientError({'Error': {}}, 'get_item')
         with self.assertRaises(FRANKQueryError):
-            self.db.get_submission_by_id('sub1', 'org1')
+            self.db.get_submission_by_id('sub1')
 
 if __name__ == '__main__':
     unittest.main(verbosity=2, buffer=True)

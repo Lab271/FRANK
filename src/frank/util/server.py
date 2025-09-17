@@ -17,6 +17,7 @@ import logging
 from frank.core.models import Submission
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
+from frank.util.filter import FRANKFilter
 
 from .sample_builder import FRANKDatabaseSeeder
 from .logger import NullLogger
@@ -42,8 +43,9 @@ class FRANKServer:
         self.logger = logger or NullLogger()
         self.database = database
         self.database.logger = self.logger
+        self.filter = FRANKFilter(self.logger)
 
-    def submit_threat_intelligence(self, user_id: str, submission: Submission) -> (bool, int):
+    def submit_threat_intelligence(self, user_id: str, submission: Submission) -> int:
         """
         Submit threat intelligence to the FRANK platform.
         
@@ -56,24 +58,22 @@ class FRANKServer:
         """
         
         # Store in database
-        success = self.database.store_submission(submission)
-        if not success: 
-            return (False, 0)
+        self.database.store_submission(submission)
             
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission)
                 
-        success = self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
+        self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
 
         # Extract submission ID
-        return (success, score_impact)
+        return score_impact
 
 
-    def query_threats(self, org_id: str, 
-        access_level: AccessTier, limit: int, offset: int, format: Optional[str], 
+    def query_threats(self, user_id: str, access_level: AccessTier, 
+        limit: int, offset: int, format: Optional[str], 
         observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
         """
-        Query threat intelligence records for a given organization, applying access level filtering, pagination, and formatting.
+        Query threat intelligence records for a given user, applying access level filtering, pagination, and formatting.
 
         This method retrieves threat intelligence data from the database, applying the specified tier for access control.
         If an observable is provided, performs a targeted search; otherwise, executes a general query with additional filters.
@@ -81,7 +81,7 @@ class FRANKServer:
         included for higher access levels.
 
         Args:
-            org_id (str): Organization ID making the query.
+            user_id (str): Identifier for the user querying the threat intelligence.
             access_level (AccessTier): Access tier for filtering and formatting results.
             limit (int): Maximum number of results to return.
             offset (int): Pagination offset.
@@ -99,10 +99,12 @@ class FRANKServer:
 
         # Search by specific observable if provided
         if observable:
-            results = self.database.search_observables_by_value(org_id, observable, access_level)
+            results = self.database.search_observables_by_value(user_id, observable, access_level)
         else:
             # General query
-            results = self.database.query_observables(org_id=org_id, **filters)
+            results = self.database.query_observables(user_id=user_id,  access_level=access_level,
+                                            observable_type=filters.get("observable_type"), min_confidence=filters.get("min_confidence"),
+                                            limit=filters.get("limit", 100), days_back=filters.get("days_back"))
 
         total_results = len(results)
         paginated_results = results[offset : offset + limit]
@@ -124,18 +126,21 @@ class FRANKServer:
         if access_level.check_access_level(AccessTier.PARTNER):
             threat_context = generate_threat_context(results)
 
+
+        self.database.log_access(user_id, 'SEARCH', 'observables', details={'search_results': total_results})
+
         return (total_results, sightings, aggregations, threat_context)
 
 
-    def get_observations(self, org_id: str, days: int, observable_type: str, limit: int) -> "Tuple[List[Dict], Dict[str, Any]]":
+    def get_observations(self, user_id: str, days: int, observable_type: str, limit: int) -> "Tuple[List[Dict], Dict[str, Any]]":
         """
-        Retrieve observable statistics and details for a given organization and time window.
+        Retrieve observable statistics and details for a given user (organization) and time window.
 
-        This method queries the database for observable statistics for the specified organization and number of days.
+        This method queries the database for observable statistics for the specified user and number of days.
         It returns a list of observation summaries (filtered by observable type if provided) and the full statistics dictionary.
 
         Args:
-            org_id (str): The organization ID for which to retrieve observations.
+            user_id (str): Identifier for the user retrieving the observations.
             days (int): Number of days to include in the statistics summary.
             observable_type (str): Filter to include only observations of this type (if provided).
             limit (int): Maximum number of observation summaries to return.
@@ -145,7 +150,7 @@ class FRANKServer:
                 - List of observation summaries (each with 'observable_type' and 'count').
                 - Full statistics dictionary as returned by the database.
         """
-        stats = self.database.get_statistics_summary(org_id, days=days)
+        stats = self.database.get_statistics_summary(user_id, days=days)
 
         observations = []
         for obs_type, count in stats.get('observable_totals', {}).items():
@@ -158,18 +163,18 @@ class FRANKServer:
         return observations[:limit], stats
         
 
-    def get_platform_statistics(self, org_id: str, days: int, access_level: AccessTier) -> Dict[str, Any]:
+    def get_platform_statistics(self, user_id: str, access_level: AccessTier, days: int) -> Dict[str, Any]:
         """
-        Retrieve platform statistics for a given organization and time window.
+        Retrieve platform statistics for a given user and time window.
 
         This method queries the database for summary statistics related to submissions, observables,
-        and activity for the specified organization and number of days. The returned statistics are
+        and activity for the specified user and number of days. The returned statistics are
         filtered based on the user's access access_level:
         - Observers receive only non-sensitive, aggregate statistics.
         - Higher tiers receive full statistics as provided by the database.
 
         Args:
-            org_id (str): The organization ID for which to retrieve statistics.
+            user_id (str): Identifier for the user submitting the threat intelligence.
             days (int): Number of days to include in the statistics summary.
             access_level (AccessTier): The user's access tier, used to filter sensitive data.
 
@@ -177,7 +182,7 @@ class FRANKServer:
             Dict[str, Any]: Dictionary containing platform statistics, filtered by access level.
                 For observers, only aggregate stats are included.
         """
-        stats = self.database.get_statistics_summary(org_id, days=days)
+        stats = self.database.get_statistics_summary(user_id, days=days)
 
         # Filter stats based on access level
         if access_level == AccessTier.OBSERVER:
@@ -190,17 +195,17 @@ class FRANKServer:
             return filtered_stats
 
         return stats
-    
-    def get_submission_by_id(self, org_id:str , submission_id: str, access_level: AccessTier) -> Submission:
+
+    def get_submission_by_id(self, user_id: str, access_level: AccessTier, submission_id: str) -> Submission:
         try:
-            submission_dict = self.database.get_submission_by_id()
+            submission_dict = self.database.get_submission_by_id(user_id, submission_id, access_level)
 
             # # Apply access level filtering
             # # TODO: move this server side, not db processing
-            # filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
+            filtered_submission = self.filter.submission_by_access_level(submission_dict, access_level)
 
             # Log access
-            self.database.log_access(org_id, 'READ', 'submission', submission_id)
+            self.database.log_access(user_id, 'READ', 'submission', submission_id)
 
             return Submission(**filtered_submission)
         except ClientError as e:

@@ -286,11 +286,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         # Create observable index items
         items_to_write.extend(self._extract_observables(submission))
 
-        try:
-            self._batch_write_items(items_to_write)
-            return True
-        except FRANKStorageError:
-            return False
+        self._batch_write_items(items_to_write)
+
 
     def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
         """
@@ -547,13 +544,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 raise FRANKStorageError(f"Batch write operation failed: {e}")
 
 
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:
         """
         Retrieve a specific submission with access level filtering.
 
         Args:
             submission_id: Submission ID to retrieve
-            org_id: Organization ID making the request
+            user_id: User ID making the request
             access_level: Access level for filtering
 
         Returns:
@@ -570,25 +567,19 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 return None
 
             # TODO: Transform to Submission directly
-            submission_dict = response['Item'].get('submission_data')
-            if not submission_dict:
-                return None
+            submission_dict = response['Item'].get('submission_data', None)
+            return submission_dict
 
-            # Apply access level filtering
-            # TODO: move this client side, not db processing
-            filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
 
-            # Log access
-            self._log_access(org_id, 'READ', 'submission', submission_id)
-
-            return Submission(**filtered_submission)
         except ClientError as e:
             self.logger.error(f"Error retrieving submission {submission_id}: {e}")
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
-    
-    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
-                         limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
-                         min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
+
+
+    def query_observables(self, user_id: str,  access_level: AccessTier = AccessTier.CONTRIBUTOR,
+                         observable_type: ObservableType = None, sectors: List[str] = None,
+                         min_confidence: float = None, 
+                         limit: int = 100, days_back: int = None) -> List[Observable]:
         """
         Query observables with access level filtering and additional filters.
 
@@ -601,7 +592,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         - access_level: Apply access level filtering to each observable (see FRANK access tier model).
 
         Args:
-            org_id (str): Organization ID making the request (used for access logging).
+            user_id (str): User ID making the request (used for access logging).
             observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
             limit (int, optional): Maximum number of results to return (default: 100).
             access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
@@ -710,13 +701,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 filtered_obs = self._filter_observable_by_access_level(obs_data, access_level)
                 results.append(filtered_obs)
 
-            # Log access
-            self._log_access(org_id, 'QUERY', 'observables', details={
-                'observable_type': observable_type.value if observable_type else None,
-                'min_confidence': min_confidence,
-                'sectors': sectors,
-                'days_back': days_back
-            })
+            # # Log access
+            # self._log_access(org_id, 'QUERY', 'observables', details={
+            #     'observable_type': observable_type.value if observable_type else None,
+            #     'min_confidence': min_confidence,
+            #     'sectors': sectors,
+            #     'days_back': days_back
+            # })
             return results[:limit]
         except ClientError as e:
             self.logger.error(f"Error querying observables: {e}")
@@ -751,9 +742,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 item = self._convert_decimals_to_float(item)
                 result = self._filter_observable_by_access_level(item, access_level)
                 results.append(result)
-
-            # Log access
-            self._log_access(org_id, 'SEARCH', 'observables', details={'search_value': search_value})
 
             return results
 
@@ -874,16 +862,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 'error': str(e)
             }
 
-    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> bool:
-        """Log an access event for auditing purposes in DynamoDB."""
-        try:
-            self._log_access(org_id, action, resource_type, resource_id, details)
-            self.logger.info(f"Access stored for {org_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error logging access: {e}")
-            return False
-
     def health_check(self) -> Dict[str, Any]:
         """Perform a health check on the database."""
         return {
@@ -894,7 +872,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             "stack": self.environment
         }
 
-    def _log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> None:
+    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> None:
         """Internal method to log access in DynamoDB single table design."""
         timestamp = datetime.now(timezone.utc).isoformat()
         log_item = {
@@ -918,66 +896,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         except ClientError as e:
             self.logger.error(f"Error logging access: {e}")
             raise FRANKQueryError(f"Failed to log access: {e}")
-
-
-    
-
-#     def get_access_logs(self, org_id: str, days: int = 7, 
-#                        actions: List[str] = None) -> List[Dict[str, Any]]:
-#         """
-#         Get access logs for auditing using DynamoDB query.
-        
-#         Args:
-#             org_id: Organization to get logs for
-#             days: Number of days to look back
-#             actions: Filter by specific actions
-            
-#         Returns:
-#             List of access log entries
-#         """
-#         try:
-#             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            
-#             response = self.table.query(
-#                 KeyConditionExpression='PK = :org_key AND SK >= :cutoff_sk',
-#                 ExpressionAttributeValues={
-#                     ':org_key': f"LOG#{org_id}",
-#                     ':cutoff_sk': f"LOG#{cutoff_date.isoformat()}"
-#                 },
-#                 ScanIndexForward=False,  # Most recent first
-#                 Limit=1000
-#             )
-            
-#             results = []
-#             for item in response.get('Items', []):
-#                 item = self._convert_decimals_to_float(item)
-                
-#                 # Filter by actions if specified
-#                 if actions and item.get('action') not in actions:
-#                     continue
-                
-#                 # Parse details JSON if present
-#                 if 'details_json' in item:
-#                     try:
-#                         item['details'] = json.loads(item['details_json'])
-#                         del item['details_json']
-#                     except:
-#                         item['details'] = {}
-#                         del item['details_json']
-                
-#                 # Remove DynamoDB-specific fields
-#                 log_data = {k: v for k, v in item.items() 
-#                           if k not in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'EntityType', 'TTL']}
-#                 results.append(log_data)
-            
-#             return results
-            
-#         except ClientError as e:
-#             self.logger.error(f"Error getting access logs: {e}")
-#             raise FRANKQueryError(f"Failed to get access logs: {e}")
-
-
-
 
 #     def get_organization_info(self, org_id: str) -> Optional[Dict[str, Any]]:
 #         """
