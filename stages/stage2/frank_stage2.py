@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +33,7 @@ from frank.storage.dynamodb import create_dynamodb_database
 
 # Utilities
 from frank.util.sample_builder import SampleDataSeeder
-from frank.util import create_client
+from frank.util import create_server, create_error_response
 from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
 from frank import __version__
 
@@ -91,7 +92,7 @@ frank_dynamodb = create_dynamodb_database(
     aws_access_key_id=config.aws_access_key,
     aws_secret_access_key=config.aws_secret_key,
 )
-frank_client = create_client(db=frank_dynamodb, logger=logger)
+frank_server = create_server(db=frank_dynamodb, logger=logger)
 
 # Initialize system once server is setup
 @asynccontextmanager
@@ -99,7 +100,7 @@ async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
     # load_database with sample data
-    frank_client.seed_database(SampleDataSeeder())
+    frank_server.seed_database(SampleDataSeeder())
     logger.info(f"Database Initialization complete")
     yield
 
@@ -191,9 +192,9 @@ async def submit_threat_intelligence(
 
     try:
         # Store in database
-        success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], submission)
+        success, score_impact = frank_server.submit_threat_intelligence(current_user["organization_id"], submission)
 
-        # TODO: simplify error handling in client, propagate Exceptions, not status flags
+        # TODO: simplify error handling in server, propagate Exceptions, not status flags
         if not success:
             raise HTTPException(status_code=500, detail="Failed to store submission")
 
@@ -270,7 +271,7 @@ async def search_threat_sightings(
                 query_params["days_back"] = max(1, days_back)
 
 
-        total_results, sightings, aggregations, threat_context = frank_client.query_threats(
+        total_results, sightings, aggregations, threat_context = frank_server.query_threats(
             # org_id=current_user["organization_id"], access_level=current_user["access_level"], limit=limit, 
             format=format, offset=offset,
             observable=observable, **query_params
@@ -307,7 +308,7 @@ def get_observations(
     """
     Get observable statistics and details for the platform.
     """
-    observations, stats = frank_client.get_observations(
+    observations, stats = frank_server.get_observations(
             org_id=org_id,
             days=days,
             observable_type=observable_type,
@@ -327,7 +328,7 @@ def get_observations(
 @app.get("/v1/health")
 async def health_check():
     """Health check endpoint"""
-    return frank_client.health_check()
+    return frank_server.health_check()
 
 
 @app.get("/v1/statistics")
@@ -339,7 +340,7 @@ async def get_platform_statistics(
     if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
-    stats = frank_client.get_platform_statistics(
+    stats = frank_server.get_platform_statistics(
         org_id=current_user["organization_id"],
         days=days,
         access_level=current_user["access_level"]
@@ -351,35 +352,39 @@ async def get_platform_statistics(
 # ===============================
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Custom HTTP exception handler"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": {
-                "code": "HTTP_ERROR",
-                "message": exc.detail,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "request_id": f"req-{uuid.uuid4()}",
-            }
-        },
-    )
+	"""Custom HTTP exception handler"""
+	return JSONResponse(
+		status_code=exc.status_code,
+		content=create_error_response(
+			exc.status_code,
+			"HTTP_ERROR",
+			exc.detail
+		),
+	)
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content=create_error_response(
+            422,
+            "VALIDATION_ERROR",
+            "Request validation failed",
+            details={"validation_errors": exc.errors()}
+        )
+    )
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    """General exception handler"""
+def generic_exception_handler(request: Request, exc: Exception):
+    """Dedicated exception handler for generic exceptions."""
     return JSONResponse(
         status_code=500,
-        content={
-            "error": {
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "An internal server error occurred",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "request_id": f"req-{uuid.uuid4()}",
-            }
-        },
+        content=create_error_response(
+            500,
+            "INTERNAL_ERROR",
+            str(exc)
+        ),
     )
-
 
 if __name__ == "__main__":
     import argparse
