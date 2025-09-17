@@ -1,3 +1,4 @@
+
 """
 FRANK Platform - HTTP Exception Utilities
 
@@ -28,6 +29,11 @@ class UnauthorizedException(HTTPException):
 	def __init__(self, detail: str = "Forbidden: insufficient permissions"):
 		super().__init__(status_code=403, detail=detail)
 		
+class TooManyRequestsException(HTTPException):
+	"""Exception for HTTP 429 Too Many Requests (Rate Limit Exceeded)"""
+	def __init__(self, detail: str = "Rate limit exceeded"):
+		super().__init__(status_code=429, detail=detail)
+
 def create_error_response(
 	status_code: int,
 	error_type: str,

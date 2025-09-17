@@ -18,6 +18,7 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
+from pydantic import BaseModel, field_validator
 from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
@@ -35,6 +36,7 @@ from frank.storage.dynamodb import create_dynamodb_database
 from frank.util.sample_builder import SampleDataSeeder
 from frank.util import create_server, create_error_response
 from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
+from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException
 from frank import __version__
 
 # Configure logging
@@ -124,7 +126,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Authentication and authorization functions
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
     """
@@ -133,8 +134,9 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     For this spike, we'll mock the user data.
     """
     # Check if credentials were provided
+    from frank.util.http_exceptions import UnauthenticatedException
     if credentials is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise UnauthenticatedException("Authentication required")
 
     # Mock user data for spike - in production, decode and validate JWT
     token = credentials.credentials
@@ -149,7 +151,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     elif token.startswith("core_"):
         return {"organization_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
+        raise UnauthenticatedException("Invalid authentication token")
 
 
 
@@ -184,11 +186,11 @@ async def submit_threat_intelligence(
 
     # Check permissions
     if not AccessTier.can_submit(current_user["access_level"]):
-        raise HTTPException(status_code=403, detail="Insufficient access level for submission")
+        raise UnauthorizedException("Insufficient access level for submission")
 
     # Check rate limiting
     if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        raise BadRequestException("Rate limit exceeded")
 
     try:
         # Store in database
@@ -211,74 +213,74 @@ async def submit_threat_intelligence(
         raise HTTPException(status_code=400, detail=f"Submission validation failed: {str(e)}")
 
 
+
+# Pydantic v2 Query Model for Sighting Search
+class SightingSearchQuery(BaseModel):
+    observable: Optional[str] = Query(None, description="Specific IoC to search for")
+    type: Optional[ObservableType] = Query(None, description="Observable type filter")
+    start_date: Optional[datetime] = Query(None, description="Search start date")
+    end_date: Optional[datetime] = Query(None, description="Search end date")
+    sector: Optional[str] = Query(None, description="Target sector filter")
+    confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score")
+    tlp_level: Optional[TLPLevel] = Query(None, description="Traffic Light Protocol level")
+    campaign: Optional[str] = Query(None, description="Threat campaign identifier")
+    limit: Optional[int] = Query(50, ge=1, le=1000, description="Maximum results to return")
+    offset: Optional[int] = Query(0, ge=0, description="Pagination offset")
+    format: Optional[str] = Query("summary", description="Response format")
+
+    @field_validator("end_date")
+    def validate_date_range(cls, end_date, info):
+        start_date = info.data.get("start_date")
+        if start_date and end_date and start_date >= end_date:
+            raise BadRequestException(
+                "Invalid date range: start_date must be before end_date"
+            )
+        return end_date
+
 @app.get("/v1/sighting", response_model=SightingSearchResponse)
 async def search_threat_sightings(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    observable: Optional[str] = Query(None, description="Specific IoC to search for"),
-    type: Optional[ObservableType] = Query(None, description="Observable type filter"),
-    start_date: Optional[datetime] = Query(None, description="Search start date"),
-    end_date: Optional[datetime] = Query(None, description="Search end date"),
-    sector: Optional[str] = Query(None, description="Target sector filter"),
-    confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score"),
-    tlp_level: Optional[TLPLevel] = Query(None, description="Traffic Light Protocol level"),
-    campaign: Optional[str] = Query(None, description="Threat campaign identifier"),
-    limit: Optional[int] = Query(50, ge=1, le=1000, description="Maximum results to return"),
-    offset: Optional[int] = Query(0, ge=0, description="Pagination offset"),
-    format: Optional[str] = Query("summary", description="Response format"),
+    query: SightingSearchQuery = Depends()
 ):
     """
     Retrieve threat intelligence sightings based on search criteria.
     Available to Observer, Contributor, Partner, and Core Member tiers.
     """
-
     # Check rate limiting
     if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+        raise TooManyRequestsException("Rate limit exceeded")
 
     try:
-        # Validate date range
-        if start_date and end_date and start_date >= end_date:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": {
-                        "code": "INVALID_QUERY_PARAMETERS",
-                        "message": "Invalid date range: start_date must be before end_date",
-                        "details": {
-                            "start_date": start_date.isoformat() if start_date else None,
-                            "end_date": end_date.isoformat() if end_date else None,
-                        },
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "request_id": f"req-{uuid.uuid4()}",
-                    }
-                },
-            )
+        # Build query parameters from model_dict
+        query_params = query.model_dump()
+        query_params["org_id"] = current_user["organization_id"]
+        query_params["access_level"] = current_user["access_level"]
+        # Remove keys not needed for frank_server.query_threats
+        observable = query_params.pop("observable", None)
+        offset = query_params.pop("offset", 0)
+        limit = query_params.get("limit", 50)
 
-        # Build query parameters
-        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_level"], "limit": limit}
+        # Add sector as list if present
+        if query_params.get("sector"):
+            query_params["sectors"] = [query_params.pop("sector")]
 
-        # Add filters if provided
-        if type:
-            query_params["observable_type"] = type.value
-        if confidence_min:
-            query_params["min_confidence"] = confidence_min
-        if sector:
-            query_params["sectors"] = [sector]
-        if start_date or end_date:
-            # Calculate days back from start_date if provided
-            if start_date:
-                days_back = (datetime.now(timezone.utc) - start_date).days
-                query_params["days_back"] = max(1, days_back)
-
+        # Calculate days_back if start_date is present
+        if query_params.get("start_date"):
+            days_back = (datetime.now(timezone.utc) - query_params["start_date"]).days
+            query_params["days_back"] = max(1, days_back)
 
         total_results, sightings, aggregations, threat_context = frank_server.query_threats(
-            # org_id=current_user["organization_id"], access_level=current_user["access_level"], limit=limit, 
-            format=format, offset=offset,
+            # format=format, offset=offset, 
             observable=observable, **query_params
         )
 
         response = SightingSearchResponse(
-            total_results=total_results, returned_results=len(sightings), sightings=sightings, aggregations=aggregations, threat_context=threat_context, pagination=None
+            total_results=total_results,
+            returned_results=len(sightings),
+            sightings=sightings,
+            aggregations=aggregations,
+            threat_context=threat_context,
+            pagination=None
         )
 
         # Add pagination info
@@ -292,8 +294,8 @@ async def search_threat_sightings(
 
         return response
 
-    except HTTPException:
-        raise
+    except BadRequestException as e:
+        raise BadRequestException(str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
@@ -338,7 +340,7 @@ async def get_platform_statistics(
 ):
     """Get platform usage statistics"""
     if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
-        raise HTTPException(status_code=403, detail="Insufficient access level")
+        raise UnauthorizedException("Insufficient access level")
 
     stats = frank_server.get_platform_statistics(
         org_id=current_user["organization_id"],
