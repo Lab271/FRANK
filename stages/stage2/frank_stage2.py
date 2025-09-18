@@ -89,6 +89,8 @@ class FrankConfig:
 # ================================
 
 # Initialize configuration and database
+# This also creates the tables
+# TODO: move table creation outside of initialisation for production
 config = FrankConfig()
 frank_dynamodb = create_dynamodb_database(
     table_name=config.table_name,
