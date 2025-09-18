@@ -9,12 +9,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import boto3
-from typing import Dict, Any, List, Optional
+from copy import deepcopy
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
-from botocore.exceptions import ClientError
+from typing import Dict, Any, List, Optional
 
+import boto3
+from botocore.exceptions import ClientError
 import logging
 
 from frank.core.models import Submission, Observable
@@ -90,7 +91,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         # Verify connection and create table if needed (LocalStack only)
         if self.environment == 'localstack':
-            self._ensure_table_exists()
+            self.table = self._ensure_table_exists(self.table_name)
+            self.audit_table = self._ensure_table_exists(self.audit_table_name)
 
 
     def _convert_floats_to_decimal(self, obj: Any) -> Any:
@@ -112,22 +114,20 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         elif isinstance(obj, list):
             return [self._convert_decimals_to_float(item) for item in obj]
         return obj
-    
-    def _ensure_table_exists(self) -> None:
+
+    def _ensure_table_exists(self, table_name):
         """
         Create the FRANK DynamoDB table with proper indexes and TTL configuration.
         
         Args:
-            table_name: Name for the DynamoDB table
-            audit_table_name: Name for the DynamoDB table
-            region: AWS region
+            table_name -> str: Name for the DynamoDB table 
             
         Returns:
-            None
+            table -> DynamoDB.Table: The DynamoDB Table resource
         """
-        # Create table with single table design
+                # Create table with single table design
         table_definition = {
-            'TableName': self.table_name,
+            'TableName': table_name,
             'KeySchema': [
                 {'AttributeName': 'PK', 'KeyType': 'HASH'},
                 {'AttributeName': 'SK', 'KeyType': 'RANGE'}
@@ -159,55 +159,32 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 {'Key': 'DataClassification', 'Value': 'confidential'}
             ]
         }
-
-
-        # Main table existence check and creation
+        td = deepcopy(table_definition)
+        # Table existence check and creation
         try:
-            self.client.describe_table(TableName=self.table_name)
-            self.table = self.dynamodb.Table(self.table_name)
-            self.logger.info(f"✅ Table '{self.table_name}' exists")
+            self.client.describe_table(TableName=table_name)
+            table = self.dynamodb.Table(table_name)
+            table.load()  # Ensure table is loaded
+            self.logger.info(f"✅ Table '{table_name}' exists")
         except self.client.exceptions.ResourceNotFoundException:
-            self.logger.info(f"🔨 Creating table '{self.table_name}'...")
+            self.logger.info(f"🔨 Creating table '{table_name}'...")
             try:
-                self.table = self.dynamodb.create_table(**table_definition)
-                self.table.meta.client.get_waiter('table_exists').wait(TableName=self.table_name)
-                self.logger.info(f"✅ Table '{self.table_name}' created")
+                table = self.dynamodb.create_table(**td)
+                self.logger.info(f"✅ Table '{table_name}' created")
             except self.client.exceptions.ResourceInUseException:
-                self.logger.info(f"⚠️ Table '{self.table_name}' already exists (race condition)")
-                self.table = self.dynamodb.Table(self.table_name)
+                self.logger.info(f"⚠️ Table '{table_name}' already exists (race condition)")
+                table = self.dynamodb.Table(table_name)
 
-        # Enable TTL on the TTL attribute for main table
-        try:
-            self.dynamodb.meta.client.update_time_to_live(
-                TableName=self.table_name, TimeToLiveSpecification={"AttributeName": "TTL", "Enabled": True}
-            )
-        except Exception as e:
-            self.logger.warning(f"Could not enable TTL for '{self.table_name}': {e}")
-
-        # Audit table existence check and creation
-        table_definition['TableName'] = self.audit_table_name
-        try:
-            self.client.describe_table(TableName=self.audit_table_name)
-            self.audit_table = self.dynamodb.Table(self.audit_table_name)
-            self.logger.info(f"✅ Table '{self.audit_table_name}' exists")
-        except self.client.exceptions.ResourceNotFoundException:
-            self.logger.info(f"🔨 Creating table '{self.audit_table_name}'...")
-            try:
-                self.audit_table = self.dynamodb.create_table(**table_definition)
-                self.audit_table.meta.client.get_waiter('table_exists').wait(TableName=self.audit_table_name)
-                self.logger.info(f"✅ Table '{self.audit_table_name}' created")
-            except self.client.exceptions.ResourceInUseException:
-                self.logger.info(f"⚠️ Table '{self.audit_table_name}' already exists (race condition)")
-                self.audit_table = self.dynamodb.Table(self.audit_table_name)
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
         # Enable TTL on the TTL attribute for audit table
         try:
             self.dynamodb.meta.client.update_time_to_live(
-                TableName=self.audit_table_name, TimeToLiveSpecification={"AttributeName": "TTL", "Enabled": True}
+                TableName=table_name, TimeToLiveSpecification={"AttributeName": "TTL", "Enabled": True}
             )
         except Exception as e:
-            self.logger.warning(f"Could not enable TTL for '{self.audit_table_name}': {e}")
-            
+            self.logger.warning(f"Could not enable TTL for '{table_name}': {e}")
+        return table
    
     def store_submission(self, submission: Submission) -> None:
         """
