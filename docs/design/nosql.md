@@ -12,26 +12,26 @@ The FRANK platform uses a single DynamoDB table to store three primary entity ty
 
 | PK (Partition Key) | SK (Sort Key) | GSI1PK | GSI1SK | Entity Type | Description |
 |-------------------|---------------|---------|---------|-------------|-------------|
-| `ORG#{org_id}` | `ORG` | `access_level#{access_level}` | `#{timestamp}` | Organization | Organization metadata and access control |
+| `ORG#{org_id}` | `ORG` | `access_level#{access_level}` | `#{timestamp}` | organisation | organisation metadata and access control |
 | `SUB#{submission_id}` | `SUB` | `ORG#{org_id}` | `#{timestamp}` | Submission | Complete threat intelligence submission |
 | `LOG#{org_id}` | `LOG#{timestamp}#{uuid}` | `ACTION#{action}` | `#{timestamp}` | AccessLog | Audit trail for compliance and monitoring |
 
 ### Supported Query Patterns
 
-1. **Get Organization by ID**: `PK = ORG#{org_id}, SK = ORG`
+1. **Get organisation by ID**: `PK = ORG#{org_id}, SK = ORG`
 2. **Get Submission by ID**: `PK = SUB#{submission_id}, SK = SUB`
-3. **List Submissions by Organization**: `GSI1: GSI1PK = ORG#{org_id}`
-4. **List Organizations by access_level**: `GSI1: GSI1PK = access_level#{access_level}`
-5. **Get Access Logs for Organization**: `PK = LOG#{org_id}, SK begins_with LOG#`
+3. **List Submissions by organisation**: `GSI1: GSI1PK = ORG#{org_id}`
+4. **List organisations by access_level**: `GSI1: GSI1PK = access_level#{access_level}`
+5. **Get Access Logs for organisation**: `PK = LOG#{org_id}, SK begins_with LOG#`
 6. **Query Access Logs by Action**: `GSI1: GSI1PK = ACTION#{action}`
 
 ## Rationale for Three Entity Design
 
-### Organizational Simplicity
+### organisational Simplicity
 
 The three-entity design represents the minimum viable data model for a threat intelligence platform:
 
-- **Organizations**: Essential for access control, tier-based permissions, and partnership management
+- **organisations**: Essential for access control, tier-based permissions, and partnership management
 - **Submissions**: Core business objects containing threat intelligence data
 - **Access Logs**: Required for audit compliance and security monitoring
 
@@ -48,9 +48,9 @@ Traditional relational approaches would decompose submissions into multiple tabl
 
 The design optimizes for the most common access patterns:
 
-- Organizations queried by ID for authentication/authorization
-- Submissions queried by ID for retrieval or by organization for filtering
-- Access logs queried by organization for audit or by action for monitoring
+- organisations queried by ID for authentication/authorization
+- Submissions queried by ID for retrieval or by organisation for filtering
+- Access logs queried by organisation for audit or by action for monitoring
 
 ### Scalability Benefits
 
@@ -63,7 +63,7 @@ Single table design provides:
 
 ## Data Structure Details
 
-### Organization Entity
+### organisation Entity
 
 ```json
 {
@@ -71,8 +71,8 @@ Single table design provides:
   "SK": "ORG",
   "GSI1PK": "TIER#partner",
   "GSI1SK": "2025-01-15T10:30:00Z",
-  "EntityType": "Organization",
-  "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+  "EntityType": "organisation",
+  "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
   "access_level": "partner",
   "sector": "financial_services",
   "region": "nl_north_holland",
@@ -96,7 +96,7 @@ Single table design provides:
   "severity": "high",
   "tlp_level": "AMBER",
   "submission_data": {
-    "submitter": { "organization_id": "...", "access_level": "partner" },
+    "submitter": { "organisation_id": "...", "access_level": "partner" },
     "sighting": { "observables": {...}, "impact": {...} },
     "threat_context": {...}
   },
@@ -113,7 +113,7 @@ Single table design provides:
   "GSI1PK": "ACTION#SUBMIT",
   "GSI1SK": "2025-01-15T10:30:00Z",
   "EntityType": "AccessLog",
-  "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+  "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
   "action": "SUBMIT",
   "resource_type": "submission",
   "resource_id": "submission-abc123",
@@ -130,17 +130,17 @@ DynamoDB provides several mechanisms for upsert (update or insert) operations in
 ### Method 1: PutItem with Conditional Checks
 
 ```python
-def upsert_organization(self, org_data: dict) -> bool:
-    """Upsert organization using PutItem."""
+def upsert_organisation(self, org_data: dict) -> bool:
+    """Upsert organisation using PutItem."""
     try:
         self.table.put_item(
             Item={
-                'PK': f"ORG#{org_data['organization_id']}",
+                'PK': f"ORG#{org_data['organisation_id']}",
                 'SK': 'ORG',
                 'GSI1PK': f"TIER#{org_data['access_level']}",
                 'GSI1SK': datetime.now(timezone.utc).isoformat(),
                 **org_data,
-                'EntityType': 'Organization',
+                'EntityType': 'organisation',
                 'last_active': datetime.now(timezone.utc).isoformat()
             },
             # Optional: Add condition to prevent overwrites
@@ -150,19 +150,19 @@ def upsert_organization(self, org_data: dict) -> bool:
     except ClientError as e:
         if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
             # Handle case where item already exists
-            return self.update_organization(org_data)
+            return self.update_organisation(org_data)
         raise
 ```
 
 ### Method 2: UpdateItem with SET Operations
 
 ```python
-def upsert_organization_with_update(self, org_data: dict) -> bool:
-    """Upsert organization using UpdateItem."""
+def upsert_organisation_with_update(self, org_data: dict) -> bool:
+    """Upsert organisation using UpdateItem."""
     try:
         self.table.update_item(
             Key={
-                'PK': f"ORG#{org_data['organization_id']}",
+                'PK': f"ORG#{org_data['organisation_id']}",
                 'SK': 'ORG'
             },
             UpdateExpression='SET access_level = :access_level, sector = :sector, last_active = :timestamp, GSI1PK = :gsi1pk, GSI1SK = :gsi1sk',
@@ -184,7 +184,7 @@ def upsert_organization_with_update(self, org_data: dict) -> bool:
 
 ```python
 def increment_submission_count(self, org_id: str) -> None:
-    """Atomically increment submission count for organization."""
+    """Atomically increment submission count for organisation."""
     self.table.update_item(
         Key={
             'PK': f"ORG#{org_id}",

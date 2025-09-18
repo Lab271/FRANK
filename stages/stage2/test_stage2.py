@@ -86,14 +86,14 @@
 #     assert data["submission"]["submission_id"] == submission_id
 
 # @pytest.mark.asyncio 
-# async def test_list_organization_submissions(client):
-#     """Test listing submissions for an organization"""
-#     response = await client.get(f"/v1/organizations/{TEST_ORG_ID}/submissions")
+# async def test_list_organisation_submissions(client):
+#     """Test listing submissions for an organisation"""
+#     response = await client.get(f"/v1/organisations/{TEST_ORG_ID}/submissions")
 #     assert response.status_code == 200
 #     data = response.json()
-#     assert "organization_id" in data
+#     assert "organisation_id" in data
 #     assert "submissions" in data
-#     assert data["organization_id"] == TEST_ORG_ID
+#     assert data["organisation_id"] == TEST_ORG_ID
 
 # @pytest.mark.asyncio
 # async def test_performance_endpoint(client):

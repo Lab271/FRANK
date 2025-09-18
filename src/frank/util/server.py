@@ -14,7 +14,7 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
 
-from frank.core.models import Submission
+from frank.core.models import Submission, Submitter
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
 from frank.util.filter import FRANKFilter
@@ -131,10 +131,30 @@ class FRANKServer:
 
         return (total_results, sightings, aggregations, threat_context)
 
+    def upsert_organisation(self, submitter: Submitter) -> None:
+        """
+        Create or update an organisation in the database.
+
+        This method validates and upserts a Submitter (organisation) record into the database,
+        logs the access event, and returns True if successful, False otherwise.
+
+        Args:
+            submitter (Submitter): The organisation Submitter object to upsert.
+
+        Returns:
+            bool: True if upsert was successful, False otherwise.
+        """
+        # Upsert organisation in the database
+        self.database.upsert_organisation(submitter.model_dump(exclude_unset=True, by_alias=True))
+        self.logger.info(f"Upserted organisation: {submitter.organisation_id}")
+
+        # Log access
+        self.database.log_access(submitter.organisation_id, 'UPSERT', 'organisation', submitter.organisation_id)
+
 
     def get_observations(self, user_id: str, days: int, observable_type: str, limit: int) -> "Tuple[List[Dict], Dict[str, Any]]":
         """
-        Retrieve observable statistics and details for a given user (organization) and time window.
+        Retrieve observable statistics and details for a given user (organisation) and time window.
 
         This method queries the database for observable statistics for the specified user and number of days.
         It returns a list of observation summaries (filtered by observable type if provided) and the full statistics dictionary.
@@ -197,6 +217,20 @@ class FRANKServer:
         return stats
 
     def get_submission_by_id(self, user_id: str, access_level: AccessTier, submission_id: str) -> Optional[Submission]:
+        """
+        Retrieve a submission by its ID, applying access level filtering.
+
+        This method fetches a submission from the database by its unique ID, applies access level-based filtering,
+        logs the access event, and returns a Submission object if accessible, or None if not found or not permitted.
+
+        Args:
+            user_id (str): Identifier for the user requesting the submission.
+            access_level (AccessTier): The user's access tier for filtering sensitive data.
+            submission_id (str): The unique identifier of the submission to retrieve.
+
+        Returns:
+            Optional[Submission]: The filtered Submission object if accessible, or None if not found or not permitted.
+        """
         submission_dict = self.database.get_submission_by_id(submission_id)
         if not submission_dict:
             return None
@@ -293,7 +327,7 @@ def format_sighting_response(result: Dict[str, Any], access_level: AccessTier, f
             },
             "confidence": result.get("avg_confidence"),
             "total_sightings": result.get("total_sightings"),
-            "unique_organizations": result.get("unique_organizations"),
+            "unique_organisations": result.get("unique_organisations"),
             "first_seen": result.get("first_seen"),
             "sectors": result.get("sectors", []),
             "regions": result.get("regions", []),
@@ -318,7 +352,7 @@ def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> D
     if not results:
         return {}
 
-    # Count unique organizations (simplified)
+    # Count unique organisations (simplified)
     total_orgs = len(set(result.get("observable_hash") for result in results))
 
     # Confidence distribution
@@ -333,7 +367,7 @@ def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> D
             confidence_dist["low"] += 1
 
     return {
-        "total_organizations": total_orgs,
+        "total_organisations": total_orgs,
         "confidence_distribution": confidence_dist,
         "total_sightings": sum(result.get("total_sightings", 0) for result in results),
     }
@@ -394,7 +428,7 @@ def create_server(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANK
         
     Example:
         >>> import frank
-        >>> server = frank.create_frank_server()
+        >>> server = frank.create_server(db, logger)
         >>> health = server.health_check()
     """
 

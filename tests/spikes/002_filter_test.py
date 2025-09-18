@@ -96,9 +96,9 @@ class AccessControlFilter:
         """Define comprehensive filtering rules for each access tier."""
         return {
             AccessTier.PUBLIC: [
-                # Remove all organizational identifiers
-                FilterRule("submission.metadata.submitter.organization_id", AccessTier.PUBLIC, FilterAction.REMOVE),
-                FilterRule("submission.metadata.hit_target.organization_id", AccessTier.PUBLIC, FilterAction.REMOVE),
+                # Remove all organisational identifiers
+                FilterRule("submission.metadata.submitter.organisation_id", AccessTier.PUBLIC, FilterAction.REMOVE),
+                FilterRule("submission.metadata.hit_target.organisation_id", AccessTier.PUBLIC, FilterAction.REMOVE),
                 FilterRule("submission.metadata.hit_target.customer_relationship", AccessTier.PUBLIC, FilterAction.REMOVE),
                 
                 # Hash all observables
@@ -123,9 +123,9 @@ class AccessControlFilter:
             ],
             
             AccessTier.OBSERVER: [
-                # Remove organizational identifiers but keep anonymized references
-                FilterRule("submission.metadata.submitter.organization_id", AccessTier.OBSERVER, FilterAction.HASH),
-                FilterRule("submission.metadata.hit_target.organization_id", AccessTier.OBSERVER, FilterAction.HASH),
+                # Remove organisational identifiers but keep anonymized references
+                FilterRule("submission.metadata.submitter.organisation_id", AccessTier.OBSERVER, FilterAction.HASH),
+                FilterRule("submission.metadata.hit_target.organisation_id", AccessTier.OBSERVER, FilterAction.HASH),
                 FilterRule("submission.metadata.hit_target.customer_relationship.msp_provider", AccessTier.OBSERVER, FilterAction.HASH),
                 
                 # Mask network observables
@@ -146,9 +146,9 @@ class AccessControlFilter:
             ],
             
             AccessTier.CONTRIBUTOR: [
-                # Keep anonymized organizational identifiers
-                FilterRule("submission.metadata.submitter.organization_id", AccessTier.CONTRIBUTOR, FilterAction.HASH),
-                FilterRule("submission.metadata.hit_target.organization_id", AccessTier.CONTRIBUTOR, FilterAction.HASH),
+                # Keep anonymized organisational identifiers
+                FilterRule("submission.metadata.submitter.organisation_id", AccessTier.CONTRIBUTOR, FilterAction.HASH),
+                FilterRule("submission.metadata.hit_target.organisation_id", AccessTier.CONTRIBUTOR, FilterAction.HASH),
                 FilterRule("submission.metadata.hit_target.customer_relationship.msp_provider", AccessTier.CONTRIBUTOR, FilterAction.HASH),
                 
                 # Partial masking of network observables
@@ -168,8 +168,8 @@ class AccessControlFilter:
             
             AccessTier.PARTNER: [
                 # Allow most data with minimal filtering
-                FilterRule("submission.metadata.submitter.organization_id", AccessTier.PARTNER, FilterAction.HASH),
-                FilterRule("submission.metadata.hit_target.organization_id", AccessTier.PARTNER, FilterAction.HASH),
+                FilterRule("submission.metadata.submitter.organisation_id", AccessTier.PARTNER, FilterAction.HASH),
+                FilterRule("submission.metadata.hit_target.organisation_id", AccessTier.PARTNER, FilterAction.HASH),
                 
                 # Allow full observables
                 FilterRule("submission.sighting.observables", AccessTier.PARTNER, FilterAction.ALLOW),
@@ -359,13 +359,13 @@ def test_run_spike():
         "submission": {
             "metadata": {
                 "submitter": {
-                    "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+                    "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
                     "access_level": "partner",
                     "sector": "financial_banking",
                     "region": "nl_amsterdam"
                 },
                 "hit_target": {
-                    "organization_id": "identity-c9b5d123-8877-4422-9966-112233445566",
+                    "organisation_id": "identity-c9b5d123-8877-4422-9966-112233445566",
                     "sector": "financial_services",
                     "region": "nl_north_holland",
                     "customer_relationship": {
@@ -391,18 +391,18 @@ def test_run_spike():
     filter_engine = AccessControlFilter()
     
     print("=== Original Data ===")
-    print(f"Submitter ID: {sample_sighting['submission']['metadata']['submitter']['organization_id']}")
+    print(f"Submitter ID: {sample_sighting['submission']['metadata']['submitter']['organisation_id']}")
     print(f"Network Observable: {sample_sighting['submission']['sighting']['observables']['network'][0]['value']}")
     print(f"Financial Impact: {sample_sighting['submission']['sighting']['impact']['financial_impact_eur']}")
     
     print("\n=== Public Access ===")
     public_filtered = filter_engine.apply_filters(sample_sighting, AccessTier.PUBLIC)
-    print(f"Submitter ID: {public_filtered['submission']['metadata']['submitter'].get('organization_id', 'REMOVED')}")
+    print(f"Submitter ID: {public_filtered['submission']['metadata']['submitter'].get('organisation_id', 'REMOVED')}")
     print(f"Sector: {public_filtered['submission']['metadata']['submitter'].get('sector', 'REMOVED')}")
     
     print("\n=== Observer Access ===")
     observer_filtered = filter_engine.apply_filters(sample_sighting, AccessTier.OBSERVER)
-    print(f"Submitter ID: {observer_filtered['submission']['metadata']['submitter'].get('organization_id', 'REMOVED')}")
+    print(f"Submitter ID: {observer_filtered['submission']['metadata']['submitter'].get('organisation_id', 'REMOVED')}")
     
     print("\n=== Partner Access ===")
     partner_filtered = filter_engine.apply_filters(sample_sighting, AccessTier.PARTNER)

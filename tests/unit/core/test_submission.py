@@ -36,7 +36,7 @@ class TestSubmission(unittest.TestCase):
         
         self.valid_hit_target = HitTarget.create(
             sector="healthcare",
-            organization_size="large"
+            organisation_size="large"
         )
         
         self.valid_sighting = Sighting.create(
@@ -65,8 +65,8 @@ class TestSubmission(unittest.TestCase):
         # Verify submitter properties
         self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submission.submitter.sector, "financial")
-        self.assertIsNotNone(submission.submitter.organization_id)
-        self.assertTrue(submission.submitter.organization_id.startswith("identity--"))
+        self.assertIsNotNone(submission.submitter.organisation_id)
+        self.assertTrue(submission.submitter.organisation_id.startswith("identity--"))
               
         # Verify sighting properties
         self.assertEqual(submission.sighting.confidence, 85)
@@ -106,9 +106,9 @@ class TestSubmission(unittest.TestCase):
         
         # # Verify hit_target properties
         self.assertEqual(submission.hit_target.sector, "healthcare")
-        self.assertEqual(submission.hit_target.organization_size, "large")
-        self.assertIsNotNone(submission.hit_target.organization_id)
-        self.assertTrue(submission.hit_target.organization_id.startswith("identity--"))
+        self.assertEqual(submission.hit_target.organisation_size, "large")
+        self.assertIsNotNone(submission.hit_target.organisation_id)
+        self.assertTrue(submission.hit_target.organisation_id.startswith("identity--"))
 
     def test_factory_method_create_minimal(self):
         """Test 3: Test the create_minimal factory method functionality"""
@@ -153,7 +153,7 @@ class TestSubmission(unittest.TestCase):
         self.assertEqual(custom_ips, expected_custom_ips)
 
     def test_submission_integrity_validation(self):
-        """Test 4: Test cross-field validation ensuring submitter and target are different organizations"""
+        """Test 4: Test cross-field validation ensuring submitter and target are different organisations"""
         # Create submitter and target with different org IDs (should pass)
         valid_submission = Submission(
             submitter=self.valid_submitter,
@@ -161,23 +161,23 @@ class TestSubmission(unittest.TestCase):
             sighting=self.valid_sighting
         )
         
-        # Should be valid - different organizations
+        # Should be valid - different organisations
         self.assertNotEqual(
-            valid_submission.submitter.organization_id,
-            valid_submission.hit_target.organization_id
+            valid_submission.submitter.organisation_id,
+            valid_submission.hit_target.organisation_id
         )
         
         # Create submitter and target with the same org ID (should fail)
         same_org_id = f"identity--{uuid.uuid4()}"
         
         same_org_submitter = Submitter(
-            organization_id=same_org_id,
+            organisation_id=same_org_id,
             access_level=AccessTier.PARTNER,
             sector="financial"
         )
         
         same_org_target = HitTarget(
-            organization_id=same_org_id,  # Same as submitter - should cause error
+            organisation_id=same_org_id,  # Same as submitter - should cause error
             sector="healthcare"
         )
         
@@ -191,7 +191,7 @@ class TestSubmission(unittest.TestCase):
         
         # Verify the error message mentions the validation rule
         error_str = str(context.exception)
-        self.assertIn("Submitter and hit_target cannot be the same organization", error_str)
+        self.assertIn("Submitter and hit_target cannot be the same organisation", error_str)
         
         # Test edge case: ensure auto-generated IDs are always different
         # Create multiple submissions and verify they never have same org IDs
@@ -205,16 +205,16 @@ class TestSubmission(unittest.TestCase):
             
             # Each submission should have different org IDs
             self.assertNotEqual(
-                submission.submitter.organization_id,
-                submission.hit_target.organization_id
+                submission.submitter.organisation_id,
+                submission.hit_target.organisation_id
             )
         
         # Verify all submitter org IDs are unique across submissions
-        submitter_ids = [s.submitter.organization_id for s in submissions]
+        submitter_ids = [s.submitter.organisation_id for s in submissions]
         self.assertEqual(len(submitter_ids), len(set(submitter_ids)))
         
         # Verify all target org IDs are unique across submissions  
-        target_ids = [s.hit_target.organization_id for s in submissions]
+        target_ids = [s.hit_target.organisation_id for s in submissions]
         self.assertEqual(len(target_ids), len(set(target_ids)))
         
         # Verify no overlap between submitter and target ID pools
@@ -237,7 +237,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         self.valid_hit_target = HitTarget.create(
             sector="healthcare",
-            organization_size="large"
+            organisation_size="large"
         )
         
         self.valid_sighting = Sighting.create(

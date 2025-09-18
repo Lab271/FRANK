@@ -41,7 +41,7 @@ testing/
 
 - **API Endpoint Testing**: Comprehensive validation of all REST API endpoints
   - Authentication flows (login, logout, token refresh)
-  - CRUD operations for threats, users, organizations
+  - CRUD operations for threats, users, organisations
   - Search functionality and filtering
   - Data validation and error handling
   - Multi-tenancy and access controls

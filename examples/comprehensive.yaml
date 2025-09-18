@@ -7,22 +7,22 @@ submission:
     submission_id: "submission-550e8400-e29b-41d4-a716-446655440000"
     timestamp: "2025-01-20T14:30:22Z"
     
-  # Submitting Cyber Partner (the organization making the submission)
+  # Submitting Cyber Partner (the organisation making the submission)
   submitter:
-    organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
-    organization_type: "cyber_partner"
+    organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+    organisation_type: "cyber_partner"
     access_level: "partner"
     sector: "cybersecurity_services"
     region: "nl_north_holland"
     submission_method: "automated_api"
     client_count: 47
       
-  # Hit Partner/Target (the customer organization that experienced the threat)
+  # Hit Partner/Target (the customer organisation that experienced the threat)
   hit_target:
-    organization_id: "identity-c9b5d123-8877-4422-9966-112233445566"
-    organization_type: "customer"
+    organisation_id: "identity-c9b5d123-8877-4422-9966-112233445566"
+    organisation_type: "customer"
     sector: "financial_services"
-    organization_size: "medium"
+    organisation_size: "medium"
     region: "nl_north_holland"
     anonymization_level: "high"
     customer_relationship:

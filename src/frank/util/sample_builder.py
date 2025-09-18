@@ -3,9 +3,8 @@
 FRANK Platform - Submission Generation and Parsing Library
 Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-This module provides core functionality for generating, parsing, and validating
-FRANK threat intelligence submissions following the "be forgiving on what you 
-receive and strong on what you return" principle.
+This module provides core functionality for generating sample and demo
+FRANK threat intelligence submissions.
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
@@ -39,7 +38,7 @@ class SampleDataSeeder(FRANKDatabaseSeeder):
         """Seed the database with sample data."""
 
         for org in create_demo_orgs(id_fixed=True):
-            db_client.upsert_organization(org)
+            db_client.upsert_organisation(org)
 
         # Create some demo submissions
         for i in range(5):
@@ -125,8 +124,8 @@ def generate_minimal_submission_dict(org_id: str = None,
     Generate a minimal FRANK submission with only required fields.
     
     Args:
-        org_id: Organization identifier (generated if None)
-        access_level: Organization tier level
+        org_id: organisation identifier (generated if None)
+        access_level: organisation tier level
         observables: List of observable objects (default generated if None)
         confidence: Confidence level 0-100 (uses default if None)
         
@@ -171,7 +170,7 @@ def generate_minimal_submission_dict(org_id: str = None,
     submission = {
         "submission": {
             "submitter": {
-                "organization_id": org_id,
+                "organisation_id": org_id,
                 "access_level": access_level,
             },
             "sighting": {
@@ -193,8 +192,8 @@ def generate_minimal_submission(org_id: str = None, access_level: str = "partner
     Generate a minimal Submission instance with only required fields.
 
     Args:
-        org_id: Organization identifier (generated if None)
-        access_level: Organization tier level
+        org_id: organisation identifier (generated if None)
+        access_level: organisation tier level
         observables: List of observable objects (default generated if None)
         confidence: Confidence level 0-100 (uses default if None)
 
@@ -210,7 +209,7 @@ def generate_sample_submission(org_id: str = None, sample_type: str = "default",
     Generate a sample FRANKSubmission object for testing or demonstration purposes.
 
     Args:
-        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
+        org_id (str, optional): organisation identifier. If None, a STIX-style UUID is generated.
         sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
         **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
 
@@ -238,9 +237,9 @@ def generate_comprehensive_submission(
     Generate a comprehensive Submission instance with all major fields populated.
 
     Args:
-        org_id (str, optional): Organization identifier. If None, a STIX-style UUID is generated.
-        tier (str, optional): Organization tier level. Defaults to "partner".
-        hit_target_org (str, optional): Organization ID of the target (if applicable).
+        org_id (str, optional): organisation identifier. If None, a STIX-style UUID is generated.
+        tier (str, optional): organisation tier level. Defaults to "partner".
+        hit_target_org (str, optional): organisation ID of the target (if applicable).
         observables (list, optional): List of observable objects. If None, default observables are generated.
         severity (str, optional): Sighting severity. Defaults to "high".
         confidence (int, optional): Confidence level 0-100. Defaults to 92.
@@ -263,7 +262,7 @@ def generate_comprehensive_submission(
         "submission_method": "api",
         "processing_nodes": "comprehensive message for testing",
         "submitter": {
-            "organization_id": org_id,
+            "organisation_id": org_id,
             "access_level": access_level,
         },
         "sighting": {
@@ -281,7 +280,7 @@ def generate_comprehensive_submission(
     }
     if hit_target_org:
         submission["hit_target"] = {
-            "organization_id": hit_target_org, 
+            "organisation_id": hit_target_org, 
             "sector": sector or "finance",
             "region": "europe",
             "anonymization_level": "low"
@@ -300,32 +299,38 @@ def generate_comprehensive_submission(
 
 def create_demo_orgs(id_fixed: bool = True) -> List[Dict[str, Any]]:
     """
-    Create a list of sample organizations for demonstration or testing purposes.
+    Create a list of sample organisations for demonstration or testing purposes.
 
     Returns:
-        List of Organization instances with sample data.
+        List of organisation instances with sample data.
     """
     orgs = [
         {
-            "organization_id": "demo-observer-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "organisation_id": "demo-observer-org" if id_fixed else f"identity--{uuid.uuid4()}",
             "access_level": "observer",
             "sector": "finance",
             "region": "europe"
         },
         {
-            "organization_id": "demo-partner-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "organisation_id": "demo-partner-org" if id_fixed else f"identity--{uuid.uuid4()}",
             "access_level": "partner",
             "sector": "cybersecurity_services",
             "region": "nl"
         },
         {
-            "organization_id": "demo-contributor-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "organisation_id": "demo-contributor-org" if id_fixed else f"identity--{uuid.uuid4()}",
             "access_level": "contributur",
             "sector": "healthcare",
             "region": "north_america"
         },
         {
-            "organization_id": "demo-core_member-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "organisation_id": "demo-core_member-org" if id_fixed else f"identity--{uuid.uuid4()}",
+            "access_level": "core_member",
+            "sector": "government",
+            "region": "asia_pacific"
+        },
+        {
+            "organisation_id": "demo-main-org" if id_fixed else f"identity--{uuid.uuid4()}",
             "access_level": "core_member",
             "sector": "government",
             "region": "asia_pacific"
@@ -374,10 +379,10 @@ def example_usage():
     )
     print("✓ Comprehensive submission created")
 
-    # 4. Demo organizations
-    print("4. Creating demo organizations...")
+    # 4. Demo organisations
+    print("4. Creating demo organisations...")
     demo_orgs = create_demo_orgs()
-    print(f"✓ {len(demo_orgs)} demo organizations created")  
+    print(f"✓ {len(demo_orgs)} demo organisations created")  
 
     # 5. Database seeding example (pseudo-code, requires actual db client)
     print("5. (Pseudo) Seeding database with sample data...")

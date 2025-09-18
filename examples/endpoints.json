@@ -41,7 +41,7 @@
           "summary": {
             "total_incidents": 156,
             "unique_threats": 23,
-            "organizations_affected": "15-20",
+            "organisations_affected": "15-20",
             "severity_breakdown": {
               "critical": 12,
               "high": 45,
@@ -146,7 +146,7 @@
             "confidence": 94,
             "first_seen_platform": "2025-01-12T09:15:00Z",
             "total_sightings": 23,
-            "contributing_organizations": 7,
+            "contributing_organisations": 7,
             "threat_classification": "banking_trojan_c2",
             "recommended_action": "block_immediately",
             "related_campaign": "operation_bank_harvest_2025"
@@ -201,7 +201,7 @@
                   "encryption_method": "chacha20_poly1305"
                 },
                 "impact_assessment": {
-                  "organizations_affected": 12,
+                  "organisations_affected": 12,
                   "estimated_damage": "high",
                   "encryption_speed": "fast",
                   "recovery_difficulty": "very_high"
@@ -318,7 +318,7 @@
           "contributor_analytics": [
             {
               "contributor_id": "contrib_hash_001",
-              "organization_type": "major_msp",
+              "organisation_type": "major_msp",
               "contribution_score": 94,
               "data_quality": 0.92,
               "specializations": ["ransomware", "apt_campaigns"],
@@ -345,7 +345,7 @@
       },
 
       "POST /api/v1/core/coordinate-response": {
-        "description": "Coordinate multi-organization response to active threats",
+        "description": "Coordinate multi-organisation response to active threats",
         "authentication": "mutual_tls + governance_token",
         "request_example": {
           "threat_id": "active_ransomware_campaign_001",
@@ -377,7 +377,7 @@
           "shared_intelligence": {
             "iocs_to_block": 45,
             "signatures_deployed": 12,
-            "affected_organizations": 8
+            "affected_organisations": 8
           }
         }
       }

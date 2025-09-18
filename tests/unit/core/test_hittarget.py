@@ -26,8 +26,8 @@ class TestHitTarget(unittest.TestCase):
         """Set up test fixtures before each test method."""
         self.valid_hittarget_data = {
             "sector": "financial",
-            "organization_type": "bank",
-            "organization_size": "large",
+            "organisation_type": "bank",
+            "organisation_size": "large",
             "region": "europe"
         }
 
@@ -37,56 +37,56 @@ class TestHitTarget(unittest.TestCase):
         
         # Check that required fields are set
         self.assertEqual(hittarget.sector, "healthcare")
-        self.assertEqual(hittarget.organization_type, "customer")  # default
+        self.assertEqual(hittarget.organisation_type, "customer")  # default
         self.assertEqual(hittarget.anonymization_level, "high")  # default
         
-        # Check that organization_id is auto-generated
-        self.assertIsNotNone(hittarget.organization_id)
-        self.assertTrue(hittarget.organization_id.startswith("identity--"))
-        self.assertIsInstance(uuid.UUID(hittarget.organization_id.split("--")[1]), uuid.UUID)
+        # Check that organisation_id is auto-generated
+        self.assertIsNotNone(hittarget.organisation_id)
+        self.assertTrue(hittarget.organisation_id.startswith("identity--"))
+        self.assertIsInstance(uuid.UUID(hittarget.organisation_id.split("--")[1]), uuid.UUID)
         
         # Optional fields should be None
-        self.assertIsNone(hittarget.organization_size)
+        self.assertIsNone(hittarget.organisation_size)
         self.assertIsNone(hittarget.region)
 
     def test_create_hittarget_with_all_fields(self):
         """Test creating a hit target with all fields provided"""
         org_id = f"identity--{uuid.uuid4()}"
         hittarget = HitTarget(
-            organization_id=org_id,
+            organisation_id=org_id,
             sector="financial_services",
-            organization_type="credit_union",
-            organization_size="medium",
+            organisation_type="credit_union",
+            organisation_size="medium",
             region="north_america",
             anonymization_level="medium"
         )
         
-        self.assertEqual(hittarget.organization_id, org_id)
+        self.assertEqual(hittarget.organisation_id, org_id)
         self.assertEqual(hittarget.sector, "financial_services")
-        self.assertEqual(hittarget.organization_type, "credit_union")
-        self.assertEqual(hittarget.organization_size, "medium")
+        self.assertEqual(hittarget.organisation_type, "credit_union")
+        self.assertEqual(hittarget.organisation_size, "medium")
         self.assertEqual(hittarget.region, "north_america")
         self.assertEqual(hittarget.anonymization_level, "medium")
 
-    def test_organization_id_auto_generation(self):
-        """Test that organization_id is auto-generated when not provided"""
+    def test_organisation_id_auto_generation(self):
+        """Test that organisation_id is auto-generated when not provided"""
         # Test with None
-        hittarget1 = HitTarget(sector="retail", organization_id=None)
-        self.assertIsNotNone(hittarget1.organization_id)
-        self.assertTrue(hittarget1.organization_id.startswith("identity--"))
+        hittarget1 = HitTarget(sector="retail", organisation_id=None)
+        self.assertIsNotNone(hittarget1.organisation_id)
+        self.assertTrue(hittarget1.organisation_id.startswith("identity--"))
         
         # Test with empty string
-        hittarget2 = HitTarget(sector="retail", organization_id="")
-        self.assertIsNotNone(hittarget2.organization_id)
-        self.assertTrue(hittarget2.organization_id.startswith("identity--"))
+        hittarget2 = HitTarget(sector="retail", organisation_id="")
+        self.assertIsNotNone(hittarget2.organisation_id)
+        self.assertTrue(hittarget2.organisation_id.startswith("identity--"))
         
         # Test different IDs are generated
-        self.assertNotEqual(hittarget1.organization_id, hittarget2.organization_id)
+        self.assertNotEqual(hittarget1.organisation_id, hittarget2.organisation_id)
 
         # Test with empty string
         hittarget3 = HitTarget(sector="retail")
-        self.assertIsNotNone(hittarget3.organization_id)
-        self.assertTrue(hittarget3.organization_id.startswith("identity--"))
+        self.assertIsNotNone(hittarget3.organisation_id)
+        self.assertTrue(hittarget3.organisation_id.startswith("identity--"))
 
     def test_sector_validation_required(self):
         """Test that sector is required and validated"""
@@ -103,8 +103,8 @@ class TestHitTarget(unittest.TestCase):
         with self.assertRaises(ValidationError):
             HitTarget()
 
-    def test_organization_size_normalization(self):
-        """Test organization size normalization - 'be forgiving' on input"""
+    def test_organisation_size_normalization(self):
+        """Test organisation size normalization - 'be forgiving' on input"""
         test_cases = [
             ("small", "small"),
             ("sme", "small"),
@@ -121,27 +121,27 @@ class TestHitTarget(unittest.TestCase):
         
         for input_size, expected_output in test_cases:
             with self.subTest(input_size=input_size):
-                hittarget = HitTarget(sector="retail", organization_size=input_size)
-                self.assertEqual(hittarget.organization_size, expected_output)
+                hittarget = HitTarget(sector="retail", organisation_size=input_size)
+                self.assertEqual(hittarget.organisation_size, expected_output)
 
-    def test_organization_size_none_handling(self):
-        """Test that None organization size is handled properly"""
-        hittarget = HitTarget(sector="manufacturing", organization_size=None)
-        self.assertIsNone(hittarget.organization_size)
+    def test_organisation_size_none_handling(self):
+        """Test that None organisation size is handled properly"""
+        hittarget = HitTarget(sector="manufacturing", organisation_size=None)
+        self.assertIsNone(hittarget.organisation_size)
 
     def test_factory_method_create(self):
         """Test the create factory method"""
         hittarget = HitTarget.create(
             sector="healthcare",
-            organization_size="large",
+            organisation_size="large",
             region="asia_pacific"
         )
         
         self.assertEqual(hittarget.sector, "healthcare")
-        self.assertEqual(hittarget.organization_size, "large")
+        self.assertEqual(hittarget.organisation_size, "large")
         self.assertEqual(hittarget.region, "asia_pacific")
-        self.assertIsNotNone(hittarget.organization_id)
-        self.assertEqual(hittarget.organization_type, "customer")  # default
+        self.assertIsNotNone(hittarget.organisation_id)
+        self.assertEqual(hittarget.organisation_type, "customer")  # default
         self.assertEqual(hittarget.anonymization_level, "high")  # default
 
     def test_factory_method_minimal(self):
@@ -149,16 +149,16 @@ class TestHitTarget(unittest.TestCase):
         hittarget = HitTarget.create(sector="education")
         
         self.assertEqual(hittarget.sector, "education")
-        self.assertIsNone(hittarget.organization_size)
+        self.assertIsNone(hittarget.organisation_size)
         self.assertIsNone(hittarget.region)
-        self.assertIsNotNone(hittarget.organization_id)
+        self.assertIsNotNone(hittarget.organisation_id)
 
     def test_model_dump(self):
         """Test serialization to dictionary"""
         hittarget = HitTarget(
             sector="financial",
-            organization_type="bank",
-            organization_size="large",
+            organisation_type="bank",
+            organisation_size="large",
             region="europe",
             anonymization_level="medium"
         )
@@ -167,8 +167,8 @@ class TestHitTarget(unittest.TestCase):
         
         # Check that all fields are present
         expected_fields = [
-            "organization_id", "sector", "organization_type", 
-            "organization_size", "region", "anonymization_level"
+            "organisation_id", "sector", "organisation_type", 
+            "organisation_size", "region", "anonymization_level"
         ]
         
         for field in expected_fields:
@@ -176,8 +176,8 @@ class TestHitTarget(unittest.TestCase):
         
         # Check values
         self.assertEqual(data["sector"], "financial")
-        self.assertEqual(data["organization_type"], "bank")
-        self.assertEqual(data["organization_size"], "large")
+        self.assertEqual(data["organisation_type"], "bank")
+        self.assertEqual(data["organisation_size"], "large")
         self.assertEqual(data["region"], "europe")
         self.assertEqual(data["anonymization_level"], "medium")
 
@@ -188,20 +188,20 @@ class TestHitTarget(unittest.TestCase):
         data = hittarget.model_dump(exclude_none=True)
         
         # Check that None fields are excluded
-        self.assertNotIn("organization_size", data)
+        self.assertNotIn("organisation_size", data)
         self.assertNotIn("region", data)
         
         # Check that non-None fields are present
-        self.assertIn("organization_id", data)
+        self.assertIn("organisation_id", data)
         self.assertIn("sector", data)
-        self.assertIn("organization_type", data)
+        self.assertIn("organisation_type", data)
         self.assertIn("anonymization_level", data)
 
     def test_json_serialization(self):
         """Test JSON serialization"""
         hittarget = HitTarget(
             sector="manufacturing",
-            organization_size="medium",
+            organisation_size="medium",
             region="south_america"
         )
         
@@ -211,7 +211,7 @@ class TestHitTarget(unittest.TestCase):
         # Parse back to verify
         data = json.loads(json_str)
         self.assertEqual(data["sector"], "manufacturing")
-        self.assertEqual(data["organization_size"], "medium")
+        self.assertEqual(data["organisation_size"], "medium")
         self.assertEqual(data["region"], "south_america")
 
     def test_model_config_extra_ignore(self):
@@ -232,15 +232,15 @@ class TestHitTarget(unittest.TestCase):
         org_id = f"identity--{uuid.uuid4()}"
         
         hittarget1 = HitTarget(
-            organization_id=org_id,
+            organisation_id=org_id,
             sector="financial",
-            organization_size="large"
+            organisation_size="large"
         )
         
         hittarget2 = HitTarget(
-            organization_id=org_id,
+            organisation_id=org_id,
             sector="financial",
-            organization_size="large"
+            organisation_size="large"
         )
         
         # Different instances with same data should be equal
@@ -248,15 +248,15 @@ class TestHitTarget(unittest.TestCase):
 
     def test_hittarget_inequality(self):
         """Test hit target inequality"""
-        hittarget1 = HitTarget(sector="healthcare", organization_size="small")
-        hittarget2 = HitTarget(sector="healthcare", organization_size="large")
+        hittarget1 = HitTarget(sector="healthcare", organisation_size="small")
+        hittarget2 = HitTarget(sector="healthcare", organisation_size="large")
         
         # Different sizes should not be equal
         self.assertNotEqual(hittarget1, hittarget2)
 
     def test_repr_and_str(self):
         """Test string representations"""
-        hittarget = HitTarget(sector="financial", organization_size="large")
+        hittarget = HitTarget(sector="financial", organisation_size="large")
         
         repr_str = repr(hittarget)
         str_str = str(hittarget)
@@ -277,8 +277,8 @@ class TestHitTarget(unittest.TestCase):
                 )
                 self.assertEqual(hittarget.anonymization_level, level)
 
-    def test_organization_types(self):
-        """Test various organization types"""
+    def test_organisation_types(self):
+        """Test various organisation types"""
         org_types = [
             "customer", "prospect", "partner", "subsidiary", 
             "government_agency", "ngo", "educational_institution"
@@ -288,9 +288,9 @@ class TestHitTarget(unittest.TestCase):
             with self.subTest(org_type=org_type):
                 hittarget = HitTarget(
                     sector="various",
-                    organization_type=org_type
+                    organisation_type=org_type
                 )
-                self.assertEqual(hittarget.organization_type, org_type)
+                self.assertEqual(hittarget.organisation_type, org_type)
 
     def test_sectors_validation(self):
         """Test various sector values"""
@@ -338,13 +338,13 @@ class TestHitTarget(unittest.TestCase):
         # Leading/trailing whitespace should be handled by normalization
         hittarget = HitTarget(
             sector="  financial_services  ",
-            organization_type="  bank  ",
+            organisation_type="  bank  ",
             region="  europe  "
         )
         
         # Sector should preserve whitespace (no automatic stripping)
         self.assertEqual(hittarget.sector, "  financial_services  ")
-        self.assertEqual(hittarget.organization_type, "  bank  ")
+        self.assertEqual(hittarget.organisation_type, "  bank  ")
         self.assertEqual(hittarget.region, "  europe  ")
 
 
@@ -355,12 +355,12 @@ class TestHitTargetIntegration(unittest.TestCase):
         """Test hit target validation in the context of a full submission"""
         hittarget = HitTarget(
             sector="financial",
-            organization_size="large",
+            organisation_size="large",
             region="europe"
         )
         
         # Should be able to access all required properties for submission validation
-        self.assertIsNotNone(hittarget.organization_id)
+        self.assertIsNotNone(hittarget.organisation_id)
         self.assertIsInstance(hittarget.sector, str)
         self.assertGreater(len(hittarget.sector), 0)
 
@@ -370,7 +370,7 @@ class TestHitTargetIntegration(unittest.TestCase):
         hittargets = [HitTarget(sector=sector) for sector in sectors]
         
         # All IDs should be unique
-        ids = [ht.organization_id for ht in hittargets]
+        ids = [ht.organisation_id for ht in hittargets]
         self.assertEqual(len(ids), len(set(ids)))
         
         # All IDs should follow the pattern
@@ -384,7 +384,7 @@ class TestHitTargetIntegration(unittest.TestCase):
         """Test hit target in anonymization scenarios"""
         hittarget = HitTarget(
             sector="financial",
-            organization_size="large",
+            organisation_size="large",
             region="europe",
             anonymization_level="high"
         )
@@ -393,7 +393,7 @@ class TestHitTargetIntegration(unittest.TestCase):
         self.assertEqual(hittarget.anonymization_level, "high")
         
         # Should be able to identify sensitive fields for anonymization
-        sensitive_fields = ["organization_id", "region"]
+        sensitive_fields = ["organisation_id", "region"]
         data = hittarget.model_dump()
         
         for field in sensitive_fields:
@@ -416,8 +416,8 @@ class TestHitTargetIntegration(unittest.TestCase):
                 # Anonymization level should be preserved
                 self.assertEqual(hittarget.anonymization_level, level)
                 
-                # Organization ID should always be generated (for tracking purposes)
-                self.assertIsNotNone(hittarget.organization_id)
+                # organisation ID should always be generated (for tracking purposes)
+                self.assertIsNotNone(hittarget.organisation_id)
 
 
 class TestHitTargetValidationScenarios(unittest.TestCase):
@@ -441,8 +441,8 @@ class TestHitTargetValidationScenarios(unittest.TestCase):
         hittarget = HitTarget(sector="   ")
         self.assertEqual(hittarget.sector, "   ")
 
-    def test_organization_size_case_insensitive_normalization(self):
-        """Test that organization size normalization is case insensitive"""
+    def test_organisation_size_case_insensitive_normalization(self):
+        """Test that organisation size normalization is case insensitive"""
         test_cases = [
             ("SMALL", "small"),
             ("Medium", "medium"),
@@ -455,9 +455,9 @@ class TestHitTargetValidationScenarios(unittest.TestCase):
             with self.subTest(input_size=input_size):
                 hittarget = HitTarget(
                     sector="technology",
-                    organization_size=input_size
+                    organisation_size=input_size
                 )
-                self.assertEqual(hittarget.organization_size, expected)
+                self.assertEqual(hittarget.organisation_size, expected)
 
     def test_invalid_field_types(self):
         """Test validation with invalid field types"""
@@ -489,7 +489,7 @@ class TestHitTargetPerformance(unittest.TestCase):
         for i in range(100):
             hittarget = HitTarget(
                 sector=sectors[i % len(sectors)],
-                organization_size=sizes[i % len(sizes)],
+                organisation_size=sizes[i % len(sizes)],
                 region=regions[i % len(regions)]
             )
             hittargets.append(hittarget)
@@ -502,11 +502,11 @@ class TestHitTargetPerformance(unittest.TestCase):
         self.assertEqual(len(hittargets), 100)
         
         # All should have unique IDs
-        ids = [ht.organization_id for ht in hittargets]
+        ids = [ht.organisation_id for ht in hittargets]
         self.assertEqual(len(ids), len(set(ids)))
 
     def test_normalization_performance(self):
-        """Test performance of organization size normalization"""
+        """Test performance of organisation size normalization"""
         import time
         
         test_sizes = ["small", "sme", "startup", "medium", "large", "enterprise"] * 25
@@ -517,14 +517,14 @@ class TestHitTargetPerformance(unittest.TestCase):
         for size in test_sizes:
             hittarget = HitTarget(
                 sector="technology",
-                organization_size=size
+                organisation_size=size
             )
             hittargets.append(hittarget)
         
         end_time = time.time()
         elapsed = end_time - start_time
         
-        # Should normalize organization sizes quickly
+        # Should normalize organisation sizes quickly
         self.assertLess(elapsed, 0.5)  # Less than 0.5 seconds
         self.assertEqual(len(hittargets), 150)
 
@@ -533,22 +533,22 @@ class TestHitTargetDataIntegrity(unittest.TestCase):
     """Test data integrity aspects of HitTarget"""
 
     def test_immutable_id_after_creation(self):
-        """Test that organization ID doesn't change after creation"""
+        """Test that organisation ID doesn't change after creation"""
         hittarget = HitTarget(sector="financial")
-        original_id = hittarget.organization_id
+        original_id = hittarget.organisation_id
         
         # Create another instance and verify IDs are different
         hittarget2 = HitTarget(sector="financial")
-        self.assertNotEqual(original_id, hittarget2.organization_id)
+        self.assertNotEqual(original_id, hittarget2.organisation_id)
         
         # Original ID should remain the same
-        self.assertEqual(hittarget.organization_id, original_id)
+        self.assertEqual(hittarget.organisation_id, original_id)
 
     def test_data_consistency_after_serialization(self):
         """Test that data remains consistent after serialization/deserialization"""
         original_hittarget = HitTarget(
             sector="healthcare",
-            organization_size="large",
+            organisation_size="large",
             region="europe",
             anonymization_level="medium"
         )
@@ -563,7 +563,7 @@ class TestHitTargetDataIntegrity(unittest.TestCase):
         # Should be equal
         self.assertEqual(original_hittarget, recreated_hittarget)
         self.assertEqual(original_hittarget.sector, recreated_hittarget.sector)
-        self.assertEqual(original_hittarget.organization_size, recreated_hittarget.organization_size)
+        self.assertEqual(original_hittarget.organisation_size, recreated_hittarget.organisation_size)
         self.assertEqual(original_hittarget.region, recreated_hittarget.region)
 
 

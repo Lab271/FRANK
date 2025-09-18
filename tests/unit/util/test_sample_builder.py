@@ -50,7 +50,7 @@ class TestFRANKSubmission(unittest.TestCase):
         
         # Check required fields
         submitter = submission['submitter']
-        self.assertIn('organization_id', submitter)
+        self.assertIn('organisation_id', submitter)
         self.assertEqual(submitter['access_level'], 'partner')  # default
         
         sighting = submission['sighting']
@@ -75,7 +75,7 @@ class TestFRANKSubmission(unittest.TestCase):
         ).model_dump()
         
         submitter = submission['submitter']
-        self.assertEqual(submitter['organization_id'], self.valid_org_id)
+        self.assertEqual(submitter['organisation_id'], self.valid_org_id)
         self.assertEqual(submitter['access_level'], self.valid_access_level)
         
         sighting = submission['sighting']
@@ -191,7 +191,7 @@ class TestFRANKSubmission(unittest.TestCase):
             tlp_level=tlp_level
         )
         # Check model properties
-        self.assertEqual(submission.submitter.organization_id, org_id)
+        self.assertEqual(submission.submitter.organisation_id, org_id)
         self.assertEqual(submission.sighting.severity, "high")
         self.assertEqual(submission.sighting.confidence, 95)
         self.assertIsNotNone(submission.sighting.sigma_detection)
@@ -204,7 +204,7 @@ class TestFRANKSubmission(unittest.TestCase):
         # Robust check for hit_target
         self.assertIsNotNone(submission.hit_target)
         if submission.hit_target:
-            self.assertEqual(submission.hit_target.organization_id, hit_target_org)
+            self.assertEqual(submission.hit_target.organisation_id, hit_target_org)
 
 
 # --- Additional tests for sample_builder.py coverage ---
@@ -234,7 +234,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         self.assertIsInstance(submission, Submission)
         submitter = getattr(submission, "submitter", None)
         self.assertIsNotNone(submitter)
-        self.assertEqual(getattr(submitter, "organization_id", None), org_id)
+        self.assertEqual(getattr(submitter, "organisation_id", None), org_id)
         sighting = getattr(submission, "sighting", None)
         self.assertIsNotNone(sighting)
         self.assertEqual(getattr(sighting, "severity", None), "medium")
@@ -305,7 +305,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         self.assertIsInstance(submission, Submission)
         submitter = getattr(submission, "submitter", None)
         self.assertIsNotNone(submitter)
-        self.assertEqual(getattr(submitter, "organization_id", None), org_id)
+        self.assertEqual(getattr(submitter, "organisation_id", None), org_id)
         sighting = getattr(submission, "sighting", None)
         self.assertIsNotNone(sighting)
         self.assertEqual(getattr(sighting, "severity", None), "medium")
@@ -372,7 +372,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
             confidence=80
         )
         self.assertIsInstance(submission, Submission)
-        self.assertEqual(submission.submitter.organization_id, org_id)
+        self.assertEqual(submission.submitter.organisation_id, org_id)
         self.assertEqual(submission.sighting.severity, "medium")
         self.assertEqual(submission.sighting.confidence, 80)
 

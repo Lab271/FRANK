@@ -27,9 +27,9 @@ class DummyDatabase(BaseFRANKDatabase):
         super().initialize()
         self.initialized = True
 
-    def upsert_organization(self, org_data):
+    def upsert_organisation(self, org_data):
         # Not recommended: calling super() abstract method for coverage only
-        super().upsert_organization(org_data)
+        super().upsert_organisation(org_data)
         return True
 
     def store_submission(self, submission):
@@ -59,10 +59,9 @@ class DummyDatabase(BaseFRANKDatabase):
         super().search_observables_by_value(self, org_id, search_value, access_level)
         return [{"value":0}]
     
-    def log_access(self, org_id, action, resource_type=None, resource_id=None, details=None):
+    def log_access(self, org_id, action, resource_type=None, details=None) -> None:
         # Not recommended: calling super() abstract method for coverage only
-        super().log_access(org_id, action, resource_type, resource_id, details)
-        return True
+        super().log_access(org_id, action, resource_type, details)
 
     def health_check(self):
         # Not recommended: calling super() abstract method for coverage only
@@ -99,9 +98,9 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
         self.db.connection_params['test_param'] = 'value'
         self.assertIn('test_param', self.db.connection_params)
 
-    def test_upsert_organization(self):
-        """Test upsert_organization method."""
-        self.assertTrue(self.db.upsert_organization({"name": "TestOrg"}))
+    def test_upsert_organisation(self):
+        """Test upsert_organisation method."""
+        self.assertTrue(self.db.upsert_organisation({"name": "TestOrg"}))
 
     def test_store_submission(self):
         """Test store_submission method."""
@@ -136,7 +135,7 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
 
     def test_log_access(self):
         """Test log_access method."""
-        self.assertTrue(self.db.log_access("orgid", "read"))
+        self.assertIsNone(self.db.log_access("orgid", "read"))
 
     def test_health_check(self):
         """Test health_check method."""
@@ -186,7 +185,7 @@ class TestBaseFRANKDatabase(unittest.TestCase):
                     'ip': [{'value': '1.2.3.4.5.6.7.8.9.10'}]
                 }
             },
-            'hit_target': {'organization_id': 'orgid'},
+            'hit_target': {'organisation_id': 'orgid'},
             'tlp_level': 'red'
         }
         result = self.db._filter_submission_by_access_level(submission, AccessTier.OBSERVER)
@@ -207,12 +206,12 @@ class TestBaseFRANKDatabase(unittest.TestCase):
                 'observation_count': 5,
                 'observables': {}
             },
-            'hit_target': {'organization_id': 'orgid', 'sector': 'finance'}
+            'hit_target': {'organisation_id': 'orgid', 'sector': 'finance'}
         }
         result = self.db._filter_submission_by_access_level(submission, AccessTier.CONTRIBUTOR)
         self.assertIn('submission', result)
         hit_target = result['submission']['hit_target']
-        self.assertNotIn('organization_id', hit_target)
+        self.assertNotIn('organisation_id', hit_target)
         self.assertEqual(hit_target['sector'], 'finance')
 
     def test_filter_submission_by_access_level_partner(self):

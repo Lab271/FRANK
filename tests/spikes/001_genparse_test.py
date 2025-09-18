@@ -48,10 +48,10 @@ class NetworkObservable:
 
 @dataclass
 class Submitter:
-    """Represents the submitting organization (cyber partner)."""
-    organization_id: str
+    """Represents the submitting organisation (cyber partner)."""
+    organisation_id: str
     access_level: str
-    organization_type: Optional[str] = "cyber_partner"
+    organisation_type: Optional[str] = "cyber_partner"
     sector: Optional[str] = None
     region: Optional[str] = None
     submission_method: Optional[str] = "api"
@@ -61,7 +61,7 @@ class Submitter:
     def create(cls, access_level: str, sector: str = None, region: str = None) -> 'Submitter':
         """Create a submitter with auto-generated STIX ID."""
         return cls(
-            organization_id=f"identity-{uuid.uuid4()}",
+            organisation_id=f"identity-{uuid.uuid4()}",
             access_level=access_level,
             sector=sector,
             region=region
@@ -70,21 +70,21 @@ class Submitter:
 
 @dataclass
 class HitTarget:
-    """Represents the affected customer organization."""
-    organization_id: str
+    """Represents the affected customer organisation."""
+    organisation_id: str
     sector: str
-    organization_type: Optional[str] = "customer"
-    organization_size: Optional[str] = None
+    organisation_type: Optional[str] = "customer"
+    organisation_size: Optional[str] = None
     region: Optional[str] = None
     anonymization_level: Optional[str] = "high"
 
     @classmethod
-    def create(cls, sector: str, organization_size: str = None, region: str = None) -> 'HitTarget':
+    def create(cls, sector: str, organisation_size: str = None, region: str = None) -> 'HitTarget':
         """Create a hit target with auto-generated STIX ID."""
         return cls(
-            organization_id=f"identity-{uuid.uuid4()}",
+            organisation_id=f"identity-{uuid.uuid4()}",
             sector=sector,
-            organization_size=organization_size,
+            organisation_size=organisation_size,
             region=region
         )
 
@@ -210,7 +210,7 @@ class FrankSightingGenerator:
         
         hit_target = HitTarget.create(
             sector="financial_services",
-            organization_size="medium",
+            organisation_size="medium",
             region="nl_north_holland"
         )
         
@@ -249,11 +249,11 @@ class FrankSightingParser:
         errors = []
         
         # Validate required fields
-        if not submission.submitter.organization_id:
-            errors.append("Submitter organization_id is required")
+        if not submission.submitter.organisation_id:
+            errors.append("Submitter organisation_id is required")
         
-        if not submission.hit_target.organization_id:
-            errors.append("Hit target organization_id is required")
+        if not submission.hit_target.organisation_id:
+            errors.append("Hit target organisation_id is required")
         
         if not submission.sighting.sighting_id:
             errors.append("Sighting ID is required")

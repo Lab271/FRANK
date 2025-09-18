@@ -36,7 +36,8 @@ from frank.storage.dynamodb import create_dynamodb_database
 # Utilities
 from frank.util.sample_builder import SampleDataSeeder
 from frank.util import create_server, create_error_response
-from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
+from frank.util.requests import SubmissionRequest, OrganisationRequest
+from frank.util.requests import SubmissionResponse, SightingSearchResponse, ObservationsResponse
 from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException, NotFoundException, UnauthenticatedException
 from frank import __version__
 
@@ -70,6 +71,7 @@ class FrankConfig:
     def setup_config(self):
         """Setup configuration based on environment"""
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
+        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "frank_table")
 
         if self.environment in ["localstack", "aws"]:
             self.database_type = "dynamodb"
@@ -90,6 +92,7 @@ class FrankConfig:
 config = FrankConfig()
 frank_dynamodb = create_dynamodb_database(
     table_name=config.table_name,
+    audit_table_name=config.audit_table_name,
     region=config.aws_region,
     endpoint=config.localstack_endpoint,
     aws_access_key_id=config.aws_access_key,
@@ -144,13 +147,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
+        return {"organisation_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
+        return {"organisation_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
+        return {"organisation_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
+        return {"organisation_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise UnauthenticatedException("Invalid authentication token")
 
@@ -174,7 +177,7 @@ rate_limiter = RateLimiter()
 # ================================
 
 @app.post("/v1/submission", response_model=SubmissionResponse)
-async def submit_threat_intelligence(
+async def post_threat_intelligence(
     request: Request,
     submission_request: SubmissionRequest = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -187,14 +190,14 @@ async def submit_threat_intelligence(
 
     # Check permissions
     if not AccessTier.can_submit(current_user["access_level"]):
-        raise UnauthorizedException("Insufficient access level for submission")
+        raise UnauthorizedException(f"Insufficient access level {current_user['access_level']} for submission")
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
         raise BadRequestException("Rate limit exceeded")
 
     # Store in database
-    score_impact = frank_server.submit_threat_intelligence(current_user["organization_id"], submission)
+    score_impact = frank_server.submit_threat_intelligence(current_user["organisation_id"], submission)
 
     return SubmissionResponse(
         status="accepted",
@@ -204,6 +207,45 @@ async def submit_threat_intelligence(
         validation_required=False,
         estimated_processing_time="2-5 minutes",
     )
+
+@app.post("/v1/organisation")
+async def post_organisation(
+    request: Request,
+    organisation_request: OrganisationRequest = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Submit threat intelligence sighting to the platform.
+    Requires Contributor, Partner, or Core Member access level.
+    """
+    organisation = organisation_request.organisation
+
+    # Check permissions
+    if not AccessTier.can_submit(current_user["access_level"]):
+        raise UnauthorizedException(f"Insufficient access level {current_user['access_level']} for organisation")
+
+    # Check rate limiting
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
+        raise BadRequestException("Rate limit exceeded")
+
+    frank_server.upsert_organisation(organisation)
+
+
+@app.get("/v1/statistics")
+async def get_platform_statistics(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
+):
+    """Get platform usage statistics"""
+    if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
+        raise UnauthorizedException("Insufficient access level")
+
+    stats = frank_server.get_platform_statistics(
+        user_id=current_user["organisation_id"],
+        access_level=current_user["access_level"],
+        days=days,
+    )  
+    return stats
 
 
 @app.get('/v1/submission/{submission_id}', response_model=Submission, response_model_exclude_none=True)
@@ -216,10 +258,10 @@ async def get_submission(
     Only Submitters can access the submission.
     """
     # Check permissions
-    if not AccessTier.can_submit(current_user["access_level"]):
+    if not current_user["access_level"] not in [AccessTier.CORE_MEMBER]:
         raise UnauthorizedException("Insufficient access level for submission retrieval")
 
-    submission = frank_server.get_submission_by_id(current_user["organization_id"], current_user["access_level"], submission_id)
+    submission = frank_server.get_submission_by_id(current_user["organisation_id"], current_user["access_level"], submission_id)
     if not submission:
         raise NotFoundException(f"Submission {submission_id} not found")
 
@@ -273,7 +315,7 @@ class SightingSearchQuery(BaseModel):
 
 
 @app.get("/v1/sighting", response_model=SightingSearchResponse)
-async def search_threat_sightings(
+async def get_threat_sightings(
     current_user: Dict[str, Any] = Depends(get_current_user),
     query: SightingSearchQuery = Depends()
 ):
@@ -282,7 +324,7 @@ async def search_threat_sightings(
     Available to Observer, Contributor, Partner, and Core Member tiers.
     """
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
         raise TooManyRequestsException("Rate limit exceeded")
 
     # Build query parameters from model_dict
@@ -294,7 +336,7 @@ async def search_threat_sightings(
 
 
     total_results, sightings, aggregations, threat_context = frank_server.query_threats(
-        user_id=current_user["organization_id"], access_level=current_user["access_level"],
+        user_id=current_user["organisation_id"], access_level=current_user["access_level"],
         offset=offset, limit=limit,
         observable=observable, **query_params
     )
@@ -323,7 +365,7 @@ async def search_threat_sightings(
 @app.get("/v1/observations", response_model=ObservationsResponse)
 def get_observations(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    org_id: str = Query(..., description="Organization ID"),
+    org_id: str = Query(..., description="Organisation ID"),
     days: int = Query(30, description="Number of days to include in stats"),
     observable_type: str = Query(None, description="Filter by observable type"),
     limit: int = Query(100, description="Max number of results")
@@ -349,7 +391,7 @@ def get_observations(
 
 # Health and status endpoints
 @app.get("/v1/health")
-async def health_check():
+async def get_health_check():
     """Health check endpoint"""
     return frank_server.health_check()
 
@@ -364,7 +406,7 @@ async def get_platform_statistics(
         raise UnauthorizedException("Insufficient access level")
 
     stats = frank_server.get_platform_statistics(
-        user_id=current_user["organization_id"],
+        user_id=current_user["organisation_id"],
         access_level=current_user["access_level"],
         days=days,
     )  

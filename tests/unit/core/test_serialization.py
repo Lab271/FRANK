@@ -31,7 +31,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         self.minimal_yaml_data = {
             "submission": {
                 "submitter": {
-                    "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+                    "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
                     "access_level": "partner"
                 },
                 "sighting": {
@@ -58,7 +58,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Create programmatic test data
         self.test_submitter = Submitter(
-            organization_id="identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+            organisation_id="identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
             access_level=AccessTier.PARTNER
         )
         
@@ -93,7 +93,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         submission = Submission(**submission_data)
         
         # Verify submitter
-        self.assertEqual(submission.submitter.organization_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
+        self.assertEqual(submission.submitter.organisation_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
         self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)
         
         # Verify sighting
@@ -143,7 +143,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         roundtrip_submission = Submission(**result_dict)
         
         # Verify key data survived
-        self.assertEqual(submission.submitter.organization_id, roundtrip_submission.submitter.organization_id)
+        self.assertEqual(submission.submitter.organisation_id, roundtrip_submission.submitter.organisation_id)
         self.assertEqual(submission.sighting.confidence, roundtrip_submission.sighting.confidence)
         self.assertEqual(len(submission.sighting.observables.network), 
                         len(roundtrip_submission.sighting.observables.network))
@@ -170,7 +170,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         roundtrip = Submission(**parsed_dict)
         
         # Verify critical data integrity
-        self.assertEqual(original.submitter.organization_id, roundtrip.submitter.organization_id)
+        self.assertEqual(original.submitter.organisation_id, roundtrip.submitter.organisation_id)
         self.assertEqual(original.sighting.sighting_id, roundtrip.sighting.sighting_id)
         self.assertEqual(original.sighting.confidence, roundtrip.sighting.confidence)
         self.assertEqual(len(original.sighting.observables.network), 
@@ -201,7 +201,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         yaml_str = """
         submission:
           submitter:
-            organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+            organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
             access_level: "partner"
           sighting:
             sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
@@ -241,8 +241,8 @@ class TestSubmissionSerialization(unittest.TestCase):
         roundtrip_submission = Submission(**reparsed_yaml["submission"])
         
         # Verify complete data integrity
-        self.assertEqual(submission.submitter.organization_id, 
-                        roundtrip_submission.submitter.organization_id)
+        self.assertEqual(submission.submitter.organisation_id, 
+                        roundtrip_submission.submitter.organisation_id)
         self.assertEqual(submission.sighting.sighting_id, 
                         roundtrip_submission.sighting.sighting_id)
         self.assertEqual(submission.sighting.confidence, 
@@ -285,7 +285,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         data_with_optional = self.minimal_yaml_data["submission"].copy()
         data_with_optional.update({
             "hit_target": {
-                "organization_id": "identity-target-123",
+                "organisation_id": "identity-target-123",
                 "sector": "financial"
             },
             "processing_notes": "Automated submission via API"
@@ -362,7 +362,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Check nested model data
         submitter_data = result["submitter"]
-        self.assertIn("organization_id", submitter_data)
+        self.assertIn("organisation_id", submitter_data)
         self.assertIn("access_level", submitter_data)
         
         sighting_data = result["sighting"]
@@ -405,7 +405,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         # All should be equivalent
         submissions = [from_dict, from_json, from_yaml]
         for sub in submissions:
-            self.assertEqual(sub.submitter.organization_id, original.submitter.organization_id)
+            self.assertEqual(sub.submitter.organisation_id, original.submitter.organisation_id)
             self.assertEqual(sub.sighting.sighting_id, original.sighting.sighting_id)
             self.assertEqual(sub.sighting.confidence, original.sighting.confidence)
             self.assertEqual(len(sub.sighting.observables.network), 
@@ -452,7 +452,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Check key invariants across all formats
         for sub in submissions:
-            self.assertEqual(sub.submitter.organization_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
+            self.assertEqual(sub.submitter.organisation_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
             self.assertEqual(sub.submitter.access_level, AccessTier.PARTNER)
             self.assertEqual(sub.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
             self.assertEqual(sub.sighting.confidence, 87)

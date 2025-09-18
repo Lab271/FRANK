@@ -140,7 +140,7 @@ See [Stage 2/README.md](../stages/stage2/README.md)
 - Implement full FRANK submission model with complex observables
 - DynamoDB single-table design with GSIs
 - Data migration tooling from RDS to DynamoDB
-- Advanced relationship handling (organizations, threat actors, campaigns)
+- Advanced relationship handling (organisations, threat actors, campaigns)
 
 **Functional Enhancements**:
 ```python
@@ -227,9 +227,9 @@ See [Stage 5/README.md](../stages/stage5/README.md)
 ### Stage 2-3: SQL Foundation
 ```sql
 -- Normalized relational design
-CREATE TABLE organizations (
-    organization_id TEXT PRIMARY KEY,
-    organization_type TEXT NOT NULL,
+CREATE TABLE organisations (
+    organisation_id TEXT PRIMARY KEY,
+    organisation_type TEXT NOT NULL,
     access_level TEXT,
     sector TEXT
 );
@@ -239,7 +239,7 @@ CREATE TABLE submissions (
     submitter_org_id TEXT NOT NULL,
     confidence INTEGER,
     submission_timestamp TIMESTAMP,
-    FOREIGN KEY (submitter_org_id) REFERENCES organizations(organization_id)
+    FOREIGN KEY (submitter_org_id) REFERENCES organisations(organisation_id)
 );
 ```
 
@@ -248,7 +248,7 @@ CREATE TABLE submissions (
 # DynamoDB single-table pattern
 Table: frank-data-{env}
 
-# Organization record
+# organisation record
 PK: "ORG#bank-alpha"           SK: "PROFILE"
 # Submission record  
 PK: "ORG#bank-alpha"           SK: "SUB#2025-01-15#uuid"

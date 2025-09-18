@@ -75,7 +75,7 @@ test-submission:  ## Submit a test threat intelligence submission
 		-d '{ \
 			"submission": { \
 				"submitter": { \
-					"organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", \
+					"organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", \
 					"access_level": "partner" \
 				}, \
 				"sighting": { \
@@ -95,6 +95,17 @@ test-submission:  ## Submit a test threat intelligence submission
 						] \
 					} \
 				} \
+			} \
+		}' | python -m json.tool
+
+test-organisation:  ## Submit a test organisation
+	curl -s -X POST "http://localhost:8000/v1/organisation" \
+		-H "Content-Type: application/json" \
+		-H "Authorization: Bearer core_test_token" \
+		-d '{ \
+			"organisation": { \
+				"organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", \
+				"access_level": "partner" \
 			} \
 		}' | python -m json.tool
 
@@ -125,8 +136,8 @@ migrate-test:  ## Test data migration between databases
 	@echo "Testing data migration..."
 	curl -X POST "http://localhost:8000/v1/test/generate-sample-data?count=3"
 	@echo "\nChecking data in both databases..."
-	curl -s "http://localhost:8000/v1/organizations/test-org/submissions?database=dynamodb" | python -m json.tool
-	curl -s "http://localhost:8000/v1/organizations/test-org/submissions?database=rds" | python -m json.tool
+	curl -s "http://localhost:8000/v1/organisations/test-org/submissions?database=dynamodb" | python -m json.tool
+	curl -s "http://localhost:8000/v1/organisations/test-org/submissions?database=rds" | python -m json.tool
 
 benchmark:  ## Run performance benchmark
 	@echo "Running performance benchmark..."

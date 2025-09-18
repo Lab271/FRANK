@@ -13,6 +13,11 @@ from typing import Any, Dict, Optional
 
 from fastapi import HTTPException
 
+
+#########################
+# Exceptions
+#########################
+
 class BadRequestException(HTTPException):
 	"""Exception for HTTP 400 Bad Request"""
 	def __init__(self, detail: str = "Bad request"):
@@ -38,6 +43,10 @@ class TooManyRequestsException(HTTPException):
 	def __init__(self, detail: str = "Rate limit exceeded"):
 		super().__init__(status_code=429, detail=detail)
 
+
+#######################
+# Helper functions
+#######################
 def create_error_response(
 		status_code: int,
 		error_type: str,

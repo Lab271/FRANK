@@ -24,7 +24,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"submission\": {\n    \"submitter\": {\n      \"organization_id\": \"org-postman-test\",\n      \"tier\": \"partner\",\n      \"sector\": \"finance\"\n    },\n    \"sighting\": {\n      \"sighting_id\": \"test-sighting-postman-001\",\n      \"timestamp\": \"2025-09-05T12:00:00Z\",\n      \"confidence\": 85,\n      \"observables\": {\n        \"network\": [\n          {\n            \"type\": \"ipv4\",\n            \"value\": \"192.168.1.100\",\n            \"role\": \"c2_server\"\n          },\n          {\n            \"type\": \"domain\",\n            \"value\": \"malicious.example.com\",\n            \"role\": \"phishing_domain\"\n          }\n        ]\n      }\n    }\n  }\n}",
+					"raw": "{\n  \"submission\": {\n    \"submitter\": {\n      \"organisation_id\": \"org-postman-test\",\n      \"tier\": \"partner\",\n      \"sector\": \"finance\"\n    },\n    \"sighting\": {\n      \"sighting_id\": \"test-sighting-postman-001\",\n      \"timestamp\": \"2025-09-05T12:00:00Z\",\n      \"confidence\": 85,\n      \"observables\": {\n        \"network\": [\n          {\n            \"type\": \"ipv4\",\n            \"value\": \"192.168.1.100\",\n            \"role\": \"c2_server\"\n          },\n          {\n            \"type\": \"domain\",\n            \"value\": \"malicious.example.com\",\n            \"role\": \"phishing_domain\"\n          }\n        ]\n      }\n    }\n  }\n}",
 					"options": {
 						"raw": {
 							"language": "json"
@@ -63,7 +63,7 @@
 				],
 				"body": {
 					"mode": "raw",
-					"raw": "{\n  \"submission\": {\n    \"submitter\": {\n      \"organization_id\": \"identity-f431f809-377b-45e0-aa1c-6a4751cae5ff\",\n      \"tier\": \"partner\"\n    },\n    \"sighting\": {\n      \"sighting_id\": \"sighting-ee20065d-2555-424f-ad9e-0f8428623c75\",\n      \"timestamp\": \"2025-01-20T14:30:22Z\",\n      \"confidence\": 87,\n      \"observables\": {\n        \"network\": [\n          {\n            \"id\": \"ipv4-addr-c4e54321-1234-5678-9abc-def012345678\",\n            \"type\": \"ipv4\",\n            \"value\": \"185.220.102.45\"\n          },\n          {\n            \"id\": \"domain-name-d5f65432-2345-6789-abcd-ef0123456789\",\n            \"type\": \"domain\",\n            \"value\": \"malicious-domain.example\"\n          }\n        ]\n      }\n    }\n  }\n}",
+					"raw": "{\n  \"submission\": {\n    \"submitter\": {\n      \"organisation_id\": \"identity-f431f809-377b-45e0-aa1c-6a4751cae5ff\",\n      \"tier\": \"partner\"\n    },\n    \"sighting\": {\n      \"sighting_id\": \"sighting-ee20065d-2555-424f-ad9e-0f8428623c75\",\n      \"timestamp\": \"2025-01-20T14:30:22Z\",\n      \"confidence\": 87,\n      \"observables\": {\n        \"network\": [\n          {\n            \"id\": \"ipv4-addr-c4e54321-1234-5678-9abc-def012345678\",\n            \"type\": \"ipv4\",\n            \"value\": \"185.220.102.45\"\n          },\n          {\n            \"id\": \"domain-name-d5f65432-2345-6789-abcd-ef0123456789\",\n            \"type\": \"domain\",\n            \"value\": \"malicious-domain.example\"\n          }\n        ]\n      }\n    }\n  }\n}",
 					"options": {
 						"raw": {
 							"language": "json"

@@ -158,8 +158,8 @@ curl -X POST "http://localhost:8000/v1/submissions?database=dynamodb" \
 # Get specific submission
 curl "http://localhost:8000/v1/submissions/{submission_id}?database=dynamodb"
 
-# List organization submissions
-curl "http://localhost:8000/v1/organizations/security-team-alpha/submissions"
+# List organisation submissions
+curl "http://localhost:8000/v1/organisations/security-team-alpha/submissions"
 
 # Get performance comparison
 curl "http://localhost:8000/v1/performance"

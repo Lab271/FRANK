@@ -11,7 +11,7 @@ submission_levels:
   level_5: "behavioral_analysis"
 ```
 
-FRANK's submission system accommodates organizations with varying analytical capabilities through five distinct contribution levels. Each level represents increasing analytical sophistication and community value, from basic technical observations to advanced behavioral research. This tiered approach enables inclusive participation while incentivizing analytical development through enhanced platform privileges.
+FRANK's submission system accommodates organisations with varying analytical capabilities through five distinct contribution levels. Each level represents increasing analytical sophistication and community value, from basic technical observations to advanced behavioral research. This tiered approach enables inclusive participation while incentivizing analytical development through enhanced platform privileges.
 
 | Level | Type | Analytical Requirement | Community Value |
 |-------|------|----------------------|-----------------|
@@ -22,7 +22,7 @@ FRANK's submission system accommodates organizations with varying analytical cap
 | 5 | Behavioral Analysis | Research capability | Innovation discovery |
 
 ### Level 1: Raw Observable Sighting
-Basic technical observations requiring minimal cybersecurity expertise. Organizations submit specific indicators (IP addresses, file hashes, domain names) without analytical interpretation. These become valuable when aggregated across multiple sources.
+Basic technical observations requiring minimal cybersecurity expertise. organisations submit specific indicators (IP addresses, file hashes, domain names) without analytical interpretation. These become valuable when aggregated across multiple sources.
 
 **Example**: `"IP 185.220.102.45 contacted our server port 443"`
 
@@ -37,7 +37,7 @@ Analytical intelligence linking observations to known threat actors or campaigns
 **Example**: `"IP attributed to TrickBot banking campaign targeting financial sector, confidence 87%"`
 
 ### Level 4: SIGMA Detection
-Systematic threat identification using community-validated detection rules. Organizations contribute detection events plus rule effectiveness metrics and false positive rates. Enables automated detection deployment across the community.
+Systematic threat identification using community-validated detection rules. organisations contribute detection events plus rule effectiveness metrics and false positive rates. Enables automated detection deployment across the community.
 
 **Example**: `"SIGMA rule 'banking_c2_communication' triggered 23 times, false positive rate 3%"`
 
@@ -59,7 +59,7 @@ access_levels:
   core_member: "governance_access"
 ```
 
-FRANK's access control operates on trust-based progression where intelligence detail increases with contribution history. The five-tier structure ensures organizations sharing high-quality threat intelligence receive correspondingly valuable intelligence in return. This reciprocity model addresses private sector reluctance to participate in government-led cybersecurity initiatives.
+FRANK's access control operates on trust-based progression where intelligence detail increases with contribution history. The five-tier structure ensures organisations sharing high-quality threat intelligence receive correspondingly valuable intelligence in return. This reciprocity model addresses private sector reluctance to participate in government-led cybersecurity initiatives.
 
 | Level | Rate Limit | Data Access | Contribution Requirement |
 |-------|------------|-------------|-------------------------|
@@ -75,14 +75,14 @@ Basic threat landscape awareness through aggregated statistics and general indic
 **Example Access**: `"Banking sector experienced 47% increase in credential harvesting attempts this week. Top malware families: TrickBot (23%), Emotet (18%), Zeus (12%)"`
 
 ### Observer Access
-Entry-level intelligence access for organizations with legitimate security interests. Weekly threat summaries with obfuscated indicators and sector-specific trends. Enables basic defensive planning without requiring active contribution.
+Entry-level intelligence access for organisations with legitimate security interests. Weekly threat summaries with obfuscated indicators and sector-specific trends. Enables basic defensive planning without requiring active contribution.
 
 **Example Access**: `"Financial institutions in North Holland region targeted by IP range 185.220.102.x with banking trojan variant. Domain pattern: *-bank-verify.nl registered in past 7 days"`
 
 ### Contributor Access
 Active participant tier with comprehensive daily threat intelligence access. Includes partial observables, network patterns, and campaign attribution with MITRE techniques. Requires consistent monthly intelligence submissions demonstrating platform value.
 
-**Example Access**: `"IP 185.220.102.45 linked to TrickBot campaign #2025-01-20-BANK targeting Dutch financial sector. MITRE T1566.001 (Spearphishing), T1071.001 (Web Protocols). 15 confirmed infections across 8 organizations"`
+**Example Access**: `"IP 185.220.102.45 linked to TrickBot campaign #2025-01-20-BANK targeting Dutch financial sector. MITRE T1566.001 (Spearphishing), T1071.001 (Web Protocols). 15 confirmed infections across 8 organisations"`
 
 ### Partner Access
 Advanced collaboration level providing real-time threat intelligence with complete technical context. Full threat actor attribution and TTPs with comprehensive impact assessments. Demands substantial monthly contributions and high-quality analytical submissions.
@@ -92,7 +92,7 @@ Advanced collaboration level providing real-time threat intelligence with comple
 ### Core Member Access
 Elite platform tier with complete access including governance participation rights. Provides mitigation effectiveness data, infrastructure details, and campaign coordination capabilities. Reserved for significant contributors participating in platform strategic direction.
 
-**Example Access**: `"Infrastructure cluster: 185.220.102.45-48 (€500/month hosting cost), 15 organizations affected, average containment time 45min. Mitigation effectiveness: IP blocking 95%, SIGMA rule detection 87%. Coordinate response with Partners X,Y,Z"`
+**Example Access**: `"Infrastructure cluster: 185.220.102.45-48 (€500/month hosting cost), 15 organisations affected, average containment time 45min. Mitigation effectiveness: IP blocking 95%, SIGMA rule detection 87%. Coordinate response with Partners X,Y,Z"`
 
 ---
 
@@ -139,7 +139,7 @@ Experimental submissions flagged for research rather than operational use. Valua
 ```yaml
 disclosure_levels:
   tlp_red: "no_external_disclosure"
-  tlp_amber_plus: "organizational_networks"
+  tlp_amber_plus: "organisational_networks"
   tlp_amber: "community_attribution"
   tlp_green: "acknowledged_sharing"
   tlp_clear: "unrestricted_public"
@@ -156,7 +156,7 @@ FRANK implements Traffic Light Protocol classifications controlling information 
 | TLP Level | Disclosure Scope | Usage Permissions | Access Level Required |
 |-----------|------------------|-------------------|----------------------|
 | TLP:RED | Named recipients only | Internal analysis only | Core Member |
-| TLP:AMBER+ | Organizational networks | Authorized partners | Partner+ |
+| TLP:AMBER+ | organisational networks | Authorized partners | Partner+ |
 | TLP:AMBER | Community sharing | Platform participants | Contributor+ |
 | TLP:GREEN | Extended community | Public advisories | Observer+ |
 | TLP:CLEAR | Unrestricted public | Commercial use | Public+ |
@@ -164,8 +164,8 @@ FRANK implements Traffic Light Protocol classifications controlling information 
 ### TLP:RED - No External Disclosure (Core Member Only)
 Information restricted to explicitly named recipients without prior authorization, accessible only to Core Members with governance responsibilities. Recipients must compartmentalize intelligence for internal analysis only. Any defensive actions must avoid revealing underlying intelligence sources or specific threat details.
 
-### TLP:AMBER+ - Organizational Network Disclosure (Partner+ Access)
-Intelligence shareable within recipient's organizational structure and pre-approved clients, available to Partner and Core Member access levels. Enables leadership briefings and authorized partner coordination. Cannot be redistributed to external parties or published in any format.
+### TLP:AMBER+ - organisational Network Disclosure (Partner+ Access)
+Intelligence shareable within recipient's organisational structure and pre-approved clients, available to Partner and Core Member access levels. Enables leadership briefings and authorized partner coordination. Cannot be redistributed to external parties or published in any format.
 
 ### TLP:AMBER - Community Attribution Disclosure (Contributor+ Access)
 Information shareable among platform participants while maintaining source attribution, accessible to Contributors, Partners, and Core Members. Recipients may coordinate collective defensive actions and reference findings in community forums. Automated sharing systems can distribute within established community boundaries.
@@ -277,7 +277,7 @@ impact_levels:
     longterm: "more_than_7_days"
 ```
 
-FRANK categorizes security incident impacts across severity, financial, and temporal dimensions to support risk-based decision making. Impact assessments help organizations prioritize responses and allocate resources effectively based on potential consequences. These categories enable comparative analysis across different organizational contexts and threat scenarios.
+FRANK categorizes security incident impacts across severity, financial, and temporal dimensions to support risk-based decision making. Impact assessments help organisations prioritize responses and allocate resources effectively based on potential consequences. These categories enable comparative analysis across different organisational contexts and threat scenarios.
 
 | Dimension | Categories | Purpose | Decision Support |
 |-----------|------------|---------|------------------|
@@ -290,10 +290,10 @@ FRANK categorizes security incident impacts across severity, financial, and temp
 Critical incidents involve significant business disruption, data breaches, or complete system compromise requiring immediate response. High severity indicates notable impact with contained damage but substantial operational effects. Medium and low severity represent progressively limited impacts with faster resolution capabilities.
 
 ### Financial Impact Ranges
-Financial categories span from minimal (€0-€1,000) through critical (€1M+) enabling cost-benefit analysis for security investments. Organizations can correlate threat intelligence value with potential financial exposure. Supports business case development for enhanced security measures.
+Financial categories span from minimal (€0-€1,000) through critical (€1M+) enabling cost-benefit analysis for security investments. organisations can correlate threat intelligence value with potential financial exposure. Supports business case development for enhanced security measures.
 
 ### Recovery Time Categories  
-Temporal impact ranges from immediate (<1 hour) to long-term (>7 days) supporting business continuity planning. Recovery timeframes help organizations establish appropriate response procedures and resource requirements. Critical for service level agreement (SLA) development and customer communications.
+Temporal impact ranges from immediate (<1 hour) to long-term (>7 days) supporting business continuity planning. Recovery timeframes help organisations establish appropriate response procedures and resource requirements. Critical for service level agreement (SLA) development and customer communications.
 
 ### Affected Systems Categories
 System impact categories span endpoints, network infrastructure, applications, databases, cloud services, and mobile devices. Each category requires different response procedures and recovery approaches. Enables targeted security control implementation and incident response planning.

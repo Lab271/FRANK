@@ -57,12 +57,11 @@ class TestDynamoDBFRANKDatabaseLogAccess(unittest.TestCase):
         org_id = 'org123'
         action = 'QUERY'
         resource_type = 'submission'
-        resource_id = 'sub456'
         details = {'foo': 'bar'}
 
-        self.db.log_access(org_id, action, resource_type, resource_id, details)
-        self.db.table.put_item.assert_called_once()
-        args, kwargs = self.db.table.put_item.call_args
+        self.db.log_access(org_id, action, resource_type, details)
+        self.db.audit_table.put_item.assert_called_once()
+        args, kwargs = self.db.audit_table.put_item.call_args
         self.assertIn('Item', kwargs or args[0])
 
 class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
@@ -84,7 +83,7 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         submission.timestamp = None
         submission.model_dump_json.return_value = '{}'
         submission.submission_id = 'sub1'
-        submission.submitter.organization_id = 'org1'
+        submission.submitter.organisation_id = 'org1'
         submission.submitter.access_level = 'partner'
         submission.submitter.sector = 'finance'
         submission.submitter.region = 'eu-west-1'
@@ -101,7 +100,7 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
         submission.timestamp = None
         submission.model_dump_json.return_value = '{}'
         submission.submission_id = 'sub1'
-        submission.submitter.organization_id = 'org1'
+        submission.submitter.organisation_id = 'org1'
         submission.submitter.access_level = 'partner'
         submission.submitter.sector = 'finance'
         submission.submitter.region = 'eu-west-1'
@@ -219,7 +218,7 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
             # "submission": {
                 "submission_id": "sub1",
                 "timestamp": "2025-09-12T00:00:00Z",
-                "submitter": {"organization_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
+                "submitter": {"organisation_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
                 "sighting": {"confidence": 80, "severity": "high"},
                 "tlp_level": "TLP:AMBER",
             # }
@@ -229,7 +228,7 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
         result = self.db.get_submission_by_id('sub1')
         self.assertIsNotNone(result)
         self.assertEqual(result['submission_id'], "sub1")
-        self.assertEqual(result['submitter']['organization_id'], "org1")
+        self.assertEqual(result['submitter']['organisation_id'], "org1")
 
     def test_get_submission_by_id_not_found(self):
         self.db.table.get_item.return_value = {}
