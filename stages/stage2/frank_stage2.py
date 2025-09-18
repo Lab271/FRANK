@@ -322,6 +322,7 @@ async def search_threat_sightings(
 
 @app.get("/v1/observations", response_model=ObservationsResponse)
 def get_observations(
+    current_user: Dict[str, Any] = Depends(get_current_user),
     org_id: str = Query(..., description="Organization ID"),
     days: int = Query(30, description="Number of days to include in stats"),
     observable_type: str = Query(None, description="Filter by observable type"),
