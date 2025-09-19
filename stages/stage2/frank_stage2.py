@@ -140,7 +140,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     For this spike, we'll mock the user data.
     """
     # Check if credentials were provided
-    from frank.util.http_exceptions import UnauthenticatedException
     if credentials is None:
         raise UnauthenticatedException("Authentication required")
 
