@@ -42,22 +42,9 @@ class BaseFRANKDatabase(ABC):
             None
         """
         pass
-
-    @abstractmethod
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
-        """
-        Insert or update organization information in the database.
-
-        Args:
-            org_data (Dict[str, Any]): Dictionary containing organization details.
-
-        Returns:
-            bool: True if the operation was successful, False otherwise.
-        """
-        pass
     
     @abstractmethod
-    def store_submission(self, submission: Submission) -> bool:
+    def store_submission(self, submission: Submission) -> None:
         """
         Store a complete submission in the database.
 
@@ -65,22 +52,35 @@ class BaseFRANKDatabase(ABC):
             submission (Submission): The submission object to store.
 
         Returns:
-            bool: True if stored successfully, False otherwise.
+            None
+        """
+        pass
+
+    @abstractmethod
+    def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
+        """
+        Insert or update organisation information in the database.
+
+        Args:
+            org_data (Dict[str, Any]): Dictionary containing organisation details.
+
+        Returns:
+            bool: True if the operation was successful, False otherwise.
         """
         pass
     
     @abstractmethod
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:
         """
         Retrieve a specific submission with access level filtering.
 
         Args:
+            user_id (str): The user making the request.
             submission_id (str): The ID of the submission to retrieve.
-            org_id (str): The organization ID making the request.
             access_level (AccessTier): The access level for filtering (default: CONTRIBUTOR).
 
         Returns:
-            Optional[Submission]: The filtered Submission object, or None if not found.
+            Dict[str, Any]: The filtered Submission object, or None if not found.
         """
         pass
     
@@ -92,7 +92,7 @@ class BaseFRANKDatabase(ABC):
         Query observables with access level filtering and additional filters.
 
         Args:
-            org_id (str): The organization ID making the request.
+            org_id (str): The organisation ID making the request.
             observable_type (ObservableType, optional): Type of observable to filter (default: None).
             limit (int, optional): Maximum number of results to return (default: 100).
             access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
@@ -108,10 +108,10 @@ class BaseFRANKDatabase(ABC):
     @abstractmethod
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
-        Get platform statistics summary for an organization.
+        Get platform statistics summary for an organisation.
 
         Args:
-            org_id (str): The organization ID to get statistics for.
+            org_id (str): The organisation ID to get statistics for.
             days (int, optional): Number of days to include in the summary (default: 30).
 
         Returns:
@@ -126,7 +126,7 @@ class BaseFRANKDatabase(ABC):
         Search for observables by partial value match.
 
         Args:
-            org_id (str): Organization performing the search
+            org_id (str): organisation performing the search
             search_value (str): Value to search for (substring match)
             access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR)
 
@@ -137,20 +137,18 @@ class BaseFRANKDatabase(ABC):
 
     @abstractmethod
     def log_access(self, org_id: str, action: str, 
-                   resource_type: str = None, resource_id: str = None, 
-                   details: Dict[str, Any] = None) -> bool:
+                   resource_type: str = None, details: Dict[str, Any] = None) -> None:
         """
         Log an access event for auditing purposes.
 
         Args:
-            org_id (str): The organization ID performing the action.
+            org_id (str): The organisation ID performing the action.
             action (str): The action performed (e.g., 'READ', 'WRITE').
             resource_type (str, optional): Type of resource accessed (e.g., 'submission').
-            resource_id (str, optional): ID of the resource accessed.
             details (Dict[str, Any], optional): Additional details about the access event.
 
         Returns:
-            bool: True if the log was stored successfully, False otherwise.
+            None
         """
         pass
 
@@ -187,7 +185,7 @@ class BaseFRANKDatabase(ABC):
 
         - PUBLIC: Only basic statistics (submission_id, timestamp, sighting confidence, timestamp, observation_count).
         - OBSERVER: Masks observable values, removes sensitive fields (hit_target, tlp_level).
-        - CONTRIBUTOR: Removes organization_id from hit_target, anonymizes sector.
+        - CONTRIBUTOR: Removes organisation_id from hit_target, anonymizes sector.
         - PARTNER/CORE_MEMBER: Returns full submission data.
 
         Args:
@@ -234,7 +232,7 @@ class BaseFRANKDatabase(ABC):
             # Anonymize hit target details
             if 'hit_target' in filtered:
                 hit_target = filtered['hit_target']
-                hit_target.pop('organization_id', None)
+                hit_target.pop('organisation_id', None)
                 hit_target['sector'] = hit_target.get('sector', 'unknown')
 
             return {'submission': filtered}

@@ -41,7 +41,7 @@ The FRANK platform's core functionality centers around two primary API endpoints
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `submission.submitter.organization_id` | string | ✅ | Unique identifier for submitting organization |
+| `submission.submitter.organisation_id` | string | ✅ | Unique identifier for submitting organisation |
 | `submission.submitter.access_level` | string | ✅ | Access tier: `contributor`, `partner`, `core_member` |
 | `submission.sighting.sighting_id` | string | ✅ | UUID for the sighting event |
 | `submission.sighting.timestamp` | ISO 8601 | ✅ | When the threat was observed |
@@ -53,7 +53,7 @@ The FRANK platform's core functionality centers around two primary API endpoints
 ```yaml
 submission:
   submitter:
-    organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+    organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
     access_level: "partner"
   sighting:
     sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
@@ -81,7 +81,7 @@ submission:
 |-------|------|-------------|
 | `status` | string | Processing status: `accepted`, `rejected`, `pending_validation` |
 | `submission_id` | string | Unique identifier for tracking this submission |
-| `contribution_score_impact` | integer | Points added to organization's contribution score |
+| `contribution_score_impact` | integer | Points added to organisation's contribution score |
 | `processing_status` | string | Current processing state: `queued`, `processing`, `completed` |
 | `validation_required` | boolean | Whether community validation is needed |
 | `errors` | array | Validation errors if status is `rejected` |
@@ -98,7 +98,7 @@ submission:
   "estimated_processing_time": "2-5 minutes",
   "next_steps": {
     "track_status": "/v1/submission/sub-a1b2c3d4-5678-90ef-abcd-1234567890ab/status",
-    "view_contribution": "/v1/organizations/me/contributions"
+    "view_contribution": "/v1/organisations/me/contributions"
   }
 }
 ```
@@ -172,7 +172,7 @@ The response structure varies by access level and format parameter:
     }
   ],
   "aggregations": {
-    "total_organizations": 8,
+    "total_organisations": 8,
     "confidence_distribution": {
       "high": 15,
       "medium": 6,
@@ -202,7 +202,7 @@ The response structure varies by access level and format parameter:
       "submitter": {
         "access_level": "partner",
         "sector": "cybersecurity_services",
-        "organization_id": "identity-masked-uuid"
+        "organisation_id": "identity-masked-uuid"
       },
       "impact": {
         "affected_systems": 5,
@@ -234,7 +234,7 @@ The response structure varies by access level and format parameter:
 | Data Element | Observer | Contributor | Partner | Core Member |
 |--------------|----------|-------------|---------|-------------|
 | Observable Values | Masked | Partial | Full | Full |
-| Organization IDs | ❌ | Masked | Masked | Full |
+| organisation IDs | ❌ | Masked | Masked | Full |
 | Financial Impact | ❌ | Category | Detailed | Full |
 | Infrastructure Details | ❌ | Basic | Detailed | Full |
 | Attribution Data | ❌ | Limited | Full | Full |
@@ -271,9 +271,9 @@ The response structure varies by access level and format parameter:
 ## Implementation Notes
 
 ### Data Anonymization
-- **Observer Level**: IP addresses masked (last octet), organization IDs removed
-- **Contributor Level**: Partial observable data, pseudonymized organization IDs
-- **Partner Level**: Full observables, anonymized organization details
+- **Observer Level**: IP addresses masked (last octet), organisation IDs removed
+- **Contributor Level**: Partial observable data, pseudonymized organisation IDs
+- **Partner Level**: Full observables, anonymized organisation details
 - **Core Member**: Complete data access for platform governance
 
 ### Performance Considerations

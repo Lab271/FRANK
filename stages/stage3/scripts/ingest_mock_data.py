@@ -147,13 +147,13 @@ class MockDataGenerator:
         
         timestamp = datetime.now() - timedelta(days=days_ago, hours=hours_ago, minutes=minutes_ago)
         
-        # Generate organization ID
+        # Generate organisation ID
         org_id = f"org-{random.randint(1000, 9999)}-{random.choice(['alpha', 'beta', 'gamma', 'delta'])}"
         
         submission = {
             "submission": {
                 "submitter": {
-                    "organization_id": org_id,
+                    "organisation_id": org_id,
                     "access_level": random.choice(self.access_levels),
                     "sector": random.choice(self.sectors)
                 },

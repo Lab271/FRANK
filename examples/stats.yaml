@@ -137,7 +137,7 @@ query_results:
     - sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
       submitter_id: "identity-hash-f431f809"
       submitter_access_level: "partner"
-      submitter_organization_type: "cyber_partner"
+      submitter_organisation_type: "cyber_partner"
       hit_target_id: "identity-hash-c9b5d123"
       hit_target_sector: "financial_services"
       hit_target_size: "medium"
@@ -217,7 +217,7 @@ query_results:
     query_timestamp: "2025-01-20T15:30:00Z"
     requesting_user: "core-member-analytics-001"
     data_sources: 3
-    cross_organizational_correlation: true
+    cross_organisational_correlation: true
     
   threat_intelligence:
     observable_value: "185.220.102.45"
@@ -230,14 +230,14 @@ query_results:
   complete_submissions:
     - submission_id: "submission-550e8400-e29b-41d4-a716-446655440000"
       submitter:
-        organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
-        real_organization: "cyber_partner_alpha_bv"
+        organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+        real_organisation: "cyber_partner_alpha_bv"
         contribution_score: 94
         client_count: 47
         
       hit_target:
-        organization_id: "identity-c9b5d123-8877-4422-9966-112233445566"
-        real_organization: "regional_bank_beta"
+        organisation_id: "identity-c9b5d123-8877-4422-9966-112233445566"
+        real_organisation: "regional_bank_beta"
         customer_relationship:
           msp_provider: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
           contract_value_eur: 180000

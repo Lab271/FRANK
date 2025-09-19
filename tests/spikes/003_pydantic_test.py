@@ -99,10 +99,10 @@ class Sighting(BaseModel):
         )
 
 class Submitter(BaseModel):
-    """Submitting organization with validation and auto-generation."""
-    organization_id: Optional[str] = Field(None, description="STIX identity for organization")
-    organization_type: str = Field(default="cyber_partner", description="Organization type")
-    access_level: Optional[str] = Field(None, description="Organization tier")
+    """Submitting organisation with validation and auto-generation."""
+    organisation_id: Optional[str] = Field(None, description="STIX identity for organisation")
+    organisation_type: str = Field(default="cyber_partner", description="organisation type")
+    access_level: Optional[str] = Field(None, description="organisation tier")
     sector: Optional[str] = Field(None, description="Industry sector")
     region: Optional[str] = Field(None, description="Geographic region")    
 
@@ -115,41 +115,41 @@ class Submitter(BaseModel):
     
     @model_validator(mode='after') 
     def ensure_org_id(self):
-        """Ensure organization ID is always set"""
-        if not self.organization_id:
-            self.organization_id = f"identity--{uuid.uuid4()}"
+        """Ensure organisation ID is always set"""
+        if not self.organisation_id:
+            self.organisation_id = f"identity--{uuid.uuid4()}"
         return self
 
     @classmethod
-    def create(cls, access_level: str, organization_type: str = "cyber_partner", sector: str = None, region: str = None):
+    def create(cls, access_level: str, organisation_type: str = "cyber_partner", sector: str = None, region: str = None):
         """Factory method for creating submitters"""
         return cls(
             access_level=access_level,
-            organization_type=organization_type,
+            organisation_type=organisation_type,
             sector=sector,
             region=region
         )
 
 class HitTarget(BaseModel):
-    """Affected organization with privacy controls. """   
-    organization_id: Optional[str] = Field(None, description="STIX identity for affected organization") 
+    """Affected organisation with privacy controls. """   
+    organisation_id: Optional[str] = Field(None, description="STIX identity for affected organisation") 
     sector: str = Field(..., min_length=1, description="Industry sector of target")
-    organization_type: Optional[str] = Field(default="customer", description="Organization type")
-    organization_size: Optional[str] = Field(None, description="Organization size category")
+    organisation_type: Optional[str] = Field(default="customer", description="organisation type")
+    organisation_size: Optional[str] = Field(None, description="organisation size category")
     region: Optional[str] = Field(None, description="Geographic region")
     anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
     
     @model_validator(mode='after') 
     def ensure_org_id(self):
-        """Ensure organization ID is always set"""
-        if not self.organization_id:
-            self.organization_id = f"identity--{uuid.uuid4()}"
+        """Ensure organisation ID is always set"""
+        if not self.organisation_id:
+            self.organisation_id = f"identity--{uuid.uuid4()}"
         return self
 
-    @field_validator('organization_size')
+    @field_validator('organisation_size')
     @classmethod
     def normalize_org_size(cls, v):
-        """Normalize organization size categories"""
+        """Normalize organisation size categories"""
         if v is None:
             return v
             
@@ -168,11 +168,11 @@ class HitTarget(BaseModel):
         return size_mappings.get(normalized, v)
 
     @classmethod
-    def create(cls, sector: str, organization_size: str = None, region: str = None):
+    def create(cls, sector: str, organisation_size: str = None, region: str = None):
         """Factory method for creating hit targets"""
         return cls(
             sector=sector,
-            organization_size=organization_size,
+            organisation_size=organisation_size,
             region=region
         )
 
@@ -185,14 +185,14 @@ class Submission(BaseModel):
     format_version: str = Field(default="1.0", description="Submission format version")
     tlp_level: Optional[str] = Field('GREEN', description="TLP classification")
 
-    submitter: Submitter = Field(..., description="Submitting organization")
-    hit_target: Optional[HitTarget] = Field(None, description="Affected organization")  
+    submitter: Submitter = Field(..., description="Submitting organisation")
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organisation")  
     sighting: Sighting = Field(..., description="Sighting details")
 
     
     @model_validator(mode='after') 
     def ensure_org_id(self):
-        """Ensure organization ID is always set"""
+        """Ensure organisation ID is always set"""
         if not self.submission_id:
             self.submission_id = f"submission--{uuid.uuid4()}"
         return self
@@ -280,7 +280,7 @@ class FrankSightingGenerator:
         
     #     hit_target = HitTarget.create(
     #         sector="financial_services",
-    #         organization_size="medium",
+    #         organisation_size="medium",
     #         region="nl_north_holland"
     #     )
         
@@ -319,11 +319,11 @@ class FrankSightingGenerator:
 #         errors = []
         
 #         # Validate required fields
-#         if not submission.submitter.organization_id:
-#             errors.append("Submitter organization_id is required")
+#         if not submission.submitter.organisation_id:
+#             errors.append("Submitter organisation_id is required")
         
-#         if not submission.hit_target.organization_id:
-#             errors.append("Hit target organization_id is required")
+#         if not submission.hit_target.organisation_id:
+#             errors.append("Hit target organisation_id is required")
         
 #         if not submission.sighting.sighting_id:
 #             errors.append("Sighting ID is required")

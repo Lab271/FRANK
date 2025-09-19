@@ -315,8 +315,8 @@ def step_sensitive_filtered(context):
     
     # Observer should have limited data
     if context.user_type == "observer":
-        # Should not have detailed organization information
-        sensitive_fields = ["organization_details", "financial_impact"]
+        # Should not have detailed organisation information
+        sensitive_fields = ["organisation_details", "financial_impact"]
         for field in sensitive_fields:
             assert field not in response_data, f"Sensitive field {field} should not be in observer response"
 
@@ -369,7 +369,7 @@ def create_test_submission(ip_address, confidence, sector="technology"):
     return {
         "submission": {
             "submitter": {
-                "organization_id": f"test-org-{hash(ip_address)}",
+                "organisation_id": f"test-org-{hash(ip_address)}",
                 "access_level": "partner",
                 "sector": sector
             },
@@ -396,7 +396,7 @@ def create_comprehensive_submission(sighting_data):
     return {
         "submission": {
             "submitter": {
-                "organization_id": "test-comprehensive-org",
+                "organisation_id": "test-comprehensive-org",
                 "access_level": "core_member",
                 "sector": "cybersecurity_services"
             },

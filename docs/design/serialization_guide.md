@@ -55,7 +55,7 @@ print(submission_dict)
 {
     'submission': {
         'submitter': {
-            'organization_id': 'identity-f431f809-377b-45e0-aa1c-6a4751cae5ff',
+            'organisation_id': 'identity-f431f809-377b-45e0-aa1c-6a4751cae5ff',
             'access_level': 'partner'
         },
         'sighting': {
@@ -93,7 +93,7 @@ print(yaml_string)
 ```yaml
 submission:
   submitter:
-    organization_id: identity-f431f809-377b-45e0-aa1c-6a4751cae5ff
+    organisation_id: identity-f431f809-377b-45e0-aa1c-6a4751cae5ff
     access_level: partner
   sighting:
     sighting_id: sighting-ee20065d-2555-424f-ad9e-0f8428623c75
@@ -120,7 +120,7 @@ print(json_string)
 {
   "submission": {
     "submitter": {
-      "organization_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
+      "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff",
       "access_level": "partner"
     },
     "sighting": {
@@ -214,7 +214,7 @@ class FRANKSubmission:
         sighting = _safe_get(submission_data, 'sighting')
         
         return cls(
-            submitter_org_id=_safe_get(submitter, 'organization_id'),
+            submitter_org_id=_safe_get(submitter, 'organisation_id'),
             submitter_access_level=_safe_get(submitter, 'access_level'),
             sighting_id=_safe_get(sighting, 'sighting_id'),
             # ... map all fields
@@ -227,7 +227,7 @@ class FRANKSubmission:
         # Build submitter section
         submitter = {}
         if self.submitter_org_id:
-            submitter['organization_id'] = self.submitter_org_id
+            submitter['organisation_id'] = self.submitter_org_id
         if self.submitter_access_level:
             submitter['access_level'] = self.submitter_access_level
             

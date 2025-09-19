@@ -37,14 +37,14 @@ metadata:
 ```
 
 #### 2.2 Submitter Section (`submission.submitter`)
-**Purpose**: Information about the organization making the submission
+**Purpose**: Information about the organisation making the submission
 **Cardinality**: 1 (Required)
 **Data Type**: Object
 
 ```yaml
 submitter:
-  organization_id: string       # Required: UUID format
-  organization_type: string     # Optional: "cyber_partner", "customer"
+  organisation_id: string       # Required: UUID format
+  organisation_type: string     # Optional: "cyber_partner", "customer"
   access_level: string                 # Required: access access_level level
   sector: string               # Optional: industry classification
   region: string               # Optional: geographical identifier
@@ -53,16 +53,16 @@ submitter:
 ```
 
 #### 2.3 Hit Target Section (`submission.hit_target`)
-**Purpose**: Information about the organization that experienced the threat
+**Purpose**: Information about the organisation that experienced the threat
 **Cardinality**: 0..1 (Optional)
 **Data Type**: Object
 
 ```yaml
 hit_target:
-  organization_id: string       # Required: anonymized UUID
-  organization_type: string     # Optional: "customer", "internal"
+  organisation_id: string       # Required: anonymized UUID
+  organisation_type: string     # Optional: "customer", "internal"
   sector: string               # Optional: target industry
-  organization_size: string     # Optional: "small", "medium", "large"
+  organisation_size: string     # Optional: "small", "medium", "large"
   region: string               # Optional: geographical location
   anonymization_level: string  # Optional: "low", "medium", "high"
   customer_relationship: object # Optional: MSP relationship data
@@ -276,7 +276,7 @@ Technical validation rules and data quality specifications.
 
 #### 6.1 Required Field Validation
 **Core Required Fields** (enforced by FRANKValidator):
-- `submission.submitter.organization_id`
+- `submission.submitter.organisation_id`
 - `submission.submitter.access_level`
 - `submission.sighting.sighting_id`
 - `submission.sighting.timestamp`

@@ -37,46 +37,46 @@ class TestSubmitter(unittest.TestCase):
         
         # Check that required fields are set
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertEqual(submitter.organization_type, "cyber_partner")  # default
+        self.assertEqual(submitter.organisation_type, "cyber_partner")  # default
         
-        # Check that organization_id is auto-generated
-        self.assertIsNotNone(submitter.organization_id)
-        self.assertTrue(submitter.organization_id.startswith("identity--"))
-        self.assertIsInstance(uuid.UUID(submitter.organization_id.split("--")[1]), uuid.UUID)
+        # Check that organisation_id is auto-generated
+        self.assertIsNotNone(submitter.organisation_id)
+        self.assertTrue(submitter.organisation_id.startswith("identity--"))
+        self.assertIsInstance(uuid.UUID(submitter.organisation_id.split("--")[1]), uuid.UUID)
 
     def test_create_submitter_with_all_fields(self):
         """Test creating a submitter with all fields provided"""
         org_id = f"identity--{uuid.uuid4()}"
         submitter = Submitter(
-            organization_id=org_id,
+            organisation_id=org_id,
             access_level=AccessTier.CORE_MEMBER,
-            organization_type="mssp",
+            organisation_type="mssp",
             sector="technology",
             region="north_america",
             client_count=150
         )
         
-        self.assertEqual(submitter.organization_id, org_id)
+        self.assertEqual(submitter.organisation_id, org_id)
         self.assertEqual(submitter.access_level, AccessTier.CORE_MEMBER)
-        self.assertEqual(submitter.organization_type, "mssp")
+        self.assertEqual(submitter.organisation_type, "mssp")
         self.assertEqual(submitter.sector, "technology")
         self.assertEqual(submitter.region, "north_america")
         self.assertEqual(submitter.client_count, 150)
 
-    def test_organization_id_auto_generation(self):
-        """Test that organization_id is auto-generated when not provided"""
+    def test_organisation_id_auto_generation(self):
+        """Test that organisation_id is auto-generated when not provided"""
         # Test with None
-        submitter1 = Submitter(access_level=AccessTier.PARTNER, organization_id=None)
-        self.assertIsNotNone(submitter1.organization_id)
-        self.assertTrue(submitter1.organization_id.startswith("identity--"))
+        submitter1 = Submitter(access_level=AccessTier.PARTNER, organisation_id=None)
+        self.assertIsNotNone(submitter1.organisation_id)
+        self.assertTrue(submitter1.organisation_id.startswith("identity--"))
         
         # Test with empty string
-        submitter2 = Submitter(access_level=AccessTier.PARTNER, organization_id="")
-        self.assertIsNotNone(submitter2.organization_id)
-        self.assertTrue(submitter2.organization_id.startswith("identity--"))
+        submitter2 = Submitter(access_level=AccessTier.PARTNER, organisation_id="")
+        self.assertIsNotNone(submitter2.organisation_id)
+        self.assertTrue(submitter2.organisation_id.startswith("identity--"))
         
         # Test different IDs are generated
-        self.assertNotEqual(submitter1.organization_id, submitter2.organization_id)
+        self.assertNotEqual(submitter1.organisation_id, submitter2.organisation_id)
 
     def test_sector_normalization(self):
         """Test sector name normalization - 'be forgiving' on input"""
@@ -155,7 +155,7 @@ class TestSubmitter(unittest.TestCase):
         self.assertEqual(submitter.access_level, AccessTier.CONTRIBUTOR)
         self.assertEqual(submitter.sector, "health")  # Should be normalized
         self.assertEqual(submitter.region, "asia_pacific")
-        self.assertIsNotNone(submitter.organization_id)
+        self.assertIsNotNone(submitter.organisation_id)
 
     def test_factory_method_minimal(self):
         """Test factory method with minimal parameters"""
@@ -164,7 +164,7 @@ class TestSubmitter(unittest.TestCase):
         self.assertEqual(submitter.access_level, AccessTier.OBSERVER)
         self.assertIsNone(submitter.sector)
         self.assertIsNone(submitter.region)
-        self.assertIsNotNone(submitter.organization_id)
+        self.assertIsNotNone(submitter.organisation_id)
 
     def test_model_dump(self):
         """Test serialization to dictionary"""
@@ -178,9 +178,9 @@ class TestSubmitter(unittest.TestCase):
         data = submitter.model_dump()
         
         # Check that all fields are present
-        self.assertIn("organization_id", data)
+        self.assertIn("organisation_id", data)
         self.assertIn("access_level", data)
-        self.assertIn("organization_type", data)
+        self.assertIn("organisation_type", data)
         self.assertIn("sector", data)
         self.assertIn("region", data)
         self.assertIn("client_count", data)
@@ -203,7 +203,7 @@ class TestSubmitter(unittest.TestCase):
         self.assertNotIn("client_count", data)
         
         # Check that non-None fields are present
-        self.assertIn("organization_id", data)
+        self.assertIn("organisation_id", data)
         self.assertIn("access_level", data)
 
     def test_json_serialization(self):
@@ -238,13 +238,13 @@ class TestSubmitter(unittest.TestCase):
         org_id = f"identity--{uuid.uuid4()}"
         
         submitter1 = Submitter(
-            organization_id=org_id,
+            organisation_id=org_id,
             access_level=AccessTier.PARTNER,
             sector="financial"
         )
         
         submitter2 = Submitter(
-            organization_id=org_id,
+            organisation_id=org_id,
             access_level=AccessTier.PARTNER,
             sector="financial"
         )
@@ -298,7 +298,7 @@ class TestSubmitterIntegration(unittest.TestCase):
         submitter = Submitter(access_level=AccessTier.PARTNER, sector="financial")
         
         # Should be able to access all required properties for submission validation
-        self.assertIsNotNone(submitter.organization_id)
+        self.assertIsNotNone(submitter.organisation_id)
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
         self.assertEqual(submitter.sector, "financial")
 
@@ -307,7 +307,7 @@ class TestSubmitterIntegration(unittest.TestCase):
         submitters = [Submitter(access_level=AccessTier.PARTNER) for _ in range(10)]
         
         # All IDs should be unique
-        ids = [s.organization_id for s in submitters]
+        ids = [s.organisation_id for s in submitters]
         self.assertEqual(len(ids), len(set(ids)))
         
         # All IDs should follow the pattern
@@ -344,7 +344,7 @@ class TestSubmitterPerformance(unittest.TestCase):
         self.assertEqual(len(submitters), 100)
         
         # All should have unique IDs
-        ids = [s.organization_id for s in submitters]
+        ids = [s.organisation_id for s in submitters]
         self.assertEqual(len(ids), len(set(ids)))
 
 class TestSubmitterSerialization(unittest.TestCase):
@@ -357,9 +357,9 @@ class TestSubmitterSerialization(unittest.TestCase):
         }
         
         self.full_data = {
-            "organization_id": "identity--12345678-1234-5678-9abc-123456789abc",
+            "organisation_id": "identity--12345678-1234-5678-9abc-123456789abc",
             "access_level": "partner",
-            "organization_type": "cyber_partner",
+            "organisation_type": "cyber_partner",
             "sector": "financial",
             "region": "north_america",
             "client_count": 150
@@ -382,17 +382,17 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitter = Submitter(**self.minimal_data)
         
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertEqual(submitter.organization_type, "cyber_partner")  # Default value
-        self.assertIsNotNone(submitter.organization_id)
-        self.assertTrue(submitter.organization_id.startswith("identity--"))
+        self.assertEqual(submitter.organisation_type, "cyber_partner")  # Default value
+        self.assertIsNotNone(submitter.organisation_id)
+        self.assertTrue(submitter.organisation_id.startswith("identity--"))
 
     def test_dict_to_submitter_full(self):
         """Test creating Submitter from full dictionary."""
         submitter = Submitter(**self.full_data)
         
-        self.assertEqual(submitter.organization_id, self.full_data["organization_id"])
+        self.assertEqual(submitter.organisation_id, self.full_data["organisation_id"])
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertEqual(submitter.organization_type, "cyber_partner")
+        self.assertEqual(submitter.organisation_type, "cyber_partner")
         self.assertEqual(submitter.sector, "financial")
         self.assertEqual(submitter.region, "north_america")
         self.assertEqual(submitter.client_count, 150)
@@ -403,7 +403,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         result = submitter.model_dump(exclude_none=True)
         
         self.assertEqual(result["access_level"], "partner")  # use_enum_values=True
-        self.assertEqual(result["organization_type"], "cyber_partner")
+        self.assertEqual(result["organisation_type"], "cyber_partner")
         self.assertEqual(result["sector"], "financial")
         self.assertEqual(result["client_count"], 150)
 
@@ -415,8 +415,8 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Check essential fields survived
         self.assertEqual(result_dict["access_level"], self.minimal_data["access_level"])
-        self.assertIn("organization_id", result_dict)
-        self.assertEqual(result_dict["organization_type"], "cyber_partner")
+        self.assertIn("organisation_id", result_dict)
+        self.assertEqual(result_dict["organisation_type"], "cyber_partner")
 
     def test_dict_roundtrip_full(self):
         """Test dictionary roundtrip with full data."""
@@ -426,7 +426,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         # Create new submitter from result
         roundtrip_submitter = Submitter(**result_dict)
         
-        self.assertEqual(submitter.organization_id, roundtrip_submitter.organization_id)
+        self.assertEqual(submitter.organisation_id, roundtrip_submitter.organisation_id)
         self.assertEqual(submitter.access_level, roundtrip_submitter.access_level)
         self.assertEqual(submitter.sector, roundtrip_submitter.sector)
         self.assertEqual(submitter.region, roundtrip_submitter.region)
@@ -462,7 +462,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         parsed_dict = json.loads(json_str)
         roundtrip = Submitter(**parsed_dict)
         
-        self.assertEqual(original.organization_id, roundtrip.organization_id)
+        self.assertEqual(original.organisation_id, roundtrip.organisation_id)
         self.assertEqual(original.access_level, roundtrip.access_level)
         self.assertEqual(original.sector, roundtrip.sector)
         self.assertEqual(original.region, roundtrip.region)
@@ -506,7 +506,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         parsed_dict = yaml.safe_load(yaml_str)
         roundtrip = Submitter(**parsed_dict)
         
-        self.assertEqual(original.organization_id, roundtrip.organization_id)
+        self.assertEqual(original.organisation_id, roundtrip.organisation_id)
         self.assertEqual(original.access_level, roundtrip.access_level)
         self.assertEqual(original.sector, roundtrip.sector)
         self.assertEqual(original.region, roundtrip.region)
@@ -559,54 +559,54 @@ class TestSubmitterSerialization(unittest.TestCase):
         self.assertEqual(submitter.sector, roundtrip.sector)
         self.assertEqual(submitter.region, roundtrip.region)
 
-    def test_organization_id_generation(self):
-        """Test automatic organization ID generation."""
+    def test_organisation_id_generation(self):
+        """Test automatic organisation ID generation."""
         submitter1 = Submitter(**self.minimal_data)
         submitter2 = Submitter(**self.minimal_data)
         
         # Both should have IDs
-        self.assertIsNotNone(submitter1.organization_id)
-        self.assertIsNotNone(submitter2.organization_id)
+        self.assertIsNotNone(submitter1.organisation_id)
+        self.assertIsNotNone(submitter2.organisation_id)
         
         # IDs should be unique
-        self.assertNotEqual(submitter1.organization_id, submitter2.organization_id)
+        self.assertNotEqual(submitter1.organisation_id, submitter2.organisation_id)
         
         # IDs should be STIX format
-        self.assertTrue(submitter1.organization_id.startswith("identity--"))
-        self.assertTrue(submitter2.organization_id.startswith("identity--"))
+        self.assertTrue(submitter1.organisation_id.startswith("identity--"))
+        self.assertTrue(submitter2.organisation_id.startswith("identity--"))
         
         # UUID part should be valid
-        uuid_part1 = submitter1.organization_id.split("--")[1]
-        uuid_part2 = submitter2.organization_id.split("--")[1]
+        uuid_part1 = submitter1.organisation_id.split("--")[1]
+        uuid_part2 = submitter2.organisation_id.split("--")[1]
         
         # Should not raise ValueError
         uuid.UUID(uuid_part1)
         uuid.UUID(uuid_part2)
 
-    def test_predefined_organization_id_preserved(self):
-        """Test that predefined organization IDs are preserved."""
+    def test_predefined_organisation_id_preserved(self):
+        """Test that predefined organisation IDs are preserved."""
         predefined_id = "identity--custom-12345678-1234-5678-9abc-123456789abc"
         data = self.minimal_data.copy()
-        data["organization_id"] = predefined_id
+        data["organisation_id"] = predefined_id
         
         submitter = Submitter(**data)
-        self.assertEqual(submitter.organization_id, predefined_id)
+        self.assertEqual(submitter.organisation_id, predefined_id)
         
         # Test roundtrip preserves custom ID
         dict_data = submitter.model_dump(exclude_none=True)
         roundtrip = Submitter(**dict_data)
-        self.assertEqual(roundtrip.organization_id, predefined_id)
+        self.assertEqual(roundtrip.organisation_id, predefined_id)
 
     def test_default_values_serialization(self):
         """Test that default values are properly handled in serialization."""
         submitter = Submitter(**self.minimal_data)
         
         # Check defaults are set
-        self.assertEqual(submitter.organization_type, "cyber_partner")
+        self.assertEqual(submitter.organisation_type, "cyber_partner")
         
         # Check they appear in serialization
         data = submitter.model_dump(exclude_none=True)
-        self.assertEqual(data["organization_type"], "cyber_partner")
+        self.assertEqual(data["organisation_type"], "cyber_partner")
 
     def test_extra_fields_ignored(self):
         """Test that extra fields are ignored due to 'extra=ignore' config."""
@@ -660,7 +660,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         # Required and default fields should be present
         self.assertIn("access_level", result)
-        self.assertIn("organization_type", result)
+        self.assertIn("organisation_type", result)
 
     def test_multiple_format_consistency(self):
         """Test that dict, JSON, and YAML produce consistent results."""
@@ -679,7 +679,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         # All should be equivalent
         submitters = [from_dict, from_json, from_yaml]
         for sub in submitters:
-            self.assertEqual(sub.organization_id, original.organization_id)
+            self.assertEqual(sub.organisation_id, original.organisation_id)
             self.assertEqual(sub.access_level, original.access_level)
             self.assertEqual(sub.sector, original.sector)
             self.assertEqual(sub.region, original.region)
@@ -701,7 +701,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         roundtrip = Submitter(**parsed["submitter"])
         
         self.assertEqual(submitter.access_level, roundtrip.access_level)
-        self.assertEqual(submitter.organization_type, roundtrip.organization_type)
+        self.assertEqual(submitter.organisation_type, roundtrip.organisation_type)
 
     def test_enum_serialization_consistency(self):
         """Test that enum values are consistently serialized as strings."""

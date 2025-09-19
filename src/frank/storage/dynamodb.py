@@ -9,12 +9,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import boto3
-from typing import Dict, Any, List, Optional
+from copy import deepcopy
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
-from botocore.exceptions import ClientError
+from typing import Dict, Any, List, Optional
 
+import boto3
+from botocore.exceptions import ClientError
 import logging
 
 from frank.core.models import Submission, Observable
@@ -31,7 +32,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     
     Single Table Design Pattern - General table:
     PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
-    ORG#{org_id}        | ORG             | TIER#{access_level}     | #{timestamp} | Organization    | Organization metadata
+    ORG#{org_id}        | ORG             | TIER#{access_level}     | #{timestamp} | organisation    | organisation metadata
     SUB#{sub_id}        | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
     OBS#{obs_hash}      | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
     SIGHT#{sighting_id} | SUB#{sub_id}    | ORG#{org_id}    | #{timestamp} | Sighting        | Sighting details (confidence, severity, observables)
@@ -46,7 +47,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         Initialize DynamoDB database connection for LocalStack environment.
 
-
         Args:
             table_name: DynamoDB table name
             region: AWS region
@@ -57,6 +57,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         aws_secret_access_key=self.connection_params.get("AWS_SECRET_ACCESS_KEY", "test")
 
         self.table_name = self.connection_params.get("DYNAMODB_TABLE", "frank_table")
+        self.audit_table_name = self.connection_params.get("AUDIT_TABLE", "frank_audit")
         self.region = self.connection_params.get("AWS_DEFAULT_REGION", "eu-west-1")
         self.environment = self.connection_params.get("FRANK_ENVIRONMENT", "localstack")
 
@@ -90,7 +91,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         # Verify connection and create table if needed (LocalStack only)
         if self.environment == 'localstack':
-            self._ensure_table_exists()
+            self.table = self._ensure_table_exists(self.table_name)
+            self.audit_table = self._ensure_table_exists(self.audit_table_name)
 
 
     def _convert_floats_to_decimal(self, obj: Any) -> Any:
@@ -112,91 +114,79 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         elif isinstance(obj, list):
             return [self._convert_decimals_to_float(item) for item in obj]
         return obj
-    
-    def _ensure_table_exists(self) -> bool:
+
+    def _ensure_table_exists(self, table_name):
         """
         Create the FRANK DynamoDB table with proper indexes and TTL configuration.
         
         Args:
-            table_name: Name for the DynamoDB table
-            region: AWS region
+            table_name -> str: Name for the DynamoDB table 
             
         Returns:
-            True if table created successfully
+            table -> DynamoDB.Table: The DynamoDB Table resource
         """
-        try:       
-            # Create table with single table design
-            table_definition = {
-                'TableName': self.table_name,
-                'KeySchema': [
-                    {'AttributeName': 'PK', 'KeyType': 'HASH'},
-                    {'AttributeName': 'SK', 'KeyType': 'RANGE'}
-                ],
-                'AttributeDefinitions': [
-                    {'AttributeName': 'PK', 'AttributeType': 'S'},
-                    {'AttributeName': 'SK', 'AttributeType': 'S'},
-                    {'AttributeName': 'GSI1PK', 'AttributeType': 'S'},
-                    {'AttributeName': 'GSI1SK', 'AttributeType': 'S'}
-                ],
-                'GlobalSecondaryIndexes': [
-                    {
-                        'IndexName': 'GSI1',
-                        'KeySchema': [
-                            {'AttributeName': 'GSI1PK', 'KeyType': 'HASH'},
-                            {'AttributeName': 'GSI1SK', 'KeyType': 'RANGE'}
-                        ],
-                        'Projection': {'ProjectionType': 'ALL'},
-                    }
-                ],
-                'BillingMode': 'PAY_PER_REQUEST',
-                'SSESpecification': {
-                    'Enabled': True,
-                    'SSEType': 'KMS'
-                },
-                'Tags': [
-                    {'Key': 'Application', 'Value': 'FRANK'},
-                    {'Key': 'Environment', 'Value': 'development'},
-                    {'Key': 'DataClassification', 'Value': 'confidential'}
-                ]
-            }
-
-            try:
-                # Try to get table
-                self.table = self.dynamodb.Table(self.table_name)
-                self.table.load()
-                self.logger.info(f"✅ Table '{self.table_name}' already exists")
-            except self.dynamodb.meta.client.exceptions.ResourceNotFoundException:
-
-                # Create the table
-                _ = self.dynamodb.create_table(**table_definition)
-                self.table = self.dynamodb.Table(self.table_name)
-
-                # Wait for table to be created
-                waiter = self.table.meta.client.get_waiter('table_exists')
-                waiter.wait(TableName=self.table_name)
-                self.logger.info(f"✅ Table '{self.table_name}' created successfully")
-
-            
-            # Enable TTL on the TTL attribute
-            self.dynamodb.meta.client.update_time_to_live(
-                TableName=self.table_name,
-                TimeToLiveSpecification={
-                    'AttributeName': 'TTL',
-                    'Enabled': True
+                # Create table with single table design
+        table_definition = {
+            'TableName': table_name,
+            'KeySchema': [
+                {'AttributeName': 'PK', 'KeyType': 'HASH'},
+                {'AttributeName': 'SK', 'KeyType': 'RANGE'}
+            ],
+            'AttributeDefinitions': [
+                {'AttributeName': 'PK', 'AttributeType': 'S'},
+                {'AttributeName': 'SK', 'AttributeType': 'S'},
+                {'AttributeName': 'GSI1PK', 'AttributeType': 'S'},
+                {'AttributeName': 'GSI1SK', 'AttributeType': 'S'}
+            ],
+            'GlobalSecondaryIndexes': [
+                {
+                    'IndexName': 'GSI1',
+                    'KeySchema': [
+                        {'AttributeName': 'GSI1PK', 'KeyType': 'HASH'},
+                        {'AttributeName': 'GSI1SK', 'KeyType': 'RANGE'}
+                    ],
+                    'Projection': {'ProjectionType': 'ALL'},
                 }
-            )
-            # self.logger.info(f"✅ FRANK DynamoDB table '{self.table_name}' created successfully")
-            return True
-            
-        except ClientError as e:
-                self.logger.error(f"❌ Failed to create table: {e}")
-                return False
-        except Exception as e:
-            self.logger.error(f"❌ Unexpected error: {e}")
-            return False
+            ],
+            'BillingMode': 'PAY_PER_REQUEST',
+            'SSESpecification': {
+                'Enabled': True,
+                'SSEType': 'KMS'
+            },
+            'Tags': [
+                {'Key': 'Application', 'Value': 'FRANK'},
+                {'Key': 'Environment', 'Value': 'development'},
+                {'Key': 'DataClassification', 'Value': 'confidential'}
+            ]
+        }
+        td = deepcopy(table_definition)
+        # Table existence check and creation
+        try:
+            self.client.describe_table(TableName=table_name)
+            table = self.dynamodb.Table(table_name)
+            table.load()  # Ensure table is loaded
+            self.logger.info(f"✅ Table '{table_name}' exists")
+        except self.client.exceptions.ResourceNotFoundException:
+            self.logger.info(f"🔨 Creating table '{table_name}'...")
+            try:
+                table = self.dynamodb.create_table(**td)
+                self.logger.info(f"✅ Table '{table_name}' created")
+            except self.client.exceptions.ResourceInUseException:
+                self.logger.info(f"⚠️ Table '{table_name}' already exists (race condition)")
+                table = self.dynamodb.Table(table_name)
 
-    
-    def store_submission(self, submission: Submission) -> bool:
+        table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
+
+        # Enable TTL on the TTL attribute for audit table
+        try:
+            self.dynamodb.meta.client.update_time_to_live(
+                TableName=table_name, TimeToLiveSpecification={"AttributeName": "TTL", "Enabled": True}
+            )
+        except Exception as e:
+            self.logger.warning(f"Could not enable TTL for '{table_name}': {e}")
+        return table
+   
+    def store_submission(self, submission: Submission) -> None:
         """
         Store a complete submission in the DynamoDB database.
 
@@ -218,11 +208,11 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         submission_item = {
             'PK': f"SUB#{submission.submission_id}",
             'SK': 'SUB',
-            'GSI1PK': f"ORG#{submission.submitter.organization_id}",
+            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
             'GSI1SK': timestamp_str,
             'EntityType': 'Submission',
             'submission_id': submission.submission_id,
-            'submitter_id': submission.submitter.organization_id,
+            'submitter_id': submission.submitter.organisation_id,
             'access_level': submission.submitter.access_level, # make sure this is explicitly stored
             'submission_timestamp': timestamp_str,
             'tlp_level': submission.tlp_level,
@@ -234,12 +224,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         # Store submitter info for querying
         org_item = {
-            'PK': f"ORG#{submission.submitter.organization_id}",
+            'PK': f"ORG#{submission.submitter.organisation_id}",
             'SK': 'ORG',
             'GSI1PK': f"TIER#SUBMITTER",
             'GSI1SK': timestamp_str,
-            'EntityType': 'Organization',
-            'organization_id': submission.submitter.organization_id,
+            'EntityType': 'organisation',
+            'organisation_id': submission.submitter.organisation_id,
             'sector': submission.submitter.sector or 'cyber_partner',
             'region': submission.submitter.region or 'unknown',
             'last_active': timestamp_str,
@@ -249,14 +239,14 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         # Store hit_target as another ORG# item if present
         hit_target = getattr(submission, 'hit_target', None)
-        if hit_target and hasattr(hit_target, 'organization_id'):
+        if hit_target and hasattr(hit_target, 'organisation_id'):
             ht_org_item = {
-                'PK': f"ORG#{hit_target.organization_id}",
+                'PK': f"ORG#{hit_target.organisation_id}",
                 'SK': 'ORG',
                 'GSI1PK': f"TIER#TARGET",
                 'GSI1SK': timestamp_str,
-                'EntityType': 'Organization',
-                'organization_id': hit_target.organization_id,
+                'EntityType': 'organisation',
+                'organisation_id': hit_target.organisation_id,
                 'sector': getattr(hit_target, 'sector', 'unknown'),
                 'region': getattr(hit_target, 'region', 'unknown'),
                 'last_active': timestamp_str,
@@ -269,12 +259,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         sighting_item = {
             'PK': f"SIGHT#{sighting.sighting_id}",
             'SK': f"SUB#{submission.submission_id}",
-            'GSI1PK': f"ORG#{submission.submitter.organization_id}",
+            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
             'GSI1SK': timestamp_str,
             'EntityType': 'Sighting',
             'sighting_id': sighting.sighting_id,
             'submission_id': submission.submission_id,
-            'submitter_id': submission.submitter.organization_id,
+            'submitter_id': submission.submitter.organisation_id,
             'confidence': sighting.confidence,
             'severity': sighting.severity,
             'timestamp': timestamp_str,
@@ -286,19 +276,16 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         # Create observable index items
         items_to_write.extend(self._extract_observables(submission))
 
-        try:
-            self._batch_write_items(items_to_write)
-            return True
-        except FRANKStorageError:
-            return False
+        self._batch_write_items(items_to_write)
 
-    def upsert_organization(self, org_data: Dict[str, Any]) -> bool:
+
+    def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
         """
-        Insert or update organization information in DynamoDB.
+        Insert or update organisation information in DynamoDB.
 
         Args:
-            org_data (Dict[str, Any]): Dictionary containing organization fields. Must include 'organization_id'.
-                Expected keys: organization_id, access_level, sector, region, last_active (optional).
+            org_data (Dict[str, Any]): Dictionary containing organisation fields. Must include 'organisation_id'.
+                Expected keys: organisation_id, access_level, sector, region, last_active (optional).
 
         Returns:
             bool: True if the operation succeeded, False if there was a ClientError.
@@ -307,14 +294,14 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             Logs error and returns False if DynamoDB put_item fails.
         """
         try:
-            timestamp = org_data.get('last_active') or datetime.now(timezone.utc).isoformat()
+            timestamp = org_data.get('last_active', None) or datetime.now(timezone.utc).isoformat()
             org_item = {
-                'PK': f"ORG#{org_data['organization_id']}",
+                'PK': f"ORG#{org_data['organisation_id']}",
                 'SK': 'ORG',
                 'GSI1PK': f"TIER#{org_data.get('access_level', 'unknown')}",
                 'GSI1SK': timestamp,
-                'EntityType': 'Organization',
-                'organization_id': org_data.get('organization_id', ''),
+                'EntityType': 'organisation',
+                'organisation_id': org_data.get('organisation_id', ''),
                 'access_level': org_data.get('access_level', ''),
                 'sector': org_data.get('sector', ''),
                 'region': org_data.get('region', ''),
@@ -324,7 +311,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             self.table.put_item(Item=org_item)
             return True
         except ClientError as e:
-            self.logger.error(f"Error upserting organization: {e}")
+            self.logger.error(f"Error upserting organisation: {e}")
             return False
 
     def _extract_observables(self, submission: Submission) -> List[Dict]:
@@ -382,7 +369,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'observable_type': obs['type'],
                         'observable_value': obs['value'],
                         'submission_id': submission.submission_id,
-                        'submitter_id': submission.submitter.organization_id,
+                        'submitter_id': submission.submitter.organisation_id,
                         'sighting_id': submission.sighting.sighting_id,
                         'confidence': submission.sighting.confidence,
                         'severity': submission.sighting.severity,
@@ -397,7 +384,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         obs_hash=obs_hash,
                         obs_type=obs['type'],
                         obs_value=obs['value'],
-                        hit_target_id=getattr(submission.hit_target, 'organization_id', None),  # Safe access to hit_target
+                        hit_target_id=getattr(submission.hit_target, 'organisation_id', None),  # Safe access to hit_target
                         sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
                         timestamp_str=timestamp_str
                     )
@@ -426,7 +413,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             obs_hash (str): Hash of the observable.
             obs_type (str): Type of the observable (e.g., 'ipv4', 'domain').
             obs_value (str): Value of the observable.
-            hit_target_id (str, optional): Organization ID of the hit target, if available.
+            hit_target_id (str, optional): organisation ID of the hit target, if available.
             sector (str, optional): Sector associated with the observable, if available.
             timestamp_str (str, optional): ISO timestamp string for the current sighting.
 
@@ -547,13 +534,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 raise FRANKStorageError(f"Batch write operation failed: {e}")
 
 
-    def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
+    def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:
         """
         Retrieve a specific submission with access level filtering.
 
         Args:
             submission_id: Submission ID to retrieve
-            org_id: Organization ID making the request
+            user_id: User ID making the request
             access_level: Access level for filtering
 
         Returns:
@@ -570,25 +557,19 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 return None
 
             # TODO: Transform to Submission directly
-            submission_dict = response['Item'].get('submission_data')
-            if not submission_dict:
-                return None
+            submission_dict = response['Item'].get('submission_data', None)
+            return submission_dict
 
-            # Apply access level filtering
-            # TODO: move this client side, not db processing
-            filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
 
-            # Log access
-            self._log_access(org_id, 'READ', 'submission', submission_id)
-
-            return Submission(**filtered_submission)
         except ClientError as e:
             self.logger.error(f"Error retrieving submission {submission_id}: {e}")
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
-    
-    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
-                         limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
-                         min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
+
+
+    def query_observables(self, user_id: str,  access_level: AccessTier = AccessTier.CONTRIBUTOR,
+                         observable_type: ObservableType = None, sectors: List[str] = None,
+                         min_confidence: float = None, 
+                         limit: int = 100, days_back: int = None) -> List[Observable]:
         """
         Query observables with access level filtering and additional filters.
 
@@ -601,11 +582,11 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         - access_level: Apply access level filtering to each observable (see FRANK access tier model).
 
         Args:
-            org_id (str): Organization ID making the request (used for access logging).
-            observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
-            limit (int, optional): Maximum number of results to return (default: 100).
+            user_id (str): User ID making the request (used for access logging).
             access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
+            observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
             min_confidence (float, optional): Minimum confidence value to include.
+            limit (int, optional): Maximum number of results to return (default: 100).
             sectors (List[str], optional): List of allowed sectors to include.
             days_back (int, optional): Only include observables seen in the last N days.
 
@@ -677,7 +658,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'total_sightings': 0,
                         'first_seen': item.get('timestamp'),
                         'last_seen': item.get('timestamp'),
-                        'unique_organizations': set(),
+                        'unique_organisations': set(),
                         'confidence_values': []
                     }
 
@@ -685,7 +666,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 obs_entry['total_sightings'] += 1
                 org_id_val = item.get('submitter_org_id')
                 if org_id_val:
-                    obs_entry['unique_organizations'].add(org_id_val)
+                    obs_entry['unique_organisations'].add(org_id_val)
                 obs_entry['confidence_values'].append(item.get('confidence', 0))
 
                 # Update time bounds
@@ -699,7 +680,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             # Convert to final format
             results = []
             for obs_hash, obs_data in observables_map.items():
-                obs_data['unique_organizations'] = len(obs_data['unique_organizations'])
+                obs_data['unique_organisations'] = len(obs_data['unique_organisations'])
                 obs_data['avg_confidence'] = (
                     sum(obs_data['confidence_values']) / len(obs_data['confidence_values'])
                     if obs_data['confidence_values'] else 0
@@ -710,13 +691,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 filtered_obs = self._filter_observable_by_access_level(obs_data, access_level)
                 results.append(filtered_obs)
 
-            # Log access
-            self._log_access(org_id, 'QUERY', 'observables', details={
-                'observable_type': observable_type.value if observable_type else None,
-                'min_confidence': min_confidence,
-                'sectors': sectors,
-                'days_back': days_back
-            })
             return results[:limit]
         except ClientError as e:
             self.logger.error(f"Error querying observables: {e}")
@@ -729,7 +703,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         Search for observables by partial value match using DynamoDB scan.
 
         Args:
-            org_id (str): Organization performing the search
+            org_id (str): organisation performing the search
             search_value (str): Value to search for (substring match)
             access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR)
 
@@ -752,9 +726,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 result = self._filter_observable_by_access_level(item, access_level)
                 results.append(result)
 
-            # Log access
-            self._log_access(org_id, 'SEARCH', 'observables', details={'search_value': search_value})
-
             return results
 
         except ClientError as e:
@@ -764,10 +735,10 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
-        Get platform statistics summary for an organization, including totals of observables by type.
+        Get platform statistics summary for an organisation, including totals of observables by type.
 
-        This method calculates the following statistics for the given organization and time window:
-        - Total number of organizations in the platform.
+        This method calculates the following statistics for the given organisation and time window:
+        - Total number of organisations in the platform.
         - Total number of submissions within the time window.
         - Total number of sightings within the time window.
         - Total number of observables indexed within the time window.
@@ -776,7 +747,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         For each observable type, the count is calculated efficiently using DynamoDB's GSI and Select='COUNT'.
 
         Args:
-            org_id (str): The organization ID to get statistics for.
+            org_id (str): The organisation ID to get statistics for.
             days (int, optional): Number of days to include in the summary (default: 30).
 
         Returns:
@@ -784,16 +755,16 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         try:
             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            # Count organizations
+            # Count organisations
             org_response = self.table.scan(
                 FilterExpression='begins_with(PK, :org_prefix) AND EntityType = :org_entity_type',
                 ExpressionAttributeValues={
                     ':org_prefix': 'ORG#',
-                    ':org_entity_type': 'Organization'
+                    ':org_entity_type': 'organisation'
                 },
                 Select='COUNT'
             )
-            total_organizations = org_response.get('Count', 0)
+            total_organisations = org_response.get('Count', 0)
 
             # Count submissions
             submission_response = self.table.scan(
@@ -853,9 +824,9 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 totals_by_type[obs_type.value] = response.get('Count', 0)
 
             return {
-                'organization_id': org_id,
+                'organisation_id': org_id,
                 'days': days,
-                'total_organizations': total_organizations,
+                'total_organisations': total_organisations,
                 'total_submissions': total_submissions,
                 'total_sightings': total_sightings,
                 'total_observables': total_observables, 
@@ -864,25 +835,15 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         except ClientError as e:
             self.logger.error(f"Error calculating statistics summary: {e}")
             return {
-                'organization_id': org_id,
+                'organisation_id': org_id,
                 'days': days,
                 'observable_totals': {},
                 'total_observables': 0,
                 'total_sightings': 0,
                 'total_submissions': 0,
-                'total_organizations': 0,
+                'total_organisations': 0,
                 'error': str(e)
             }
-
-    def log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> bool:
-        """Log an access event for auditing purposes in DynamoDB."""
-        try:
-            self._log_access(org_id, action, resource_type, resource_id, details)
-            self.logger.info(f"Access stored for {org_id}")
-            return True
-        except Exception as e:
-            self.logger.error(f"Error logging access: {e}")
-            return False
 
     def health_check(self) -> Dict[str, Any]:
         """Perform a health check on the database."""
@@ -894,7 +855,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             "stack": self.environment
         }
 
-    def _log_access(self, org_id: str, action: str, resource_type: str = None, resource_id: str = None, details: Dict[str, Any] = None) -> None:
+    def log_access(self, org_id: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
         """Internal method to log access in DynamoDB single table design."""
         timestamp = datetime.now(timezone.utc).isoformat()
         log_item = {
@@ -903,91 +864,29 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'GSI1PK': f"ACTION#{action}",
             'GSI1SK': timestamp,
             'EntityType': 'AccessLog',
-            'organization_id': org_id,
+            'organisation_id': org_id,
             'action': action,
             'resource_type': resource_type,
-            'resource_id': resource_id,
             'timestamp': timestamp,
-            'success': True,
             'TTL': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
         }
         if details:
             log_item['details'] = details
         try:
-            self.table.put_item(Item=log_item)
+            self.audit_table.put_item(Item=log_item)
         except ClientError as e:
             self.logger.error(f"Error logging access: {e}")
             raise FRANKQueryError(f"Failed to log access: {e}")
 
-
-    
-
-#     def get_access_logs(self, org_id: str, days: int = 7, 
-#                        actions: List[str] = None) -> List[Dict[str, Any]]:
+#     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
 #         """
-#         Get access logs for auditing using DynamoDB query.
+#         Get organisation information using DynamoDB query.
         
 #         Args:
-#             org_id: Organization to get logs for
-#             days: Number of days to look back
-#             actions: Filter by specific actions
+#             org_id: organisation ID to look up
             
 #         Returns:
-#             List of access log entries
-#         """
-#         try:
-#             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            
-#             response = self.table.query(
-#                 KeyConditionExpression='PK = :org_key AND SK >= :cutoff_sk',
-#                 ExpressionAttributeValues={
-#                     ':org_key': f"LOG#{org_id}",
-#                     ':cutoff_sk': f"LOG#{cutoff_date.isoformat()}"
-#                 },
-#                 ScanIndexForward=False,  # Most recent first
-#                 Limit=1000
-#             )
-            
-#             results = []
-#             for item in response.get('Items', []):
-#                 item = self._convert_decimals_to_float(item)
-                
-#                 # Filter by actions if specified
-#                 if actions and item.get('action') not in actions:
-#                     continue
-                
-#                 # Parse details JSON if present
-#                 if 'details_json' in item:
-#                     try:
-#                         item['details'] = json.loads(item['details_json'])
-#                         del item['details_json']
-#                     except:
-#                         item['details'] = {}
-#                         del item['details_json']
-                
-#                 # Remove DynamoDB-specific fields
-#                 log_data = {k: v for k, v in item.items() 
-#                           if k not in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'EntityType', 'TTL']}
-#                 results.append(log_data)
-            
-#             return results
-            
-#         except ClientError as e:
-#             self.logger.error(f"Error getting access logs: {e}")
-#             raise FRANKQueryError(f"Failed to get access logs: {e}")
-
-
-
-
-#     def get_organization_info(self, org_id: str) -> Optional[Dict[str, Any]]:
-#         """
-#         Get organization information using DynamoDB query.
-        
-#         Args:
-#             org_id: Organization ID to look up
-            
-#         Returns:
-#             Organization data or None if not found
+#             organisation data or None if not found
 #         """
 #         try:
 #             response = self.table.get_item(
@@ -1009,7 +908,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #             return org_data
             
 #         except ClientError as e:
-#             self.logger.error(f"Error getting organization info: {e}")
+#             self.logger.error(f"Error getting organisation info: {e}")
 #             return None
 
 #     def cleanup_old_data(self, days: int = 90) -> int:
@@ -1065,7 +964,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #                     'PK': f"STAT#{obs_hash}",
 #                     'SK': 'STAT'
 #                 },
-#                 UpdateExpression='ADD total_sightings :inc, unique_organizations :inc SET last_seen = :timestamp',
+#                 UpdateExpression='ADD total_sightings :inc, unique_organisations :inc SET last_seen = :timestamp',
 #                 ExpressionAttributeValues={
 #                     ':inc': increment_count,
 #                     ':timestamp': datetime.now(timezone.utc).isoformat()
@@ -1075,7 +974,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #             self.logger.warning(f"Failed to update observable statistics: {e}")
 
 # Factory function for easy instantiation
-def create_dynamodb_database(table_name: str = "frank-platform", 
+def create_dynamodb_database(table_name: str = "frank_table", 
+                             audit_table_name: str = "frank_audit",
                             region: str = "eu-west-1",
                             endpoint: str = "http://localstack:4566",
                             aws_access_key_id = "test",
@@ -1098,6 +998,7 @@ def create_dynamodb_database(table_name: str = "frank-platform",
 
     config = {
         "DYNAMODB_TABLE": table_name,
+        "AUDIT_TABLE": audit_table_name,
         "LOCALSTACK_ENDPOINT": endpoint,
         "AWS_ACCESS_KEY_ID": aws_access_key_id, 
         "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,

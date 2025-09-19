@@ -51,7 +51,7 @@ unittests:  		## Run all unittests
 		--junitxml=test-results.xml
 
 integration:  ## Run all integration tests
-	@cd tests/integration && behave
+	@behave tests/integration
 
 lint: test ## Static code checking
 	@ruff check .

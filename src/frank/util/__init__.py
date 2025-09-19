@@ -10,11 +10,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from .client import create_client
+from .server import create_server
 from .logger import NullLogger
+from .http_exceptions import create_error_response
 
 
 __all__ = [
     'NullLogger',
-    'create_client',
+    'create_server',
+    'create_error_response',
 ]

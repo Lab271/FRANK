@@ -44,11 +44,11 @@ class FRANKDatabase:
             with sqlite3.connect(self.db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
                 
-                # Organizations table (cyber partners and customers)
+                # organisations table (cyber partners and customers)
                 conn.execute("""
-                    CREATE TABLE IF NOT EXISTS organizations (
-                        organization_id TEXT PRIMARY KEY,
-                        organization_type TEXT NOT NULL CHECK (organization_type IN ('cyber_partner', 'customer')),
+                    CREATE TABLE IF NOT EXISTS organisations (
+                        organisation_id TEXT PRIMARY KEY,
+                        organisation_type TEXT NOT NULL CHECK (organisation_type IN ('cyber_partner', 'customer')),
                         tier TEXT CHECK (tier IN ('public', 'observer', 'contributor', 'partner', 'core_member')),
                         sector TEXT,
                         region TEXT,
@@ -71,8 +71,8 @@ class FRANKDatabase:
                         severity TEXT CHECK (severity IN ('low', 'medium', 'high', 'critical')),
                         tlp_level TEXT CHECK (tlp_level IN ('RED', 'AMBER+', 'AMBER', 'GREEN', 'CLEAR')),
                         full_submission_json TEXT NOT NULL,
-                        FOREIGN KEY (submitter_org_id) REFERENCES organizations (organization_id),
-                        FOREIGN KEY (hit_target_org_id) REFERENCES organizations (organization_id)
+                        FOREIGN KEY (submitter_org_id) REFERENCES organisations (organisation_id),
+                        FOREIGN KEY (hit_target_org_id) REFERENCES organisations (organisation_id)
                     )
                 """)
                 
@@ -114,7 +114,7 @@ class FRANKDatabase:
                         observable_type TEXT NOT NULL,
                         observable_value TEXT NOT NULL,
                         total_sightings INTEGER DEFAULT 1,
-                        unique_organizations INTEGER DEFAULT 1,
+                        unique_organisations INTEGER DEFAULT 1,
                         first_seen TIMESTAMP,
                         last_seen TIMESTAMP,
                         avg_confidence REAL,
@@ -129,7 +129,7 @@ class FRANKDatabase:
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS access_logs (
                         id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        organization_id TEXT NOT NULL,
+                        organisation_id TEXT NOT NULL,
                         action TEXT NOT NULL,
                         resource_type TEXT,
                         resource_id TEXT,
@@ -145,7 +145,7 @@ class FRANKDatabase:
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_observables_hash ON observables (observable_hash)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_observables_type ON observables (observable_type)")
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_statistics_hash ON observable_statistics (observable_hash)")
-                conn.execute("CREATE INDEX IF NOT EXISTS idx_access_logs_org ON access_logs (organization_id)")
+                conn.execute("CREATE INDEX IF NOT EXISTS idx_access_logs_org ON access_logs (organisation_id)")
                 
                 conn.commit()
                 self.logger.info(f"Database initialized at {self.db_path}")
@@ -174,13 +174,13 @@ class FRANKDatabase:
                 
                 submission_id = sub_data.get('metadata', {}).get('submission_id', f"submission-{uuid.uuid4()}")
                 
-                # Store or update organization
-                self._upsert_organization(conn, submitter)
+                # Store or update organisation
+                self._upsert_organisation(conn, submitter)
                 
                 # Store hit target if present
                 hit_target = sub_data.get('hit_target')
                 if hit_target:
-                    self._upsert_organization(conn, hit_target, org_type='customer')
+                    self._upsert_organisation(conn, hit_target, org_type='customer')
                 
                 # Store main submission
                 conn.execute("""
@@ -190,8 +190,8 @@ class FRANKDatabase:
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
                     submission_id,
-                    submitter['organization_id'],
-                    hit_target['organization_id'] if hit_target else None,
+                    submitter['organisation_id'],
+                    hit_target['organisation_id'] if hit_target else None,
                     sub_data.get('metadata', {}).get('format_version', '1.0'),
                     datetime.now(timezone.utc).isoformat(),
                     sighting.get('confidence'),
@@ -244,7 +244,7 @@ class FRANKDatabase:
                             self._update_observable_statistics(conn, obs, submitter)
                 
                 # Log access
-                self._log_access(conn, submitter['organization_id'], 'SUBMIT', 'submission', submission_id)
+                self._log_access(conn, submitter['organisation_id'], 'SUBMIT', 'submission', submission_id)
                 
                 conn.commit()
                 self.logger.info(f"Stored submission {submission_id}")
@@ -254,15 +254,15 @@ class FRANKDatabase:
             self.logger.error(f"Error storing submission: {e}")
             return False
     
-    def _upsert_organization(self, conn: sqlite3.Connection, org_data: Dict[str, Any], org_type: str = 'cyber_partner'):
-        """Insert or update organization information."""
+    def _upsert_organisation(self, conn: sqlite3.Connection, org_data: Dict[str, Any], org_type: str = 'cyber_partner'):
+        """Insert or update organisation information."""
         conn.execute("""
-            INSERT OR REPLACE INTO organizations 
-            (organization_id, organization_type, tier, sector, region, last_active, client_count)
+            INSERT OR REPLACE INTO organisations 
+            (organisation_id, organisation_type, tier, sector, region, last_active, client_count)
             VALUES (?, ?, ?, ?, ?, ?, ?)
         """, (
-            org_data['organization_id'],
-            org_data.get('organization_type', org_type),
+            org_data['organisation_id'],
+            org_data.get('organisation_type', org_type),
             org_data.get('access_level'),
             org_data.get('sector'),
             org_data.get('region'),
@@ -276,7 +276,7 @@ class FRANKDatabase:
         
         # Check if statistics record exists
         cursor = conn.execute("""
-            SELECT total_sightings, unique_organizations, sectors_json, regions_json, avg_confidence 
+            SELECT total_sightings, unique_organisations, sectors_json, regions_json, avg_confidence 
             FROM observable_statistics WHERE observable_hash = ?
         """, (obs_hash,))
         
@@ -300,7 +300,7 @@ class FRANKDatabase:
             conn.execute("""
                 UPDATE observable_statistics 
                 SET total_sightings = total_sightings + 1,
-                    unique_organizations = ?,
+                    unique_organisations = ?,
                     last_seen = ?,
                     sectors_json = ?,
                     regions_json = ?,
@@ -322,7 +322,7 @@ class FRANKDatabase:
             conn.execute("""
                 INSERT INTO observable_statistics 
                 (observable_hash, observable_type, observable_value, total_sightings, 
-                 unique_organizations, first_seen, last_seen, sectors_json, regions_json)
+                 unique_organisations, first_seen, last_seen, sectors_json, regions_json)
                 VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?)
             """, (
                 obs_hash,
@@ -337,7 +337,7 @@ class FRANKDatabase:
     def _log_access(self, conn: sqlite3.Connection, org_id: str, action: str, resource_type: str = None, resource_id: str = None):
         """Log access for auditing purposes."""
         conn.execute("""
-            INSERT INTO access_logs (organization_id, action, resource_type, resource_id)
+            INSERT INTO access_logs (organisation_id, action, resource_type, resource_id)
             VALUES (?, ?, ?, ?)
         """, (org_id, action, resource_type, resource_id))
     
@@ -353,7 +353,7 @@ class FRANKDatabase:
                 # Build query based on access level
                 base_query = """
                     SELECT os.observable_hash, os.observable_type, os.observable_value,
-                           os.total_sightings, os.unique_organizations, os.first_seen, os.last_seen
+                           os.total_sightings, os.unique_organisations, os.first_seen, os.last_seen
                     FROM observable_statistics os
                 """
                 
@@ -397,7 +397,7 @@ class FRANKDatabase:
                 cursor = conn.execute("""
                     SELECT s.*, o.access_level as submitter_tier
                     FROM submissions s
-                    JOIN organizations o ON s.submitter_org_id = o.organization_id
+                    JOIN organisations o ON s.submitter_org_id = o.organisation_id
                     WHERE s.submission_id = ?
                 """, (submission_id,))
                 
@@ -456,7 +456,7 @@ class FRANKDatabase:
                 cursor = conn.execute("""
                     SELECT 
                         COUNT(DISTINCT submission_id) as total_submissions,
-                        COUNT(DISTINCT submitter_org_id) as active_organizations,
+                        COUNT(DISTINCT submitter_org_id) as active_organisations,
                         COUNT(*) as total_observables
                     FROM submissions 
                     WHERE submission_timestamp >= datetime('now', '-{} days')
@@ -513,7 +513,7 @@ class FRANKSubmission:
     
     # Required fields for minimal submission
     REQUIRED_FIELDS = {
-        'submission.submitter.organization_id',
+        'submission.submitter.organisation_id',
         'submission.submitter.access_level', 
         'submission.sighting.sighting_id',
         'submission.sighting.timestamp',
@@ -562,7 +562,7 @@ class FRANKSubmission:
         submission = {
             "submission": {
                 "submitter": {
-                    "organization_id": org_id,
+                    "organisation_id": org_id,
                     "access_level": tier
                 },
                 "sighting": {
@@ -854,7 +854,7 @@ def run_tests():
     
     # Count records in each table
     with sqlite3.connect(test_db_path) as conn:
-        tables = ['organizations', 'submissions', 'sightings', 'observables', 'observable_statistics', 'access_logs']
+        tables = ['organisations', 'submissions', 'sightings', 'observables', 'observable_statistics', 'access_logs']
         for table in tables:
             cursor = conn.execute(f"SELECT COUNT(*) FROM {table}")
             count = cursor.fetchone()[0]
@@ -903,19 +903,19 @@ def run_database_demo():
     
     frank = FRANKSubmission("/tmp/frank_demo.db")
     
-    # Scenario 1: Multiple organizations reporting the same threat
+    # Scenario 1: Multiple organisations reporting the same threat
     print("\n📊 Scenario 1: Collaborative Threat Detection")
     print("-" * 50)
     
     shared_threat_ip = "203.0.113.42"
-    organizations = [
+    organisations = [
         {"id": "bank-alpha", "access_level": "partner", "sector": "financial"},
         {"id": "retail-beta", "access_level": "contributor", "sector": "retail"},
         {"id": "tech-gamma", "access_level": "partner", "sector": "technology"}
     ]
     
     # Each org reports the same threat
-    for i, org in enumerate(organizations):
+    for i, org in enumerate(organisations):
         submission = frank.generate_minimal_submission(
             org_id=org["id"],
             access_level=org["access_level"],
@@ -926,7 +926,7 @@ def run_database_demo():
             }]
         )
         
-        # Add organization context
+        # Add organisation context
         submission["submission"]["submitter"]["sector"] = org["sector"]
         
         stored = frank.submit_to_database(submission)
@@ -934,7 +934,7 @@ def run_database_demo():
     
     # Check aggregated statistics
     stats = frank.get_platform_statistics("bank-alpha")
-    print(f"  📈 Platform now has {stats.get('total_submissions', 0)} submissions from {stats.get('active_organizations', 0)} organizations")
+    print(f"  📈 Platform now has {stats.get('total_submissions', 0)} submissions from {stats.get('active_organisations', 0)} organisations")
     
     # Scenario 2: Access level demonstration
     print("\n🔒 Scenario 2: Tiered Access Control")
@@ -943,7 +943,7 @@ def run_database_demo():
     access_levels = [
         ("public", "General public access"),
         ("observer", "Security researcher access"),
-        ("contributor", "Contributing organization access"), 
+        ("contributor", "Contributing organisation access"), 
         ("partner", "Trusted partner access")
     ]
     
@@ -967,13 +967,13 @@ def run_database_demo():
     msp_submission = {
         "submission": {
             "submitter": {
-                "organization_id": "msp-services-inc",
+                "organisation_id": "msp-services-inc",
                 "access_level": "partner",
                 "sector": "cybersecurity_services"
             },
             "hit_target": {
-                "organization_id": "customer-retail-chain",
-                "organization_type": "customer",
+                "organisation_id": "customer-retail-chain",
+                "organisation_type": "customer",
                 "sector": "retail"
             },
             "sighting": {
@@ -1048,7 +1048,7 @@ def run_database_demo():
     final_stats = frank.get_platform_statistics("demo-analyst")
     print(f"\n📈 Final Platform Statistics:")
     print(f"  Total Submissions: {final_stats.get('total_submissions', 0)}")
-    print(f"  Active Organizations: {final_stats.get('active_organizations', 0)}")
+    print(f"  Active organisations: {final_stats.get('active_organisations', 0)}")
     print(f"  Total Observables: {final_stats.get('total_observables', 0)}")
     
     if 'top_observable_types' in final_stats:

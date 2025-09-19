@@ -37,7 +37,7 @@ access_levels:
   observer:
     description: "Non-contributing parties with legitimate security interest"
     authentication: "api_key_required"
-    eligibility: ["academic_institutions", "government_csirts", "small_organizations"]
+    eligibility: ["academic_institutions", "government_csirts", "small_organisations"]
     rate_limit: "500 requests/day"
     data_access:
       - aggregated_counts: "daily_summaries"
@@ -57,7 +57,7 @@ access_levels:
       response:
         sightings_summary:
           total_count: 156
-          unique_organizations: "10-15"
+          unique_organisations: "10-15"
           first_seen: "2025-01-08T14:23:00Z"
           last_seen: "2025-01-15T09:45:00Z"
           severity_distribution:
@@ -75,7 +75,7 @@ access_levels:
 
   # Level 2: Limited Contributor
   contributor:
-    description: "Organizations sharing some threat data"
+    description: "organisations sharing some threat data"
     authentication: "mutual_tls_certificate"
     eligibility: ["verified_msps", "security_vendors", "large_enterprises"]
     contribution_requirement: "minimum_10_sightings_per_month"
@@ -119,7 +119,7 @@ access_levels:
 
   # Level 3: Full Partner
   partner:
-    description: "Trusted organizations with significant ongoing contributions"
+    description: "Trusted organisations with significant ongoing contributions"
     authentication: "mutual_tls + identity_verification"
     eligibility: ["major_msps", "cybersecurity_firms", "critical_infrastructure"]
     contribution_requirement: "minimum_50_sightings_per_month + high_quality_data"
@@ -127,7 +127,7 @@ access_levels:
     data_access:
       - aggregated_counts: "real_time"
       - geographic_data: "precise_location"
-      - sector_data: "organization_specific"
+      - sector_data: "organisation_specific"
       - temporal_data: "real_time_feeds"
       - indicators: "full_iocs_with_context"
       - sigma_rules: "full_access_including_drafts"

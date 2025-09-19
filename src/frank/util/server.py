@@ -3,7 +3,7 @@
 FRANK Platform - Submission Generation and Parsing Library
 Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-This modules provides a high-level client interface combining submission handling
+This modules provides a high-level server interface combining submission handling
 with database operations for easy integration into applications.
 
 Copyright (c) 2025 Schuberg Philis B.V.
@@ -14,17 +14,18 @@ from typing import Dict, Any, List, Optional
 from datetime import datetime, timezone
 import logging
 
-from frank.core.models import Submission
+from frank.core.models import Submission, Submitter
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
+from frank.util.filter import FRANKFilter
 
 from .sample_builder import FRANKDatabaseSeeder
 from .logger import NullLogger
 from frank import __version__
     
-class FRANKClient:
+class FRANKServer:
     """
-    High-level FRANK client that combines submission handling with database operations.
+    High-level FRANK server that combines submission handling with database operations.
     
     This is the main interface most users should interact with, providing a simple
     API that handles both submission processing and storage automatically.
@@ -42,8 +43,9 @@ class FRANKClient:
         self.logger = logger or NullLogger()
         self.database = database
         self.database.logger = self.logger
+        self.filter = FRANKFilter(self.logger)
 
-    def submit_threat_intelligence(self, user_id: str, submission: Submission) -> (bool, int):
+    def submit_threat_intelligence(self, user_id: str, submission: Submission) -> int:
         """
         Submit threat intelligence to the FRANK platform.
         
@@ -56,24 +58,22 @@ class FRANKClient:
         """
         
         # Store in database
-        success = self.database.store_submission(submission)
-        if not success: 
-            return (False, 0)
+        self.database.store_submission(submission)
             
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission)
                 
-        success = self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
+        self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
 
         # Extract submission ID
-        return (success, score_impact)
+        return score_impact
 
 
-    def query_threats(self, org_id: str, 
-        access_level: AccessTier, limit: int, offset: int, format: Optional[str], 
+    def query_threats(self, user_id: str, access_level: AccessTier, 
+        limit: int, offset: int, format: Optional[str], 
         observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
         """
-        Query threat intelligence records for a given organization, applying access level filtering, pagination, and formatting.
+        Query threat intelligence records for a given user, applying access level filtering, pagination, and formatting.
 
         This method retrieves threat intelligence data from the database, applying the specified tier for access control.
         If an observable is provided, performs a targeted search; otherwise, executes a general query with additional filters.
@@ -81,7 +81,7 @@ class FRANKClient:
         included for higher access levels.
 
         Args:
-            org_id (str): Organization ID making the query.
+            user_id (str): Identifier for the user querying the threat intelligence.
             access_level (AccessTier): Access tier for filtering and formatting results.
             limit (int): Maximum number of results to return.
             offset (int): Pagination offset.
@@ -99,10 +99,12 @@ class FRANKClient:
 
         # Search by specific observable if provided
         if observable:
-            results = self.database.search_observables_by_value(org_id, observable, access_level)
+            results = self.database.search_observables_by_value(user_id, observable, access_level)
         else:
             # General query
-            results = self.database.query_observables(org_id=org_id, **filters)
+            results = self.database.query_observables(user_id=user_id,  access_level=access_level,
+                                            observable_type=filters.get("observable_type"), min_confidence=filters.get("min_confidence"),
+                                            limit=filters.get("limit", 100), days_back=filters.get("days_back"))
 
         total_results = len(results)
         paginated_results = results[offset : offset + limit]
@@ -124,18 +126,41 @@ class FRANKClient:
         if access_level.check_access_level(AccessTier.PARTNER):
             threat_context = generate_threat_context(results)
 
+
+        self.database.log_access(user_id, 'SEARCH', 'observables', details={'search_results': total_results})
+
         return (total_results, sightings, aggregations, threat_context)
 
-
-    def get_observations(self, org_id: str, days: int, observable_type: str, limit: int) -> "Tuple[List[Dict], Dict[str, Any]]":
+    def upsert_organisation(self, submitter: Submitter) -> None:
         """
-        Retrieve observable statistics and details for a given organization and time window.
+        Create or update an organisation in the database.
 
-        This method queries the database for observable statistics for the specified organization and number of days.
+        This method validates and upserts a Submitter (organisation) record into the database,
+        logs the access event, and returns True if successful, False otherwise.
+
+        Args:
+            submitter (Submitter): The organisation Submitter object to upsert.
+
+        Returns:
+            bool: True if upsert was successful, False otherwise.
+        """
+        # Upsert organisation in the database
+        self.database.upsert_organisation(submitter.model_dump(exclude_unset=True, by_alias=True))
+        self.logger.info(f"Upserted organisation: {submitter.organisation_id}")
+
+        # Log access
+        self.database.log_access(submitter.organisation_id, 'UPSERT', 'organisation', submitter.organisation_id)
+
+
+    def get_observations(self, user_id: str, days: int, observable_type: str, limit: int) -> "Tuple[List[Dict], Dict[str, Any]]":
+        """
+        Retrieve observable statistics and details for a given user (organisation) and time window.
+
+        This method queries the database for observable statistics for the specified user and number of days.
         It returns a list of observation summaries (filtered by observable type if provided) and the full statistics dictionary.
 
         Args:
-            org_id (str): The organization ID for which to retrieve observations.
+            user_id (str): Identifier for the user retrieving the observations.
             days (int): Number of days to include in the statistics summary.
             observable_type (str): Filter to include only observations of this type (if provided).
             limit (int): Maximum number of observation summaries to return.
@@ -145,7 +170,7 @@ class FRANKClient:
                 - List of observation summaries (each with 'observable_type' and 'count').
                 - Full statistics dictionary as returned by the database.
         """
-        stats = self.database.get_statistics_summary(org_id, days=days)
+        stats = self.database.get_statistics_summary(user_id, days=days)
 
         observations = []
         for obs_type, count in stats.get('observable_totals', {}).items():
@@ -158,18 +183,18 @@ class FRANKClient:
         return observations[:limit], stats
         
 
-    def get_platform_statistics(self, org_id: str, days: int, access_level: AccessTier) -> Dict[str, Any]:
+    def get_platform_statistics(self, user_id: str, access_level: AccessTier, days: int) -> Dict[str, Any]:
         """
-        Retrieve platform statistics for a given organization and time window.
+        Retrieve platform statistics for a given user and time window.
 
         This method queries the database for summary statistics related to submissions, observables,
-        and activity for the specified organization and number of days. The returned statistics are
+        and activity for the specified user and number of days. The returned statistics are
         filtered based on the user's access access_level:
         - Observers receive only non-sensitive, aggregate statistics.
         - Higher tiers receive full statistics as provided by the database.
 
         Args:
-            org_id (str): The organization ID for which to retrieve statistics.
+            user_id (str): Identifier for the user submitting the threat intelligence.
             days (int): Number of days to include in the statistics summary.
             access_level (AccessTier): The user's access tier, used to filter sensitive data.
 
@@ -177,7 +202,7 @@ class FRANKClient:
             Dict[str, Any]: Dictionary containing platform statistics, filtered by access level.
                 For observers, only aggregate stats are included.
         """
-        stats = self.database.get_statistics_summary(org_id, days=days)
+        stats = self.database.get_statistics_summary(user_id, days=days)
 
         # Filter stats based on access level
         if access_level == AccessTier.OBSERVER:
@@ -190,7 +215,34 @@ class FRANKClient:
             return filtered_stats
 
         return stats
-    
+
+    def get_submission_by_id(self, user_id: str, access_level: AccessTier, submission_id: str) -> Optional[Submission]:
+        """
+        Retrieve a submission by its ID, applying access level filtering.
+
+        This method fetches a submission from the database by its unique ID, applies access level-based filtering,
+        logs the access event, and returns a Submission object if accessible, or None if not found or not permitted.
+
+        Args:
+            user_id (str): Identifier for the user requesting the submission.
+            access_level (AccessTier): The user's access tier for filtering sensitive data.
+            submission_id (str): The unique identifier of the submission to retrieve.
+
+        Returns:
+            Optional[Submission]: The filtered Submission object if accessible, or None if not found or not permitted.
+        """
+        submission_dict = self.database.get_submission_by_id(submission_id)
+        if not submission_dict:
+            return None
+        filtered_submission = self.filter.submission_by_access_level(submission_dict, access_level)
+        self.logger.debug(f"Filtered submission for access level {access_level}: {filtered_submission}")
+
+        # Log access
+        self.database.log_access(user_id, 'READ', 'submission', submission_id)
+
+        return Submission(**filtered_submission["submission"]) if filtered_submission else None
+
+
     def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the FRANK platform database backend.
@@ -207,7 +259,7 @@ class FRANKClient:
                 - 'version': FRANK library version
         """
         health_status = self.database.health_check()
-        
+
         return {
             "status": health_status["status"],
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -220,7 +272,7 @@ class FRANKClient:
         Seed the database with initial data using the provided seeder.
 
         This method invokes the seed method of the provided FRANKDatabaseSeeder instance,
-        passing in the database client. It handles any exceptions and logs errors if seeding fails.
+        passing in the database handler. It handles any exceptions and logs errors if seeding fails.
 
         Args:
             seeder (FRANKDatabaseSeeder): An instance of a database seeder class.  
@@ -275,7 +327,7 @@ def format_sighting_response(result: Dict[str, Any], access_level: AccessTier, f
             },
             "confidence": result.get("avg_confidence"),
             "total_sightings": result.get("total_sightings"),
-            "unique_organizations": result.get("unique_organizations"),
+            "unique_organisations": result.get("unique_organisations"),
             "first_seen": result.get("first_seen"),
             "sectors": result.get("sectors", []),
             "regions": result.get("regions", []),
@@ -300,7 +352,7 @@ def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> D
     if not results:
         return {}
 
-    # Count unique organizations (simplified)
+    # Count unique organisations (simplified)
     total_orgs = len(set(result.get("observable_hash") for result in results))
 
     # Confidence distribution
@@ -315,7 +367,7 @@ def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> D
             confidence_dist["low"] += 1
 
     return {
-        "total_organizations": total_orgs,
+        "total_organisations": total_orgs,
         "confidence_distribution": confidence_dist,
         "total_sightings": sum(result.get("total_sightings", 0) for result in results),
     }
@@ -364,21 +416,21 @@ def calculate_contribution_score(submission: Submission) -> int:
 # Factory function
 # ===============================
 
-def create_client(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANKClient:
+def create_server(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANKServer:
     """
-    Factory function to create a complete FRANK client with database backend.
+    Factory function to create a complete FRANK server with database backend.
     
     Args:
         config: Configuration dictionary (uses defaults if None)
         
     Returns:
-        Configured FRANK client instance
+        Configured FRANK server instance
         
     Example:
         >>> import frank
-        >>> client = frank.create_frank_client()
-        >>> health = client.health_check()
+        >>> server = frank.create_server(db, logger)
+        >>> health = server.health_check()
     """
 
-    # Return a client that combines both
-    return FRANKClient(db, logger)
+    # Return a server that combines both
+    return FRANKServer(db, logger)

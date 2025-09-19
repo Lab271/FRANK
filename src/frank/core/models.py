@@ -87,7 +87,7 @@ class Observable(BaseModel):
 
 class Submitter(BaseModel):
     """
-    Submitting organization with validation and auto-generation.
+    Submitting organisation with validation and auto-generation.
     """
 
     model_config = ConfigDict(
@@ -95,9 +95,9 @@ class Submitter(BaseModel):
         use_enum_values=True,
     )
 
-    organization_id: Optional[str] = Field(None, description="STIX identity for organization")
+    organisation_id: Optional[str] = Field(None, description="STIX identity for organisation")
     access_level: AccessTier = Field(..., description="Access tier level")
-    organization_type: str = Field(default="cyber_partner", description="Organization type")
+    organisation_type: str = Field(default="cyber_partner", description="organisation type")
 
     # Optional metadata
     sector: Optional[str] = Field(None, description="Industry sector")
@@ -106,9 +106,9 @@ class Submitter(BaseModel):
 
     @model_validator(mode="after")
     def ensure_org_id(self):
-        """Ensure organization ID is always set"""
-        if not self.organization_id:
-            self.organization_id = f"identity--{uuid.uuid4()}"
+        """Ensure organisation ID is always set"""
+        if not self.organisation_id:
+            self.organisation_id = f"identity--{uuid.uuid4()}"
         return self
 
     @field_validator("sector")
@@ -142,7 +142,7 @@ class Submitter(BaseModel):
 
 class HitTarget(BaseModel):
     """
-    Affected organization with privacy controls.
+    Affected organisation with privacy controls.
     """
 
     model_config = ConfigDict(
@@ -150,16 +150,16 @@ class HitTarget(BaseModel):
         use_enum_values=True,
     )
 
-    organization_id: Optional[str] = Field(None, description="STIX identity for affected organization")
+    organisation_id: Optional[str] = Field(None, description="STIX identity for affected organisation")
     sector: str = Field(..., min_length=1, description="Industry sector of target")
 
     # Optional metadata
-    organization_type: Optional[str] = Field(default="customer", description="Organization type")
-    organization_size: Optional[str] = Field(None, description="Organization size category")
+    organisation_type: Optional[str] = Field(default="customer", description="organisation type")
+    organisation_size: Optional[str] = Field(None, description="organisation size category")
     region: Optional[str] = Field(None, description="Geographic region")
     anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
 
-    @field_validator("organization_id", mode="before")
+    @field_validator("organisation_id", mode="before")
     @classmethod
     def generate_org_id(cls, v):
         """Generate target identity if not provided"""
@@ -169,15 +169,15 @@ class HitTarget(BaseModel):
 
     @model_validator(mode="after")
     def ensure_org_id(self):
-        """Ensure organization ID is always set"""
-        if not self.organization_id:
-            self.organization_id = f"identity--{uuid.uuid4()}"
+        """Ensure organisation ID is always set"""
+        if not self.organisation_id:
+            self.organisation_id = f"identity--{uuid.uuid4()}"
         return self
 
-    @field_validator("organization_size")
+    @field_validator("organisation_size")
     @classmethod
     def normalize_org_size(cls, v):
-        """Normalize organization size categories"""
+        """Normalize organisation size categories"""
         if v is None:
             return v
 
@@ -197,9 +197,9 @@ class HitTarget(BaseModel):
         return size_mappings.get(normalized, v)
 
     @classmethod
-    def create(cls, sector: str, organization_size: str = None, region: str = None):
+    def create(cls, sector: str, organisation_size: str = None, region: str = None):
         """Factory method for creating hit targets"""
-        return cls(sector=sector, organization_size=organization_size, region=region)
+        return cls(sector=sector, organisation_size=organisation_size, region=region)
 
 
 class Observables(BaseModel):
@@ -386,13 +386,13 @@ class Submission(BaseModel):
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc),  description="Submission timestamp")
 
     # Optional metadata - be forgiving on input
-    submitter: Optional[Submitter] = Field(None, description="Submitting organization")
+    submitter: Optional[Submitter] = Field(None, description="Submitting organisation")
     submission_method: Optional[str] = Field(default="api", description="Submission method")
     processing_notes: Optional[str] = Field(None, description="Processing notes")
 
     sighting: Optional[Sighting] = Field(None, description="Sighting details")
     # TODO: Move this to sighting?
-    hit_target: Optional[HitTarget] = Field(None, description="Affected organization")
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organisation")
     tlp_level: Optional[str] = Field("GREEN", description="TLP classification")
     confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
     severity: Optional[str] = Field(None, description="Threat severity")
@@ -408,19 +408,19 @@ class Submission(BaseModel):
     @model_validator(mode="after")
     def validate_submission_integrity(self):
         """Cross-field validation for submission integrity"""
-        # Ensure organization ID is always set
+        # Ensure organisation ID is always set
         if not self.submission_id:
             self.submission_id = f"submission--{uuid.uuid4()}"
 
-        # Ensure submitter and target are different organizations
+        # Ensure submitter and target are different organisations
         if not self.hit_target:
             return self
 
-        submitter_id = self.submitter.organization_id
-        target_id = self.hit_target.organization_id
+        submitter_id = self.submitter.organisation_id
+        target_id = self.hit_target.organisation_id
 
         if submitter_id and target_id and submitter_id == target_id:
-            raise ValueError("Submitter and hit_target cannot be the same organization")
+            raise ValueError("Submitter and hit_target cannot be the same organisation")
 
         return self
 
@@ -587,7 +587,7 @@ def example_usage():
 
     parsed = Submission.from_legacy_dict(legacy_data)
     print(f"✓ Legacy format parsed successfully")
-    print(f"  - Generated org IDs: {parsed.submitter.organization_id[:12]}...")
+    print(f"  - Generated org IDs: {parsed.submitter.organisation_id[:12]}...")
     print(f"  - Normalized sector: {parsed.hit_target.sector}")
 
     # 4. Demonstrate 'strong on return'
@@ -616,6 +616,26 @@ def example_usage():
     print("✓ Strict output formatting ('strong on return')")
     print("✓ Built-in serialization to JSON/YAML")
     print("✓ Factory methods for common use cases")
+    # print("✓ Strict API format generated")
+
+    # # 5. Demonstrate access-based anonymization
+    # print("\n5. Testing tier-based anonymization...")
+    # public_view = parsed.anonymize_for_tier(TierLevel.PUBLIC)
+    # observer_view = parsed.anonymize_for_tier(TierLevel.OBSERVER)
+
+    # print(f"  - Original IP: {parsed.observables.network[0].value}")
+    # print(f"  - Observer view: {observer_view.observables.network[0].value}")
+    # print(f"  - Public view: {public_view.observables.network[0].value}")
+
+    # print("\n=== Pydantic v2 Benefits Demonstrated ===")
+    # print("✓ Updated validation with helpful error messages")
+    # print("✓ Type safety and IDE support")
+    # print("✓ Flexible input parsing ('be forgiving')")
+    # print("✓ Strict output formatting ('strong on return')")
+    # print("✓ Built-in serialization to JSON/YAML")
+    # print("✓ Factory methods for common use cases")
+    # print("✓ Access-tier based data filtering")
+    # print("✓ Fixed @root_validator deprecation warnings")
 
 
 if __name__ == "__main__":

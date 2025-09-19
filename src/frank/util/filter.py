@@ -15,13 +15,13 @@ from datetime import datetime, timezone
 import logging
 
 from frank.core.enum import AccessTier  
-from frank.core.logger import NullLogger       
+from frank.util.logger import NullLogger       
 
 class FRANKFilter:
     def __init__(self, logger: logging.Logger = None):
         self.logger = logger or NullLogger()
 
-    def filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
+    def submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter submission data based on the provided access level.
 
@@ -30,7 +30,7 @@ class FRANKFilter:
 
         - PUBLIC: Only basic statistics (submission_id, timestamp, sighting confidence, timestamp, observation_count).
         - OBSERVER: Masks observable values, removes sensitive fields (hit_target, tlp_level).
-        - CONTRIBUTOR: Removes organization_id from hit_target, anonymizes sector.
+        - CONTRIBUTOR: Removes organisation_id from hit_target, anonymizes sector.
         - PARTNER/CORE_MEMBER: Returns full submission data.
 
         Args:
@@ -77,7 +77,7 @@ class FRANKFilter:
             # Anonymize hit target details
             if 'hit_target' in filtered:
                 hit_target = filtered['hit_target']
-                hit_target.pop('organization_id', None)
+                hit_target.pop('organisation_id', None)
                 hit_target['sector'] = hit_target.get('sector', 'unknown')
 
             return {'submission': filtered}
@@ -142,8 +142,8 @@ class FRANKFilter:
     #         for obs in anonymized.sighting.observables.network:
     #             obs.value = f"hash_{hash(obs.value) % 10000:04d}"
     #         # Remove detailed metadata
-    #         anonymized.hit_target.organization_id = "redacted"
-    #         anonymized.submitter.organization_id = "redacted"
+    #         anonymized.hit_target.organisation_id = "redacted"
+    #         anonymized.submitter.organisation_id = "redacted"
 
     #     elif access_level == AccessTier.OBSERVER:
     #         # Partial anonymization
@@ -210,7 +210,7 @@ class FRANKFilter:
                 },
                 "confidence": result.get("avg_confidence"),
                 "total_sightings": result.get("total_sightings"),
-                "unique_organizations": result.get("unique_organizations"),
+                "unique_organisations": result.get("unique_organisations"),
                 "first_seen": result.get("first_seen"),
                 "sectors": result.get("sectors", []),
                 "regions": result.get("regions", []),

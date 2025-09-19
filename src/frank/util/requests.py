@@ -11,7 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel, Field, ConfigDict
 
-from frank.core.models import Submission
+from frank.core.models import Submission, Submitter
 
 # Request models
 class SubmissionRequest(BaseModel):
@@ -23,6 +23,17 @@ class SubmissionRequest(BaseModel):
     )
     
     submission: Submission = Field(..., description="Submission data")
+
+class OrganisationRequest(BaseModel):
+    """
+    API wrapper that handles the nested 'organisation' format your API expects.
+    """
+    model_config = ConfigDict(
+        extra="ignore"
+    )
+    
+    organisation: Submitter = Field(..., description="Submitter data")
+    
 
 # Response models
 class SubmissionResponse(BaseModel):

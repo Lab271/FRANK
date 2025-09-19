@@ -53,7 +53,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             tables = [row[0] for row in cursor.fetchall()]
             
         expected_tables = [
-            'organizations', 'submissions', 'sightings', 'observables',
+            'organisations', 'submissions', 'sightings', 'observables',
             'observable_statistics', 'access_logs', 'sigma_rules', 'campaigns'
         ]
         
@@ -73,21 +73,21 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         # Hash should be SHA256 hex string
         self.assertEqual(len(hash1), 64)            
 
-    def test_upsert_organization(self):
-        """Test organization creation and updates"""
+    def test_upsert_organisation(self):
+        """Test organisation creation and updates"""
         org_data = {
-            "organization_id": "test-org-1",
+            "organisation_id": "test-org-1",
             "access_level": "partner",
             "sector": "finance",
             "region": "nl_north_holland",
             "client_count": 5
         }
         
-        result = self.db.upsert_organization(org_data)
+        result = self.db.upsert_organisation(org_data)
         self.assertTrue(result)
 
-        # Verify organization was stored
-        stored_org = self.db.get_organization_info("test-org-1")
+        # Verify organisation was stored
+        stored_org = self.db.get_organisation_info("test-org-1")
         self.assertIsNotNone(stored_org)
         self.assertEqual(stored_org['access_level'], 'partner')
         self.assertEqual(stored_org['sector'], 'finance')
@@ -98,7 +98,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         submission_dict = {
             "submission": {
                 "submitter": {
-                    "organization_id": "test-org-1",
+                    "organisation_id": "test-org-1",
                     "access_level": "partner"
                 },
                 "sighting": {
@@ -135,12 +135,12 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
                 "timestamp": datetime.now(timezone.utc).isoformat(),
                 "format_version": "1.0",
                 "submitter": {
-                    "organization_id": "test-org-2",
+                    "organisation_id": "test-org-2",
                     "access_level": "core_member",
                     "sector": "cybersecurity_services"
                 },
                 "hit_target": {
-                    "organization_id": "test-victim-1",
+                    "organisation_id": "test-victim-1",
                     "sector": "financial_services"
                 },
                 "sighting": {
@@ -212,7 +212,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             "submission": {
                 "submission_id": "test-sub-3",
                 "submitter": {
-                    "organization_id": "test-org-3",
+                    "organisation_id": "test-org-3",
                     "access_level": "contributor",
                     "sector": "healthcare"
                 },
@@ -263,11 +263,11 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             "submission": {
                 "submission_id": "test-sub-4",
                 "submitter": {
-                    "organization_id": "test-org-4",
+                    "organisation_id": "test-org-4",
                     "access_level": "partner"
                 },
                 "hit_target": {
-                    "organization_id": "test-victim-2",
+                    "organisation_id": "test-victim-2",
                     "sector": "retail"
                 },
                 "sighting": {
@@ -317,7 +317,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         submission = {
             "submission": {
                 "submitter": {
-                    "organization_id": "test-org-5",
+                    "organisation_id": "test-org-5",
                     "access_level": "observer"
                 },
                 "sighting": {
@@ -356,7 +356,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
             submission = {
                 "submission": {
                     "submitter": {
-                        "organization_id": f"test-org-stats-{i}",
+                        "organisation_id": f"test-org-stats-{i}",
                         "access_level": "contributor",
                         "sector": "technology"
                     },
@@ -386,13 +386,13 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         
         # Verify statistics structure
         self.assertIn('total_submissions', stats)
-        self.assertIn('active_organizations', stats)
+        self.assertIn('active_organisations', stats)
         self.assertIn('observable_types', stats)
         self.assertIn('severity_distribution', stats)
         
         # Verify some basic counts
         self.assertGreaterEqual(stats['total_submissions'], 3)
-        self.assertGreaterEqual(stats['active_organizations'], 3)
+        self.assertGreaterEqual(stats['active_organisations'], 3)
        
     def test_health_check(self):
         """Test database health check"""

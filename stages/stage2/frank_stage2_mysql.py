@@ -189,13 +189,13 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
+        return {"organisation_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
+        return {"organisation_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
+        return {"organisation_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
+        return {"organisation_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
         raise HTTPException(status_code=401, detail="Invalid authentication token")
 
@@ -259,7 +259,7 @@ async def submit_threat_intelligence(
         raise HTTPException(status_code=403, detail="Insufficient access level for submission")
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -306,7 +306,7 @@ async def search_threat_sightings(
     """
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
         raise HTTPException(status_code=429, detail="Rate limit exceeded")
 
     try:
@@ -329,7 +329,7 @@ async def search_threat_sightings(
             )
 
         # Build query parameters
-        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_level"], "limit": limit}
+        query_params = {"org_id": current_user["organisation_id"], "access_level": current_user["access_level"], "limit": limit}
 
         # Add filters if provided
         if type:
@@ -347,7 +347,7 @@ async def search_threat_sightings(
         # Search by specific observable if provided
         if observable:
             results = frank_db.search_observables_by_value(
-                current_user["organization_id"], observable, current_user["access_level"]
+                current_user["organisation_id"], observable, current_user["access_level"]
             )
         else:
             # General query
@@ -422,7 +422,7 @@ async def get_platform_statistics(
     if not check_access_level(current_user["access_level"], AccessTier.OBSERVER):
         raise HTTPException(status_code=403, detail="Insufficient access level")
 
-    stats = frank_db.get_statistics_summary(current_user["organization_id"], days)
+    stats = frank_db.get_statistics_summary(current_user["organisation_id"], days)
 
     # Filter stats based on access level
     if current_user["access_level"] == AccessTier.OBSERVER:
@@ -501,7 +501,7 @@ def format_sighting_response(result: Dict[str, Any], access_level: AccessTier, f
             },
             "confidence": result.get("avg_confidence"),
             "total_sightings": result.get("total_sightings"),
-            "unique_organizations": result.get("unique_organizations"),
+            "unique_organisations": result.get("unique_organisations"),
             "first_seen": result.get("first_seen"),
             "sectors": result.get("sectors", []),
             "regions": result.get("regions", []),
@@ -526,7 +526,7 @@ def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> D
     if not results:
         return {}
 
-    # Count unique organizations (simplified)
+    # Count unique organisations (simplified)
     total_orgs = len(set(result.get("observable_hash") for result in results))
 
     # Confidence distribution
@@ -541,7 +541,7 @@ def generate_aggregations(results: List[Dict[str, Any]], access_level: str) -> D
             confidence_dist["low"] += 1
 
     return {
-        "total_organizations": total_orgs,
+        "total_organisations": total_orgs,
         "confidence_distribution": confidence_dist,
         "total_sightings": sum(result.get("total_sightings", 0) for result in results),
     }
@@ -568,7 +568,7 @@ def load_database():
     logger.info(f"Initialiazing FRANK API server database.")
 
     for org in create_demo_orgs(id_fixed=True):
-        frank_db.upsert_organization(org)
+        frank_db.upsert_organisation(org)
 
     # Create some demo submissions
     for i in range(5):

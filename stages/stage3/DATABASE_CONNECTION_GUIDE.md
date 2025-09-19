@@ -109,7 +109,7 @@ Global Secondary Index: tenant-timestamp-index
 
 Attributes:
 - submission_id: Unique identifier
-- tenant_id: Organization identifier
+- tenant_id: organisation identifier
 - timestamp: ISO 8601 timestamp
 - submission_data: JSON blob with threat intel data
 ```

@@ -18,6 +18,8 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
+from pydantic import BaseModel, field_validator, ConfigDict
+from fastapi.exceptions import RequestValidationError
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -26,14 +28,17 @@ import uvicorn
 
 # Import enums from FRANK core
 from frank.core.enum import ObservableType, TLPLevel, AccessTier
+from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.storage.dynamodb import create_dynamodb_database
 
 # Utilities
 from frank.util.sample_builder import SampleDataSeeder
-from frank.util import create_client
-from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse, ObservationsResponse
+from frank.util import create_server, create_error_response
+from frank.util.requests import SubmissionRequest, OrganisationRequest
+from frank.util.requests import SubmissionResponse, SightingSearchResponse, ObservationsResponse
+from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException, NotFoundException, UnauthenticatedException
 from frank import __version__
 
 # Configure logging
@@ -66,6 +71,7 @@ class FrankConfig:
     def setup_config(self):
         """Setup configuration based on environment"""
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
+        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "frank_table")
 
         if self.environment in ["localstack", "aws"]:
             self.database_type = "dynamodb"
@@ -83,15 +89,18 @@ class FrankConfig:
 # ================================
 
 # Initialize configuration and database
+# This also creates the tables
+# TODO: move table creation outside of initialisation for production
 config = FrankConfig()
 frank_dynamodb = create_dynamodb_database(
     table_name=config.table_name,
+    audit_table_name=config.audit_table_name,
     region=config.aws_region,
     endpoint=config.localstack_endpoint,
     aws_access_key_id=config.aws_access_key,
     aws_secret_access_key=config.aws_secret_key,
 )
-frank_client = create_client(db=frank_dynamodb, logger=logger)
+frank_server = create_server(db=frank_dynamodb, logger=logger)
 
 # Initialize system once server is setup
 @asynccontextmanager
@@ -99,7 +108,7 @@ async def lifespan(app: FastAPI):
     """Initialize database on startup"""
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
     # load_database with sample data
-    frank_client.seed_database(SampleDataSeeder())
+    frank_server.seed_database(SampleDataSeeder())
     logger.info(f"Database Initialization complete")
     yield
 
@@ -123,7 +132,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 # Authentication and authorization functions
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
     """
@@ -132,23 +140,24 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
     For this spike, we'll mock the user data.
     """
     # Check if credentials were provided
+    from frank.util.http_exceptions import UnauthenticatedException
     if credentials is None:
-        raise HTTPException(status_code=401, detail="Authentication required")
+        raise UnauthenticatedException("Authentication required")
 
     # Mock user data for spike - in production, decode and validate JWT
     token = credentials.credentials
 
     # Simple mock based on token prefix for demonstration
     if token.startswith("observer_"):
-        return {"organization_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
+        return {"organisation_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
     elif token.startswith("contributor_"):
-        return {"organization_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
+        return {"organisation_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
     elif token.startswith("partner_"):
-        return {"organization_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
+        return {"organisation_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
     elif token.startswith("core_"):
-        return {"organization_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
+        return {"organisation_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
     else:
-        raise HTTPException(status_code=401, detail="Invalid authentication token")
+        raise UnauthenticatedException("Invalid authentication token")
 
 
 
@@ -170,7 +179,7 @@ rate_limiter = RateLimiter()
 # ================================
 
 @app.post("/v1/submission", response_model=SubmissionResponse)
-async def submit_threat_intelligence(
+async def post_threat_intelligence(
     request: Request,
     submission_request: SubmissionRequest = Body(...),
     current_user: Dict[str, Any] = Depends(get_current_user),
@@ -183,123 +192,182 @@ async def submit_threat_intelligence(
 
     # Check permissions
     if not AccessTier.can_submit(current_user["access_level"]):
-        raise HTTPException(status_code=403, detail="Insufficient access level for submission")
+        raise UnauthorizedException(f"Insufficient access level {current_user['access_level']} for submission")
 
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
+        raise BadRequestException("Rate limit exceeded")
 
-    try:
-        # Store in database
-        success, score_impact = frank_client.submit_threat_intelligence(current_user["organization_id"], submission)
+    # Store in database
+    score_impact = frank_server.submit_threat_intelligence(current_user["organisation_id"], submission)
 
-        # TODO: simplify error handling in client, propagate Exceptions, not status flags
-        if not success:
-            raise HTTPException(status_code=500, detail="Failed to store submission")
+    return SubmissionResponse(
+        status="accepted",
+        submission_id=submission.submission_id,
+        contribution_score_impact=score_impact,
+        processing_status="queued",
+        validation_required=False,
+        estimated_processing_time="2-5 minutes",
+    )
 
-        return SubmissionResponse(
-            status="accepted",
-            submission_id=submission.submission_id,
-            contribution_score_impact=score_impact,
-            processing_status="queued",
-            validation_required=False,
-            estimated_processing_time="2-5 minutes",
-        )
+@app.post("/v1/organisation")
+async def post_organisation(
+    request: Request,
+    organisation_request: OrganisationRequest = Body(...),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Submit threat intelligence sighting to the platform.
+    Requires Contributor, Partner, or Core Member access level.
+    """
+    organisation = organisation_request.organisation
 
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Submission validation failed: {str(e)}")
+    # Check permissions
+    if not AccessTier.can_submit(current_user["access_level"]):
+        raise UnauthorizedException(f"Insufficient access level {current_user['access_level']} for organisation")
+
+    # Check rate limiting
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
+        raise BadRequestException("Rate limit exceeded")
+
+    frank_server.upsert_organisation(organisation)
+
+
+@app.get("/v1/statistics")
+async def get_platform_statistics(
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
+):
+    """Get platform usage statistics"""
+    if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
+        raise UnauthorizedException("Insufficient access level")
+
+    stats = frank_server.get_platform_statistics(
+        user_id=current_user["organisation_id"],
+        access_level=current_user["access_level"],
+        days=days,
+    )  
+    return stats
+
+
+@app.get('/v1/submission/{submission_id}', response_model=Submission, response_model_exclude_none=True)
+async def get_submission(
+    submission_id: str,
+    current_user: Dict[str, Any] = Depends(get_current_user),
+):
+    """
+    Retrieve a specific submission by its ID.
+    Only Submitters can access the submission.
+    """
+    # Check permissions
+    if not current_user["access_level"] not in [AccessTier.CORE_MEMBER]:
+        raise UnauthorizedException("Insufficient access level for submission retrieval")
+
+    submission = frank_server.get_submission_by_id(current_user["organisation_id"], current_user["access_level"], submission_id)
+    if not submission:
+        raise NotFoundException(f"Submission {submission_id} not found")
+
+    return submission
+
+
+class SightingSearchQuery(BaseModel):
+    """Model for sighting search query parameters"""
+
+    model_config = ConfigDict(
+        extra="ignore",  # Be forgiving on input
+        use_enum_values=True,
+        populate_by_name=True,  # Allow both field name and alias
+    )
+
+
+    observable: Optional[str] = Query(None, description="Specific IoC to search for")
+    observable_type: Optional[ObservableType] = Query(None, alias="type", description="Observable type filter")
+    start_date: Optional[datetime] = Query(None, description="Search start date")
+    end_date: Optional[datetime] = Query(None, description="Search end date")
+    sector: Optional[str] = Query(None, description="Target sector filter")
+    confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score")
+    tlp_level: Optional[TLPLevel] = Query(None, description="Traffic Light Protocol level")
+    campaign: Optional[str] = Query(None, description="Threat campaign identifier")
+    limit: Optional[int] = Query(50, ge=1, le=1000, description="Maximum results to return")
+    offset: Optional[int] = Query(0, ge=0, description="Pagination offset")
+    format: Optional[str] = Query("summary", description="Response format")
+
+    @field_validator("end_date")
+    def validate_date_range(cls, end_date, info):
+        start_date = info.data.get("start_date")
+        if start_date and end_date and start_date >= end_date:
+            raise BadRequestException(
+                "Invalid date range: start_date must be before end_date"
+            )
+        return end_date
+
+    def to_dict(self) -> Dict[str, Any]:
+        """Convert model to dict excluding None values"""
+        query_params = self.model_dump()
+        # Add sector as list if present
+        if query_params.get("sector"):
+            query_params["sectors"] = [query_params.pop("sector")]
+
+        # Calculate days_back if start_date is present
+        if query_params.get("start_date"):
+            days_back = (datetime.now(timezone.utc) - query_params["start_date"]).days
+            query_params["days_back"] = max(1, days_back)
+
+        return query_params
 
 
 @app.get("/v1/sighting", response_model=SightingSearchResponse)
-async def search_threat_sightings(
+async def get_threat_sightings(
     current_user: Dict[str, Any] = Depends(get_current_user),
-    observable: Optional[str] = Query(None, description="Specific IoC to search for"),
-    type: Optional[ObservableType] = Query(None, description="Observable type filter"),
-    start_date: Optional[datetime] = Query(None, description="Search start date"),
-    end_date: Optional[datetime] = Query(None, description="Search end date"),
-    sector: Optional[str] = Query(None, description="Target sector filter"),
-    confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score"),
-    tlp_level: Optional[TLPLevel] = Query(None, description="Traffic Light Protocol level"),
-    campaign: Optional[str] = Query(None, description="Threat campaign identifier"),
-    limit: Optional[int] = Query(50, ge=1, le=1000, description="Maximum results to return"),
-    offset: Optional[int] = Query(0, ge=0, description="Pagination offset"),
-    format: Optional[str] = Query("summary", description="Response format"),
+    query: SightingSearchQuery = Depends()
 ):
     """
     Retrieve threat intelligence sightings based on search criteria.
     Available to Observer, Contributor, Partner, and Core Member tiers.
     """
-
     # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organization_id"], current_user["access_level"]):
-        raise HTTPException(status_code=429, detail="Rate limit exceeded")
+    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
+        raise TooManyRequestsException("Rate limit exceeded")
 
-    try:
-        # Validate date range
-        if start_date and end_date and start_date >= end_date:
-            raise HTTPException(
-                status_code=400,
-                detail={
-                    "error": {
-                        "code": "INVALID_QUERY_PARAMETERS",
-                        "message": "Invalid date range: start_date must be before end_date",
-                        "details": {
-                            "start_date": start_date.isoformat() if start_date else None,
-                            "end_date": end_date.isoformat() if end_date else None,
-                        },
-                        "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "request_id": f"req-{uuid.uuid4()}",
-                    }
-                },
-            )
-
-        # Build query parameters
-        query_params = {"org_id": current_user["organization_id"], "access_level": current_user["access_level"], "limit": limit}
-
-        # Add filters if provided
-        if type:
-            query_params["observable_type"] = type.value
-        if confidence_min:
-            query_params["min_confidence"] = confidence_min
-        if sector:
-            query_params["sectors"] = [sector]
-        if start_date or end_date:
-            # Calculate days back from start_date if provided
-            if start_date:
-                days_back = (datetime.now(timezone.utc) - start_date).days
-                query_params["days_back"] = max(1, days_back)
+    # Build query parameters from model_dict
+    query_params = query.to_dict()
+    # Remove keys not needed for frank_server.query_threats
+    observable = query_params.pop("observable", None)
+    offset = query_params.pop("offset", 0)
+    limit = query_params.pop("limit", 50)
 
 
-        total_results, sightings, aggregations, threat_context = frank_client.query_threats(
-            # org_id=current_user["organization_id"], access_level=current_user["access_level"], limit=limit, 
-            format=format, offset=offset,
-            observable=observable, **query_params
-        )
+    total_results, sightings, aggregations, threat_context = frank_server.query_threats(
+        user_id=current_user["organisation_id"], access_level=current_user["access_level"],
+        offset=offset, limit=limit,
+        observable=observable, **query_params
+    )
 
-        response = SightingSearchResponse(
-            total_results=total_results, returned_results=len(sightings), sightings=sightings, aggregations=aggregations, threat_context=threat_context, pagination=None
-        )
+    response = SightingSearchResponse(
+        total_results=total_results,
+        returned_results=len(sightings),
+        sightings=sightings,
+        aggregations=aggregations,
+        threat_context=threat_context,
+        pagination=None
+    )
 
-        # Add pagination info
-        if total_results > offset + limit:
-            response.pagination = {
-                "has_next": True,
-                "next_offset": offset + limit,
-                "has_previous": offset > 0,
-                "previous_offset": max(0, offset - limit),
-            }
+    # Add pagination info
+    if total_results > offset + limit:
+        response.pagination = {
+            "has_next": True,
+            "next_offset": offset + limit,
+            "has_previous": offset > 0,
+            "previous_offset": max(0, offset - limit),
+        }
 
-        return response
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+    return response
 
 
 @app.get("/v1/observations", response_model=ObservationsResponse)
 def get_observations(
-    org_id: str = Query(..., description="Organization ID"),
+    current_user: Dict[str, Any] = Depends(get_current_user),
+    org_id: str = Query(..., description="Organisation ID"),
     days: int = Query(30, description="Number of days to include in stats"),
     observable_type: str = Query(None, description="Filter by observable type"),
     limit: int = Query(100, description="Max number of results")
@@ -307,7 +375,7 @@ def get_observations(
     """
     Get observable statistics and details for the platform.
     """
-    observations, stats = frank_client.get_observations(
+    observations, stats = frank_server.get_observations(
             org_id=org_id,
             days=days,
             observable_type=observable_type,
@@ -325,9 +393,9 @@ def get_observations(
 
 # Health and status endpoints
 @app.get("/v1/health")
-async def health_check():
+async def get_health_check():
     """Health check endpoint"""
-    return frank_client.health_check()
+    return frank_server.health_check()
 
 
 @app.get("/v1/statistics")
@@ -337,12 +405,12 @@ async def get_platform_statistics(
 ):
     """Get platform usage statistics"""
     if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
-        raise HTTPException(status_code=403, detail="Insufficient access level")
+        raise UnauthorizedException("Insufficient access level")
 
-    stats = frank_client.get_platform_statistics(
-        org_id=current_user["organization_id"],
+    stats = frank_server.get_platform_statistics(
+        user_id=current_user["organisation_id"],
+        access_level=current_user["access_level"],
         days=days,
-        access_level=current_user["access_level"]
     )  
     return stats
 
@@ -351,35 +419,39 @@ async def get_platform_statistics(
 # ===============================
 @app.exception_handler(HTTPException)
 async def http_exception_handler(request: Request, exc: HTTPException):
-    """Custom HTTP exception handler"""
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={
-            "error": {
-                "code": "HTTP_ERROR",
-                "message": exc.detail,
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "request_id": f"req-{uuid.uuid4()}",
-            }
-        },
-    )
+	"""Custom HTTP exception handler"""
+	return JSONResponse(
+		status_code=exc.status_code,
+		content=create_error_response(
+			exc.status_code,
+			"HTTP_ERROR",
+			exc.detail
+		),
+	)
 
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    return JSONResponse(
+        status_code=422,
+        content=create_error_response(
+            422,
+            "VALIDATION_ERROR",
+            "Request validation failed",
+            details={"validation_errors": exc.errors()}
+        )
+    )
 
 @app.exception_handler(Exception)
-async def general_exception_handler(request: Request, exc: Exception):
-    """General exception handler"""
+def generic_exception_handler(request: Request, exc: Exception):
+    """Dedicated exception handler for generic exceptions."""
     return JSONResponse(
         status_code=500,
-        content={
-            "error": {
-                "code": "INTERNAL_SERVER_ERROR",
-                "message": "An internal server error occurred",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "request_id": f"req-{uuid.uuid4()}",
-            }
-        },
+        content=create_error_response(
+            500,
+            "INTERNAL_ERROR",
+            str(exc)
+        ),
     )
-
 
 if __name__ == "__main__":
     import argparse

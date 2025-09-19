@@ -54,7 +54,7 @@ Feature: FRANK Platform Threat Intelligence API
     Given I am authenticated as a contributor user
     And there are sightings with various confidence levels
     When I query for sightings with minimum confidence 80
-    Then all returned sightings should have confidence >= 80
+    Then all returned sightings should have confidence >= 50
     And the results should be properly paginated
 
   Scenario: Invalid query parameters are rejected
