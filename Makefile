@@ -47,7 +47,7 @@ unittests:  		## Run all unittests
 		--cov-report=xml \
 		--cov-report=html \
 		--cov-report=term-missing \
-		--cov-fail-under=50 \
+		--cov-fail-under=65 \
 		--junitxml=test-results.xml
 
 integration:  ## Run all integration tests

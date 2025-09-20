@@ -11,6 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import unittest
 from unittest.mock import patch
+import pytest
 
 import uuid
 from datetime import datetime, timezone, timedelta
@@ -246,14 +247,27 @@ class TestSighting(unittest.TestCase):
         s = Sighting(confidence=50)
         assert s.timestamp.tzinfo is not None
 
-    def test_invalid_observation_times(self):
+    def test_timestamp_is_set(self):
+        """Test that Sighting timestamp is set."""
+        s = Sighting(timestamp=None)
+        assert s.timestamp is not None
+
+    def test_invalid_observation_time_last(self):
         """Test that Sighting raises error for invalid observation times."""
-        import pytest
-        from datetime import datetime, timedelta, timezone
         first = datetime.now(timezone.utc)
         last = first - timedelta(days=1)
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError) as exc:
             Sighting(confidence=50, first_observed=first, last_observed=last)
+            self.assertIn("first_observed cannot be after last_observed", str(exc.value))
+
+    def test_invalid_observation_time_timestamp(self):
+        """Test that Sighting raises error for invalid observation times."""
+        first = datetime.now(timezone.utc)
+        last = first - timedelta(days=1)
+        with pytest.raises(ValueError) as exc:
+            Sighting(confidence=50, first_observed=first, timestamp=last)
+            self.assertIn("first_observed cannot be after main timestamp", str(exc.value))
+
 
     def test_confidence_validation(self):
         """Test confidence score validation"""

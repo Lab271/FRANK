@@ -2,7 +2,7 @@ import unittest
 from unittest.mock import MagicMock, patch
 from datetime import datetime, timezone
 from frank.util.server import create_server, calculate_contribution_score
-from frank.core.models import Submission
+from frank.core.models import Submission, Submitter
 from frank.core.enum import AccessTier
 
 class TestFRANKServer(unittest.TestCase):
@@ -84,8 +84,104 @@ class TestFRANKServer(unittest.TestCase):
         self.assertFalse(self.server.seed_database(seeder))
         self.mock_logger.error.assert_called()
 
+    def test_upsert_organisation(self):
+        submitter = MagicMock(spec=Submitter)
+        submitter.model_dump.return_value = {"organisation_id": "org123"}
+        submitter.organisation_id = "org123"
+        self.server.upsert_organisation(submitter)
+        self.mock_db.upsert_organisation.assert_called_once_with({"organisation_id": "org123"})
+        self.mock_db.log_access.assert_called_once_with("org123", 'UPSERT', 'organisation', "org123")
+
+    def test_get_submission_by_id_found(self):
+        submission_dict = {"submission": {"submission_id": "sub1"}}
+        self.mock_db.get_submission_by_id.return_value = submission_dict
+        with patch('frank.util.server.FRANKFilter') as MockFilter:
+            mock_filter = MockFilter.return_value
+            mock_filter.submission_by_access_level.return_value = {"submission": {"submission_id": "sub1"}}
+            result = self.server.get_submission_by_id("user1", AccessTier.CONTRIBUTOR, "sub1")
+            self.assertIsNotNone(result)
+            self.mock_db.log_access.assert_called_once_with("user1", 'READ', 'submission', "sub1")
+
+    def test_get_submission_by_id_not_found(self):
+        self.mock_db.get_submission_by_id.return_value = None
+        result = self.server.get_submission_by_id("user1", AccessTier.CONTRIBUTOR, "sub1")
+        self.assertIsNone(result)
+
+
+
 class TestHelperFunctions(unittest.TestCase):
     def test_calculate_contribution_score(self):
+        submission = MagicMock()
+        submission.sighting.observables.network = [1,2]
+        submission.sighting.observables.file = [3]
+        submission.sighting.observables.process = []
+        submission.sighting.sigma_detection = True
+        submission.sighting.threat_context = True
+        submission.sighting.impact = True
+        score = calculate_contribution_score(submission)
+        self.assertLessEqual(score, 25)
+
+    def test_format_sighting_response_observer(self):
+        from frank.util.server import format_sighting_response
+        result = {"observable_hash": "abcdef123456", "last_seen": "2025-09-20T12:00:00Z", "observable_type": "ipv4", "observable_value": "1.2.3.4", "avg_confidence": 80}
+        resp = format_sighting_response(result, AccessTier.OBSERVER, "summary")
+        self.assertIn("sighting_id", resp)
+        self.assertEqual(resp["observable_type"], "ipv4")
+        self.assertEqual(resp["observable_value"], "1.2.3.***")
+        from frank.util.server import format_sighting_response
+        result = {"observable_hash": "abcdef123456", "last_seen": "2025-09-20T12:00:00Z", "observable_type": "ipv4", "observable_value": "1.2.3.4", "avg_confidence": 80}
+        resp = format_sighting_response(result, AccessTier.OBSERVER, "summary")
+        self.assertIn("sighting_id", resp)
+        self.assertEqual(resp["observable_type"], "ipv4")
+        self.assertEqual(resp["observable_value"], "1.2.3.4"[:6] + "***")
+
+    def test_format_sighting_response_contributor(self):
+        from frank.util.server import format_sighting_response
+        result = {"observable_hash": "abcdef1234567890", "last_seen": "2025-09-20T12:00:00Z", "observable_type": "domain", "observable_value": "example.com", "avg_confidence": 70, "total_sightings": 5, "sectors": ["finance"]}
+        resp = format_sighting_response(result, AccessTier.CONTRIBUTOR, "summary")
+        self.assertIn("sighting_id", resp)
+        self.assertIn("observable", resp)
+        self.assertEqual(resp["total_sightings"], 5)
+
+    def test_format_sighting_response_partner(self):
+        from frank.util.server import format_sighting_response
+        result = {"observable_hash": "abcdef1234567890", "last_seen": "2025-09-20T12:00:00Z", "observable_type": "domain", "observable_value": "example.com", "avg_confidence": 90, "total_sightings": 10, "unique_organisations": 3, "first_seen": "2025-09-01T12:00:00Z", "sectors": ["finance"], "regions": ["EU"]}
+        resp = format_sighting_response(result, AccessTier.PARTNER, "summary")
+        self.assertIn("unique_organisations", resp)
+        self.assertIn("regions", resp)
+
+    def test_mask_observable_value(self):
+        from frank.util.server import mask_observable_value
+        self.assertEqual(mask_observable_value("1.2.3.4", "ipv4"), "1.2.3.***")
+        self.assertTrue(mask_observable_value("example.com", "domain").startswith("*****"))
+        self.assertEqual(mask_observable_value("longobservablevalue", "other"), "longobserv...")
+        self.assertEqual(mask_observable_value("short", "other"), "short")
+
+    def test_generate_aggregations(self):
+        from frank.util.server import generate_aggregations
+        results = [
+            {"observable_hash": "a", "avg_confidence": 85, "total_sightings": 2},
+            {"observable_hash": "b", "avg_confidence": 65, "total_sightings": 3},
+            {"observable_hash": "c", "avg_confidence": 40, "total_sightings": 1},
+        ]
+        aggs = generate_aggregations(results, AccessTier.CONTRIBUTOR)
+        self.assertEqual(aggs["total_organisations"], 3)
+        self.assertEqual(aggs["confidence_distribution"], {"high": 1, "medium": 1, "low": 1})
+        self.assertEqual(aggs["total_sightings"], 6)
+
+    def test_generate_threat_context(self):
+        from frank.util.server import generate_threat_context
+        results = [{}]
+        context = generate_threat_context(results)
+        self.assertIn("campaigns_involved", context)
+        self.assertIn("mitre_attack", context)
+
+    def test_create_server_factory(self):
+        from frank.util.server import create_server, FRANKServer
+        db = MagicMock()
+        logger = MagicMock()
+        server = create_server(db, logger)
+        self.assertIsInstance(server, FRANKServer)
         submission = MagicMock()
         submission.sighting.observables.network = [1,2]
         submission.sighting.observables.file = [3]

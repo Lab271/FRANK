@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 
 # from frank.core.exceptions import *
 # from .exceptions import *
-from .db import create_database
 from .base import BaseFRANKDatabase
 from .sqlite import create_sqlite_database
 from .mysql import create_mysql_database
@@ -24,7 +23,6 @@ __all__ = [
     'create_sqlite_database',
     'create_mysql_database',
     'create_dynamodb_database',
-    'create_database',
     'BaseFRANKDatabase',
     'FRANKDatabaseError',
     'FRANKConfigurationError',

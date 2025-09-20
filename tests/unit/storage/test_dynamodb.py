@@ -246,5 +246,132 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
         with self.assertRaises(FRANKQueryError):
             self.db.get_submission_by_id('sub1')
 
+
+class TestDynamoDBFRANKDatabaseUpsertOrganisation(unittest.TestCase):
+    """Unit tests for DynamoDBFRANKDatabase.upsert_organisation method."""
+    def setUp(self):
+        patcher_resource = patch('boto3.resource')
+        self.mock_resource = patcher_resource.start()
+        self.addCleanup(patcher_resource.stop)
+        self.logger = MagicMock()
+        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
+        self.db.table = MagicMock()
+        self.db.client = MagicMock()
+        self.db.logger = MagicMock()
+
+    def test_upsert_organisation_success(self):
+        org_data = {
+            'organisation_id': 'org123',
+            'access_level': 'partner',
+            'sector': 'finance',
+            'region': 'eu-west-1',
+            'last_active': '2025-09-20T12:00:00Z'
+        }
+        self.db.table.put_item.return_value = {'ResponseMetadata': {'HTTPStatusCode': 200}}
+        result = self.db.upsert_organisation(org_data)
+        self.db.table.put_item.assert_called_once()
+        self.assertTrue(result is None or result)
+
+    def test_upsert_organisation_client_error(self):
+        org_data = {
+            'organisation_id': 'org123',
+            'access_level': 'partner',
+            'sector': 'finance',
+            'region': 'eu-west-1',
+            'last_active': '2025-09-20T12:00:00Z'
+        }
+        from botocore.exceptions import ClientError
+        self.db.table.put_item.side_effect = ClientError({'Error': {}}, 'put_item')
+        result = self.db.upsert_organisation(org_data)
+        self.db.logger.error.assert_called()
+        self.assertTrue(result is None or result is False)
+
+
+class TestDynamoDBFRANKDatabaseStatisticsAndHealth(unittest.TestCase):
+    """Unit tests for DynamoDBFRANKDatabase.get_statistics_summary and health_check methods."""
+    def setUp(self):
+        patcher_resource = patch('boto3.resource')
+        self.mock_resource = patcher_resource.start()
+        self.addCleanup(patcher_resource.stop)
+        self.logger = MagicMock()
+        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
+        self.db.table = MagicMock()
+        self.db.client = MagicMock()
+        self.db.logger = MagicMock()
+
+    def test_get_statistics_summary_success(self):
+        # Simulate DynamoDB scan response for statistics
+        self.db.table.scan.return_value = {
+            'Items': [
+                {'EntityType': 'Submission', 'observable_type': 'ipv4'},
+                {'EntityType': 'Submission', 'observable_type': 'domain'}
+            ],
+            'Count': 2
+        }
+        # Patch _convert_decimals_to_float to pass through
+        self.db._convert_decimals_to_float = lambda x: x
+        stats = self.db.get_statistics_summary('org123', days=30)
+        self.assertIsInstance(stats, dict)
+        self.assertIn('observable_totals', stats)
+
+    def test_get_statistics_summary_client_error(self):
+        from botocore.exceptions import ClientError
+        self.db.table.scan.side_effect = ClientError({'Error': {}}, 'scan')
+        stats = self.db.get_statistics_summary('org123', days=30)
+        self.assertIsInstance(stats, dict)
+        self.assertIn('error', stats)
+
+    def test_health_check(self):
+        result = self.db.health_check()
+        self.assertIsInstance(result, dict)
+        self.assertEqual(result['status'], 'healthy')
+        self.assertEqual(result['database'], 'dynamodb')
+        self.assertIn('database_table', result)
+        self.assertIn('database_region', result)
+        self.assertIn('stack', result)
+
+
+class TestDynamoDBFRANKDatabaseQueryObservables(unittest.TestCase):
+    """Unit tests for DynamoDBFRANKDatabase.query_observables method."""
+    def setUp(self):
+        patcher_resource = patch('boto3.resource')
+        self.mock_resource = patcher_resource.start()
+        self.addCleanup(patcher_resource.stop)
+        self.logger = MagicMock()
+        self.db = DynamoDBFRANKDatabase(connection_params={}, logger=self.logger)
+        self.db.table = MagicMock()
+        self.db.client = MagicMock()
+        self.db.logger = MagicMock()
+
+    def test_query_observables_success(self):
+        # Simulate DynamoDB query response for observables
+        self.db.table.query.return_value = {
+            'Items': [
+                {'observable_type': 'ipv4', 'confidence': 85, 'sector': 'finance', 'timestamp': '2025-09-20T12:00:00Z'},
+                {'observable_type': 'domain', 'confidence': 70, 'sector': 'retail', 'timestamp': '2025-09-19T12:00:00Z'}
+            ],
+            'Count': 2
+        }
+        # Patch _convert_decimals_to_float to pass through
+        self.db._convert_decimals_to_float = lambda x: x
+        result = self.db.query_observables(
+            user_id='org123',
+            access_level=None,
+            observable_type='ipv4',
+            sectors=None,
+            min_confidence=None,
+            limit=10,
+            days_back=None
+        )
+        self.assertIsInstance(result, list)
+        self.assertGreaterEqual(len(result), 0)
+
+    def test_query_observables_client_error(self):
+        from botocore.exceptions import ClientError
+        self.db.table.scan.side_effect = ClientError({'Error': {}}, 'query')
+        with self.assertRaises(FRANKQueryError):
+            self.db.query_observables(user_id='org123')
+
+
 if __name__ == '__main__':
     unittest.main(verbosity=2, buffer=True)
