@@ -1,11 +1,11 @@
-# Generated on Sat Sep 20 21:16:52 CEST 2025
+# Generated on Sun Sep 21 17:58:42 CEST 2025
 annotated-types==0.7.0
 anyio==4.10.0
 appnope==0.1.4
 asttokens==3.0.0
 behave==1.3.3
-boto3==1.40.28
-botocore==1.40.28
+boto3==1.40.35
+botocore==1.40.35
 certifi==2025.8.3
 charset-normalizer==3.4.3
 click==8.2.1
