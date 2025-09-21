@@ -1,0 +1,16 @@
+# ===================================
+# Requirements for 008_aws_spike.py
+# Minimal dependencies for AWS ECS deployment
+# ===================================
+
+# Core FastAPI framework
+fastapi==0.104.1
+
+# ASGI server with uvloop for better performance
+uvicorn[standard]==0.24.0
+
+# Optional: For enhanced logging (if needed)
+# python-json-logger==2.0.7
+
+# Optional: For environment variable management (if needed)
+# python-dotenv==1.0.0
