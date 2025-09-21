@@ -43,8 +43,8 @@ from frank import __version__
 
 # Configure logging
 # logger = logging.getLogger(__name__)
+logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("uvicorn.error")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 # curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
@@ -65,24 +65,37 @@ class FrankConfig:
     """Environment-based configuration management"""
 
     def __init__(self, environment: str = None):
-        self.environment = environment or os.getenv("FRANK_ENVIRONMENT", "localstack")
-        self.setup_config()
-
-    def setup_config(self):
-        """Setup configuration based on environment"""
+        self.environment = environment or os.getenv("FRANK_ENVIRONMENT", "aws")
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
-        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "frank_table")
+        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "audit_table")
+        self.database_type = "dynamodb"
 
-        if self.environment in ["localstack", "aws"]:
-            self.database_type = "dynamodb"
-            self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
-
-            # AWS Credentials (for LocalStack)
-            self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
-            self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
-            self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
+        # AWS Credentials (for LocalStack)
+        self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
+        self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
+        self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
+        
+        if self.environment in ["localstack"]:
+            self.endpoint = os.getenv("ENDPOINT", "http://localstack:4566")
+        elif self.environment in ["aws"]:
+            self.endpoint = os.getenv("ENDPOINT", None)
         else:
             raise ValueError(f"Unknown environment: {self.environment}")
+        
+        logger.info(f"environment: {self.environment}")
+        logger.info(f"endpoint: {self.endpoint}")
+
+    def for_db(self):
+        """Return database connection parameters as a dict."""
+        return {
+            "table_name": self.table_name,
+            "audit_table_name": self.audit_table_name,
+            "region": self.aws_region,
+            "endpoint": self.endpoint,
+            "aws_access_key_id": self.aws_access_key,
+            "aws_secret_access_key": self.aws_secret_key,
+            'logger': logger,
+        }
 
 # ================================
 # FASTAPI APPLICATION
@@ -92,21 +105,14 @@ class FrankConfig:
 # This also creates the tables
 # TODO: move table creation outside of initialisation for production
 config = FrankConfig()
-frank_dynamodb = create_dynamodb_database(
-    table_name=config.table_name,
-    audit_table_name=config.audit_table_name,
-    region=config.aws_region,
-    endpoint=config.localstack_endpoint,
-    aws_access_key_id=config.aws_access_key,
-    aws_secret_access_key=config.aws_secret_key,
-)
+frank_dynamodb = create_dynamodb_database(**config.for_db())
 frank_server = create_server(db=frank_dynamodb, logger=logger)
 
 # Initialize system once server is setup
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
-    logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
+    logger.info(f"Starting FRANK Platform Stage 3 - Environment: {config.environment}")
     # load_database with sample data
     frank_server.seed_database(SampleDataSeeder())
     logger.info(f"Database Initialization complete")
@@ -115,8 +121,8 @@ async def lifespan(app: FastAPI):
 
 # Create FastAPI app
 app = FastAPI(
-    title="FRANK Platform - Stage 2",
-    description="Dynamodb Implementation with LocalStack",
+    title="FRANK Platform - Stage 3",
+    description="Dynamodb Implementation with AWS",
     version=__version__,
     docs_url="/docs",
     redoc_url="/redoc",
@@ -394,7 +400,9 @@ def get_observations(
 @app.get("/v1/health")
 async def get_health_check():
     """Health check endpoint"""
-    return frank_server.health_check()
+    result = frank_server.health_check()
+    result['stack'] = config.environment
+    return result
 
 
 @app.get("/v1/statistics")
@@ -455,9 +463,9 @@ def generic_exception_handler(request: Request, exc: Exception):
 if __name__ == "__main__":
     import argparse
 
-    parser = argparse.ArgumentParser(description="FRANK Platform Stage 2 Server")
+    parser = argparse.ArgumentParser(description="FRANK Platform Stage 3 Server")
     parser.add_argument(
-        "--environment", choices=["localstack", "aws"], default="localstack", help="Environment to run in"
+        "--environment", choices=["localstack", "aws"], default="aws", help="Environment to run in"
     )
     parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
     parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
@@ -468,9 +476,9 @@ if __name__ == "__main__":
     # Set environment
     os.environ["FRANK_ENVIRONMENT"] = args.environment
 
-    logger.info("Starting FRANK Platform Stage 2")
+    logger.info("Starting FRANK Platform Stage 3")
     logger.info(f"Environment: {args.environment}")
     logger.info(f"Database type: {config.database_type}")
 
     # Run the server
-    uvicorn.run("frank_stage2:app", host=args.host, port=args.port, reload=args.reload, log_level="info")
+    uvicorn.run("frank_stage3:app", host=args.host, port=args.port, reload=args.reload, log_level="info")

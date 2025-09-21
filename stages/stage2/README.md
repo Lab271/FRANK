@@ -263,7 +263,7 @@ make performance
 FRANK_ENVIRONMENT=localstack
 
 # LocalStack
-LOCALSTACK_ENDPOINT=http://localhost:4566
+ENDPOINT=http://localhost:4566
 
 # RDS Settings
 RDS_HOST=mysql

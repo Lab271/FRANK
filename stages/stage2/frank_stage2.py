@@ -71,11 +71,11 @@ class FrankConfig:
     def setup_config(self):
         """Setup configuration based on environment"""
         self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
-        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "frank_table")
+        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "audit_table")
 
         if self.environment in ["localstack", "aws"]:
             self.database_type = "dynamodb"
-            self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localstack:4566")
+            self.ENDPOINT = os.getenv("ENDPOINT", "http://localstack:4566")
 
             # AWS Credentials (for LocalStack)
             self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
@@ -96,7 +96,7 @@ frank_dynamodb = create_dynamodb_database(
     table_name=config.table_name,
     audit_table_name=config.audit_table_name,
     region=config.aws_region,
-    endpoint=config.localstack_endpoint,
+    endpoint=config.ENDPOINT,
     aws_access_key_id=config.aws_access_key,
     aws_secret_access_key=config.aws_secret_key,
 )

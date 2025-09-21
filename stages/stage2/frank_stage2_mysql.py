@@ -89,7 +89,7 @@ class FrankConfig:
     def setup_localstack_hybrid_config(self):
         """Hybrid LocalStack with external MySQL configuration"""
         self.database_type = "mysql"
-        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
+        self.ENDPOINT = os.getenv("ENDPOINT", "http://localhost:4566")
 
         # MySQL Configuration (external)
         self.rds_host = os.getenv("RDS_HOST", "mysql")
@@ -106,7 +106,7 @@ class FrankConfig:
     def setup_localstack_config(self):
         """LocalStack RDS configuration"""
         self.database_type = "rds"
-        self.localstack_endpoint = os.getenv("LOCALSTACK_ENDPOINT", "http://localhost:4566")
+        self.ENDPOINT = os.getenv("ENDPOINT", "http://localhost:4566")
 
         # RDS Configuration (via LocalStack)
         self.rds_host = os.getenv("RDS_HOST", "localhost")

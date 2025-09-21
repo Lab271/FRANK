@@ -59,15 +59,18 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         self.table_name = self.connection_params.get("DYNAMODB_TABLE", "frank_table")
         self.audit_table_name = self.connection_params.get("AUDIT_TABLE", "frank_audit")
         self.region = self.connection_params.get("AWS_DEFAULT_REGION", "eu-west-1")
-        self.environment = self.connection_params.get("FRANK_ENVIRONMENT", "localstack")
+        self.endpoint = self.connection_params.get("ENDPOINT", None)
+
+        self.logger.info(f"Connection to DynamoDB database")
+        self.logger.info(f"config {self.connection_params.items()}")
 
         # Initialize AWS DynamoDB client
         try:
-            if self.environment == "localstack":
+            if self.endpoint:
                 # LocalStack configuration with dummy credentials
                 self.dynamodb = boto3.resource(
                     "dynamodb",
-                    endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localstack:4566"),
+                    endpoint_url=self.endpoint,
                     region_name=self.region,
                     aws_access_key_id=aws_access_key_id,
                     aws_secret_access_key=aws_secret_access_key
@@ -76,7 +79,6 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 # Production AWS environment (uses actual credentials)
                 self.dynamodb = boto3.resource(
                     "dynamodb",
-                    endpoint_url=self.connection_params.get("LOCALSTACK_ENDPOINT", "http://localhost:4566"),
                     region_name=self.region,
                     aws_access_key_id=aws_access_key_id,
                     aws_secret_access_key=aws_secret_access_key
@@ -90,9 +92,8 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         self.client = self.dynamodb.meta.client
 
         # Verify connection and create table if needed (LocalStack only)
-        if self.environment == 'localstack':
-            self.table = self._ensure_table_exists(self.table_name)
-            self.audit_table = self._ensure_table_exists(self.audit_table_name)
+        self.table = self._ensure_table_exists(self.table_name)
+        self.audit_table = self._ensure_table_exists(self.audit_table_name)
 
 
     def _convert_floats_to_decimal(self, obj: Any) -> Any:
@@ -178,12 +179,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         table.meta.client.get_waiter('table_exists').wait(TableName=table_name)
 
         # Enable TTL on the TTL attribute for audit table
-        try:
-            self.dynamodb.meta.client.update_time_to_live(
-                TableName=table_name, TimeToLiveSpecification={"AttributeName": "TTL", "Enabled": True}
-            )
-        except Exception as e:
-            self.logger.warning(f"Could not enable TTL for '{table_name}': {e}")
+        if self.endpoint:
+            try:
+                self.dynamodb.meta.client.update_time_to_live(
+                    TableName=table_name, TimeToLiveSpecification={"AttributeName": "TTL", "Enabled": True}
+                )
+            except Exception as e:
+                self.logger.warning(f"Could not enable TTL for '{table_name}': {e}")
         return table
    
     def store_submission(self, submission: Submission) -> None:
@@ -849,10 +851,9 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """Perform a health check on the database."""
         return {
             'status': 'healthy',
-            'database': 'dynamodb',
+            'type': 'dynamodb',
             'database_table': self.table_name,
             'database_region': self.region,
-            "stack": self.environment
         }
 
     def log_access(self, org_id: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
@@ -999,7 +1000,7 @@ def create_dynamodb_database(table_name: str = "frank_table",
     config = {
         "DYNAMODB_TABLE": table_name,
         "AUDIT_TABLE": audit_table_name,
-        "LOCALSTACK_ENDPOINT": endpoint,
+        "ENDPOINT": endpoint,
         "AWS_ACCESS_KEY_ID": aws_access_key_id, 
         "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
         "AWS_DEFAULT_REGION": region
