@@ -1,9 +1,10 @@
 # ===================================
 # Dockerfile for 008_aws_spike.py
-# Simple FastAPI application for AWS ECS deployment
+# Multi-architecture build for AWS ECS deployment
+# Supports both ARM64 (M1/M2 Mac) and AMD64 (AWS Fargate)
 # ===================================
 
-FROM python:3.11-slim AS builder
+FROM --platform=linux/amd64 python:3.11-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -26,7 +27,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Production Stage
 # ===================================
 
-FROM python:3.11-slim AS production
+FROM --platform=linux/amd64 python:3.11-slim AS production
 
 # Create non-root user
 RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
@@ -48,7 +49,7 @@ COPY 008_aws_spike.py .
 
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
-# ENV PYTHONPATH=/app:$PYTHONPATH
+ENV PYTHONPATH=/app:$PYTHONPATH
 ENV FRANK_ENVIRONMENT=aws
 ENV HOST=0.0.0.0
 ENV PORT=8000

@@ -5,8 +5,67 @@
 # No SSL, no custom domain, just working app
 # ===================================
 
-set -e
+set -euo pipefail
 
+# Configuration
+AWS_REGION="eu-west-1"
+PROJECT_NAME="frank"
+ENVIRONMENT="spike"
+REPOSITORY_NAME="${PROJECT_NAME}-${ENVIRONMENT}"
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Logging functions
+log_info() {
+    echo -e "${BLUE}[INFO]${NC} $1"
+}
+
+log_success() {
+    echo -e "${GREEN}[SUCCESS]${NC} $1"
+}
+
+log_warning() {
+    echo -e "${YELLOW}[WARNING]${NC} $1"
+}
+
+log_error() {
+    echo -e "${RED}[ERROR]${NC} $1"
+}
+
+check_prerequisites() {
+    log_info "Checking prerequisites..."
+    
+    # Check if AWS CLI is installed
+    if ! command -v aws &> /dev/null; then
+        log_error "AWS CLI is not installed. Please install it first."
+        exit 1
+    fi
+    
+    # Check if Docker is installed
+    if ! command -v docker &> /dev/null; then
+        log_error "Docker is not installed. Please install it first."
+        exit 1
+    fi
+    
+    # Check if OpenTofu is installed
+    if ! command -v tofu &> /dev/null; then
+        log_error "OpenTofu is not installed. Please install it first."
+        exit 1
+    fi
+    
+    # Check AWS credentials
+    if ! aws sts get-caller-identity &> /dev/null; then
+        log_error "AWS credentials not configured. Please run 'aws configure'."
+        exit 1
+    fi
+    
+    log_success "All prerequisites are met."
+}
 
 deploy() {
     echo "🚀 Deploying FRANK spike to AWS..."
@@ -21,8 +80,14 @@ deploy() {
     echo "📝 ECR Repository: $ECR_URL"
 
     # 3. Build and push image
-    echo "🐳 Building Docker image..."
-    docker build -t frank-spike .
+    # Check if running on Apple Silicon
+    if [[ $(uname -m) == "arm64" ]]; then
+        echo "🍎 Detected Apple Silicon (M1/M2) - building for linux/amd64"
+        docker buildx build --platform linux/amd64 -t frank-spike .
+    else
+        echo "💻 Detected x86_64 - building normally"
+        docker build -t frank-spike .
+    fi
 
     echo "🔐 Logging into ECR..."
     aws ecr get-login-password --region eu-west-1 | \
@@ -64,16 +129,20 @@ case "${1:-help}" in
     "deploy")
         deploy
         ;;
+    "check")
+        check_prerequisites
+        ;;
     "destroy")
         log_warning "Destroying infrastructure..."
         tofu destroy -auto-approve
         log_success "Infrastructure destroyed."
         ;;
     *)
-        echo "Usage: $0 {deploy|destroy}"
+        echo "Usage: $0 {check|deploy|destroy}"
         echo ""
         echo "Commands:"
-        echo "  deploy              - Full deployment (default)"
+        echo "  check              - Check prerequisites"
+        echo "  deploy             - Full deployment (default)"
         echo "  destroy            - Destroy all infrastructure"
         exit 1
         ;;
