@@ -11,8 +11,8 @@ This project contains everything from design to implementation of the FRANK proj
 ```
     $ make dev # crete virtualenv and install all dependencies for development
     $ make env # install all packages for development
-    $ source .*/bin/activate. # start the virtual env
-    $ make unittests. # run all unittests locally
+    $ source .*/bin/activate # start the virtual env  PS I have alias venv="source .*/bin/activate"
+    $ make unittests # run all unittests locally
 ```
 
 This will prep your Macbook to run FRANK locally. It assumes Docker/Python/Make/AWS Cli to be available.
