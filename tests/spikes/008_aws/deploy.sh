@@ -72,6 +72,7 @@ deploy() {
 
     # 1. Deploy infrastructure
     echo "📦 Deploying infrastructure..."
+    cd infrastructure
     tofu init
     tofu apply -auto-approve
 
@@ -80,6 +81,7 @@ deploy() {
     echo "📝 ECR Repository: $ECR_URL"
 
     # 3. Build and push image
+    cd ..
     # Check if running on Apple Silicon
     if [[ $(uname -m) == "arm64" ]]; then
         echo "🍎 Detected Apple Silicon (M1/M2) - building for linux/amd64"
@@ -111,8 +113,10 @@ deploy() {
         --region eu-west-1
 
     # 5. Get URL and test
+    cd infrastructure
     APP_URL=$(tofu output -raw application_url)
     HEALTH_URL=$(tofu output -raw health_check_url)
+    cd ..
 
     echo ""
     echo "✅ Deployment complete!"

@@ -255,10 +255,7 @@ ehthumbs.db
 logs/
 
 # Local environment files
-.env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*
 
 # Temporary files
 *.tmp
