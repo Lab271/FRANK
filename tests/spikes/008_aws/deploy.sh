@@ -138,7 +138,9 @@ case "${1:-help}" in
         ;;
     "destroy")
         log_warning "Destroying infrastructure..."
+        cd infrastructure
         tofu destroy -auto-approve
+        cd ..
         log_success "Infrastructure destroyed."
         ;;
     *)
