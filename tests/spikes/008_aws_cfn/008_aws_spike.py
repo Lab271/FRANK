@@ -33,13 +33,13 @@ logger = logging.getLogger(__name__)
 
 # Application metadata
 APP_VERSION = "1.0.0"
-APP_NAME = "FRANK AWS Spike"
+APP_NAME = "FRANK AWS Spike Cloudformation"
 ENVIRONMENT = os.getenv("FRANK_ENVIRONMENT", "aws")
 
 # Create FastAPI app
 app = FastAPI(
     title=APP_NAME,
-    description="Simple FastAPI application for AWS ECS deployment testing",
+    description="Simple FastAPI application for AWS ECS deployment with CloudFormation testing",
     version=APP_VERSION,
     docs_url="/docs",
     redoc_url="/redoc",
