@@ -1,14 +1,41 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Access-Based Filtering Architecture
-Defines filtering rules and software architecture for tier-based data access control.
+
+DESCRIPTION:
+A comprehensive access control system that dynamically filters threat intelligence data
+based on user access tiers, ensuring sensitive information is appropriately anonymized.
+
+HYPOTHESIS:
+Can rule-based filtering provide granular, maintainable access control across multiple
+data sensitivity levels while preserving analytical value for each access tier?
+
+RATIONALE:
+Threat intelligence sharing requires careful balance between openness and security. Different
+organizational relationships warrant different levels of data exposure. A flexible, rule-based
+filtering system could enable safe sharing while maintaining the analytical value of threat
+intelligence for each participant tier.
+
+KEY VALIDATION AREAS:
+- Rule definition clarity and maintainability across complex data structures
+- Performance impact of deep filtering operations on nested threat intelligence data
+- Data utility preservation - ensuring filtered data remains analytically valuable
+- Security effectiveness - verifying no sensitive data leaks through filtering gaps
+- Flexibility for new data fields and evolving access requirements
+
+IMPLEMENTATION:
+This spike implements a comprehensive filtering engine with tier-specific rules for FRANK
+submissions, supporting actions like hashing, masking, generalization, and removal across
+deeply nested threat intelligence structures with wildcard pattern matching.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Dict, List, Any, Optional, Callable
+from typing import Dict, List, Any, Optional
 from dataclasses import dataclass
 from enum import Enum
 import hashlib
-import re
 
 
 class AccessTier(Enum):
@@ -22,8 +49,8 @@ class AccessTier(Enum):
 class FilterAction(Enum):
     ALLOW = "allow"           # Pass through unchanged
     REMOVE = "remove"         # Remove field entirely
-    HASH = "hash"            # Replace with hash
-    MASK = "mask"            # Partial masking (e.g., IP obfuscation)
+    HASH = "hash"             # Replace with hash
+    MASK = "mask"             # Partial masking (e.g., IP obfuscation)
     AGGREGATE = "aggregate"   # Replace with statistical summary
     GENERALIZE = "generalize" # Replace with broader category
 

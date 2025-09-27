@@ -12,16 +12,19 @@ SPDX-License-Identifier: Apache-2.0
 import json
 import sqlite3
 import uuid
-from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
-
 import logging
+from datetime import datetime, timezone
 from pathlib import Path
+from typing import Dict, Any, List, Optional
 
 from frank.core.models import Submission, Sighting, Submitter
 from frank.core.enum import ObservableType, AccessTier
 from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 from .base import BaseFRANKDatabase
+
+# Configure SQLite datetime adapter to avoid Python 3.12 deprecation warnings
+sqlite3.register_adapter(datetime, lambda dt: dt.isoformat())
+sqlite3.register_converter("DATETIME", lambda b: datetime.fromisoformat(b.decode()))
 
 # Default configuration
 DEFAULT_CONFIG = {

@@ -1,15 +1,41 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Sighting Parser and Generator
-Handles parsing and generation of FRANK sighting submissions in YAML format.
-First attempt to create a model bases approach using dataclasses.
+
+DESCRIPTION:    
+Handles parsing and generation of FRANK sighting submissions in YAML format.    
+
+SPIKE HYPOTHESIS:
+Can Python dataclasses provide a more maintainable and type-safe foundation for FRANK 
+threat intelligence data models compared to traditional dictionary-based approaches?
+
+RATIONALE:
+Dictionary-based data handling in threat intelligence systems often leads to runtime errors,
+inconsistent field names, and difficulty in maintaining complex nested structures. Dataclasses
+could offer compile-time type checking, automatic serialization, and cleaner APIs while
+maintaining the flexibility needed for threat intelligence data interchange.
+
+KEY VALIDATION AREAS:
+- Type safety and compile-time error detection vs. runtime dictionary key errors
+- YAML serialization/deserialization round-trip accuracy and performance
+- Code readability and IDE support (autocomplete, refactoring)
+- Validation patterns and error handling ergonomics
+- Memory footprint and conversion overhead compared to plain dictionaries
+
+IMPLEMENTATION:
+This spike implements a complete FRANK submission model using dataclasses with factory methods
+for common threat scenarios, YAML serialization support, validation logic, and access-level
+based anonymization to test the viability of this approach.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
 """
 
 import yaml
 import uuid
 from typing import Dict, List, Optional, Any
 from dataclasses import dataclass, asdict
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 @dataclass
@@ -105,7 +131,7 @@ class Sighting:
         """Create a sighting with auto-generated STIX ID and current timestamp."""
         return cls(
             sighting_id=f"sighting-{uuid.uuid4()}",
-            timestamp=datetime.utcnow().isoformat() + "Z",
+            timestamp=datetime.now(timezone.utc).isoformat() + "Z",
             confidence=confidence,
             observation_count=observation_count,
             severity=severity
