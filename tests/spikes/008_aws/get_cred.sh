@@ -1,5 +1,7 @@
+#!/bin/bash
 # Script to extract AWS credentials from 1Password and set as environment variables
 # Item: "Our Family/Private/AWS - frank - sbp_lab_frank"
+# Run this with "source get_cred.sh"
 
 set -e  # Exit on any error
 
@@ -17,14 +19,15 @@ if ! op account list &> /dev/null; then
     exit 1
 fi
 
-ITEM_PATH="Our Family/Private/AWS - frank - sbp_labs_frank"
-ITEM_PATH="2ugtyl6rtmxin4tz5ggbciccie"  # Direct item ID to avoid path issues
+ITEM_PATH="AWS - frank - sbp_labs_frank"
+ITEM_PATH="AWS Credentials - FRANK"
 
 echo "Extracting AWS credentials from 1Password..."
 
 # Get the item and extract the fields
 # Using op item get with --format json and then parsing with jq
-ITEM_JSON=$(op item get "$ITEM_PATH" --format json)
+ITEM_JSON=$(op item get "$ITEM_PATH" --format json --account "my.1password.eu" )
+ITEM_JSON=$(op item get "$ITEM_PATH" --format json )
 
 if [ $? -ne 0 ]; then
     echo "Error: Could not retrieve item '$ITEM_PATH'"

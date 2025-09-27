@@ -24,8 +24,8 @@ network:
     - "10.0.1.0/24"  # AZ a
     - "10.0.2.0/24"  # AZ b
   availability_zones:
-    - "eu-west-1a"
-    - "eu-west-1b"
+    - "eu-central-1a"
+    - "eu-central-1b"
 
 # Container Configuration
 container:
@@ -125,7 +125,7 @@ security:
         description: "Container port from ALB"
 
 # Tags applied to all resources
-tags:
+apply_tags:
   Project: "FRANK"
   Environment: "spike"
   ManagedBy: "Ansible"

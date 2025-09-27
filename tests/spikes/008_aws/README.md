@@ -1,5 +1,7 @@
 # FRANK AWS Deployment Spike
 
+https://saml-doc.okta.com/SAML_Docs/How-to-Configure-SAML-2.0-for-Amazon-Web-Service.html?baseAdminUrl=https://sbplabs-admin.okta-emea.com&app=amazon_aws&instanceId=0oaf6yvlks5CemF4J0i7#A-step1
+
 ## Overview
 
 This spike demonstrates **Stage 3** of the FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sharing) platform deployment: migrating from LocalStack/Docker (Stage 2) to production AWS infrastructure using ECS and real cloud services.

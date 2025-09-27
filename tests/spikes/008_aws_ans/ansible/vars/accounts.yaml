@@ -5,17 +5,23 @@
 # ===================================
 
 # Spike Account Configuration
+# spike_account:
+#   account_id: "111111111111"  # Replace with your spike account ID
+#   profile_name: "spike-account"  # AWS profile name for spike account
+#   region: "eu-central-1"
+#   description: "Isolated spike account for FRANK testing"
+
 spike_account:
-  account_id: "111111111111"  # Replace with your spike account ID
-  profile_name: "spike-account"  # AWS profile name for spike account
-  region: "eu-west-1"
-  description: "Isolated spike account for FRANK testing"
+  profile_name: "spike-account"
+  region: "eu-central-1"
+  account_id: "036820509873"
+  environment: "spike"
 
 # Main Account Configuration  
 main_account:
   account_id: "222222222222"  # Replace with your main account ID
   profile_name: "main-account"  # AWS profile name for main account
-  region: "eu-west-1"
+  region: "eu-central-1"
   description: "Main account containing Route53 hosted zone"
   
   # Cross-account role details
@@ -26,7 +32,7 @@ main_account:
 
 # AWS Region Configuration
 aws:
-  region: "eu-west-1"
+  region: "eu-central-1"
   
 # Cross-Account Role Trust Policy (for reference)
 cross_account_trust_policy:

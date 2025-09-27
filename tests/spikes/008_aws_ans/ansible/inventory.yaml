@@ -16,7 +16,7 @@ all:
     ansible_aws_cli_profile_main: "main-account"
     
     # Deployment Settings
-    deployment_region: "eu-west-1"
+    deployment_region: "eu-central-1"
     deployment_timeout: 1800  # 30 minutes
     
     # Docker Settings
