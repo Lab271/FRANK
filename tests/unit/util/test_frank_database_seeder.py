@@ -1,5 +1,15 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Unit tests for FRANK Database Seeder module
+
+Tests abstract seeder class, concrete seeder implementations, and sample data generation
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
 import unittest
 from unittest.mock import Mock, call
+
 from frank.util.sample_builder import SampleDataSeeder, create_demo_orgs, FRANKDatabaseSeeder
 from frank.storage.base import BaseFRANKDatabase
 
