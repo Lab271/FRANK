@@ -1,0 +1,258 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK 008 AWS Spike - Route53 DNS Records (Deploy to Main Account)'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: frank-008-aws
+    Description: Project name for resource naming
+  
+  Environment:
+    Type: String
+    Default: spike
+    Description: Environment name
+  
+  DomainName:
+    Type: String
+    Default: frank-spike.lab271.io
+    Description: Application domain name
+  
+  DomainHostedZone:
+    Type: String
+    Default: lab271.io
+    Description: Route53 hosted zone name
+  
+  DomainHostedZoneId:
+    Type: String
+    Default: Z1234567890ABC
+    Description: Route53 hosted zone ID
+  
+  LoadBalancerDNS:
+    Type: String
+    Description: Load Balancer DNS name from ALB stack
+  
+  LoadBalancerZoneId:
+    Type: String
+    Description: Load Balancer hosted zone ID from ALB stack
+  
+  ValidationRecords:
+    Type: String
+    Default: "[]"
+    Description: SSL certificate validation records (JSON format)
+
+Conditions:
+  HasValidationRecords: !Not [!Equals [!Ref ValidationRecords, "[]"]]
+
+Resources:
+  # ===================================
+  # Main Application DNS Record
+  # ===================================
+  
+  ApplicationDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref DomainHostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !Ref LoadBalancerDNS
+        EvaluateTargetHealth: true
+        HostedZoneId: !Ref LoadBalancerZoneId
+      Comment: !Sub "FRANK ${Environment} application DNS record"
+
+  # ===================================
+  # SSL Certificate Validation Records
+  # Custom Resource to Parse and Create Validation Records
+  # ===================================
+  
+  ValidationRecordCreatorFunction:
+    Type: AWS::Lambda::Function
+    Condition: HasValidationRecords
+    Properties:
+      FunctionName: !Sub "${ProjectName}-validation-record-creator"
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !GetAtt ValidationRecordCreatorRole.Arn
+      Timeout: 300
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          import time
+          
+          def handler(event, context):
+              try:
+                  route53 = boto3.client('route53')
+                  hosted_zone_id = event['ResourceProperties']['HostedZoneId']
+                  validation_records_json = event['ResourceProperties']['ValidationRecords']
+                  
+                  if event['RequestType'] == 'Delete':
+                      # Clean up validation records on deletion
+                      try:
+                          validation_records = json.loads(validation_records_json)
+                          changes = []
+                          
+                          for record in validation_records:
+                              changes.append({
+                                  'Action': 'DELETE',
+                                  'ResourceRecordSet': {
+                                      'Name': record['Name'],
+                                      'Type': record['Type'],
+                                      'TTL': 300,
+                                      'ResourceRecords': [{'Value': record['Value']}]
+                                  }
+                              })
+                          
+                          if changes:
+                              route53.change_resource_record_sets(
+                                  HostedZoneId=hosted_zone_id,
+                                  ChangeBatch={
+                                      'Comment': 'Delete SSL certificate validation records',
+                                      'Changes': changes
+                                  }
+                              )
+                      except Exception as e:
+                          print(f"Cleanup warning: {str(e)}")
+                      
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+                  
+                  # Parse validation records
+                  validation_records = json.loads(validation_records_json)
+                  
+                  if not validation_records:
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {'Message': 'No validation records to create'})
+                      return
+                  
+                  # Create change batch
+                  changes = []
+                  for record in validation_records:
+                      changes.append({
+                          'Action': 'UPSERT',
+                          'ResourceRecordSet': {
+                              'Name': record['Name'],
+                              'Type': record['Type'],
+                              'TTL': 300,
+                              'ResourceRecords': [{'Value': record['Value']}]
+                          }
+                      })
+                  
+                  # Submit changes
+                  response = route53.change_resource_record_sets(
+                      HostedZoneId=hosted_zone_id,
+                      ChangeBatch={
+                          'Comment': 'SSL certificate validation records',
+                          'Changes': changes
+                      }
+                  )
+                  
+                  change_id = response['ChangeInfo']['Id']
+                  
+                  # Wait for propagation
+                  print(f"Waiting for DNS change {change_id} to propagate...")
+                  waiter = route53.get_waiter('resource_record_sets_changed')
+                  waiter.wait(Id=change_id, WaiterConfig={'Delay': 30, 'MaxAttempts': 20})
+                  
+                  response_data = {
+                      'ChangeId': change_id,
+                      'RecordsCreated': len(validation_records),
+                      'Message': f'Created {len(validation_records)} validation records'
+                  }
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+                  
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {'Error': str(e)})
+
+  ValidationRecordCreatorRole:
+    Type: AWS::IAM::Role
+    Condition: HasValidationRecords
+    Properties:
+      RoleName: !Sub "${ProjectName}-validation-record-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: Route53Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - route53:ChangeResourceRecordSets
+                  - route53:GetChange
+                  - route53:ListResourceRecordSets
+                Resource: 
+                  - !Sub "arn:aws:route53:::hostedzone/${DomainHostedZoneId}"
+                  - "arn:aws:route53:::change/*"
+
+  ValidationRecordCreator:
+    Type: AWS::CloudFormation::CustomResource
+    Condition: HasValidationRecords
+    Properties:
+      ServiceToken: !GetAtt ValidationRecordCreatorFunction.Arn
+      HostedZoneId: !Ref DomainHostedZoneId
+      ValidationRecords: !Ref ValidationRecords
+
+  # ===================================
+  # Health Check (Optional)
+  # ===================================
+  
+  HealthCheck:
+    Type: AWS::Route53::HealthCheck
+    Properties:
+      Type: HTTPS
+      ResourcePath: /health
+      FullyQualifiedDomainName: !Ref DomainName
+      Port: 443
+      RequestInterval: 30
+      FailureThreshold: 3
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-health-check"
+        - Key: Project
+          Value: FRANK
+        - Key: Environment
+          Value: !Ref Environment
+
+Outputs:
+  ApplicationDNSRecordName:
+    Description: Application DNS record name
+    Value: !Ref ApplicationDNSRecord
+    Export:
+      Name: !Sub "${AWS::StackName}-ApplicationDNSRecordName"
+  
+  ApplicationURL:
+    Description: Application HTTPS URL
+    Value: !Sub "https://${DomainName}"
+    Export:
+      Name: !Sub "${AWS::StackName}-ApplicationURL"
+  
+  HealthCheckURL:
+    Description: Health check URL
+    Value: !Sub "https://${DomainName}/health"
+    Export:
+      Name: !Sub "${AWS::StackName}-HealthCheckURL"
+  
+  ValidationRecordsCreated:
+    Description: Number of validation records created
+    Value: !If 
+      - HasValidationRecords
+      - !GetAtt ValidationRecordCreator.RecordsCreated
+      - 0
+    Export:
+      Name: !Sub "${AWS::StackName}-ValidationRecordsCreated"
+  
+  HealthCheckId:
+    Description: Route53 Health Check ID
+    Value: !Ref HealthCheck
+    Export:
+      Name: !Sub "${AWS::StackName}-HealthCheckId"

@@ -6,7 +6,7 @@
 
 # Project Configuration
 project:
-  name: "frank-008-aws"
+  name: "frank-008-spike"
   environment: "spike"
   owner: "SchubergPhilis"
   description: "FRANK threat intelligence platform AWS deployment spike"
@@ -29,7 +29,7 @@ network:
 
 # Container Configuration
 container:
-  image_name: "frank-008-aws"
+  image_name: "frank-008-spike"
   port: 8000
   cpu: 256
   memory: 512
@@ -70,7 +70,7 @@ ecs:
 
 # ECR Configuration
 ecr:
-  repository_name: "frank-008-aws"
+  repository_name: "frank-008-spike"
   image_tag_mutability: "MUTABLE"
   scan_on_push: true
   

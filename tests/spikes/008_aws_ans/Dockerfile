@@ -3,8 +3,29 @@
 # Multi-architecture build for AWS ECS deployment
 # Supports both ARM64 (M1/M2 Mac) and AMD64 (AWS Fargate)
 # ===================================
+# Accept platform arguments from buildx
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
 
-FROM --platform=linux/amd64 python:3.11-slim AS builder
+FROM python:3.13-slim AS base
+
+# Platform-specific optimizations
+RUN case "${TARGETPLATFORM}" in \
+    "linux/amd64") \
+        echo "Building for AMD64 (AWS Fargate compatible)" \
+        ;; \
+    "linux/arm64") \
+        echo "Building for ARM64 (M1/M2 Mac compatible)" \
+        ;; \
+    *) \
+        echo "Building for platform: ${TARGETPLATFORM}" \
+        ;; \
+    esac
+
+# ===================================
+# Builder Stage
+# ===================================
+FROM base AS builder
 
 # Set working directory
 WORKDIR /app
@@ -27,7 +48,7 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 # Production Stage
 # ===================================
 
-FROM --platform=linux/amd64 python:3.11-slim AS production
+FROM base AS production
 
 # Create non-root user
 RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
@@ -49,7 +70,7 @@ COPY 008_aws_spike.py .
 
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
-ENV PYTHONPATH=/app:$PYTHONPATH
+# ENV PYTHONPATH=/app:$PYTHONPATH
 ENV FRANK_ENVIRONMENT=aws
 ENV HOST=0.0.0.0
 ENV PORT=8000

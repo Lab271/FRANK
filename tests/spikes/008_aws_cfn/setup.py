@@ -5,7 +5,6 @@ FRANK 008 AWS Spike - Setup Script
 Sets up the Python environment and validates prerequisites for deployment.
 """
 
-import os
 import sys
 import subprocess
 import json
