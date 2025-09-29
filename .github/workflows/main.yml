@@ -65,15 +65,6 @@ jobs:
           --cov-report=term-missing \
           --cov-fail-under=65 \
           --junitxml=test-results.xml
-
-    - name: Upload coverage reports to Codecov
-      if: matrix.python-version == '3.11'  # Only upload once
-      uses: codecov/codecov-action@v3
-      with:
-        file: ./coverage.xml
-        flags: unittests
-        name: codecov-umbrella
-        fail_ci_if_error: false
         
     - name: Upload test results
       uses: actions/upload-artifact@v4
