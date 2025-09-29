@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import os
-import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
@@ -38,7 +37,7 @@ from frank.util.sample_builder import SampleDataSeeder
 from frank.util import create_server, create_error_response
 from frank.util.requests import SubmissionRequest, OrganisationRequest
 from frank.util.requests import SubmissionResponse, SightingSearchResponse, ObservationsResponse
-from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException, NotFoundException, UnauthenticatedException
+from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException, NotFoundException
 from frank import __version__
 
 # Configure logging
@@ -109,7 +108,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Starting FRANK Platform Stage 2 - Environment: {config.environment}")
     # load_database with sample data
     frank_server.seed_database(SampleDataSeeder())
-    logger.info(f"Database Initialization complete")
+    logger.info("Database Initialization complete")
     yield
 
 

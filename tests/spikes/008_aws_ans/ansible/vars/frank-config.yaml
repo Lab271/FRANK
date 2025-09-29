@@ -1,0 +1,148 @@
+---
+# ===================================
+# FRANK 008 AWS Spike - Configuration Variables
+# Application and infrastructure parameters
+# ===================================
+
+# Project Configuration
+project:
+  name: "frank-008-spike"
+  environment: "spike"
+  owner: "SchubergPhilis"
+  description: "FRANK threat intelligence platform AWS deployment spike"
+
+# Domain Configuration
+domain:
+  name: "frank-spike.lab271.io"
+  hosted_zone: "lab271.io"
+  hosted_zone_id: "Z1234567890ABC"  # Replace with actual hosted zone ID
+
+# Network Configuration
+network:
+  vpc_cidr: "10.0.0.0/16"
+  public_subnet_cidrs:
+    - "10.0.1.0/24"  # AZ a
+    - "10.0.2.0/24"  # AZ b
+  availability_zones:
+    - "eu-central-1a"
+    - "eu-central-1b"
+
+# Container Configuration
+container:
+  image_name: "frank-008-spike"
+  port: 8000
+  cpu: 256
+  memory: 512
+  desired_count: 1
+  
+  # Environment variables for the container
+  environment_variables:
+    FRANK_ENVIRONMENT: "aws"
+    LOG_LEVEL: "INFO"
+    PORT: "8000"
+
+# Load Balancer Configuration
+load_balancer:
+  health_check_path: "/health"
+  health_check_interval: 30
+  health_check_timeout: 5
+  healthy_threshold: 2
+  unhealthy_threshold: 3
+
+# SSL Configuration
+ssl:
+  validation_method: "DNS"
+  subject_alternative_names:
+    - "*.lab271.io"  # Wildcard for future subdomains
+
+# ECS Configuration
+ecs:
+  launch_type: "FARGATE"
+  platform_version: "LATEST"
+  assign_public_ip: true
+  
+  # Task definition settings
+  task:
+    family: "frank-008-aws"
+    network_mode: "awsvpc"
+    requires_compatibilities:
+      - "FARGATE"
+
+# ECR Configuration
+ecr:
+  repository_name: "frank-008-spike"
+  image_tag_mutability: "MUTABLE"
+  scan_on_push: true
+  
+  # Lifecycle policy
+  lifecycle_policy:
+    rules:
+      - rulePriority: 1
+        description: "Keep last 10 tagged images"
+        selection:
+          tagStatus: "tagged"
+          tagPrefixList: ["v", "latest"]
+          countType: "imageCountMoreThan"
+          countNumber: 10
+        action:
+          type: "expire"
+      - rulePriority: 2
+        description: "Delete untagged images older than 1 day"
+        selection:
+          tagStatus: "untagged"
+          countType: "sinceImagePushed"
+          countUnit: "days"
+          countNumber: 1
+        action:
+          type: "expire"
+
+# CloudWatch Configuration
+logging:
+  retention_days: 7
+  log_group_name: "/ecs/frank-008-aws"
+
+# Security Configuration
+security:
+  alb_security_group:
+    ingress_rules:
+      - protocol: "tcp"
+        from_port: 80
+        to_port: 80
+        cidr_blocks: ["0.0.0.0/0"]
+        description: "HTTP from internet"
+      - protocol: "tcp"
+        from_port: 443
+        to_port: 443
+        cidr_blocks: ["0.0.0.0/0"]
+        description: "HTTPS from internet"
+  
+  ecs_security_group:
+    ingress_rules:
+      - protocol: "tcp"
+        from_port: 8000
+        to_port: 8000
+        source_security_group: true  # Reference ALB security group
+        description: "Container port from ALB"
+
+# Tags applied to all resources
+apply_tags:
+  Project: "FRANK"
+  Environment: "spike"
+  ManagedBy: "Ansible"
+  Owner: "SchubergPhilis"
+  CostCenter: "Engineering"
+  Purpose: "AWS deployment spike"
+
+# Deployment Configuration
+deployment:
+  timeout_minutes: 30
+  rollback_on_failure: true
+  
+  # Stack naming convention
+  stack_name_prefix: "frank-008-aws"
+  
+  # Health check configuration
+  health_check:
+    retries: 10
+    delay_seconds: 30
+    timeout_seconds: 10

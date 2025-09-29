@@ -1,0 +1,167 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK 008 AWS Spike - SSL Certificate with DNS Validation'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: frank-008-aws
+    Description: Project name for resource naming
+  
+  Environment:
+    Type: String
+    Default: spike
+    Description: Environment name
+  
+  DomainName:
+    Type: String
+    Default: frank-spike.lab271.io
+    Description: Primary domain name for certificate
+  
+  SslSubjectAlternativeNames:
+    Type: CommaDelimitedList
+    Default: "*.lab271.io"
+    Description: Subject Alternative Names for certificate
+  
+  SslValidationMethod:
+    Type: String
+    Default: DNS
+    AllowedValues: [DNS, EMAIL]
+    Description: Certificate validation method
+
+Resources:
+  # ===================================
+  # SSL Certificate
+  # ===================================
+  
+  SSLCertificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties:
+      DomainName: !Ref DomainName
+      SubjectAlternativeNames: !Ref SslSubjectAlternativeNames
+      ValidationMethod: !Ref SslValidationMethod
+      CertificateTransparencyLoggingPreference: ENABLED
+      Tags:
+        - Key: Name
+          Value: !Sub "${ProjectName}-ssl-cert"
+        - Key: Domain
+          Value: !Ref DomainName
+        - Key: Project
+          Value: FRANK
+        - Key: Environment
+          Value: !Ref Environment
+
+  # ===================================
+  # Custom Resource for Certificate Validation Info
+  # ===================================
+  
+  CertificateValidationInfoFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub "${ProjectName}-cert-validation-info"
+      Runtime: python3.9
+      Handler: index.handler
+      Role: !GetAtt CertificateValidationInfoRole.Arn
+      Timeout: 60
+      Code:
+        ZipFile: |
+          import json
+          import boto3
+          import cfnresponse
+          
+          def handler(event, context):
+              try:
+                  if event['RequestType'] == 'Delete':
+                      cfnresponse.send(event, context, cfnresponse.SUCCESS, {})
+                      return
+                  
+                  cert_arn = event['ResourceProperties']['CertificateArn']
+                  
+                  acm = boto3.client('acm')
+                  response = acm.describe_certificate(CertificateArn=cert_arn)
+                  
+                  cert = response['Certificate']
+                  validation_records = []
+                  
+                  # Extract DNS validation records
+                  for domain_validation in cert.get('DomainValidationOptions', []):
+                      if 'ResourceRecord' in domain_validation:
+                          record = domain_validation['ResourceRecord']
+                          validation_records.append({
+                              'Name': record['Name'],
+                              'Value': record['Value'],
+                              'Type': record['Type'],
+                              'Domain': domain_validation['DomainName']
+                          })
+                  
+                  response_data = {
+                      'ValidationRecords': json.dumps(validation_records),
+                      'CertificateArn': cert_arn,
+                      'Status': cert.get('Status', 'PENDING_VALIDATION')
+                  }
+                  
+                  cfnresponse.send(event, context, cfnresponse.SUCCESS, response_data)
+                  
+              except Exception as e:
+                  print(f"Error: {str(e)}")
+                  cfnresponse.send(event, context, cfnresponse.FAILED, {})
+      Tags:
+        - Key: Project
+          Value: FRANK
+        - Key: Environment
+          Value: !Ref Environment
+
+  CertificateValidationInfoRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "${ProjectName}-cert-validation-role"
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: lambda.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole
+      Policies:
+        - PolicyName: ACMReadAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - acm:DescribeCertificate
+                  - acm:ListCertificates
+                Resource: '*'
+
+  CertificateValidationInfo:
+    Type: AWS::CloudFormation::CustomResource
+    Properties:
+      ServiceToken: !GetAtt CertificateValidationInfoFunction.Arn
+      CertificateArn: !Ref SSLCertificate
+    DependsOn: SSLCertificate
+
+Outputs:
+  CertificateArn:
+    Description: SSL Certificate ARN
+    Value: !Ref SSLCertificate
+    Export:
+      Name: !Sub "${AWS::StackName}-CertificateArn"
+  
+  CertificateDomainName:
+    Description: Certificate domain name
+    Value: !Ref DomainName
+    Export:
+      Name: !Sub "${AWS::StackName}-CertificateDomainName"
+  
+  ValidationRecords:
+    Description: DNS validation records (JSON format)
+    Value: !GetAtt CertificateValidationInfo.ValidationRecords
+    Export:
+      Name: !Sub "${AWS::StackName}-ValidationRecords"
+  
+  CertificateStatus:
+    Description: Certificate validation status
+    Value: !GetAtt CertificateValidationInfo.Status
+    Export:
+      Name: !Sub "${AWS::StackName}-CertificateStatus"

@@ -1,0 +1,38 @@
+---
+# ===================================
+# FRANK 008 AWS Spike - Ansible Inventory
+# Defines connection and delegation settings
+# ===================================
+
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      
+  vars:
+    # AWS Connection Settings
+    ansible_aws_cli_profile_spike: "spike-account"
+    ansible_aws_cli_profile_main: "main-account"
+    
+    # Deployment Settings
+    deployment_region: "eu-central-1"
+    deployment_timeout: 1800  # 30 minutes
+    
+    # Docker Settings
+    docker_platform: "linux/amd64"  # Force AMD64 for AWS Fargate
+    
+  children:
+    deployment_hosts:
+      hosts:
+        localhost:
+      vars:
+        # Override for deployment-specific settings
+        gather_facts: false
+        
+    cleanup_hosts:
+      hosts:
+        localhost:
+      vars:
+        # Override for cleanup operations
+        force_cleanup: false

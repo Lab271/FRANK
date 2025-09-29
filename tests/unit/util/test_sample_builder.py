@@ -7,6 +7,7 @@ Unit tests for sample builders
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
+
 import unittest
 
 from datetime import datetime, timezone

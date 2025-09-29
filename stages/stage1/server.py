@@ -128,7 +128,7 @@ def check_access_level(user_access_level: AccessTier, required_level: AccessTier
         AccessTier.CORE_MEMBER: 4
     }
     
-    user_level = tier_hierarchy.get(user_tier, 0)
+    user_level = tier_hierarchy.get(user_access_level, 0)
     required_level_num = tier_hierarchy.get(required_level, 0)
     
     return user_level >= required_level_num

@@ -14,8 +14,6 @@ import unittest
 from datetime import datetime, timezone
 import json
 import yaml
-from unittest.mock import patch
-from pydantic import ValidationError
 import uuid
 
 from frank.core.models import Observable, Observables

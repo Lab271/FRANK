@@ -2,6 +2,8 @@
 """
 FRANK Platform - DynamoDB Unit Tests
 
+Unit tests for dynamodb
+
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
