@@ -1,4 +1,3 @@
----
 # ===================================
 # FRANK 008 AWS Spike - Ansible Deployment Playbook
 # Deploys FRANK infrastructure across spike and main accounts
@@ -10,7 +9,6 @@
   vars_files:
     - vars/accounts.yaml
     - vars/frank-config.yaml
-  
   tasks:
     # ===================================
     # Pre-flight Checks
@@ -40,412 +38,58 @@
     - name: Display spike account identity
       debug:
         msg: "Spike Account: {{ spike_identity.account }} ({{ spike_identity.arn }})"
-        
-    # - name: Verify main account access via cross-account role
-    #   sts_assume_role:
-    #     role_arn: "{{ main_account.cross_account_role_arn }}"
-    #     role_session_name: "ansible-frank-deployment"
-    #     external_id: "{{ main_account.external_id }}"
-    #     profile: "{{ spike_account.profile_name }}"
-    #   register: main_account_credentials
-      
-    # - name: Display main account access
-    #   debug:
-    #     msg: "Cross-account access to main account successful"
 
     # ===================================
-    # Deploy Networking Stack (Spike Account)
-    # ===================================
-    
-    - name: Deploy networking infrastructure
-      amazon.aws.cloudformation:
-        stack_name: "{{ project.name }}-networking"
-        state: "present"
-        disable_rollback: true
-        region: "{{ aws.region }}"
-        profile: "{{ spike_account.profile_name }}"
-        template_body: "{{ lookup('file', 'templates/networking.yaml') }}"
-        template_parameters:
-          ProjectName: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          NetworkVpcCidr: "{{ network.vpc_cidr }}"
-          NetworkPublicSubnetCidrs: "{{ network.public_subnet_cidrs | join(',') }}"
-          NetworkAvailabilityZones: "{{ network.availability_zones | join(',') }}"
-          ContainerPort: "{{ container.port }}"
-        tags:
-          Project: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          ManagedBy: "Ansible"
-          Owner: "{{ project.owner }}"
-        capabilities: 
-          - CAPABILITY_IAM
-        termination_protection: false
-        # on_create_failure: DELETE
-      register: networking_stack
-      
-    - name: Get networking stack outputs
-      set_fact:
-        vpc_id: "{{ networking_stack.stack_outputs.VpcId }}"
-        public_subnet_ids: "{{ networking_stack.stack_outputs.PublicSubnetIds }}"
-        alb_security_group_id: "{{ networking_stack.stack_outputs.ALBSecurityGroupId }}"
-        ecs_security_group_id: "{{ networking_stack.stack_outputs.ECSSecurityGroupId }}"
-
-    # ===================================
-    # Deploy Load Balancer (Spike Account)
-    # ===================================
-    
-    - name: Deploy load balancer
-      amazon.aws.cloudformation:
-        stack_name: "{{ project.name }}-load-balancer"
-        state: present
-        region: "{{ aws.region }}"
-        profile: "{{ spike_account.profile_name }}"
-        template_body: "{{ lookup('file', 'templates/load-balancer.yaml') }}"
-        template_parameters:
-          ProjectName: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          VpcId: "{{ vpc_id }}"
-          PublicSubnetIds: "{{ public_subnet_ids }}"
-          ALBSecurityGroupId: "{{ alb_security_group_id }}"
-          ContainerPort: "{{ container.port }}"
-          LoadBalancerHealthCheckPath: "{{ load_balancer.health_check_path }}"
-          LoadBalancerHealthCheckInterval: "{{ load_balancer.health_check_interval }}"
-          LoadBalancerHealthCheckTimeout: "{{ load_balancer.health_check_timeout }}"
-          LoadBalancerHealthyThreshold: "{{ load_balancer.healthy_threshold }}"
-          LoadBalancerUnhealthyThreshold: "{{ load_balancer.unhealthy_threshold }}"
-        tags:
-          Project: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          ManagedBy: "Ansible"
-        capabilities:
-          - CAPABILITY_IAM
-        on_create_failure: DELETE
-      register: load_balancer_stack
-      
-    - name: Get load balancer outputs
-      set_fact:
-        load_balancer_arn: "{{ load_balancer_stack.stack_outputs.LoadBalancerArn }}"
-        load_balancer_dns: "{{ load_balancer_stack.stack_outputs.LoadBalancerDNS }}"
-        load_balancer_zone_id: "{{ load_balancer_stack.stack_outputs.LoadBalancerZoneId }}"
-        target_group_arn: "{{ load_balancer_stack.stack_outputs.TargetGroupArn }}"
-
-    # ===================================
-    # Deploy Route53 DNS Records (Main Account)
-    # ===================================
-    
-    - name: Deploy DNS records in main account
-      amazon.aws.cloudformation:
-        stack_name: "{{ project.name }}-route53"
-        state: present
-        region: "{{ aws.region }}"
-        template_body: "{{ lookup('file', 'templates/route53.yaml') }}"
-        template_parameters:
-          ProjectName: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          DomainName: "{{ domain.name }}"
-          DomainHostedZone: "{{ domain.hosted_zone }}"
-          DomainHostedZoneId: "{{ domain.hosted_zone_id }}"
-          LoadBalancerDNS: "{{ load_balancer_dns }}"
-          LoadBalancerZoneId: "{{ load_balancer_zone_id }}"
-          ValidationRecords: "{{ validation_records }}"
-        tags:
-          Project: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          ManagedBy: "Ansible"
-        capabilities:
-          - CAPABILITY_IAM
-        aws_access_key: "{{ main_account_credentials.sts_creds.access_key }}"
-        aws_secret_key: "{{ main_account_credentials.sts_creds.secret_key }}"
-        security_token: "{{ main_account_credentials.sts_creds.session_token }}"
-      register: route53_stack
-    # ===================================
-    # Deploy SSL Certificate (Spike Account) 
-    # ===================================
-    
-    # - name: Deploy SSL certificate
-    #   amazon.aws.cloudformation:
-    #     stack_name: "{{ project.name }}-ssl-cert"
-    #     state: present
-    #     region: "{{ aws.region }}"
-    #     profile: "{{ spike_account.profile_name }}"
-    #     template_body: "{{ lookup('file', 'templates/ssl-cert.yaml') }}"
-    #     template_parameters:
-    #       ProjectName: "{{ project.name }}"
-    #       Environment: "{{ project.environment }}"
-    #       DomainName: "{{ domain.name }}"
-    #       SslSubjectAlternativeNames: "{{ ssl.subject_alternative_names | join(',') }}"
-    #       SslValidationMethod: "{{ ssl.validation_method }}"
-    #     tags:
-    #       Project: "{{ project.name }}"
-    #       Environment: "{{ project.environment }}"
-    #       ManagedBy: "Ansible"
-    #     capabilities:
-    #       - CAPABILITY_NAMED_IAM
-    #     on_create_failure: DELETE
-    #   register: ssl_cert_stack
-      
-    # - name: Get SSL certificate outputs
-    #   set_fact:
-    #     certificate_arn: "{{ ssl_cert_stack.stack_outputs.CertificateArn }}"
-    #     validation_records: "{{ ssl_cert_stack.stack_outputs.ValidationRecords }}"
-
-    # ===================================
-    # Wait for SSL Certificate Validation
-    # ===================================
-    
-    # - name: Wait for SSL certificate validation
-    #   amazon.aws.aws_acm_info:
-    #     certificate_arn: "{{ certificate_arn }}"
-    #     region: "{{ aws.region }}"
-    #     profile: "{{ spike_account.profile_name }}"
-    #   register: cert_info
-    #   until: cert_info.certificates[0].status == "ISSUED"
-    #   retries: 20
-    #   delay: 30
-      
-    # - name: Display certificate status
-    #   debug:
-    #     msg: "SSL Certificate Status: {{ cert_info.certificates[0].status }}"
-
-    # ===================================
-    # Deploy ECS Infrastructure (Spike Account)
-    # ===================================
-    
-    - name: Deploy ECS infrastructure
-      amazon.aws.cloudformation:
-        stack_name: "{{ project.name }}-ecs"
-        state: present
-        region: "{{ aws.region }}"
-        profile: "{{ spike_account.profile_name }}"
-        template_body: "{{ lookup('file', 'templates/ecs.yaml') }}"
-        template_parameters:
-          ProjectName: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          VpcId: "{{ vpc_id }}"
-          PublicSubnetIds: "{{ public_subnet_ids }}"
-          ECSSecurityGroupId: "{{ ecs_security_group_id }}"
-          TargetGroupArn: "{{ target_group_arn }}"
-          ContainerPort: "{{ container.port }}"
-          ContainerCpu: "{{ container.cpu }}"
-          ContainerMemory: "{{ container.memory }}"
-          ContainerDesiredCount: "{{ container.desired_count }}"
-          EcrRepositoryName: "{{ container.image_name }}"
-          LoggingRetentionDays: "{{ logging.retention_days }}"
-        tags:
-          Project: "{{ project.name }}"
-          Environment: "{{ project.environment }}"
-          ManagedBy: "Ansible"
-        capabilities:
-          - CAPABILITY_NAMED_IAM
-      register: ecs_stack
-      
-    - name: Get ECS stack outputs
-      set_fact:
-        ecr_repository_url: "{{ ecs_stack.stack_outputs.ECRRepositoryURL }}"
-        ecs_cluster_name: "{{ ecs_stack.stack_outputs.ECSClusterName }}"
-        ecs_service_name: "{{ ecs_stack.stack_outputs.ECSServiceName }}"
-
-    # ===================================
-    # Container Build
-    # ===================================
-    - name: Create ECR repository
-      ansible.builtin.shell: |
-        aws ecr create-repository \
-          --repository-name "{{ project.name }}" \
-          --region "{{ aws.region }}" \
-          --profile "{{ spike_account.profile_name }}" \
-          --image-tag-mutability MUTABLE \
-          --image-scanning-configuration scanOnPush=true \
-          --tags Key=Project,Value="{{ project.name }}" \
-                 Key=Environment,Value="{{ project.environment }}" \
-                 Key=ManagedBy,Value="Ansible" \
-          --output json
-      register: ecr_create_result
-      failed_when: 
-        - ecr_create_result.rc != 0
-        - "'RepositoryAlreadyExistsException' not in ecr_create_result.stderr"
-      changed_when: ecr_create_result.rc == 0
-
-    - name: Get ECR repository URI
-      ansible.builtin.shell: |
-        aws ecr describe-repositories \
-          --repository-names "{{ ecr.repository_name }}" \
-          --region "{{ aws.region }}" \
-          --profile "{{ spike_account.profile_name }}" \
-          --query 'repositories[0].repositoryUri' \
-          --output text
-      register: ecr_repository_uri
-      changed_when: false
-
-    - name: Set ECR facts
-      ansible.builtin.set_fact:
-        ecr_repository_uri: "{{ ecr_repository_uri.stdout }}"
-        ecr_registry_url: "{{ ecr_repository_uri.stdout | regex_replace('/.*', '') }}"
-        
-    - name: Build container image for AMD64
-      docker_image:
-        build:
-          path: ".."
-          dockerfile: "Dockerfile"
-          platform: "linux/amd64"
-        name: "{{ container.image_name }}"
-        tag: latest
-        source: build
-        
-    - name: Tag image for ECR
-      docker_image:
-        name: "{{ container.image_name }}:latest"
-        repository: "{{ ecr_repository_uri }}"
-        tag: latest
-        source: local
-  
-    - name: Get ECR authorization token
-      ansible.builtin.shell: |
-        aws ecr get-login-password \
-          --profile "{{ spike_account.profile_name }}" \
-          --region "{{ aws.region }}"
-      register: ecr_password
-      no_log: true
-      changed_when: false
-
-    - name: Login to ECR
-      docker_login:
-        registry_url: "{{ ecr_registry_url }}"
-        username: AWS
-        password: "{{ ecr_password.stdout }}"
-
-    - name: Push image to ECR
-      docker_image:
-        name: "{{ ecr_repository_uri }}:latest"
-        push: true
-        source: local
-
-    - name: Display ECR repository information
-      ansible.builtin.debug:
-        msg:
-          - "✅ ECR Repository Created/Verified"
-          - "Repository Name: {{ container.image_name }}"
-          - "Repository URI: {{ ecr_repository_uri }}"
-          - "Registry URL: {{ ecr_registry_url }}"  
-
-    # ===================================
-    # ContainerDeployment
+    # Incorporate Playbooks
     # ===================================
 
-    # - name: Get ECR login token
-    #   amazon.aws.aws_ecr:
-    #     name: "{{ container.image_name }}"
-    #     region: "{{ aws.region }}"
-    #     profile: "{{ spike_account.profile_name }}"
-    #   register: ecr_repo
-    # - name: Force ECS service update
-    #   amazon.aws.ecs_service:
-    #     state: present
-    #     name: "{{ ecs_service_name }}"
-    #     cluster: "{{ ecs_cluster_name }}"
-    #     region: "{{ aws.region }}"
-    #     profile: "{{ spike_account.profile_name }}"
-    #     force_new_deployment: yes
-        
-    # - name: Wait for ECS service to be stable
-    #   amazon.aws.ecs_service_info:
-    #     cluster: "{{ ecs_cluster_name }}"
-    #     service: "{{ ecs_service_name }}"
-    #     details: yes
-    #     region: "{{ aws.region }}"
-    #     profile: "{{ spike_account.profile_name }}"
-    #   register: service_info
-    #   until: service_info.services[0].deployments[0].status == "PRIMARY" and service_info.services[0].deployments[0].running_count >= 1
-    #   retries: 30
-    #   delay: 30
+    - block:
+      - name: "Include Phase 1 playbook Message"
+        debug:
+          msg: |
+            Starting Phase 1
+      - name: Include Phase 1 playbook
+        include_tasks: playbooks/phase1-core-infrastructure.yaml
+      tags: [phase1]
 
-    # ===================================
-    # Deployment Validation
-    # ===================================
-    
-    # - name: Wait for application to be ready
-    #   uri:
-    #     url: "https://{{ domain.name }}/health"
-    #     method: GET
-    #     status_code: 200
-    #   register: health_check
-    #   until: health_check.status == 200
-    #   retries: 10
-    #   delay: 30
-    #   ignore_errors: yes
-      
-    # - name: Display deployment results
-    #   debug:
-    #     msg: |
-    #       🎉 FRANK Deployment Complete!
-          
-    #       Application URL: https://{{ domain.name }}
-    #       Health Check: https://{{ domain.name }}/health
-    #       API Docs: https://{{ domain.name }}/docs
-          
-    #       Infrastructure:
-    #       - VPC ID: {{ vpc_id }}
-    #       - Load Balancer: {{ load_balancer_dns }}
-    #       - ECS Cluster: {{ ecs_cluster_name }}
-    #       - ECR Repository: {{ ecr_repository_url }}
-          
-    #       SSL Certificate: {{ certificate_arn }}
-    #       Health Status: {{ 'Healthy' if health_check.status == 200 else 'Unhealthy' }}
+    - block:
+      - name: "Include Phase 2 playbook Message"
+        debug:
+          msg: |
+            Starting Phase 2
+      - name: Include Phase 2 playbook
+        include_tasks: playbooks/phase2-cross-account-dns.yaml
 
-# ===================================
-# Cleanup Playbook (Separate Play)
-# ===================================
+    - block:
+      - name: "Include Phase 3 playbook Message"
+        debug:
+          msg: |
+            Starting Phase 3
+      - name: Include Phase 3 playbook
+        include_tasks: playbooks/phase3-database-integration.yaml
 
-- name: Cleanup FRANK Infrastructure
-  hosts: localhost
-  gather_facts: false
-  vars_files:
-    - vars/accounts.yaml
-    - vars/frank-config.yaml
-  tags: [never, cleanup]
-  
-  tasks:
-    - name: Confirm destruction
-      pause:
-        prompt: "Are you sure you want to destroy all FRANK infrastructure? Type 'yes' to continue"
-      register: confirm_destroy
-      
-    - name: Fail if not confirmed
-      fail:
-        msg: "Destruction cancelled"
-      when: confirm_destroy.user_input != "yes"
+    - block:
+      - name: "Include Phase 4 playbook Message"
+        debug:
+          msg: |
+            Starting Phase 4
+      - name: Include Phase 4 playbook
+        include_tasks: playbooks/phase4-ssl-integration.yaml
 
-    - name: Delete ECR repository
-      ansible.builtin.shell: |
-        aws ecr delete-repository \
-          --repository-name "{{ ecr.repository_name }}" \
-          --region "{{ aws.region }}" \
-          --profile "{{ spike_account.profile_name }}" \
-          --force
-      register: ecr_delete_result
-      failed_when: ecr_delete_result.rc != 0 and 'RepositoryNotFoundException' not in ecr_delete_result.stderr
-      changed_when: ecr_delete_result.rc == 0 
+    - block:
+      - name: "Include Phase 5 playbook Message"
+        debug:
+          msg: |
+            Starting Phase 5
+      - name: Include Phase 5 playbook
+        include_tasks: playbooks/phase5-database-seeding.yaml
+      tags: [seed, phase6]
 
-    - name: Delete stacks in reverse order
-      amazon.aws.cloudformation:
-        stack_name: "{{ item.stack_name }}"
-        state: absent
-        region: "{{ aws.region }}"
-        profile: "{{ item.profile | default(spike_account.profile_name) }}"
-        # aws_access_key: "{{ item.access_key | default(omit) }}"
-        # aws_secret_key: "{{ item.secret_key | default(omit) }}"
-        # security_token: "{{ item.session_token | default(omit) }}"
-      loop:
-      #   # - stack_name: "{{ project.name }}-ecs"
-      #   # - stack_name: "{{ project.name }}-route53"
-      #   #   profile: "{{ main_account.profile_name }}"
-      #   # - stack_name: "{{ project.name }}-load-balancer"
-      #   # - stack_name: "{{ project.name }}-ssl-cert"
-        - stack_name: "{{ project.name }}-networking"
-      ignore_errors: no
-  
-
-
-    - name: Display cleanup completion
-      debug:
-        msg: "🗑️ FRANK infrastructure cleanup completed"
+    - block:
+      - name: "Include Phase 6 playbook Message"
+        debug:
+          msg: |
+            Starting Phase 6
+      - name: Include Phase 6 playbook
+        include_tasks: playbooks/phase6-application-deployment.yaml
+      tags: [deploy, phase6]

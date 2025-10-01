@@ -1,0 +1,3 @@
+- name: Phase 2 cross account
+  debug:
+    msg: "Phase 2 cross account"

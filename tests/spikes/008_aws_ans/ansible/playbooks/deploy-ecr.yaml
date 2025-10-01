@@ -95,7 +95,7 @@
           - "Registry URL: {{ ecr_registry_url }}"  
 
 
-- name: Destry ECR
+- name: Destroy ECR
   hosts: localhost
   gather_facts: false
   vars_files:
