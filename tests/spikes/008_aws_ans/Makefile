@@ -1,7 +1,12 @@
+install: ## Install Ansible collections
+	@cd ansible && ansible-galaxy collection install -r requirements.yaml
+	
 deploy:  ## Create the spike environment
+	@mkdir -p ansible/logs
 	@cd ansible && ansible-playbook deploy-frank.yaml --tags deploy
 
 create:  ## Create the spike environment
+	@mkdir -p ansible/logs
 	@cd ansible && ansible-playbook deploy-frank.yaml --tags phase1
 
 help: ## Shows help screen

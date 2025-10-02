@@ -8,7 +8,6 @@
     # bucket_suffix: "{{ ansible_date_time.epoch | default(ansible_env.EPOCH | default('123456')) }}"    
 
 
-
 - name: Deploy networking infrastructure
   amazon.aws.cloudformation:
     stack_name: "{{ project.name }}-networking"
@@ -55,58 +54,6 @@
       Owner: "{{ project.owner }}"
   register: alb_logs_bucket
 
-- name: Configure S3 bucket lifecycle policy
-  amazon.aws.s3_lifecycle:
-    name: "{{ alb_logs_bucket.name }}"
-    region: "{{ aws.region }}"
-    profile: "{{ spike_account.profile_name }}"
-    rules:
-      - id: "delete-old-logs"
-        status: enabled
-        expiration_days: 90
-        prefix: "alb-logs/"
-
-- name: Set S3 bucket policy for ALB access logs
-  amazon.aws.s3_bucket_policy:
-    bucket: "{{ alb_logs_bucket.name }}"
-    region: "{{ aws.region }}"
-    profile: "{{ spike_account.profile_name }}"
-    policy: |
-      {
-        "Version": "2012-10-17",
-        "Statement": [
-          {
-            "Effect": "Allow",
-            "Principal": {
-              "AWS": "arn:aws:iam::156460612806:root"
-            },
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::{{ alb_logs_bucket.name }}/alb-logs/AWSLogs/{{ ansible_account_id }}/*"
-          },
-          {
-            "Effect": "Allow",
-            "Principal": {
-              "Service": "delivery.logs.amazonaws.com"
-            },
-            "Action": "s3:PutObject",
-            "Resource": "arn:aws:s3:::{{ alb_logs_bucket.name }}/alb-logs/AWSLogs/{{ ansible_account_id }}/*",
-            "Condition": {
-              "StringEquals": {
-                "s3:x-amz-acl": "bucket-owner-full-control"
-              }
-            }
-          },
-          {
-            "Effect": "Allow",
-            "Principal": {
-              "AWS": "arn:aws:iam::156460612806:root"
-            },
-            "Action": "s3:GetBucketAcl",
-            "Resource": "arn:aws:s3:::{{ alb_logs_bucket.name }}"
-          }
-        ]
-      }
-
 # ===================================
 # Deploy Load Balancer Infrastructure (CloudFormation)
 # ===================================
@@ -124,9 +71,10 @@
       Environment: "{{ project.environment }}"
       VpcId: "{{ vpc_id }}"
       PublicSubnetIds: "{{ public_subnet_ids }}"
-      ALBLogsBucket: "{{ alb_logs_bucket.name }}"
+      ALBLogsBucketName: "{{ alb_logs_bucket.name }}"
       ContainerPort: "{{ container.port }}"
       SSLCertificateArn: "{{ ssl.certificate_arn | default('') }}"
+      Owner: "{{ project.owner }}"
     tags:
       Project: "{{ project.name }}"
       Environment: "{{ project.environment }}"
@@ -149,6 +97,25 @@
 # Deploy ECS Infrastructure (Spike Account)
 # ===================================
 
+# - name: Create ECR repository
+#   ansible.builtin.shell: |
+#     aws ecr create-repository \
+#       --repository-name "{{ project.name }}" \
+#       --region "{{ aws.region }}" \
+#       --profile "{{ spike_account.profile_name }}" \
+#       --image-tag-mutability MUTABLE \
+#       --image-scanning-configuration scanOnPush=true \
+#       --tags Key=Project,Value="{{ project.name }}" \
+#               Key=Environment,Value="{{ project.environment }}" \
+#               Key=ManagedBy,Value="Ansible" \
+#               Key=Owner,Value="{{ project.owner }}" \
+#       --output json
+#   register: ecr_create_result
+#   failed_when: 
+#     - ecr_create_result.rc != 0
+#     - "'RepositoryAlreadyExistsException' not in ecr_create_result.stderr"
+#   changed_when: ecr_create_result.rc == 0
+
 # - name: Deploy ECS infrastructure
 #   amazon.aws.cloudformation:
 #     stack_name: "{{ project.name }}-ecs"
@@ -167,12 +134,13 @@
 #       ContainerCpu: "{{ container.cpu }}"
 #       ContainerMemory: "{{ container.memory }}"
 #       ContainerDesiredCount: "{{ container.desired_count }}"
-#       EcrRepositoryName: "{{ container.image_name }}"
+#       EcrRepositoryName: "{{ project.name }}"
 #       LoggingRetentionDays: "{{ logging.retention_days }}"
 #     tags:
 #       Project: "{{ project.name }}"
 #       Environment: "{{ project.environment }}"
 #       ManagedBy: "Ansible"
+#       Owner: "{{ project.owner }}"
 #     capabilities:
 #       - CAPABILITY_NAMED_IAM
 #   register: ecs_stack
@@ -182,21 +150,3 @@
 #     ecr_repository_url: "{{ ecs_stack.stack_outputs.ECRRepositoryURL }}"
 #     ecs_cluster_name: "{{ ecs_stack.stack_outputs.ECSClusterName }}"
 #     ecs_service_name: "{{ ecs_stack.stack_outputs.ECSServiceName }}"
-
-# - name: Create ECR repository
-#   ansible.builtin.shell: |
-#     aws ecr create-repository \
-#       --repository-name "{{ project.name }}" \
-#       --region "{{ aws.region }}" \
-#       --profile "{{ spike_account.profile_name }}" \
-#       --image-tag-mutability MUTABLE \
-#       --image-scanning-configuration scanOnPush=true \
-#       --tags Key=Project,Value="{{ project.name }}" \
-#               Key=Environment,Value="{{ project.environment }}" \
-#               Key=ManagedBy,Value="Ansible" \
-#       --output json
-#   register: ecr_create_result
-#   failed_when: 
-#     - ecr_create_result.rc != 0
-#     - "'RepositoryAlreadyExistsException' not in ecr_create_result.stderr"
-#   changed_when: ecr_create_result.rc == 0
