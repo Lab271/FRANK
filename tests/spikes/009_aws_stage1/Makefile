@@ -6,10 +6,14 @@ stop: ## Stop Colima
 	@colima stop
 	
 build: ## Build and run the Docker container (native platform)
-	@docker stop simple_testsimple_api || true
-	@docker rm simple_testsimple_api || true
+	@docker stop simple_test || true
+	@docker rm simple_test || true
 	@docker build -t simple_api .
 	@docker run -d -p 8000:8000 --name simple_test simple_api
+
+destroy: ## Stop and remove the Docker container
+	@docker stop simple_test || true
+	@docker rm simple_test || true
 
 build-aws: ## Build for AWS Fargate (AMD64)
 	docker build --platform linux/amd64 -t simple_api:amd64 .

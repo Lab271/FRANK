@@ -111,7 +111,7 @@ create()
     --stack-name ${STACK_NAME} \
     --profile ${AWS_PROFILE} \
     --region ${AWS_REGION} \
-    --template-body file://simple-infra.yaml \
+    --template-body file://${STACK_NAME}-infra.yaml \
     --parameters ParameterKey=ContainerImage,ParameterValue=${ECR_URL}/${REPOSITORY_NAME}:latest \
                  ParameterKey=StackName,ParameterValue=${STACK_NAME} \
     --capabilities CAPABILITY_IAM 2>&1)
@@ -171,7 +171,7 @@ destroy()
 {
     aws ecr delete-repository \
       --repository-name "${REPOSITORY_NAME}" --profile ${AWS_PROFILE} --region ${AWS_REGION}\
-      --force
+      --force > /dev/null 2>&1
 
     log_info "ECR repository ${REPOSITORY_NAME} deleted."
 
