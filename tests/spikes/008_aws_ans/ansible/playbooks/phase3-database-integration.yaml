@@ -1,3 +1,0 @@
-- name: Phase 3 database integration 
-  debug:
-    msg: "Phase 3 database integration"

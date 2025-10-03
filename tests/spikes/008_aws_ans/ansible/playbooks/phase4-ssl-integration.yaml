@@ -1,3 +1,0 @@
-- name: Phase 4 ssl integration 
-  debug:
-    msg: "Phase 4 ssl integration"

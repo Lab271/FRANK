@@ -1,3 +1,0 @@
-- name: Phase 5 database seeding
-  debug:
-    msg: "Phase 5 database seeding"
