@@ -1,48 +1,339 @@
 ---
-# tasks/ssl.yml
-- name: Check if certificate exists in main account
+# tasks/ssl.yml - Complete SSL Infrastructure Setup
+# This replicates the functionality of setup_ssl() from deploy.sh
+
+# ===================================
+# Step 1: Check/Create Main Hosted Zone
+# ===================================
+
+- name: Check if main hosted zone exists
   command: >
-    aws acm list-certificates 
+    aws route53 list-hosted-zones-by-name
+    --dns-name {{ main_domain }}
     --profile {{ main_account_profile }}
-    --region us-east-1
-    --output json
-  register: cert_list_result
+    --query "HostedZones[?Name=='{{ main_domain }}.'].Id"
+    --output text
+  register: main_hosted_zone_check
   failed_when: false
   changed_when: false
-  when: main_creds_check.rc == 0
 
-- name: Parse certificate list
+- name: Extract main hosted zone ID
   set_fact:
-    certificates: "{{ (cert_list_result.stdout | from_json).CertificateSummaryList | default([]) }}"
-  when: 
-    - main_creds_check.rc == 0
-    - cert_list_result.rc == 0
+    main_hosted_zone_id: "{{ main_hosted_zone_check.stdout.split('/')[-1] if main_hosted_zone_check.stdout != '' else '' }}"
 
-- name: Find matching certificate
+- name: Create main hosted zone if not exists
+  command: >
+    aws route53 create-hosted-zone
+    --name {{ main_domain }}
+    --caller-reference "lab271-{{ ansible_date_time.epoch }}"
+    --profile {{ main_account_profile }}
+    --query 'HostedZone.Id'
+    --output text
+  register: main_hosted_zone_create
+  when: main_hosted_zone_id == ""
+  changed_when: true
+
+- name: Set main hosted zone ID from creation
   set_fact:
-    matching_cert: "{{ certificates | selectattr('DomainName', 'equalto', ssl_domain) | list | first | default({}) }}"
-  when: 
-    - main_creds_check.rc == 0
-    - cert_list_result.rc == 0
-    - certificates is defined
+    main_hosted_zone_id: "{{ main_hosted_zone_create.stdout.split('/')[-1] }}"
+  when: main_hosted_zone_create is not skipped
 
-- name: Set certificate ARN if found
-  set_fact:
-    ssl_certificate_arn: "{{ matching_cert.CertificateArn }}"
-  when:
-    - main_creds_check.rc == 0
-    - cert_list_result.rc == 0
-    - matching_cert is defined
-    - matching_cert.CertificateArn is defined
+- name: Display nameservers for main domain
+  command: >
+    aws route53 get-hosted-zone
+    --id {{ main_hosted_zone_id }}
+    --profile {{ main_account_profile }}
+    --query 'DelegationSet.NameServers'
+    --output table
+  register: main_nameservers
+  changed_when: false
+  when: main_hosted_zone_create is not skipped
 
-- name: Display SSL certificate status
+- name: Show nameserver configuration message
   debug:
-    msg: "SSL Certificate found: {{ ssl_certificate_arn | default('Not found') }}"
-  when: main_creds_check.rc == 0
+    msg: 
+      - "Main hosted zone created: {{ main_hosted_zone_id }}"
+      - "Update your domain registrar with these nameservers:"
+      - "{{ main_nameservers.stdout }}"
+  when: main_hosted_zone_create is not skipped
+
+# ===================================
+# Step 2: Check/Request Main Certificate
+# ===================================
+
+- name: Check if main certificate exists
+  command: >
+    aws acm list-certificates
+    --region us-east-1
+    --profile {{ main_account_profile }}
+    --query "CertificateSummaryList[?DomainName=='{{ main_domain }}'].CertificateArn"
+    --output text
+  register: main_cert_check
+  failed_when: false
+  changed_when: false
+
+- name: Set main certificate ARN if exists
+  set_fact:
+    main_cert_arn: "{{ main_cert_check.stdout.split('\n')[0] }}"
+  when: main_cert_check.stdout != ""
+
+- name: Request main certificate if not exists
+  command: >
+    aws acm request-certificate
+    --domain-name {{ main_domain }}
+    --subject-alternative-names "*.{{ main_domain }}"
+    --validation-method DNS
+    --region us-east-1
+    --profile {{ main_account_profile }}
+    --query 'CertificateArn'
+    --output text
+  register: main_cert_create
+  when: main_cert_check.stdout == ""
+  changed_when: true
+
+- name: Set main certificate ARN from creation
+  set_fact:
+    main_cert_arn: "{{ main_cert_create.stdout }}"
+  when: main_cert_create is not skipped
+
+- name: Wait for certificate details to be available
+  pause:
+    seconds: 5
+  when: main_cert_create is not skipped
+
+- name: Get main certificate validation details
+  command: >
+    aws acm describe-certificate
+    --certificate-arn {{ main_cert_arn }}
+    --region us-east-1
+    --profile {{ main_account_profile }}
+    --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
+    --output json
+  register: main_cert_validation
+  when: main_cert_create is not skipped
+  changed_when: false
+
+- name: Parse main certificate validation record
+  set_fact:
+    main_validation_name: "{{ (main_cert_validation.stdout | from_json).Name }}"
+    main_validation_value: "{{ (main_cert_validation.stdout | from_json).Value }}"
+  when: main_cert_create is not skipped
+
+- name: Create main certificate validation DNS record
+  command: >
+    aws route53 change-resource-record-sets
+    --hosted-zone-id {{ main_hosted_zone_id }}
+    --change-batch '{
+      "Changes": [{
+        "Action": "UPSERT",
+        "ResourceRecordSet": {
+          "Name": "{{ main_validation_name }}",
+          "Type": "CNAME",
+          "TTL": 300,
+          "ResourceRecords": [{"Value": "{{ main_validation_value }}"}]
+        }
+      }]
+    }'
+    --profile {{ main_account_profile }}
+  when: main_cert_create is not skipped
+  changed_when: true
+
+- name: Wait for main certificate validation
+  command: >
+    aws acm wait certificate-validated
+    --certificate-arn {{ main_cert_arn }}
+    --region us-east-1
+    --profile {{ main_account_profile }}
+  when: main_cert_create is not skipped
+  async: 600
+  poll: 30
+
+# ===================================
+# Step 3: Check/Create Spike Hosted Zone
+# ===================================
+
+- name: Check if spike hosted zone exists
+  command: >
+    aws route53 list-hosted-zones-by-name
+    --dns-name {{ spike_subdomain }}
+    --profile {{ aws_profile }}
+    --query "HostedZones[?Name=='{{ spike_subdomain }}.'].Id"
+    --output text
+  register: spike_hosted_zone_check
+  failed_when: false
+  changed_when: false
+
+- name: Extract spike hosted zone ID
+  set_fact:
+    spike_hosted_zone_id: "{{ spike_hosted_zone_check.stdout.split('/')[-1] if spike_hosted_zone_check.stdout != '' else '' }}"
+
+- name: Create spike hosted zone if not exists
+  command: >
+    aws route53 create-hosted-zone
+    --name {{ spike_subdomain }}
+    --caller-reference "spike-test-{{ ansible_date_time.epoch }}"
+    --profile {{ aws_profile }}
+    --query 'HostedZone.Id'
+    --output text
+  register: spike_hosted_zone_create
+  when: spike_hosted_zone_id == ""
+  changed_when: true
+
+- name: Set spike hosted zone ID from creation
+  set_fact:
+    spike_hosted_zone_id: "{{ spike_hosted_zone_create.stdout.split('/')[-1] }}"
+  when: spike_hosted_zone_create is not skipped
+
+- name: Get spike nameservers
+  command: >
+    aws route53 get-hosted-zone
+    --id {{ spike_hosted_zone_id }}
+    --profile {{ aws_profile }}
+    --query 'DelegationSet.NameServers'
+    --output json
+  register: spike_nameservers_result
+  changed_when: false
+
+- name: Parse spike nameservers
+  set_fact:
+    spike_nameservers: "{{ spike_nameservers_result.stdout | from_json }}"
+
+# ===================================
+# Step 4: Delegate subdomain from main to spike
+# ===================================
+
+- name: Set up subdomain delegation
+  command: >
+    aws route53 change-resource-record-sets
+    --hosted-zone-id {{ main_hosted_zone_id }}
+    --change-batch '{
+      "Changes": [{
+        "Action": "UPSERT",
+        "ResourceRecordSet": {
+          "Name": "{{ spike_subdomain }}",
+          "Type": "NS",
+          "TTL": 300,
+          "ResourceRecords": [
+            {"Value": "{{ spike_nameservers[0] }}"},
+            {"Value": "{{ spike_nameservers[1] }}"},
+            {"Value": "{{ spike_nameservers[2] }}"},
+            {"Value": "{{ spike_nameservers[3] }}"}
+          ]
+        }
+      }]
+    }'
+    --profile {{ main_account_profile }}
+  when: spike_hosted_zone_create is not skipped
+  changed_when: true
+
+# ===================================
+# Step 5: Request certificate in spike account
+# ===================================
+
+- name: Check if spike certificate exists
+  command: >
+    aws acm list-certificates
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query "CertificateSummaryList[?DomainName=='{{ spike_subdomain }}'].CertificateArn"
+    --output text
+  register: spike_cert_check
+  failed_when: false
+  changed_when: false
+
+- name: Set spike certificate ARN if exists
+  set_fact:
+    ssl_certificate_arn: "{{ spike_cert_check.stdout.split('\n')[0] }}"
+  when: spike_cert_check.stdout != ""
+
+- name: Request spike certificate if not exists
+  command: >
+    aws acm request-certificate
+    --domain-name {{ spike_subdomain }}
+    --validation-method DNS
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'CertificateArn'
+    --output text
+  register: spike_cert_create
+  when: spike_cert_check.stdout == ""
+  changed_when: true
+
+- name: Set spike certificate ARN from creation
+  set_fact:
+    ssl_certificate_arn: "{{ spike_cert_create.stdout }}"
+  when: spike_cert_create is not skipped
+
+- name: Wait for spike certificate details to be available
+  pause:
+    seconds: 5
+  when: spike_cert_create is not skipped
+
+- name: Get spike certificate validation details
+  command: >
+    aws acm describe-certificate
+    --certificate-arn {{ ssl_certificate_arn }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
+    --output json
+  register: spike_cert_validation
+  when: spike_cert_create is not skipped
+  changed_when: false
+
+- name: Parse spike certificate validation record
+  set_fact:
+    spike_validation_name: "{{ (spike_cert_validation.stdout | from_json).Name }}"
+    spike_validation_value: "{{ (spike_cert_validation.stdout | from_json).Value }}"
+  when: spike_cert_create is not skipped
+
+- name: Create spike certificate validation DNS record
+  command: >
+    aws route53 change-resource-record-sets
+    --hosted-zone-id {{ spike_hosted_zone_id }}
+    --change-batch '{
+      "Changes": [{
+        "Action": "UPSERT",
+        "ResourceRecordSet": {
+          "Name": "{{ spike_validation_name }}",
+          "Type": "CNAME",
+          "TTL": 300,
+          "ResourceRecords": [{"Value": "{{ spike_validation_value }}"}]
+        }
+      }]
+    }'
+    --profile {{ aws_profile }}
+  when: spike_cert_create is not skipped
+  changed_when: true
+
+- name: Wait for spike certificate validation
+  command: >
+    aws acm wait certificate-validated
+    --certificate-arn {{ ssl_certificate_arn }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  when: spike_cert_create is not skipped
+  async: 600
+  poll: 30
+
+# ===================================
+# Final Status and Output
+# ===================================
+
+- name: Display SSL setup summary
+  debug:
+    msg:
+      - "=== SSL Setup Complete ==="
+      - "Main Domain: {{ main_domain }}"
+      - "Main Hosted Zone ID: {{ main_hosted_zone_id }}"
+      - "Main Certificate ARN: {{ main_cert_arn | default('Not created') }}"
+      - ""
+      - "Spike Domain: {{ spike_subdomain }}"
+      - "Spike Hosted Zone ID: {{ spike_hosted_zone_id }}"
+      - "Spike Certificate ARN: {{ ssl_certificate_arn | default('Not found') }}"
 
 - name: Warning if no SSL certificate found
   debug:
-    msg: "Warning: No SSL certificate found for domain {{ ssl_domain }}. Deployment will proceed without HTTPS."
+    msg: "Warning: No SSL certificate found for domain {{ spike_subdomain }}. Deployment will proceed without HTTPS."
   when: 
-    - main_creds_check.rc == 0
     - (ssl_certificate_arn is not defined or ssl_certificate_arn == "")

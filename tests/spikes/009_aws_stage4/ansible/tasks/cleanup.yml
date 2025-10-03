@@ -75,16 +75,6 @@
   register: docker_cleanup
   failed_when: false
 
-- name: Log cleanup operations
-  lineinfile:
-    path: ./logs/cleanup.log
-    line: "{{ ansible_date_time.iso8601 }}: {{ item }}"
-    create: yes
-  loop:
-    - "CloudFormation stack {{ stack_name }} deletion initiated"
-    - "ECR repository {{ app_name }} cleanup completed"
-    - "Local Docker images cleaned up"
-
 - name: Display cleanup completion
   debug:
     msg: "Cleanup completed for {{ stack_name }}"

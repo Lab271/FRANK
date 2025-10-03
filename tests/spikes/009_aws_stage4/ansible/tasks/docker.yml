@@ -38,13 +38,19 @@
   changed_when: true
 
 - name: Build Docker image
+  # Replicate the docker-compose arguments
   command: >
     docker buildx build 
     --platform linux/amd64 
+    --build-arg BUILD_CONTEXT=tests/spikes/009_aws_stage4
+    --build-arg PACKAGE_CONTEXT=.
     -t {{ app_name }}:{{ image_tag }}
     -t {{ ecr_url }}/{{ repository_name }}:{{ image_tag }}
     -t {{ ecr_url }}/{{ repository_name }}:latest
-    ..
+    -f tests/spikes/009_aws_stage4/Dockerfile
+    .
+  args:
+    chdir: "../../../.." # one more because we're in ansible
   register: docker_build
   changed_when: true
 

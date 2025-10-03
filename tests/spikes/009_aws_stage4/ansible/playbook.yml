@@ -13,7 +13,8 @@
     main_account_profile: main-account
     app_name: simple_api
     # image_tag is set dynamically from FRANK version, but can be overridden with -e image_tag_override=<version>
-    ssl_domain: "{{ stack_name }}-stage4.lab271.io"
+    main_domain: "lab271.io"
+    spike_subdomain: "{{ stack_name }}.{{ main_domain }}"
     cloudformation_template: "{{ stack_name }}-infra.yaml"
     
     # SSL certificate ARN (will be determined during execution)
@@ -59,7 +60,7 @@
             - "AWS Account ID: {{ aws_account_id }}"
             - "ECR URL: {{ ecr_url }}"
             - "App Name: {{ app_name }}"
-            - "SSL Domain: {{ ssl_domain }}"
+            - "Spike Domain: {{ spike_subdomain }}"
       tags: always
 
     
