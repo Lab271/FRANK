@@ -84,7 +84,6 @@
     - "CloudFormation stack {{ stack_name }} deletion initiated"
     - "ECR repository {{ app_name }} cleanup completed"
     - "Local Docker images cleaned up"
-  when: action == "delete"
 
 - name: Display cleanup completion
   debug:

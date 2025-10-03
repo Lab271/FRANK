@@ -39,23 +39,49 @@ ansible/
 ### Deploy Infrastructure
 
 ```bash
-# Create new stack
-ansible-playbook playbook.yml -e action=create
+# Create new stack (or update if exists)
+ansible-playbook playbook.yml --tags "create"
 
 # Update existing stack
-ansible-playbook playbook.yml -e action=update
+ansible-playbook playbook.yml --tags "update"
+
+# Deploy (smart create/update)
+ansible-playbook playbook.yml --tags "deploy"
 
 # Delete stack
-ansible-playbook playbook.yml -e action=delete
+ansible-playbook playbook.yml --tags "delete"
+
+# Run only Docker operations
+ansible-playbook playbook.yml --tags "docker"
+
+# Run only SSL setup
+ansible-playbook playbook.yml --tags "ssl"
+
+# Run only CloudFormation deployment
+ansible-playbook playbook.yml --tags "cloudformation"
+
+# Run cleanup operations
+ansible-playbook playbook.yml --tags "cleanup"
+```
+
+### Tag Combinations
+
+You can combine multiple tags:
+
+```bash
+# Run SSL setup and Docker operations only
+ansible-playbook playbook.yml --tags "ssl,docker"
+
+# Run full deployment pipeline
+ansible-playbook playbook.yml --tags "ssl,docker,cloudformation"
 ```
 
 ### Custom Configuration
 
-You can override default variables:
+You can override default variables while using tags:
 
 ```bash
-ansible-playbook playbook.yml \
-  -e action=create \
+ansible-playbook playbook.yml --tags "deploy" \
   -e stack_name=my-frank-stack \
   -e aws_region=us-west-2 \
   -e image_tag=v1.2.3 \
@@ -66,14 +92,27 @@ ansible-playbook playbook.yml \
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `action` | `create` | Action to perform: create, update, delete |
 | `stack_name` | `frank-009-stage4` | CloudFormation stack name |
 | `aws_region` | `eu-central-1` | AWS region |
 | `aws_profile` | `spike-account` | AWS profile for deployment |
-| `main_account_profile` | `default` | AWS profile for SSL certificates |
-| `app_name` | `frank` | Application name for ECR repository |
+| `main_account_profile` | `main-account` | AWS profile for SSL certificates |
+| `app_name` | `simple_api` | Application name for ECR repository |
 | `image_tag` | `latest` | Docker image tag |
-| `ssl_domain` | `frank.heitlager.eu` | Domain for SSL certificate |
+| `ssl_domain` | `frank-009-stage4.lab271.io` | Domain for SSL certificate |
+
+## Tags
+
+| Tag | Description | Tasks Included |
+|-----|-------------|----------------|
+| `always` | Always runs | Prerequisites, Display info |
+| `create` | Create deployment | SSL, Docker, CloudFormation |
+| `update` | Update deployment | SSL, Docker, CloudFormation |
+| `deploy` | Smart create/update | SSL, Docker, CloudFormation |
+| `ssl` | SSL operations only | SSL certificate lookup |
+| `docker` | Docker operations only | ECR, Build, Push |
+| `cloudformation` | Infrastructure only | CloudFormation deployment |
+| `delete` | Delete resources | Cleanup operations |
+| `cleanup` | Cleanup operations | Delete stack and ECR |
 
 ## Features
 

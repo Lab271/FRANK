@@ -45,9 +45,7 @@
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: cf_create
-  when: 
-    - action == "create"
-    - stack_check.rc != 0
+  when: stack_check.rc != 0
 
 - name: Deploy CloudFormation stack (update)
   command: >
@@ -60,15 +58,12 @@
     --profile {{ aws_profile }}
   register: cf_update
   failed_when: false
-  when: 
-    - action == "update"
-    - stack_check.rc == 0
+  when: stack_check.rc == 0
 
 - name: Handle no updates required
   debug:
     msg: "No updates required for stack {{ stack_name }}"
   when:
-    - action == "update"
     - cf_update is defined
     - cf_update.rc != 0
     - "'No updates are to be performed' in cf_update.stderr"
@@ -77,21 +72,20 @@
   fail:
     msg: "CloudFormation update failed: {{ cf_update.stderr }}"
   when:
-    - action == "update"
     - cf_update is defined
     - cf_update.rc != 0
     - "'No updates are to be performed' not in cf_update.stderr"
 
 - name: Wait for CloudFormation stack operation to complete
   command: >
-    aws cloudformation wait stack-{{ 'create' if action == 'create' else 'update' }}-complete
+    aws cloudformation wait stack-{{ 'create' if stack_check.rc != 0 else 'update' }}-complete
     --stack-name {{ stack_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: cf_wait
   when: 
-    - (action == "create" and cf_create is defined and cf_create.rc == 0) or
-      (action == "update" and cf_update is defined and cf_update.rc == 0)
+    - (stack_check.rc != 0 and cf_create is defined and cf_create.rc == 0) or
+      (stack_check.rc == 0 and cf_update is defined and cf_update.rc == 0)
 
 - name: Get CloudFormation stack outputs
   command: >
@@ -104,9 +98,9 @@
   register: stack_outputs
   changed_when: false
   when: 
-    - (action == "create" and cf_create is defined and cf_create.rc == 0) or
-      (action == "update" and cf_update is defined and cf_update.rc == 0) or
-      (action == "update" and cf_update is defined and cf_update.rc != 0 and "'No updates are to be performed' in cf_update.stderr")
+    - (stack_check.rc != 0 and cf_create is defined and cf_create.rc == 0) or
+      (stack_check.rc == 0 and cf_update is defined and cf_update.rc == 0) or
+      (stack_check.rc == 0 and cf_update is defined and cf_update.rc != 0 and "'No updates are to be performed' in cf_update.stderr")
 
 - name: Parse stack outputs
   set_fact:
@@ -117,12 +111,3 @@
   debug:
     msg: "{{ outputs }}"
   when: outputs is defined
-
-- name: Log CloudFormation deployment
-  lineinfile:
-    path: ./logs/deployment.log
-    line: "{{ ansible_date_time.iso8601 }}: CloudFormation {{ action }} completed for stack {{ stack_name }}"
-    create: yes
-  when: 
-    - (action == "create" and cf_create is defined and cf_create.rc == 0) or
-      (action == "update" and cf_update is defined and (cf_update.rc == 0 or "'No updates are to be performed' in cf_update.stderr"))

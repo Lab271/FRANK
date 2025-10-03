@@ -1,15 +1,9 @@
 ---
 # tasks/docker.yml
-- name: Create logs directory
-  file:
-    path: ./logs
-    state: directory
-    mode: '0755'
-
 - name: Check if ECR repository exists
   command: >
     aws ecr describe-repositories 
-    --repository-names {{ app_name }}
+    --repository-names {{ repository_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: ecr_check
@@ -19,7 +13,7 @@
 - name: Create ECR repository if it doesn't exist
   command: >
     aws ecr create-repository 
-    --repository-name {{ app_name }}
+    --repository-name {{ repository_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: ecr_create
@@ -48,29 +42,18 @@
     docker buildx build 
     --platform linux/amd64 
     -t {{ app_name }}:{{ image_tag }}
-    -t {{ ecr_url }}/{{ app_name }}:{{ image_tag }}
-    -t {{ ecr_url }}/{{ app_name }}:latest
-    .
+    -t {{ ecr_url }}/{{ repository_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ repository_name }}:latest
+    ..
   register: docker_build
   changed_when: true
 
-- name: Push Docker image with tag
-  command: docker push {{ ecr_url }}/{{ app_name }}:{{ image_tag }}
-  register: docker_push_tag
-  changed_when: true
-
 - name: Push Docker image as latest
-  command: docker push {{ ecr_url }}/{{ app_name }}:latest
+  command: docker push {{ ecr_url }}/{{ repository_name }}:latest
   register: docker_push_latest
   changed_when: true
 
-- name: Log Docker operations
-  lineinfile:
-    path: ./logs/docker.log
-    line: "{{ ansible_date_time.iso8601 }}: {{ item }}"
-    create: yes
-  loop:
-    - "ECR login successful"
-    - "Docker build completed for {{ app_name }}:{{ image_tag }}"
-    - "Docker push completed for {{ ecr_url }}/{{ app_name }}:{{ image_tag }}"
-    - "Docker push completed for {{ ecr_url }}/{{ app_name }}:latest"
+- name: Push Docker image with tag
+  command: docker push {{ ecr_url }}/{{ repository_name }}:{{ image_tag }}
+  register: docker_push_tagged
+  changed_when: true

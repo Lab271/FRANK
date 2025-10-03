@@ -51,18 +51,20 @@ open http://localhost:8000
 ### Stage 2: Add Load Balancer
 **Goal:** Stable endpoint with health checking
 
+Read more about the [Stage 2 - Hypothesis](../009_aws_stage2/README.md).
+
 #### AWS Components
 - Application Load Balancer (ALB) in public subnet
 - ALB target group → Fargate task
 - Health check: `/v1/health`
 - Fargate moved to private subnet
 - NAT Gateway for outbound access
+- Include the main FRANK python package
 - Access: `http://frank-alb-xxx.region.elb.amazonaws.com`
 
 #### Local Setup
 ```bash
 # docker-compose.yml
-version: '3.8'
 services:
   fastapi:
     build: .
@@ -81,8 +83,8 @@ services:
 # Start services
 docker-compose up
 
-# Access
-open http://localhost
+# Access through loadbalancer
+open http://localhost:80
 ```
 
 **Benefits:** Stable endpoint, health monitoring, better security
@@ -92,30 +94,32 @@ open http://localhost
 ### Stage 3: Add SSL/HTTPS
 **Goal:** Secure traffic with certificates
 
+Read more about the [Stage 3 - Hypothesis](../009_aws_stage3/README.md).
+
 #### AWS Components
 - Route 53 hosted zone: `lab271.io`
 - ACM certificate for `lab271.io`
 - ALB listener on port 443 with SSL
 - HTTP → HTTPS redirect (port 80 → 443)
 - Route 53 A record (alias) → ALB
-- Access: `https://lab271.io`
+- Access: `https://frank-009-stage3.lab271.io`
 
 #### Local Setup
 ```bash
 # Generate self-signed certificate
 openssl req -x509 -nodes -days 365 -newkey rsa:2048 \
   -keyout nginx.key -out nginx.crt \
-  -subj "/CN=lab271.local"
+  -subj "/CN=frank-stage3.local"
 
 # Update /etc/hosts
-echo "127.0.0.1 lab271.local" | sudo tee -a /etc/hosts
+echo "127.0.0.1 frank-stage3.local" | sudo tee -a /etc/hosts
 
 # Update nginx.conf for SSL
 # Start services
 docker-compose up
 
 # Access (ignore certificate warning)
-open https://lab271.local
+open https://frank-stage3.local
 ```
 
 **Benefits:** Encrypted traffic, professional domain, browser trust
@@ -124,6 +128,8 @@ open https://lab271.local
 
 ### Stage 4: Add DynamoDB with Audit Trail, Add Multi-AZ Redundancy
 **Goal:** Persistent storage and request auditing and High availability across 3 availability zones
+
+Read more about the [Stage 4 - Hypothesis](../009_aws_stage4/README.md).
 
 #### AWS Components
 - DynamoDB `main_table`: business data

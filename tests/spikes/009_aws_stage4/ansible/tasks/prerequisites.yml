@@ -55,20 +55,12 @@
     msg: "Main account profile '{{ main_account_profile }}' not configured. SSL setup will be skipped."
   when: main_creds_check.rc != 0
 
-- name: Get AWS Account ID
-  command: aws sts get-caller-identity --profile {{ aws_profile }} --query Account --output text
-  register: aws_account_id_result
-  changed_when: false
+# - name: Get AWS Account ID
+#   command: aws sts get-caller-identity --profile {{ aws_profile }} --query Account --output text
+#   register: aws_account_id_result
+#   changed_when: false
 
-- name: Set AWS Account ID fact
-  set_fact:
-    aws_account_id: "{{ aws_account_id_result.stdout }}"
-    ecr_url: "{{ aws_account_id_result.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
-
-- name: Display configuration
-  debug:
-    msg: 
-      - "AWS Account ID: {{ aws_account_id }}"
-      - "ECR URL: {{ ecr_url }}"
-      - "Stack Name: {{ stack_name }}"
-      - "Region: {{ aws_region }}"
+# - name: Set AWS Account ID fact
+#   set_fact:
+#     aws_account_id: "{{ aws_account_id_result.stdout }}"
+#     ecr_url: "{{ aws_account_id_result.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com"

@@ -17,6 +17,8 @@ from datetime import datetime, timezone
 import sys
 import os
 
+import frank
+
 app = FastAPI(title="FRANK Application")
 
 @app.get("/")
@@ -24,7 +26,7 @@ async def root():
     """Serve static JSON on root endpoint"""
     return {
         "application": "FRANK",
-        "version": "0.1.0",
+        "version": frank.__version__,
         "status": "running",
         "message": "Welcome to FRANK application"
     }
