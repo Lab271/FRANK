@@ -330,11 +330,8 @@ class Sighting(BaseModel):
     @model_validator(mode="after")
     def validate_observation_times_and_ensure_ids(self):
         """Ensure observation times are logical and IDs are set"""
-        # Ensure required fields are set
         if not self.sighting_id:
             self.sighting_id = f"sighting--{uuid.uuid4()}"
-        if not self.timestamp:
-            self.timestamp = datetime.now(timezone.utc)
 
         if self.timestamp.tzinfo is None:
             self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
@@ -439,25 +436,6 @@ class Submission(BaseModel):
         return json.dumps(data)
 
     # TODO: add from_yaml/from_json classmethods
-
-    # Move this to sighting?
-    def extract_iocs(self) -> Dict[str, List[str]]:
-        """Extract IoCs for threat intelligence processing"""
-        iocs = {"ip_addresses": [], "domains": [], "urls": [], "emails": []}
-
-        for obs in self.observables.network:
-            if obs.type in [ObservableType.IPV4, ObservableType.IPV6]:
-                iocs["ip_addresses"].append(obs.value)
-            elif obs.type == ObservableType.DOMAIN:
-                iocs["domains"].append(obs.value)
-            elif obs.type == ObservableType.URL:
-                iocs["urls"].append(obs.value)
-            elif obs.type == ObservableType.EMAIL:
-                iocs["emails"].append(obs.value)
-            # TODO: extend for other types
-
-        return iocs
-
 
     @classmethod
     def create_minimal(

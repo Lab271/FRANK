@@ -1,12 +1,33 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Local Development Version with SQLite
-Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+Demonstrates threat intelligence submission processing with embedded database storage.
 
-This script demonstrates generating and parsing minimal threat intelligence submissions
-with SQLite database storage following the "be forgiving on what you receive and 
-strong on what you return" principle and dedicated models not from the system.
-Created before included in the overall FRANK library for clarity.
+DESCRIPTION:
+A self-contained implementation showing FRANK threat intelligence data processing using
+SQLite for local development, featuring submission parsing, storage, and query capabilities.
+
+HYPOTHESIS:
+Can SQLite provide sufficient performance and reliability for local FRANK development
+while maintaining data integrity across complex threat intelligence submission workflows?
+
+RATIONALE:
+Early development phases require rapid iteration without external database dependencies.
+SQLite could enable local development and testing while providing a foundation for
+understanding storage patterns, query performance, and data relationships before
+scaling to production database systems.
+
+KEY VALIDATION AREAS:
+- SQLite performance with nested threat intelligence data structures
+- Data integrity and consistency across submission, sighting, and observable entities
+- Query efficiency for threat intelligence search and aggregation operations
+- Storage overhead and disk space utilization patterns
+- Transaction safety and concurrent access handling in development scenarios
+
+IMPLEMENTATION:
+This spike implements a complete SQLite-based FRANK system with dedicated models,
+database schema creation, submission storage, query operations, and threat intelligence
+parsing capabilities independent of the main FRANK library for testing isolation.
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
@@ -563,7 +584,7 @@ class FRANKSubmission:
             "submission": {
                 "submitter": {
                     "organisation_id": org_id,
-                    "access_level": tier
+                    "access_level": access_level
                 },
                 "sighting": {
                     "sighting_id": f"sighting-{uuid.uuid4()}",
@@ -598,7 +619,7 @@ class FRANKSubmission:
         """
         Query threat intelligence with access level filtering.
         """
-        return self.db.query_observables(org_id, observable_type, limit, tier)
+        return self.db.query_observables(org_id, observable_type, limit, access_level)
     
     def get_platform_statistics(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """Get platform statistics summary."""
@@ -1061,7 +1082,10 @@ def run_database_demo():
     
     return frank
 
-
+def test_run_spike():
+    run_tests()
+    run_database_demo()
+       
 if __name__ == "__main__":
     # Run the test suite
     print("🚀 Starting FRANK Platform Local Development Tests...")

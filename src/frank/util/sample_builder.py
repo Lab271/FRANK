@@ -20,13 +20,14 @@ from frank import __version__
 from frank.core.enum import AccessTier, ObservableType
 from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
+from frank.storage.base import BaseFRANKDatabase
 
 
 class FRANKDatabaseSeeder(ABC):
     """Base class for database seeders."""
 
     @abstractmethod
-    def seed(self, db_client) -> None:
+    def seed(self, db_client: BaseFRANKDatabase) -> None:
         """Seed the database with initial data."""
         pass 
 
@@ -34,7 +35,7 @@ class FRANKDatabaseSeeder(ABC):
 class SampleDataSeeder(FRANKDatabaseSeeder):
     """Class to generate sample data for testing and demonstration."""
 
-    def seed(self, db_client) -> None:
+    def seed(self, db_client: BaseFRANKDatabase) -> None:
         """Seed the database with sample data."""
 
         for org in create_demo_orgs(id_fixed=True):
@@ -46,6 +47,7 @@ class SampleDataSeeder(FRANKDatabaseSeeder):
             db_client.store_submission(demo_submission)
 
         return True
+
 
 def get_default_observables() -> List[Dict[str, Any]]:
     """
@@ -145,7 +147,7 @@ def generate_minimal_submission_dict(org_id: str = None,
     
     # Generate default values if not provided
     if org_id is None:
-        org_id = f"identity-{uuid.uuid4()}"
+        org_id = f"identity--{uuid.uuid4()}"
         
     if observables is None:
         observables = [
@@ -252,12 +254,12 @@ def generate_comprehensive_submission(
         Submission instance containing a comprehensive valid submission
     """
     if org_id is None:
-        org_id = f"identity-{uuid.uuid4()}"
+        org_id = f"identity--{uuid.uuid4()}"
     if observables is None:
         observables = get_default_observables()
     now = datetime.now(timezone.utc)
     submission = {
-        "submission_id": f"submission-{uuid.uuid4()}",
+        "submission_id": f"submission--{uuid.uuid4()}",
         "format_version": __version__,
         "submission_method": "api",
         "processing_nodes": "comprehensive message for testing",
@@ -266,7 +268,7 @@ def generate_comprehensive_submission(
             "access_level": access_level,
         },
         "sighting": {
-            "sighting_id": f"sighting-{uuid.uuid4()}",
+            "sighting_id": f"sighting--{uuid.uuid4()}",
             "timestamp": now.isoformat(),
             "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
             "last_observed": now.isoformat(),
@@ -391,7 +393,3 @@ def example_usage():
     # seeder = SampleDataSeeder()
     # client.seed_database(seeder)
     print("✓ Database seeded with sample data (pseudo-code)")        
-
-    
-if __name__ == "__main__":
-    example_usage()

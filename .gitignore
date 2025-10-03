@@ -2,6 +2,7 @@
 
 # virtualenv
 .frank
+ssl-certs
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

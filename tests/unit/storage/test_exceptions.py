@@ -6,7 +6,9 @@ Unit tests for FRANK custom exception classes in frank.storage.exceptions.
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
+
 import unittest
+
 from frank.storage.exceptions import FRANKStorageError, FRANKConnectionError, FRANKQueryError
 
 class TestFRANKStorageExceptions(unittest.TestCase):

@@ -9,14 +9,14 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
 import uuid
 import json
 
+from pydantic import ValidationError
+
 # Import the models (adjust import path as needed)
 from frank.core.models import HitTarget
-from frank.core.enum import AccessTier
-from pydantic import ValidationError
+
 
 
 class TestHitTarget(unittest.TestCase):

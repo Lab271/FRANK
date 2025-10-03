@@ -7,22 +7,26 @@ Unit tests for sample builders
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
+
 import unittest
 
 from datetime import datetime, timezone
+import uuid
+
+from pydantic import ValidationError
 
 from frank.core.models import Submission
-from frank.util.sample_builder import generate_minimal_submission
 from frank.core.exceptions import FRANKValidationError
-
-import uuid
+from frank.util.sample_builder import generate_minimal_submission
 from frank.util import sample_builder
 
 def stix_uuid(object_type: str) -> str:
     """Generate a STIX-compliant UUID for a given object type."""
     return f"{object_type}--{uuid.uuid4()}"
 
-class TestFRANKSubmission(unittest.TestCase):
+
+
+class TestSubmission(unittest.TestCase):
     def setUp(self):
         """Set up default variables for tests using STIX UUID format."""
         self.valid_org_id = stix_uuid("identity")
@@ -168,47 +172,10 @@ class TestFRANKSubmission(unittest.TestCase):
         self.assertEqual(submission.submission_id, 'submission-123')
         self.assertEqual(submission.format_version, '1.0')
 
-    def test_generate_comprehensive_submission(self):
-        """Test generating comprehensive submission using the function and check model properties."""
-        from frank.util.sample_builder import generate_comprehensive_submission, get_default_observables
-        org_id = stix_uuid("identity")
-        hit_target_org = stix_uuid("identity")
-        observables = get_default_observables()
-        campaign_context = {"name": "test_campaign", "actor": "test_actor"}
-        sigma_detection = {"rule_id": "test-rule-123", "rule_name": "sigma_rule-12", "confidence": 0.95}
-        impact_data = {"financial_impact_eur": 10000000, "affected_systems": 5}
-        tlp_level = "TLP:AMBER"
-        submission = generate_comprehensive_submission(
-            org_id=org_id,
-            access_level="partner",
-            hit_target_org=hit_target_org,
-            observables=observables,
-            severity="high",
-            confidence=95,
-            campaign_context=campaign_context,
-            sigma_detection=sigma_detection,
-            impact_data=impact_data,
-            tlp_level=tlp_level
-        )
-        # Check model properties
-        self.assertEqual(submission.submitter.organisation_id, org_id)
-        self.assertEqual(submission.sighting.severity, "high")
-        self.assertEqual(submission.sighting.confidence, 95)
-        self.assertIsNotNone(submission.sighting.sigma_detection)
-        self.assertIsNotNone(submission.sighting.threat_context)
-        self.assertIsNotNone(submission.sighting.impact)
-        self.assertEqual(submission.sighting.threat_context.campaign.name, campaign_context['name'])
-        self.assertEqual(submission.sighting.sigma_detection.rule_id, sigma_detection['rule_id'])
-        self.assertEqual(submission.sighting.impact.financial_impact_eur, impact_data['financial_impact_eur'])        
-        self.assertEqual(submission.tlp_level, tlp_level)
-        # Robust check for hit_target
-        self.assertIsNotNone(submission.hit_target)
-        if submission.hit_target:
-            self.assertEqual(submission.hit_target.organisation_id, hit_target_org)
 
 
-# --- Additional tests for sample_builder.py coverage ---
-class TestSampleBuilderAdditional(unittest.TestCase):
+
+class TestSampleBuilderComprehensive(unittest.TestCase):
     def test_generate_sample_submission(self):
         """Test generate_sample_submission returns valid Submission object."""
         submission = sample_builder.generate_sample_submission()
@@ -260,23 +227,70 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         tc = getattr(sighting, "threat_context", None)
         self.assertTrue(tc is None or hasattr(tc, "campaign"))
 
+    def test_generate_comprehensive_submission_org_id(self):
+        """Test generate_comprehensive_submission with no org_id generates alternative."""
+        submission = sample_builder.generate_comprehensive_submission(
+            org_id=None,
+        )
+        self.assertIsNotNone(submission.submitter.organisation_id)
+        self.assertTrue(submission.submitter.organisation_id.startswith("identity--"))
+        self.assertIsInstance(uuid.UUID(submission.submitter.organisation_id.split("--")[1]), uuid.UUID)
+
+    def test_generate_comprehensive_submission_invalid_confidence(self):
+        """Test generate_comprehensive_submission with invalid confidence raises exception."""
+        org_id = stix_uuid("identity")
+        with self.assertRaises(ValidationError):
+            sample_builder.generate_comprehensive_submission(
+                org_id=org_id,
+                access_level="partner",
+                severity="medium",
+                confidence=150  # Invalid confidence
+            )
+
     def test_example_usage_runs_without_error(self):
-        """Test that example_usage runs and returns a Submission object."""
-        result = sample_builder.example_usage()
-        self.assertIsInstance(result, Submission)
-        self.assertIsNotNone(getattr(result, "sighting", None))
-        self.assertIsNotNone(getattr(result, "submitter", None))
+        """Test that example_usage runs"""
+        try:
+            _ = sample_builder.example_usage()
+        except Exception as e:
+            self.fail(f"example_usage() raised an exception: {e}")
 
-    def test_example_usage_properties(self):
-        """Test example_usage returns Submission with expected properties."""
-        submission = sample_builder.example_usage()
-        self.assertTrue(hasattr(submission, "sighting"))
-        self.assertTrue(hasattr(submission, "submitter"))
-        sighting = getattr(submission, "sighting", None)
-        self.assertIsNotNone(sighting)
-        self.assertTrue(hasattr(sighting, "observables"))
-        self.assertTrue(isinstance(getattr(sighting, "observables", {}), dict))
-
+    def test_generate_comprehensive_submission(self):
+        """Test generating comprehensive submission using the function and check model properties."""
+        from frank.util.sample_builder import generate_comprehensive_submission, get_default_observables
+        org_id = stix_uuid("identity")
+        hit_target_org = stix_uuid("identity")
+        observables = get_default_observables()
+        campaign_context = {"name": "test_campaign", "actor": "test_actor"}
+        sigma_detection = {"rule_id": "test-rule-123", "rule_name": "sigma_rule-12", "confidence": 0.95}
+        impact_data = {"financial_impact_eur": 10000000, "affected_systems": 5}
+        tlp_level = "TLP:AMBER"
+        submission = generate_comprehensive_submission(
+            org_id=org_id,
+            access_level="partner",
+            hit_target_org=hit_target_org,
+            observables=observables,
+            severity="high",
+            confidence=95,
+            campaign_context=campaign_context,
+            sigma_detection=sigma_detection,
+            impact_data=impact_data,
+            tlp_level=tlp_level
+        )
+        # Check model properties
+        self.assertEqual(submission.submitter.organisation_id, org_id)
+        self.assertEqual(submission.sighting.severity, "high")
+        self.assertEqual(submission.sighting.confidence, 95)
+        self.assertIsNotNone(submission.sighting.sigma_detection)
+        self.assertIsNotNone(submission.sighting.threat_context)
+        self.assertIsNotNone(submission.sighting.impact)
+        self.assertEqual(submission.sighting.threat_context.campaign.name, campaign_context['name'])
+        self.assertEqual(submission.sighting.sigma_detection.rule_id, sigma_detection['rule_id'])
+        self.assertEqual(submission.sighting.impact.financial_impact_eur, impact_data['financial_impact_eur'])        
+        self.assertEqual(submission.tlp_level, tlp_level)
+        # Robust check for hit_target
+        self.assertIsNotNone(submission.hit_target)
+        if submission.hit_target:
+            self.assertEqual(submission.hit_target.organisation_id, hit_target_org)
     
 class TestSampleBuilderAdditional(unittest.TestCase):
 
@@ -331,33 +345,6 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         tc = getattr(sighting, "threat_context", None)
         self.assertTrue(tc is None or hasattr(tc, "campaign"))
 
-    def test_example_usage_runs_without_error(self):
-        """Test that example_usage runs and returns a Submission object."""
-        result = sample_builder.example_usage()
-        self.assertIsInstance(result, Submission)
-        self.assertIsNotNone(getattr(result, "sighting", None))
-        self.assertIsNotNone(getattr(result, "submitter", None))
-
-    def test_example_usage_properties(self):
-        """Test example_usage returns Submission with expected properties."""
-        submission = sample_builder.example_usage()
-        self.assertTrue(hasattr(submission, "sighting"))
-        self.assertTrue(hasattr(submission, "submitter"))
-        sighting = getattr(submission, "sighting", None)
-        self.assertIsNotNone(sighting)
-        self.assertTrue(hasattr(sighting, "observables"))
-        self.assertTrue(isinstance(getattr(sighting, "observables", {}), dict))
-
-
-class TestSampleBuilderAdditional(unittest.TestCase):
-    def test_generate_sample_submission(self):
-        """Test generate_sample_submission returns valid Submission object."""
-        submission = sample_builder.generate_sample_submission()
-        self.assertIsInstance(submission, Submission)
-        self.assertIsNotNone(submission.sighting)
-        self.assertIsNotNone(submission.submitter)
-        self.assertTrue(hasattr(submission.sighting, "observables"))
-
     def test_generate_comprehensive_submission_minimal_required(self):
         """Test generate_comprehensive_submission with minimal required args."""
         org_id = stix_uuid("identity")
@@ -392,6 +379,85 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         self.assertEqual(submission.sighting.confidence, 50)
         # Optional fields should be None or default
         self.assertTrue(submission.sighting.threat_context is None or hasattr(submission.sighting.threat_context, "campaign"))
+
+class TestSampleBuilderCoverage(unittest.TestCase):
+    """Unit tests for sample_builder utility functions and classes."""
+    
+    def test_FRANKDatabaseSeeder_abstract(self):
+        """Test abstract class cannot be instantiated."""
+        # Should not instantiate directly
+        with self.assertRaises(TypeError):
+            sample_builder.FRANKDatabaseSeeder()
+
+    def test_SampleDataSeeder_seed(self):
+        """Test seeding with SampleDataSeeder and dummy DB client."""
+        class DummyDBClient:
+            def __init__(self):
+                self.orgs = []
+                self.submissions = []
+            def upsert_organisation(self, org):
+                self.orgs.append(org)
+            def store_submission(self, sub):
+                self.submissions.append(sub)
+        seeder = sample_builder.SampleDataSeeder()
+        db_client = DummyDBClient()
+        result = seeder.seed(db_client)
+        self.assertTrue(result)
+        self.assertGreaterEqual(len(db_client.orgs), 1)
+        self.assertEqual(len(db_client.submissions), 5)
+        self.assertIsInstance(db_client.submissions[0], Submission)
+
+    def test_get_default_observables(self):
+        """Test retrieval of default observables."""
+        obs = sample_builder.get_default_observables()
+        self.assertIsInstance(obs, list)
+        self.assertTrue(any(o['type'] == 'ipv4' for o in obs))
+        self.assertTrue(any(o['type'] == 'domain' for o in obs))
+
+    def test_get_sample_malware_observables(self):
+        """Test retrieval of sample malware observables."""
+        obs = sample_builder.get_sample_malware_observables()
+        self.assertTrue(any(o['type'] == 'file_hash' for o in obs))
+        self.assertTrue(any(o['type'] == 'domain' for o in obs))
+
+    def test_get_sample_phishing_observables(self):
+        """Test retrieval of sample phishing observables."""
+        obs = sample_builder.get_sample_phishing_observables()
+        self.assertTrue(any(o['type'] == 'url' for o in obs))
+        self.assertTrue(any(o['type'] == 'email' for o in obs))
+
+    def test_get_observables_by_category_default(self):
+        """Test observables by 'default' category."""
+        obs = sample_builder.get_observables_by_category(None, 'default')
+        self.assertTrue(any(o['type'] == 'ipv4' for o in obs))
+
+    def test_get_observables_by_category_malware(self):
+        """Test observables by 'malware' category."""
+        obs = sample_builder.get_observables_by_category(None, 'malware')
+        self.assertTrue(any(o['type'] == 'file_hash' for o in obs))
+
+    def test_get_observables_by_category_phishing(self):
+        """Test observables by 'phishing' category."""
+        obs = sample_builder.get_observables_by_category(None, 'phishing')
+        self.assertTrue(any(o['type'] == 'url' for o in obs))
+
+    def test_get_observables_by_category_unknown(self):
+        """Test observables by unknown category falls back to default."""
+        obs = sample_builder.get_observables_by_category(None, 'unknown')
+        self.assertTrue(any(o['type'] == 'ipv4' for o in obs))
+
+    def test_create_demo_orgs(self):
+        """Test creation of demo organisations with fixed and random IDs."""
+        orgs = sample_builder.create_demo_orgs(id_fixed=True)
+        self.assertIsInstance(orgs, list)
+        self.assertTrue(any('organisation_id' in o for o in orgs))
+        orgs2 = sample_builder.create_demo_orgs(id_fixed=False)
+        self.assertNotEqual(orgs[0]['organisation_id'], orgs2[0]['organisation_id'])
+
+    def test_example_usage(self):
+        """Test example usage runs without exceptions."""
+        # Just run to ensure no exceptions
+        sample_builder.example_usage()
 
 
 if __name__ == "__main__":

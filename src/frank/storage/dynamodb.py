@@ -12,11 +12,11 @@ SPDX-License-Identifier: Apache-2.0
 from copy import deepcopy
 from decimal import Decimal
 from datetime import datetime, timezone, timedelta
+import logging
 from typing import Dict, Any, List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
-import logging
 
 from frank.core.models import Submission, Observable
 from frank.core.enum import ObservableType, AccessTier

@@ -9,7 +9,7 @@ with database operations for easy integration into applications.
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 
 from datetime import datetime, timezone
 import logging

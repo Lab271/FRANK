@@ -3,7 +3,7 @@
 FRANK Platform - Unit Tests SQLite Database
 Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-Comprehensive test suite for FRANK sqlite database and sample builder components
+Comprehensive test suite for FRANK sqlite database client
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0

@@ -8,8 +8,10 @@ Unit tests for BaseFRANKDatabase abstract base class in base.py
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
+
 import unittest
 from unittest.mock import MagicMock
+
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
 
