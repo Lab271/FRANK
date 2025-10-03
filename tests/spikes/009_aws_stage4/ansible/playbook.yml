@@ -72,16 +72,6 @@
         - create
         - update
     
-    # Docker operations
-    - import_tasks: tasks/docker.yml
-      tags:
-        - never
-        - docker
-        - create
-        - update
-        - deploy
-        - build
-    
     # DynamoDB table creation
     - import_tasks: tasks/dynamodb.yml
       tags:
@@ -99,6 +89,16 @@
         - infrastructure
         - create
         - update
+
+    # Docker operations
+    - import_tasks: tasks/docker.yml
+      tags:
+        - never
+        - docker
+        - create
+        - update
+        - deploy
+        - build
 
     # Cleanup operations
     - import_tasks: tasks/cleanup.yml

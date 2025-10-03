@@ -1,5 +1,24 @@
 ---
 # tasks/cloudformation.yml
+- name: Check if ECR repository exists
+  command: >
+    aws ecr describe-repositories 
+    --repository-names {{ repository_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_check
+  failed_when: false
+  changed_when: false
+
+- name: Create ECR repository if it doesn't exist
+  command: >
+    aws ecr create-repository 
+    --repository-name {{ repository_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_create
+  when: ecr_check.rc != 0
+
 - name: Prepare CloudFormation parameters
   set_fact:
     cf_parameters:
@@ -16,7 +35,7 @@
       - ParameterKey: "CertificateArn"
         ParameterValue: "{{ ssl_certificate_arn }}"
       - ParameterKey: "DomainName"
-        ParameterValue: "{{ ssl_domain }}"
+        ParameterValue: "{{ spike_subdomain }}"
   when: 
     - ssl_certificate_arn is defined
     - ssl_certificate_arn != ""
@@ -51,7 +70,7 @@
   command: >
     aws cloudformation update-stack
     --stack-name {{ stack_name }}
-    --template-body file://{{ cloudformation_template }}
+    --template-body "file://../{{ cloudformation_template }}"
     --parameters '{{ cf_parameters | to_json }}'
     --capabilities CAPABILITY_IAM
     --region {{ aws_region }}
