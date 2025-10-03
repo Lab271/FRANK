@@ -57,7 +57,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         aws_secret_access_key=self.connection_params.get("AWS_SECRET_ACCESS_KEY", "test")
 
         self.table_name = self.connection_params.get("DYNAMODB_TABLE", "frank_table")
-        self.audit_table_name = self.connection_params.get("AUDIT_TABLE", "frank_audit")
+        self.audit_table_name = self.connection_params.get("DYNAMODB_AUDIT_TABLE", "frank_audit")
         self.region = self.connection_params.get("AWS_DEFAULT_REGION", "eu-west-1")
         self.endpoint = self.connection_params.get("ENDPOINT", None)
 
@@ -76,13 +76,22 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                     aws_secret_access_key=aws_secret_access_key
                 )
             else:
-                # Production AWS environment (uses actual credentials)
-                self.dynamodb = boto3.resource(
-                    "dynamodb",
-                    region_name=self.region,
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key
-                )
+                # Production AWS environment - use default credential chain (IAM roles, env vars, etc.)
+                # This automatically uses ECS Task Role when running on ECS
+                if aws_access_key_id and aws_access_key_id != "test":
+                    # Explicit credentials provided
+                    self.dynamodb = boto3.resource(
+                        "dynamodb",
+                        region_name=self.region,
+                        aws_access_key_id=aws_access_key_id,
+                        aws_secret_access_key=aws_secret_access_key
+                    )
+                else:
+                    # Use default AWS credential chain (ECS Task Role, EC2 Instance Profile, env vars)
+                    self.dynamodb = boto3.resource(
+                        "dynamodb",
+                        region_name=self.region
+                    )
             
         except Exception as e:
             self.logger.error(f"Failed to initialize DynamoDB: {e}")

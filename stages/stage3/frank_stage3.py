@@ -1,133 +1,169 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - FastAPI Spike Solution
+FRANK Platform - Simple API Test Application
 
-A working prototype API server implementing the FRANK threat intelligence platform
-using FastAPI and the MySQL database backend.
+A minimal FastAPI application for testing AWS deployment infrastructure.
+Provides basic health check and root endpoints for load balancer validation.
 
-This is inspired by spikes/005_server.py
+to run:
+    >>> uvicorn main:app --host 0.0.0.0 --port 8000
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import os
-import uuid
-import logging
 from datetime import datetime, timezone
-from typing import Optional, Dict, Any
+from functools import lru_cache
+import logging
+import sys
+import os
+import socket
+import platform
+import time
 
-from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
-from pydantic import BaseModel, field_validator, ConfigDict
-from fastapi.exceptions import RequestValidationError
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse
+import boto3
+import aioboto3
+from fastapi import FastAPI, Request
+from fastapi.security import HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
-from contextlib import asynccontextmanager
-import uvicorn
+from fastapi.responses import JSONResponse
 
-# Import enums from FRANK core
-from frank.core.enum import ObservableType, TLPLevel, AccessTier
-from frank.core.models import Submission
+import frank
+from frank.util import create_error_response
 
-# Import our FRANK database
-from frank.storage.dynamodb import create_dynamodb_database
 
-# Utilities
-from frank.util.sample_builder import SampleDataSeeder
-from frank.util import create_server, create_error_response
-from frank.util.requests import SubmissionRequest, OrganisationRequest
-from frank.util.requests import SubmissionResponse, SightingSearchResponse, ObservationsResponse
-from frank.util.http_exceptions import UnauthorizedException, BadRequestException, TooManyRequestsException, NotFoundException, UnauthenticatedException
-from frank import __version__
-
-# Configure logging
-# logger = logging.getLogger(__name__)
-logging.basicConfig(level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+# ===================================
+# Logging Setup
+# ===================================
+logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("uvicorn.error")
 
-# curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-# curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-# curl -H "Authorization: Bearer partner_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
-# curl -H "Authorization: Bearer core_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 
-#  jq '.sightings[0] | length'
+# ===================================
+# Container Metadata
+# ===================================
+def get_container_info():
+    """Get container and runtime information for autoscaling identification"""
+    try:
+        # Get basic system info
+        hostname = socket.gethostname()
+        platform_info = platform.platform()
+        
+        # Try to get ECS task metadata (if running in Fargate)
+        ecs_metadata = {}
+        metadata_uri = os.environ.get('ECS_CONTAINER_METADATA_URI_V4')
+        if metadata_uri:
+            try:
+                # In a real implementation, you'd make an HTTP request to metadata_uri
+                # For now, we'll just note that it's available
+                ecs_metadata = {
+                    "metadata_uri_available": True,
+                    "metadata_uri": metadata_uri
+                }
+            except Exception:
+                ecs_metadata = {"metadata_uri_available": False}
+        
+        # Get process ID for uniqueness
+        pid = os.getpid()
+        
+        # Calculate container uptime (approximate)
+        try:
+            import psutil
+            process = psutil.Process(pid)
+            create_time = process.create_time()
+            uptime_seconds = time.time() - create_time
+            uptime = f"{uptime_seconds:.1f}s"
+        except Exception:
+            uptime = "unknown"
+        
+        return {
+            "hostname": hostname,
+            "process_id": pid,
+            "platform": platform_info,
+            "ecs_metadata": ecs_metadata,
+            "container_id": hostname,  # In Fargate, hostname is often the container ID
+            "instance_type": "fargate" if metadata_uri else "local",
+            "uptime": uptime
+        }
+    except Exception as e:
+        return {
+            "hostname": "unknown",
+            "process_id": os.getpid(),
+            "error": str(e),
+            "container_id": "unknown",
+            "instance_type": "unknown",
+            "uptime": "unknown"
+        }
+
+
+# ===================================
+# Database Setup
+# ===================================
+@lru_cache()
+def get_client():
+    """Initialize DynamoDB connection"""
+    # Get configuration from environment
+    table_name = os.environ.get("DYNAMODB_TABLE", "frank-stage3-data")
+    audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit")
+    region = os.environ.get("AWS_DEFAULT_REGION", "eu-central-1")
+    endpoint = os.environ.get("ENDPOINT", None)  # None for AWS, set for LocalStack
+    environment = os.environ.get("FRANK_ENVIRONMENT", "aws")    
+
+    res = {
+        "table_name": table_name,
+        "audit_table_name": audit_table_name,
+        "region": region,
+        "endpoint": endpoint,
+        "environment": environment
+    }
+    return res
+
+async def get_async_dynamodb_client():
+    """Get async DynamoDB client using aioboto3"""
+    config = get_client()  # Get cached configuration
+    session = aioboto3.Session()
+    
+    # Use configuration from db_config
+    if config["environment"] == "aws":
+        # AWS environment - use Task Role (no credentials needed)
+        client = session.client(
+            'dynamodb',
+            region_name=config["region"]
+        )
+        resource = session.resource(
+            'dynamodb',
+            region_name=config["region"]
+        )
+    else:
+        # LocalStack environment - use explicit credentials
+        client = session.client(
+            'dynamodb',
+            endpoint_url=config["endpoint"],
+            region_name=config["region"],
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test")
+        )
+        resource = session.resource(
+            'dynamodb',
+            endpoint_url=config["endpoint"],
+            region_name=config["region"],
+            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
+            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test")
+        )
+    return (client, resource)
 
 # ================================
 # CONFIGURATION MANAGEMENT
 # ================================
-
-# Security
 security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
 
-
-class FrankConfig:
-    """Environment-based configuration management"""
-
-    def __init__(self, environment: str = None):
-        self.environment = environment or os.getenv("FRANK_ENVIRONMENT", "aws")
-        self.table_name = os.getenv("DYNAMODB_TABLE", "frank_table")
-        self.audit_table_name = os.getenv("DYNAMODB_AUDIT_TABLE", "audit_table")
-        self.database_type = "dynamodb"
-
-        # AWS Credentials (for LocalStack)
-        self.aws_access_key = os.getenv("AWS_ACCESS_KEY_ID", "test")
-        self.aws_secret_key = os.getenv("AWS_SECRET_ACCESS_KEY", "test")
-        self.aws_region = os.getenv("AWS_DEFAULT_REGION", "eu-west-1")
-        
-        if self.environment in ["localstack"]:
-            self.endpoint = os.getenv("ENDPOINT", "http://localstack:4566")
-        elif self.environment in ["aws"]:
-            self.endpoint = os.getenv("ENDPOINT", None)
-        else:
-            raise ValueError(f"Unknown environment: {self.environment}")
-        
-        logger.info(f"environment: {self.environment}")
-        logger.info(f"endpoint: {self.endpoint}")
-
-    def for_db(self):
-        """Return database connection parameters as a dict."""
-        return {
-            "table_name": self.table_name,
-            "audit_table_name": self.audit_table_name,
-            "region": self.aws_region,
-            "endpoint": self.endpoint,
-            "aws_access_key_id": self.aws_access_key,
-            "aws_secret_access_key": self.aws_secret_key,
-            'logger': logger,
-        }
-
-# ================================
-# FASTAPI APPLICATION
-# ================================
-
-# Initialize configuration and database
-# This also creates the tables
-# TODO: move table creation outside of initialisation for production
-config = FrankConfig()
-frank_dynamodb = create_dynamodb_database(**config.for_db())
-frank_server = create_server(db=frank_dynamodb, logger=logger)
-
-# Initialize system once server is setup
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Initialize database on startup"""
-    logger.info(f"Starting FRANK Platform Stage 3 - Environment: {config.environment}")
-    # load_database with sample data
-    frank_server.seed_database(SampleDataSeeder())
-    logger.info(f"Database Initialization complete")
-    yield
-
-
-# Create FastAPI app
 app = FastAPI(
-    title="FRANK Platform - Stage 3",
-    description="Dynamodb Implementation with AWS",
-    version=__version__,
+    title="FRANK Application - Stage 3",
+    description="A minimal FastAPI application for testing AWS deployment infrastructure.",
+    version=frank.__version__,
     docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan,
-)
+    redoc_url="/redoc"
+    )
 
 # Add CORS middleware
 app.add_middleware(
@@ -138,315 +174,211 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Authentication and authorization functions
-async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
-    """
-    Extract user information from JWT token.
-    In a real implementation, this would validate the JWT and extract claims.
-    For this spike, we'll mock the user data.
-    """
-    # Check if credentials were provided
-    if credentials is None:
-        raise UnauthenticatedException("Authentication required")
 
-    # Mock user data for spike - in production, decode and validate JWT
-    token = credentials.credentials
-
-    # Simple mock based on token prefix for demonstration
-    if token.startswith("observer_"):
-        return {"organisation_id": "demo-observer-org", "access_level": AccessTier.OBSERVER, "sector": "technology"}
-    elif token.startswith("contributor_"):
-        return {"organisation_id": "demo-contributor-org", "access_level": AccessTier.CONTRIBUTOR, "sector": "financial"}
-    elif token.startswith("partner_"):
-        return {"organisation_id": "demo-partner-org", "access_level": AccessTier.PARTNER, "sector": "cybersecurity_services"}
-    elif token.startswith("core_"):
-        return {"organisation_id": "demo-core-org", "access_level": AccessTier.CORE_MEMBER, "sector": "government"}
-    else:
-        raise UnauthenticatedException("Invalid authentication token")
-
-
-
-# Rate limiting (simplified for spike)
-class RateLimiter:
-    def __init__(self):
-        self.requests = {}
-
-    def check_rate_limit(self, user_id: str, access_level: str) -> bool:
-        # Simplified rate limiting - in production use Redis or similar
-        # For spike, we'll just return True
-        return True
-
-
-rate_limiter = RateLimiter()
-
-# ================================
-# API Endpoints
-# ================================
-
-@app.post("/v1/submission", response_model=SubmissionResponse)
-async def post_threat_intelligence(
-    request: Request,
-    submission_request: SubmissionRequest = Body(...),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """
-    Submit threat intelligence sighting to the platform.
-    Requires Contributor, Partner, or Core Member access level.
-    """
-    submission = submission_request.submission
-
-    # Check permissions
-    if not AccessTier.can_submit(current_user["access_level"]):
-        raise UnauthorizedException(f"Insufficient access level {current_user['access_level']} for submission")
-
-    # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
-        raise BadRequestException("Rate limit exceeded")
-
-    # Store in database
-    score_impact = frank_server.submit_threat_intelligence(current_user["organisation_id"], submission)
-
-    return SubmissionResponse(
-        status="accepted",
-        submission_id=submission.submission_id,
-        contribution_score_impact=score_impact,
-        processing_status="queued",
-        validation_required=False,
-        estimated_processing_time="2-5 minutes",
-    )
-
-@app.post("/v1/organisation")
-async def post_organisation(
-    request: Request,
-    organisation_request: OrganisationRequest = Body(...),
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """
-    Submit threat intelligence sighting to the platform.
-    Requires Contributor, Partner, or Core Member access level.
-    """
-    organisation = organisation_request.organisation
-
-    # Check permissions
-    if not AccessTier.can_submit(current_user["access_level"]):
-        raise UnauthorizedException(f"Insufficient access level {current_user['access_level']} for organisation")
-
-    # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
-        raise BadRequestException("Rate limit exceeded")
-
-    frank_server.upsert_organisation(organisation)
-
-
-@app.get("/v1/statistics")
-async def get_platform_statistics(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
-):
-    """Get platform usage statistics"""
-    if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
-        raise UnauthorizedException("Insufficient access level")
-
-    stats = frank_server.get_platform_statistics(
-        user_id=current_user["organisation_id"],
-        access_level=current_user["access_level"],
-        days=days,
-    )  
-    return stats
-
-
-@app.get('/v1/submission/{submission_id}', response_model=Submission, response_model_exclude_none=True)
-async def get_submission(
-    submission_id: str,
-    current_user: Dict[str, Any] = Depends(get_current_user),
-):
-    """
-    Retrieve a specific submission by its ID.
-    Only Submitters can access the submission.
-    """
-    # Check permissions
-    if not current_user["access_level"] not in [AccessTier.CORE_MEMBER]:
-        raise UnauthorizedException("Insufficient access level for submission retrieval")
-
-    submission = frank_server.get_submission_by_id(current_user["organisation_id"], current_user["access_level"], submission_id)
-    if not submission:
-        raise NotFoundException(f"Submission {submission_id} not found")
-
-    return submission
-
-
-class SightingSearchQuery(BaseModel):
-    """Model for sighting search query parameters"""
-
-    model_config = ConfigDict(
-        extra="ignore",  # Be forgiving on input
-        use_enum_values=True,
-        populate_by_name=True,  # Allow both field name and alias
-    )
-
-
-    observable: Optional[str] = Query(None, description="Specific IoC to search for")
-    observable_type: Optional[ObservableType] = Query(None, alias="type", description="Observable type filter")
-    start_date: Optional[datetime] = Query(None, description="Search start date")
-    end_date: Optional[datetime] = Query(None, description="Search end date")
-    sector: Optional[str] = Query(None, description="Target sector filter")
-    confidence_min: Optional[int] = Query(None, ge=0, le=100, description="Minimum confidence score")
-    tlp_level: Optional[TLPLevel] = Query(None, description="Traffic Light Protocol level")
-    campaign: Optional[str] = Query(None, description="Threat campaign identifier")
-    limit: Optional[int] = Query(50, ge=1, le=1000, description="Maximum results to return")
-    offset: Optional[int] = Query(0, ge=0, description="Pagination offset")
-    format: Optional[str] = Query("summary", description="Response format")
-
-    @field_validator("end_date")
-    def validate_date_range(cls, end_date, info):
-        start_date = info.data.get("start_date")
-        if start_date and end_date and start_date >= end_date:
-            raise BadRequestException(
-                "Invalid date range: start_date must be before end_date"
-            )
-        return end_date
-
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert model to dict excluding None values"""
-        query_params = self.model_dump()
-        # Add sector as list if present
-        if query_params.get("sector"):
-            query_params["sectors"] = [query_params.pop("sector")]
-
-        # Calculate days_back if start_date is present
-        if query_params.get("start_date"):
-            days_back = (datetime.now(timezone.utc) - query_params["start_date"]).days
-            query_params["days_back"] = max(1, days_back)
-
-        return query_params
-
-
-@app.get("/v1/sighting", response_model=SightingSearchResponse)
-async def get_threat_sightings(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    query: SightingSearchQuery = Depends()
-):
-    """
-    Retrieve threat intelligence sightings based on search criteria.
-    Available to Observer, Contributor, Partner, and Core Member tiers.
-    """
-    # Check rate limiting
-    if not rate_limiter.check_rate_limit(current_user["organisation_id"], current_user["access_level"]):
-        raise TooManyRequestsException("Rate limit exceeded")
-
-    # Build query parameters from model_dict
-    query_params = query.to_dict()
-    # Remove keys not needed for frank_server.query_threats
-    observable = query_params.pop("observable", None)
-    offset = query_params.pop("offset", 0)
-    limit = query_params.pop("limit", 50)
-
-
-    total_results, sightings, aggregations, threat_context = frank_server.query_threats(
-        user_id=current_user["organisation_id"], access_level=current_user["access_level"],
-        offset=offset, limit=limit,
-        observable=observable, **query_params
-    )
-
-    response = SightingSearchResponse(
-        total_results=total_results,
-        returned_results=len(sightings),
-        sightings=sightings,
-        aggregations=aggregations,
-        threat_context=threat_context,
-        pagination=None
-    )
-
-    # Add pagination info
-    if total_results > offset + limit:
-        response.pagination = {
-            "has_next": True,
-            "next_offset": offset + limit,
-            "has_previous": offset > 0,
-            "previous_offset": max(0, offset - limit),
+@app.get("/")
+async def root():
+    """Serve static JSON on root endpoint"""
+    container_info = get_container_info()
+    
+    return {
+        "application": "FRANK",
+        "version": frank.__version__,
+        "status": "running",
+        "message": "Welcome to FRANK application",
+        "served_by": {
+            "container_id": container_info["container_id"],
+            "hostname": container_info["hostname"],
+            "instance_type": container_info["instance_type"]
         }
+    }
 
-    return response
+@app.get("/env")
+async def env():
+    """Environment variables endpoint"""
+    config = get_client()  # Get cached configuration
+    container_info = get_container_info()  # Get container metadata
+    
+    return {
+        "container": {
+            "id": container_info["container_id"],
+            "hostname": container_info["hostname"],
+            "process_id": container_info["process_id"],
+            "instance_type": container_info["instance_type"],
+            "platform": container_info["platform"]
+        },
+        "aws_environment": {
+            "AWS_PROFILE": os.environ.get("AWS_PROFILE", "<NOT SET>"),
+            "AWS_ACCESS_KEY_ID": "<NOT SET>" if not os.environ.get("AWS_ACCESS_KEY_ID") else "<SET>",
+            "AWS_SECRET_ACCESS_KEY": "<NOT SET>" if not os.environ.get("AWS_SECRET_ACCESS_KEY") else "<SET>",
+            "ENDPOINT": config.get("endpoint", "<NOT SET>"),
+            "DYNAMODB_TABLE": config.get("table_name"),
+            "DYNAMODB_AUDIT_TABLE": config.get("audit_table_name"),
+            "AWS_DEFAULT_REGION": config.get("region"),
+            "FRANK_ENVIRONMENT": config.get("environment"),
+            "using_task_role": config.get("environment") == "aws"
+        },
+        "ecs_metadata": container_info["ecs_metadata"] if container_info.get("ecs_metadata") else None
+    }
 
 
-@app.get("/v1/observations", response_model=ObservationsResponse)
-def get_observations(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    org_id: str = Query(..., description="Organisation ID"),
-    days: int = Query(30, description="Number of days to include in stats"),
-    observable_type: str = Query(None, description="Filter by observable type"),
-    limit: int = Query(100, description="Max number of results")
-):
-    """
-    Get observable statistics and details for the platform.
-    """
-    observations, stats = frank_server.get_observations(
-            org_id=org_id,
-            days=days,
-            observable_type=observable_type,
-            limit=limit
-    )
 
-    return ObservationsResponse(
-        total_results=len(observations),
-        returned_results=len(observations),
-        observations=observations,
-        stats=stats,
-        observable_types=list(stats.get('observable_totals', {}).keys()),
-        pagination=None
-    )
+@app.get("/database")
+async def database():
+    """Database connection endpoint - uses async aioboto3"""
+    config = get_client()  # Get cached configuration
+    container_info = get_container_info()  # Get container metadata
+    
+    # Get async DynamoDB client and resource
+    dynamodb_client, dynamodb_resource = await get_async_dynamodb_client()
 
-# Health and status endpoints
+    # Use async context managers properly
+    async with dynamodb_client as client:
+        # List all tables
+        response = await client.list_tables()
+        table_names = response.get('TableNames', [])
+        
+    async with dynamodb_resource as dynamodb:
+        # Get table references
+        main_table = await dynamodb.Table(config["table_name"])
+        audit_table = await dynamodb.Table(config["audit_table_name"])
+        
+        # Get item counts from both tables
+        main_response = await main_table.scan(Select='COUNT', Limit=1)
+        main_count = main_response.get('Count', 0)
+        main_status = "accessible"
+        
+        audit_response = await audit_table.scan(Select='COUNT', Limit=1)
+        audit_count = audit_response.get('Count', 0)
+        audit_status = "accessible"
+    
+    return {
+        "status": "connected",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "async_implementation": "aioboto3",
+        "served_by": {
+            "container_id": container_info["container_id"],
+            "hostname": container_info["hostname"],
+            "instance_type": container_info["instance_type"]
+        },
+        "environment": {
+            "DYNAMODB_TABLE": config["table_name"],
+            "AUDIT_TABLE": config["audit_table_name"],
+            "AWS_DEFAULT_REGION": config["region"],
+            "ENDPOINT": config["endpoint"] or "AWS (no custom endpoint)",
+            "FRANK_ENVIRONMENT": config.get("environment", "default")
+        },
+        "tables": {
+            "available_tables": table_names,
+            "main": {
+                "name": config["table_name"],
+                "status": main_status,
+                "item_count": main_count
+            },
+            "audit": {
+                "name": config["audit_table_name"],
+                "status": audit_status,
+                "item_count": audit_count
+            }
+        },
+        "aws_credentials": {
+            "using_task_role": config["environment"] == "aws",
+            "using_profile": False,
+            "access_key_set": bool(os.environ.get("AWS_ACCESS_KEY_ID")),
+            "secret_key_set": bool(os.environ.get("AWS_SECRET_ACCESS_KEY"))
+        }
+    }
+        
+      
+
 @app.get("/v1/health")
-async def get_health_check():
-    """Health check endpoint"""
-    result = frank_server.health_check()
-    result['stack'] = config.environment
-    return result
+async def health():
+    """Health check endpoint for load balancer"""
+    container_info = get_container_info()
+    
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "service": "FRANK",
+        "version": frank.__version__,
+        "container_id": container_info["container_id"],
+        "hostname": container_info["hostname"],
+        "instance_type": container_info["instance_type"]
+    }
 
 
-@app.get("/v1/statistics")
-async def get_platform_statistics(
-    current_user: Dict[str, Any] = Depends(get_current_user),
-    days: int = Query(30, ge=1, le=365, description="Number of days to analyze"),
-):
-    """Get platform usage statistics"""
-    if not current_user["access_level"].check_access_level(AccessTier.OBSERVER):
-        raise UnauthorizedException("Insufficient access level")
+@app.get("/v1/health/deep")
+async def deep_health_check():
+    """Comprehensive health check for monitoring systems - NOT for load balancers"""
+    container_info = get_container_info()
+    config = get_client()
+    start_time = datetime.now(timezone.utc)
+    
+    health = {
+        "status": "healthy",
+        "timestamp": start_time.isoformat(),
+        "version": frank.__version__,
+        "service": "FRANK",
+        "container_id": container_info["container_id"],
+        "checks": {},
+        "performance": {}
+    }
+    
+    # Check 1: Database Connectivity
+    try:
+        check_start = datetime.now(timezone.utc)
+        
+        # Check main table
+        main_client, _ = await get_async_dynamodb_client()
+        async with main_client as client:
+            main_response = await client.describe_table(TableName=config["table_name"])
+            
+        # Check audit table with separate client
+        audit_client, _ = await get_async_dynamodb_client()
+        async with audit_client as client:
+            audit_response = await client.describe_table(TableName=config["audit_table_name"])
+            
+        health["checks"]["dynamodb"] = {
+            "status": "healthy",
+            "main_table": {"name": config["table_name"], "status": main_response['Table']['TableStatus']},
+            "audit_table": {"name": config["audit_table_name"], "status": audit_response['Table']['TableStatus']}
+        }
+        health["performance"]["dynamodb_check_duration"] = f"{(datetime.now(timezone.utc) - check_start).total_seconds():.3f}s"
+        
+    except Exception as e:
+        health["checks"]["dynamodb"] = {"status": "unhealthy", "error": str(e)}
+        health["status"] = "degraded"
+    
+    # Check 2: Application Components & Environment
+    try:
+        required_env_vars = ["DYNAMODB_TABLE", "DYNAMODB_AUDIT_TABLE", "AWS_DEFAULT_REGION"]
+        missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+        
+        health["checks"]["application"] = {
+            "status": "healthy" if not missing_vars else "unhealthy",
+            "frank_version": frank.__version__,
+            "missing_env_vars": missing_vars,
+            "environment": config["environment"]
+        }
+        
+        if missing_vars:
+            health["status"] = "unhealthy"
+            
+    except Exception as e:
+        health["checks"]["application"] = {"status": "unhealthy", "error": str(e)}
+        health["status"] = "unhealthy"
+    
+    # Performance summary
+    health["performance"]["total_duration"] = f"{(datetime.now(timezone.utc) - start_time).total_seconds():.3f}s"
+    health["performance"]["container_uptime"] = container_info.get("uptime", "unknown")
+    
+    # Set overall status based on checks
+    if any(check.get("status") == "unhealthy" for check in health["checks"].values()):
+        health["status"] = "unhealthy"
+    elif any(check.get("status") == "degraded" for check in health["checks"].values()):
+        health["status"] = "degraded"
+    
+    return health
 
-    stats = frank_server.get_platform_statistics(
-        user_id=current_user["organisation_id"],
-        access_level=current_user["access_level"],
-        days=days,
-    )  
-    return stats
-
-# ===============================
-# Error handlers
-# ===============================
-@app.exception_handler(HTTPException)
-async def http_exception_handler(request: Request, exc: HTTPException):
-	"""Custom HTTP exception handler"""
-	return JSONResponse(
-		status_code=exc.status_code,
-		content=create_error_response(
-			exc.status_code,
-			"HTTP_ERROR",
-			exc.detail
-		),
-	)
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request: Request, exc: RequestValidationError):
-    return JSONResponse(
-        status_code=422,
-        content=create_error_response(
-            422,
-            "VALIDATION_ERROR",
-            "Request validation failed",
-            details={"validation_errors": exc.errors()}
-        )
-    )
 
 @app.exception_handler(Exception)
 def generic_exception_handler(request: Request, exc: Exception):
@@ -456,29 +388,36 @@ def generic_exception_handler(request: Request, exc: Exception):
         content=create_error_response(
             500,
             "INTERNAL_ERROR",
-            str(exc)
+            str(exc),
+            details={"type": type(exc).__name__}
         ),
     )
 
 if __name__ == "__main__":
     import argparse
+    import uvicorn
 
-    parser = argparse.ArgumentParser(description="FRANK Platform Stage 3 Server")
+    parser = argparse.ArgumentParser(description="FRANK Platform - AWS - Stage 3 Server")
     parser.add_argument(
-        "--environment", choices=["localstack", "aws"], default="aws", help="Environment to run in"
-    )
-    parser.add_argument("--host", default="0.0.0.0", help="Host to bind to")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind to")
+        "--environment", choices=["localstack", "aws"], default=os.environ.get("FRANK_ENVIRONMENT", "aws"), help="Environment to run in"
+    )    
+    parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Host to bind to")
+    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="Port to bind to")
+    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
     parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
-
+    parser.add_argument("--profile", default=os.environ.get("AWS_PROFILE", None), help="AWS profile to use")
     args = parser.parse_args()
 
-    # Set environment
+    # Set environment variables before database setup
     os.environ["FRANK_ENVIRONMENT"] = args.environment
+    if args.profile:
+        os.environ["AWS_PROFILE"] = args.profile
 
-    logger.info("Starting FRANK Platform Stage 3")
-    logger.info(f"Environment: {args.environment}")
-    logger.info(f"Database type: {config.database_type}")
+    if args.debug:
+        log_level = "debug"
+    else:
+        log_level = os.environ.get("UVICORN_LOG_LEVEL", "info")
 
-    # Run the server
-    uvicorn.run("frank_stage3:app", host=args.host, port=args.port, reload=args.reload, log_level="info")
+    logger.info(f"🚀 Starting FRANK - Stage 3 on {args.host}:{args.port} | Environment: {args.environment} | Profile: {args.profile or '<NOT SET>'}")
+
+    uvicorn.run("frank_stage3:app", host=args.host, port=args.port, reload=args.reload, log_level=log_level)

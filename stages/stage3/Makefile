@@ -5,56 +5,102 @@
 # ================================
 # Makefile - Development Commands
 # ================================
+LOCAL_DOMAIN = frank-stage3.local
+
 .PHONY: help
+
 
 help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'	
 
+# ================================
+# AWS setup
+# ================================
+
+aws-create: ## Create AWS Deployment
+	@ansible-playbook ansible/playbook.yml --tags create
+
+aws-destroy: ## Destroy AWS Deployment
+	@ansible-playbook ansible/playbook.yml --tags destroy
+
+aws-deploy: ## Deploy AWS Docker with new build
+	@ansible-playbook ansible/playbook.yml --tags docker
 
 # ================================
 # SETUP
 # ================================
-setup: ## Initial setup
-	@echo "$(COLOR_BLUE)Setting up FRANK Minimal...$(COLOR_RESET)"
-	@mkdir -p logs
-	@cp -n minimal.example.env .env 2>/dev/null || true
-	@echo "$(COLOR_GREEN)Setup complete!$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_YELLOW)Next steps:$(COLOR_RESET)"
-	@echo "1. Edit .env with your AWS credentials"
-	@echo "2. Run 'make deploy-aws' to create DynamoDB table"
-	@echo "3. Run 'make run-local' to start the application"
+
+start: ## Start Colima if not already running
+	@colima start
+	@colima status
+
+cleanup: ## Clean up docker
+	@docker images | grep "localhost:" | awk '{print $$3}' | xargs docker rmi -f || true
+	@docker rm -f $$(docker ps -aq) || true
+	@docker rmi -f $$(docker images -aq) || true
+	@docker volume prune -f || true
+	@docker network prune -f || true
+	@docker system prune -a -f --volumes|| true
+
+stop: cleanup ## Stop Colima and clean up
+	@colima stop
 
 # ================================
-# AWS DEPLOYMENT
+# Local Development
 # ================================
-deploy-aws: ## Deploy DynamoDB table to AWS
-	@echo "$(COLOR_BLUE)Deploying to AWS...$(COLOR_RESET)"
-	@cd infrastructure && tofu init
-	@cd infrastructure && tofu apply -auto-approve
-	@echo "$(COLOR_GREEN)AWS deployment complete!$(COLOR_RESET)"
-	@echo ""
-	@echo "$(COLOR_YELLOW)Getting credentials...$(COLOR_RESET)"
-	@cd infrastructure && tofu output -json application_config | jq -r 'to_entries[] | "\(.key)=\(.value)"' > ../.env.aws_config
-	@echo "AWS configuration saved to .aws_config.env"
-
-
-destroy-aws: ## Destroy AWS resources
-	@echo "$(COLOR_RED)WARNING: This will destroy the DynamoDB table and all data!$(COLOR_RESET)"
-	@read -p "Are you sure? Type 'yes' to continue: " confirm && [ "$$confirm" = "yes" ]
-	@cd infrastructure && tofu destroy -auto-approve
-	@echo "$(COLOR_GREEN)AWS resources destroyed$(COLOR_RESET)"
-
-# ================================
-# LOCAL DEVELOPMENT
-# ================================
-run-local: ## Run the application locally (connects to AWS)
-	@echo "$(COLOR_BLUE)Starting FRANK Minimal locally...$(COLOR_RESET)"
-	@if [ ! -f .env ]; then echo "$(COLOR_RED)Error: .env file not found. Run 'make setup' first.$(COLOR_RESET)"; exit 1; fi
-	@if [ -f aws_config.env ]; then \
-		echo "Loading AWS configuration..."; \
-		export $$(cat .env | sed '/^\s*#/d;/^\s*$/d' | xargs) && export $$(cat .env.aws_config | xargs) && python frank_stage3.py; \
-	else \
-		echo "Loading .env configuration..."; \
-		export $$(cat .env | sed '/^\s*#/d;/^\s*$/d' | xargs) && python frank_stage3.py; \
+up: ssl-certs/nginx.crt ## Build and start application containers
+	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
+		echo "127.0.0.1 $(LOCAL_DOMAIN)" | sudo tee -a /etc/hosts; \
 	fi
+	docker-compose -f local/docker-compose.yml up --build -d
+
+down: ## Stop application containers
+	docker-compose -f local/docker-compose.yml down
+
+build: ## Build application container
+	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d
+
+create-tables: ## Create DynamoDB tables (matching CloudFormation)
+	@aws dynamodb create-table \
+		--table-name frank-data \
+		--attribute-definitions \
+			AttributeName=PK,AttributeType=S \
+			AttributeName=SK,AttributeType=S \
+			AttributeName=GSI1PK,AttributeType=S \
+			AttributeName=GSI1SK,AttributeType=S \
+		--key-schema \
+			AttributeName=PK,KeyType=HASH \
+			AttributeName=SK,KeyType=RANGE \
+		--global-secondary-indexes \
+			IndexName=GSI1,KeySchema='[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
+		--billing-mode PAY_PER_REQUEST \
+		--stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES \
+		--endpoint-url http://localhost:4566 \
+		--region eu-west-1 \
+		--profile localstack \
+		--no-cli-pager || echo "Main table already exists"
+	@aws dynamodb create-table \
+		--table-name frank-audit \
+		--attribute-definitions \
+			AttributeName=PK,AttributeType=S \
+			AttributeName=SK,AttributeType=S \
+			AttributeName=GSI1PK,AttributeType=S \
+			AttributeName=GSI1SK,AttributeType=S \
+		--key-schema \
+			AttributeName=PK,KeyType=HASH \
+			AttributeName=SK,KeyType=RANGE \
+		--global-secondary-indexes \
+			IndexName=GSI1,KeySchema='[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
+		--billing-mode PAY_PER_REQUEST \
+		--endpoint-url http://localhost:4566 \
+		--region eu-west-1 \
+		--profile localstack \
+		--no-cli-pager || echo "Audit table already exists"
+
+ssl-certs/nginx.crt: # Create self-signed SSL certificates
+	@mkdir -p ssl-certs
+	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt \
+		$(LOCAL_DOMAIN) \
+		localhost \
+		127.0.0.1 \
+		*.$(LOCAL_DOMAIN)

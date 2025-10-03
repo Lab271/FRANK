@@ -7,11 +7,9 @@
   vars:
     # Default variables (can be overridden with -e)
     stack_name: frank-009-stage4
-    repository_name: "{{ stack_name }}"
     aws_region: eu-central-1
     aws_profile: spike-account
     main_account_profile: main-account
-    app_name: simple_api
     # image_tag is set dynamically from FRANK version, but can be overridden with -e image_tag_override=<version>
     main_domain: "lab271.io"
     spike_subdomain: "{{ stack_name }}.{{ main_domain }}"
@@ -46,20 +44,18 @@
         set_fact:
           aws_account_id: "{{ aws_account_id_result.stdout }}"
           ecr_url: "{{ aws_account_id_result.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+          container_image: "{{ aws_account_id_result.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com/{{ stack_name }}:{{ image_tag }}"
 
       - name: Display deployment information
         debug:
           msg:
             - "=== FRANK AWS Infrastructure Deployment ==="
             - "FRANK Version: {{ frank_version }}"
-            - "Image Tag: {{ image_tag }}"
             - "Stack Name: {{ stack_name }}"
-            - "Repository Name: {{ repository_name }}"
             - "Region: {{ aws_region }}"
             - "Profile: {{ aws_profile }}"
             - "AWS Account ID: {{ aws_account_id }}"
             - "ECR URL: {{ ecr_url }}"
-            - "App Name: {{ app_name }}"
             - "Spike Domain: {{ spike_subdomain }}"
       tags: always
 
@@ -72,15 +68,15 @@
         - create
         - update
     
-    # DynamoDB table creation
-    - import_tasks: tasks/dynamodb.yml
+    # Docker build operations
+    - import_tasks: tasks/docker_build.yml
       tags:
         - never
-        - dynamodb
-        - database
+        - docker
         - create
         - update
-    
+        - build
+
     # CloudFormation deployment
     - import_tasks: tasks/cloudformation.yml
       tags:
@@ -90,15 +86,14 @@
         - create
         - update
 
-    # Docker operations
-    - import_tasks: tasks/docker.yml
+    # Docker deployment operations
+    - import_tasks: tasks/docker_deploy.yml
       tags:
         - never
-        - docker
+        - docker        
         - create
         - update
         - deploy
-        - build
 
     # Cleanup operations
     - import_tasks: tasks/cleanup.yml

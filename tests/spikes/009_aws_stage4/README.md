@@ -23,9 +23,9 @@ This stage builds upon Stage 3's SSL/HTTPS security foundation by introducing pe
 - **Scalability Constraints**: Single container cannot handle production load
 
 ### Stage 4 Solutions
-1. **DynamoDB Integration**: Serverless NoSQL database for scalable data storage
-2. **Multi-AZ Deployment**: ECS tasks distributed across multiple availability zones
-3. **API Endpoints**: RESTful APIs for data operations (CRUD operations)
+1. **Multi-AZ Deployment**: ECS tasks distributed across multiple availability zones
+2. **API Endpoints**: RESTful APIs for data operations (CRUD operations)
+3. **Credential handling**: Use ECS Task Roles for AWS deployment
 4. **Session Management**: User session tracking and state persistence
 5. **Auto Scaling**: ECS service auto-scaling based on CPU/memory metrics
 
@@ -248,6 +248,51 @@ done
 - **Container Restart**: <60 seconds recovery
 - **Data Consistency**: Zero data loss during failures
 - **Health Check Success**: >99% health check pass rate
+
+## Credential Handling
+
+### ECS Task Role Magic:
+1. ECS injects credentials: AWS injects temporary credentials into your container
+2. boto3 auto-discovery: boto3.resource('dynamodb') automatically finds these credentials
+3. Automatic rotation: ECS refreshes credentials automatically
+4. Secure: No hardcoded credentials in your code or environment variables
+
+### Environment Variables You Set:
+```bash
+Environment:
+  - Name: AWS_ACCOUNT_ID     # ← For your app logic
+    Value: !Ref AWS::AccountId
+  - Name: AWS_DEFAULT_REGION # ← Tells boto3 which region to use  
+    Value: !Ref AWS::Region
+  - Name: ENDPOINT           # ← Empty = use AWS (not LocalStack)
+    Value: ''
+```
+
+## 🔧 How This Differs from Local Development:
+
+### Local (with explicit credentials):
+# LocalStack or local AWS with credentials
+```python
+  dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id="AKIA...",      # ← Explicit credentials
+    aws_secret_access_key="secret"
+)
+```
+
+### ECS (with Task Role):
+```bash
+# ECS with Task Role - no credentials needed!
+dynamodb = boto3.resource('dynamodb', region_name='eu-central-1')
+# ↑ boto3 automatically uses ECS Task Role credentials
+```
+
+## 🛡️ Security Benefits:
+✅ No credential exposure: No secrets in environment variables or code
+✅ Automatic rotation: AWS handles credential lifecycle
+✅ Least privilege: Task Role only has DynamoDB permissions you defined
+✅ Audit trail: All API calls logged with the Task Role identity
+✅ No credential management: No need to distribute or update credentials
 
 ## Local Development Equivalent
 

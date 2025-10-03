@@ -1,5 +1,5 @@
 # ==============================================================================
-# FRANK Stage 3 - SSL/HTTPS Setup
+# FRANK Stage 4 - DynamoDB and SSL
 # ==============================================================================
 # Configuration
 # Two different ways to run the application:
@@ -15,31 +15,74 @@
 
 LOCAL_DOMAIN = frank-stage4.local
 
-start: ## Start Colima if not already running
-	@colima start
-	@colima status
-
-cleanup: ## Clean up docker
-	@docker rm -f $$(docker ps -aq) || true
-	@docker volume prune -f || true
-	@docker network prune -f || true
-	@docker system prune -f || true
-
-stop: cleanup ## Stop Colima and clean up
-	@colima stop
-	
-ssl-certs/nginx.crt: ~/.ssl-certs/ca.crt
-	@mkdir -p ssl-certs
-	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt $(LOCAL_DOMAIN)
-
-build: ## Build application container
-	docker-compose -f docker-compose.yml up simple-api --build -d
-
 up: ssl-certs/nginx.crt ## Build and start application containers
 	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
 		echo "127.0.0.1 $(LOCAL_DOMAIN)" | sudo tee -a /etc/hosts; \
 	fi
 	docker-compose -f docker-compose.yml up --build -d
+
+create-tables: ## Create DynamoDB tables locally (matching CloudFormation)
+	@aws dynamodb create-table \
+		--table-name frank-data \
+		--attribute-definitions \
+			AttributeName=PK,AttributeType=S \
+			AttributeName=SK,AttributeType=S \
+			AttributeName=GSI1PK,AttributeType=S \
+			AttributeName=GSI1SK,AttributeType=S \
+		--key-schema \
+			AttributeName=PK,KeyType=HASH \
+			AttributeName=SK,KeyType=RANGE \
+		--global-secondary-indexes \
+			IndexName=GSI1,KeySchema='[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
+		--billing-mode PAY_PER_REQUEST \
+		--stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES \
+		--endpoint-url http://localhost:4566 \
+		--region eu-west-1 \
+		--profile localstack \
+		--no-cli-pager || echo "Main table already exists"
+	@aws dynamodb create-table \
+		--table-name frank-audit \
+		--attribute-definitions \
+			AttributeName=PK,AttributeType=S \
+			AttributeName=SK,AttributeType=S \
+			AttributeName=GSI1PK,AttributeType=S \
+			AttributeName=GSI1SK,AttributeType=S \
+		--key-schema \
+			AttributeName=PK,KeyType=HASH \
+			AttributeName=SK,KeyType=RANGE \
+		--global-secondary-indexes \
+			IndexName=GSI1,KeySchema='[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
+		--billing-mode PAY_PER_REQUEST \
+		--endpoint-url http://localhost:4566 \
+		--region eu-west-1 \
+		--profile localstack \
+		--no-cli-pager || echo "Audit table already exists"
+
+start: ## Start Colima if not already running
+	@colima start
+	@colima status
+
+cleanup: ## Clean up docker
+	@docker images | grep "localhost:" | awk '{print $$3}' | xargs docker rmi -f || true
+	@docker rm -f $$(docker ps -aq) || true
+	@docker rmi -f $$(docker images -aq) || true
+	@docker volume prune -f || true
+	@docker network prune -f || true
+	@docker system prune -a -f --volumes|| true
+
+stop: cleanup ## Stop Colima and clean up
+	@colima stop
+	
+ssl-certs/nginx.crt: # Create self-signed SSL certificates
+	@mkdir -p ssl-certs
+	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt \
+		$(LOCAL_DOMAIN) \
+		localhost \
+		127.0.0.1 \
+		*.$(LOCAL_DOMAIN)
+
+build: ## Build application container
+	docker-compose -f docker-compose.yml up simple-api --build -d
 
 rebuild: ## Force rebuild without cache and restart
 	docker-compose -f docker-compose.yml build --no-cache simple-api
@@ -55,11 +98,26 @@ build-for-registry: ## Build and tag for local registry
 	docker tag $$(docker-compose images -q simple-api) localhost:5000/simple-api:latest
 	@echo "Image ready for push: localhost:5000/simple-api:latest"
 
-destroy: ## Stop and remove the Docker container
+down: ## Stop and remove the Docker container
 	@docker-compose -f docker-compose.yml down
 
+list-tables: ## List DynamoDB tables in LocalStack
+	@echo "DynamoDB tables in LocalStack:"
+	@aws dynamodb list-tables --endpoint-url http://localhost:4566 --region eu-west-1 --no-cli-pager || echo "LocalStack not running"
+
+describe-tables: ## Describe DynamoDB table schemas
+	@echo "Main table schema:"
+	@aws dynamodb describe-table --table-name frank-009-stage4-data --endpoint-url http://localhost:4566 --region eu-west-1 --no-cli-pager || echo "Table not found"
+	@echo "\nAudit table schema:"
+	@aws dynamodb describe-table --table-name frank-009-stage4-audit --endpoint-url http://localhost:4566 --region eu-west-1 --no-cli-pager || echo "Table not found"
+
+clean-tables: ## Delete DynamoDB tables from LocalStack
+	@aws dynamodb delete-table --table-name frank-009-stage4-data --endpoint-url http://localhost:4566 --region eu-west-1 --no-cli-pager || echo "Main table not found"
+	@aws dynamodb delete-table --table-name frank-009-stage4-audit --endpoint-url http://localhost:4566 --region eu-west-1 --no-cli-pager || echo "Audit table not found"
+	@echo "Tables deleted"
+
 build-aws: ## Build for AWS Fargate (AMD64)
-	docker buildx build --platform linux/amd64 -t simple_api:amd64 .
+	@cd ../../.. && docker buildx build --platform linux/amd64 -f tests/spikes/009_aws_stage4/Dockerfile -t simple_api:amd64 .
 
 call_root: ## Call the root endpoint
 	@curl -s http://localhost:80/ | jq .
