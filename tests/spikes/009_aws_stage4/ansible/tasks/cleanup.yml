@@ -1,0 +1,91 @@
+---
+# tasks/cleanup.yml
+- name: Get CloudFormation stack status
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'Stacks[0].StackStatus'
+    --output text
+  register: stack_status_check
+  failed_when: false
+  changed_when: false
+
+- name: Delete CloudFormation stack
+  command: >
+    aws cloudformation delete-stack
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_delete
+  when: stack_status_check.rc == 0
+
+- name: Wait for CloudFormation stack deletion to complete
+  command: >
+    aws cloudformation wait stack-delete-complete
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_delete_wait
+  when: 
+    - stack_status_check.rc == 0
+    - cf_delete is defined
+    - cf_delete.rc == 0
+
+- name: Check if ECR repository has images
+  command: >
+    aws ecr list-images
+    --repository-name {{ app_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'imageIds'
+    --output json
+  register: ecr_images
+  failed_when: false
+  changed_when: false
+
+- name: Delete all ECR images
+  command: >
+    aws ecr batch-delete-image
+    --repository-name {{ app_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --image-ids '{{ ecr_images.stdout }}'
+  when: 
+    - ecr_images.rc == 0
+    - (ecr_images.stdout | from_json) | length > 0
+
+- name: Delete ECR repository
+  command: >
+    aws ecr delete-repository
+    --repository-name {{ app_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --force
+  register: ecr_delete
+  failed_when: false
+
+- name: Clean up local Docker images
+  command: >
+    docker rmi -f 
+    {{ app_name }}:{{ image_tag }}
+    {{ ecr_url }}/{{ app_name }}:{{ image_tag }}
+    {{ ecr_url }}/{{ app_name }}:latest
+  register: docker_cleanup
+  failed_when: false
+
+- name: Log cleanup operations
+  lineinfile:
+    path: ./logs/cleanup.log
+    line: "{{ ansible_date_time.iso8601 }}: {{ item }}"
+    create: yes
+  loop:
+    - "CloudFormation stack {{ stack_name }} deletion initiated"
+    - "ECR repository {{ app_name }} cleanup completed"
+    - "Local Docker images cleaned up"
+  when: action == "delete"
+
+- name: Display cleanup completion
+  debug:
+    msg: "Cleanup completed for {{ stack_name }}"

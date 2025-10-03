@@ -1,0 +1,63 @@
+---
+- name: Deploy FRANK AWS Infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  
+  vars:
+    # Default variables
+    action: "{{ action | default('create') }}"
+    stack_name: "{{ stack_name | default('frank-009-stage4') }}"
+    aws_region: "{{ aws_region | default('eu-central-1') }}"
+    aws_profile: "{{ aws_profile | default('spike-account') }}"
+    main_account_profile: "{{ main_account_profile | default('main-account') }}"
+    app_name: "{{ app_name | default('frank') }}"
+    image_tag: "{{ image_tag | default('latest') }}"
+    ssl_domain: "{{ ssl_domain | default('frank.heitlager.eu') }}"
+    cloudformation_template: "frank-009-stage4-infra.yaml"
+    
+    # SSL certificate ARN (will be determined during execution)
+    ssl_certificate_arn: ""
+    
+  tasks:
+    - name: Validate action parameter
+      fail:
+        msg: "Action must be one of: create, update, delete"
+      when: action not in ['create', 'update', 'delete']
+    
+    - name: Display deployment information
+      debug:
+        msg:
+          - "=== FRANK AWS Infrastructure Deployment ==="
+          - "Action: {{ action }}"
+          - "Stack Name: {{ stack_name }}"
+          - "Region: {{ aws_region }}"
+          - "Profile: {{ aws_profile }}"
+          - "App Name: {{ app_name }}"
+          - "Image Tag: {{ image_tag }}"
+          - "SSL Domain: {{ ssl_domain }}"
+    
+    # Prerequisites
+    - include_tasks: tasks/prerequisites.yml
+    
+    # SSL Certificate lookup (if main account is configured)
+    - include_tasks: tasks/ssl.yml
+    
+    # Create/Update workflow
+    - block:
+        - include_tasks: tasks/docker.yml
+        - include_tasks: tasks/cloudformation.yml
+      when: action in ['create', 'update']
+    
+    # Delete workflow
+    - include_tasks: tasks/cleanup.yml
+      when: action == "delete"
+    
+    # Final status
+    - name: Display completion message
+      debug:
+        msg: 
+          - "=== Deployment Complete ==="
+          - "Action: {{ action }}"
+          - "Stack: {{ stack_name }}"
+          - "Status: Success"

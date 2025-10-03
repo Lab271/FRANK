@@ -1,0 +1,76 @@
+---
+# tasks/docker.yml
+- name: Create logs directory
+  file:
+    path: ./logs
+    state: directory
+    mode: '0755'
+
+- name: Check if ECR repository exists
+  command: >
+    aws ecr describe-repositories 
+    --repository-names {{ app_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_check
+  failed_when: false
+  changed_when: false
+
+- name: Create ECR repository if it doesn't exist
+  command: >
+    aws ecr create-repository 
+    --repository-name {{ app_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_create
+  when: ecr_check.rc != 0
+
+- name: Get ECR login token
+  command: >
+    aws ecr get-login-password 
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_token
+  changed_when: false
+
+- name: Log in to ECR
+  command: >
+    docker login 
+    --username AWS 
+    --password-stdin {{ ecr_url }}
+  args:
+    stdin: "{{ ecr_token.stdout }}"
+  register: docker_login
+  changed_when: true
+
+- name: Build Docker image
+  command: >
+    docker buildx build 
+    --platform linux/amd64 
+    -t {{ app_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ app_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ app_name }}:latest
+    .
+  register: docker_build
+  changed_when: true
+
+- name: Push Docker image with tag
+  command: docker push {{ ecr_url }}/{{ app_name }}:{{ image_tag }}
+  register: docker_push_tag
+  changed_when: true
+
+- name: Push Docker image as latest
+  command: docker push {{ ecr_url }}/{{ app_name }}:latest
+  register: docker_push_latest
+  changed_when: true
+
+- name: Log Docker operations
+  lineinfile:
+    path: ./logs/docker.log
+    line: "{{ ansible_date_time.iso8601 }}: {{ item }}"
+    create: yes
+  loop:
+    - "ECR login successful"
+    - "Docker build completed for {{ app_name }}:{{ image_tag }}"
+    - "Docker push completed for {{ ecr_url }}/{{ app_name }}:{{ image_tag }}"
+    - "Docker push completed for {{ ecr_url }}/{{ app_name }}:latest"
