@@ -1,10 +1,10 @@
 # FRANK Application
 
-A staged AWS application built with FastAPI, following the principle: **"Be forgiving on what you receive and strong on what you return"**
+An application built with FastAPI in our road towards Cloud Agnostic in several stages
 
 ## Architecture Philosophy
 
-FRANK is developed incrementally through stages, from a minimal viable setup to a production-ready multi-AZ application with full observability. Each stage adds exactly one major capability, making learning and troubleshooting straightforward.
+FRANK is developed incrementally through stages, from a minimal viable setup to a production-ready multi-AZ application with full observability. Each stage adds some major capabilities, making learning and troubleshooting straightforward.
 
 ---
 
@@ -13,8 +13,11 @@ FRANK is developed incrementally through stages, from a minimal viable setup to 
 ### Stage 1: Absolute Minimal Setup
 **Goal:** Single FastAPI container accessible via public IP
 
+Read more about the [Stage 1 - Hypothesis](../009_aws_stage1/README.md).
+
 #### AWS Components
 - Single ECS Fargate task in public subnet
+- ECR for container
 - Public IP with HTTP (port 80)
 - Security group: allow inbound 0.0.0.0/0:80
 - Access: `http://<public-ip>` or AWS hostname
@@ -26,6 +29,16 @@ pip install fastapi uvicorn
 
 # Run application
 uvicorn main:app --host 0.0.0.0 --port 8000
+
+# Access
+open http://localhost:8000
+```
+
+#### Local Container Setup
+```bash
+docker build -t simple_api .
+
+docker run -d -p 8000:8000 --name simple_test simple_api
 
 # Access
 open http://localhost:8000
@@ -109,8 +122,8 @@ open https://lab271.local
 
 ---
 
-### Stage 4: Add DynamoDB with Audit Trail
-**Goal:** Persistent storage and request auditing
+### Stage 4: Add DynamoDB with Audit Trail, Add Multi-AZ Redundancy
+**Goal:** Persistent storage and request auditing and High availability across 3 availability zones
 
 #### AWS Components
 - DynamoDB `main_table`: business data
@@ -157,10 +170,6 @@ docker-compose up
 
 **Benefits:** Data persistence, complete audit trail, user analytics foundation
 
----
-
-### Stage 5: Add Multi-AZ Redundancy
-**Goal:** High availability across 3 availability zones
 
 #### AWS Components
 - VPC expanded to 3 AZs
@@ -198,7 +207,7 @@ docker-compose up --scale fastapi=3
 
 ---
 
-### Stage 6: Add ALB Observability
+### Stage 5: Add ALB Observability
 **Goal:** Full visibility into infrastructure and application
 
 #### AWS Components

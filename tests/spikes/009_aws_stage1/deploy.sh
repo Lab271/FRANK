@@ -1,6 +1,8 @@
 
 #!/bin/bash
 
+
+
 # Configuration variables
 AWS_PROFILE="spike-account"
 AWS_REGION="eu-central-1"
