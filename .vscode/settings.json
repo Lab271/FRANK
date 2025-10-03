@@ -10,6 +10,7 @@
     "python.testing.pytestArgs": [
         "tests/unit"
     ],
+    "ansible.python.interpreterPath": "/Users/iheitlager/wc/FRANK/.frank/bin/python",
     // "files.associations": {
     //     "tests/**/*.feature": "cucumber"
     // }

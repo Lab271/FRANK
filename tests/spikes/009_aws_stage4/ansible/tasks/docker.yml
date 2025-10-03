@@ -1,0 +1,59 @@
+---
+# tasks/docker.yml
+- name: Check if ECR repository exists
+  command: >
+    aws ecr describe-repositories 
+    --repository-names {{ repository_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_check
+  failed_when: false
+  changed_when: false
+
+- name: Create ECR repository if it doesn't exist
+  command: >
+    aws ecr create-repository 
+    --repository-name {{ repository_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_create
+  when: ecr_check.rc != 0
+
+- name: Get ECR login token
+  command: >
+    aws ecr get-login-password 
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecr_token
+  changed_when: false
+
+- name: Log in to ECR
+  command: >
+    docker login 
+    --username AWS 
+    --password-stdin {{ ecr_url }}
+  args:
+    stdin: "{{ ecr_token.stdout }}"
+  register: docker_login
+  changed_when: true
+
+- name: Build Docker image
+  command: >
+    docker buildx build 
+    --platform linux/amd64 
+    -t {{ app_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ repository_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ repository_name }}:latest
+    ..
+  register: docker_build
+  changed_when: true
+
+- name: Push Docker image as latest
+  command: docker push {{ ecr_url }}/{{ repository_name }}:latest
+  register: docker_push_latest
+  changed_when: true
+
+- name: Push Docker image with tag
+  command: docker push {{ ecr_url }}/{{ repository_name }}:{{ image_tag }}
+  register: docker_push_tagged
+  changed_when: true

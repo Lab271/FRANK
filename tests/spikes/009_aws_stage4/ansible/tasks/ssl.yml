@@ -1,0 +1,48 @@
+---
+# tasks/ssl.yml
+- name: Check if certificate exists in main account
+  command: >
+    aws acm list-certificates 
+    --profile {{ main_account_profile }}
+    --region us-east-1
+    --output json
+  register: cert_list_result
+  failed_when: false
+  changed_when: false
+  when: main_creds_check.rc == 0
+
+- name: Parse certificate list
+  set_fact:
+    certificates: "{{ (cert_list_result.stdout | from_json).CertificateSummaryList | default([]) }}"
+  when: 
+    - main_creds_check.rc == 0
+    - cert_list_result.rc == 0
+
+- name: Find matching certificate
+  set_fact:
+    matching_cert: "{{ certificates | selectattr('DomainName', 'equalto', ssl_domain) | list | first | default({}) }}"
+  when: 
+    - main_creds_check.rc == 0
+    - cert_list_result.rc == 0
+    - certificates is defined
+
+- name: Set certificate ARN if found
+  set_fact:
+    ssl_certificate_arn: "{{ matching_cert.CertificateArn }}"
+  when:
+    - main_creds_check.rc == 0
+    - cert_list_result.rc == 0
+    - matching_cert is defined
+    - matching_cert.CertificateArn is defined
+
+- name: Display SSL certificate status
+  debug:
+    msg: "SSL Certificate found: {{ ssl_certificate_arn | default('Not found') }}"
+  when: main_creds_check.rc == 0
+
+- name: Warning if no SSL certificate found
+  debug:
+    msg: "Warning: No SSL certificate found for domain {{ ssl_domain }}. Deployment will proceed without HTTPS."
+  when: 
+    - main_creds_check.rc == 0
+    - (ssl_certificate_arn is not defined or ssl_certificate_arn == "")

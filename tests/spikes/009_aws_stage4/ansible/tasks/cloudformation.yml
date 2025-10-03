@@ -1,0 +1,113 @@
+---
+# tasks/cloudformation.yml
+- name: Prepare CloudFormation parameters
+  set_fact:
+    cf_parameters:
+      - ParameterKey: "StackName"
+        ParameterValue: "{{ stack_name }}"
+      - ParameterKey: "ContainerImage"
+        ParameterValue: "{{ ecr_url }}/{{ app_name }}:{{ image_tag }}"
+
+- name: Add SSL parameters if certificate is available
+  set_fact:
+    cf_parameters: "{{ cf_parameters + ssl_params }}"
+  vars:
+    ssl_params:
+      - ParameterKey: "CertificateArn"
+        ParameterValue: "{{ ssl_certificate_arn }}"
+      - ParameterKey: "DomainName"
+        ParameterValue: "{{ ssl_domain }}"
+  when: 
+    - ssl_certificate_arn is defined
+    - ssl_certificate_arn != ""
+
+- name: Display CloudFormation parameters
+  debug:
+    msg: "CloudFormation parameters: {{ cf_parameters }}"
+
+- name: Check if CloudFormation stack exists
+  command: >
+    aws cloudformation describe-stacks 
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: stack_check
+  failed_when: false
+  changed_when: false
+
+- name: Deploy CloudFormation stack (create)
+  command: >
+    aws cloudformation create-stack
+    --stack-name {{ stack_name }}
+    --template-body file://{{ cloudformation_template }}
+    --parameters '{{ cf_parameters | to_json }}'
+    --capabilities CAPABILITY_IAM
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_create
+  when: stack_check.rc != 0
+
+- name: Deploy CloudFormation stack (update)
+  command: >
+    aws cloudformation update-stack
+    --stack-name {{ stack_name }}
+    --template-body file://{{ cloudformation_template }}
+    --parameters '{{ cf_parameters | to_json }}'
+    --capabilities CAPABILITY_IAM
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_update
+  failed_when: false
+  when: stack_check.rc == 0
+
+- name: Handle no updates required
+  debug:
+    msg: "No updates required for stack {{ stack_name }}"
+  when:
+    - cf_update is defined
+    - cf_update.rc != 0
+    - "'No updates are to be performed' in cf_update.stderr"
+
+- name: Fail if update failed for other reasons
+  fail:
+    msg: "CloudFormation update failed: {{ cf_update.stderr }}"
+  when:
+    - cf_update is defined
+    - cf_update.rc != 0
+    - "'No updates are to be performed' not in cf_update.stderr"
+
+- name: Wait for CloudFormation stack operation to complete
+  command: >
+    aws cloudformation wait stack-{{ 'create' if stack_check.rc != 0 else 'update' }}-complete
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_wait
+  when: 
+    - (stack_check.rc != 0 and cf_create is defined and cf_create.rc == 0) or
+      (stack_check.rc == 0 and cf_update is defined and cf_update.rc == 0)
+
+- name: Get CloudFormation stack outputs
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'Stacks[0].Outputs'
+    --output json
+  register: stack_outputs
+  changed_when: false
+  when: 
+    - (stack_check.rc != 0 and cf_create is defined and cf_create.rc == 0) or
+      (stack_check.rc == 0 and cf_update is defined and cf_update.rc == 0) or
+      (stack_check.rc == 0 and cf_update is defined and cf_update.rc != 0 and "'No updates are to be performed' in cf_update.stderr")
+
+- name: Parse stack outputs
+  set_fact:
+    outputs: "{{ stack_outputs.stdout | from_json }}"
+  when: stack_outputs is defined and stack_outputs.stdout is defined
+
+- name: Display stack outputs
+  debug:
+    msg: "{{ outputs }}"
+  when: outputs is defined

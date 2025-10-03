@@ -1,0 +1,108 @@
+---
+- name: Deploy FRANK AWS Infrastructure
+  hosts: localhost
+  connection: local
+  gather_facts: yes
+  
+  vars:
+    # Default variables (can be overridden with -e)
+    stack_name: frank-009-stage4
+    repository_name: "{{ stack_name }}"
+    aws_region: eu-central-1
+    aws_profile: spike-account
+    main_account_profile: main-account
+    app_name: simple_api
+    # image_tag is set dynamically from FRANK version, but can be overridden with -e image_tag_override=<version>
+    ssl_domain: "{{ stack_name }}-stage4.lab271.io"
+    cloudformation_template: "{{ stack_name }}-infra.yaml"
+    
+    # SSL certificate ARN (will be determined during execution)
+    ssl_certificate_arn: ""
+    
+  tasks:
+    # Prerequisites
+    - include_tasks: tasks/prerequisites.yml
+      tags: [never, requisites]
+
+    - block:
+      - name: Get FRANK version from Python package
+        command: python -c "import frank; print(frank.__version__)"
+        register: frank_version_result
+        changed_when: false
+        delegate_to: localhost
+
+      - name: Set version and image tag facts
+        set_fact:
+          frank_version: "{{ frank_version_result.stdout.strip() }}"
+          image_tag: "{{ image_tag_override | default(frank_version_result.stdout.strip()) }}"
+
+      - name: Get AWS Account ID
+        command: aws sts get-caller-identity --profile {{ aws_profile }} --query Account --output text
+        register: aws_account_id_result
+        changed_when: false
+
+      - name: Set AWS Account ID fact
+        set_fact:
+          aws_account_id: "{{ aws_account_id_result.stdout }}"
+          ecr_url: "{{ aws_account_id_result.stdout }}.dkr.ecr.{{ aws_region }}.amazonaws.com"
+
+      - name: Display deployment information
+        debug:
+          msg:
+            - "=== FRANK AWS Infrastructure Deployment ==="
+            - "FRANK Version: {{ frank_version }}"
+            - "Image Tag: {{ image_tag }}"
+            - "Stack Name: {{ stack_name }}"
+            - "Repository Name: {{ repository_name }}"
+            - "Region: {{ aws_region }}"
+            - "Profile: {{ aws_profile }}"
+            - "AWS Account ID: {{ aws_account_id }}"
+            - "ECR URL: {{ ecr_url }}"
+            - "App Name: {{ app_name }}"
+            - "SSL Domain: {{ ssl_domain }}"
+      tags: always
+
+    
+    # SSL Certificate lookup
+    - import_tasks: tasks/ssl.yml
+      tags: 
+        - never
+        - ssl
+        - create
+        - update
+    
+    # Docker operations
+    - import_tasks: tasks/docker.yml
+      tags:
+        - never
+        - docker
+        - create
+        - update
+        - deploy
+        - build
+    
+    # CloudFormation deployment
+    - import_tasks: tasks/cloudformation.yml
+      tags:
+        - never
+        - cloudformation
+        - infrastructure
+        - create
+        - update
+
+    # Cleanup operations
+    - import_tasks: tasks/cleanup.yml
+      tags:
+        - never
+        - cleanup
+        - delete
+        - destroy
+    
+    # Final status
+    - name: Display completion message
+      debug:
+        msg: 
+          - "=== Deployment Complete ==="
+          - "Stack: {{ stack_name }}"
+          - "Status: Success"
+      tags: always
