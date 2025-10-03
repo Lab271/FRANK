@@ -7,6 +7,9 @@
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
+# Accept build context path (defaults to current directory)
+ARG BUILD_CONTEXT=.
+
 FROM python:3.13-slim AS base
 
 # Platform-specific optimizations
@@ -62,11 +65,21 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
+RUN pip install --upgrade pip
+
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /home/frankuser/.local
 
+# Redeclare build context for this stage
+ARG BUILD_CONTEXT=.
+ARG PACKAGE_CONTEXT=../../..
+
 # Copy application code
-COPY simple_api.py .
+COPY ${BUILD_CONTEXT}/simple_api.py .
+COPY ${BUILD_CONTEXT}/README.md .
+COPY ${PACKAGE_CONTEXT}/src/ ./src/
+COPY ${PACKAGE_CONTEXT}/setup.py .
+RUN pip install -e .
 
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
