@@ -1,0 +1,23 @@
+
+resources:
+- name: frank-gcp-repo
+  type: artifactregistry.v1.repository
+  properties:
+    repositoryId: frank-gcp-repo
+    format: DOCKER
+    description: "FRANK GCP spike repository"
+    location: europe-west4
+
+- name: frank-gcp-service
+  type: run.v1.service
+  properties:
+    location: europe-west4
+    template:
+      spec:
+        containers:
+        - image: europe-west4-docker.pkg.dev/your-gcp-project-id/frank-gcp-repo/simple-api:latest
+          ports:
+          - containerPort: 8000
+    traffics:
+    - percent: 100
+      latestRevision: true

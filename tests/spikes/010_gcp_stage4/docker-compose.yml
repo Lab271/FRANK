@@ -1,0 +1,15 @@
+version: '3.8'
+services:
+  simple-api:
+    build: .
+    ports:
+      - "8080:8000"
+    environment:
+      - FIRESTORE_EMULATOR_HOST=firestore:8080
+    depends_on:
+      - firestore
+
+  firestore:
+    image: gcr.io/google-appengine/firestore-emulator
+    ports:
+      - "8081:8080"
