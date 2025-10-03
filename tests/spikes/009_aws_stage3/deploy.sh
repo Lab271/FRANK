@@ -58,7 +58,12 @@ check_prerequisites() {
     if ! command -v jq &> /dev/null; then
         log_warning "jq is not installed. Some features may not work. Install with: brew install jq"
     fi
-  
+
+    # Check if mkcert is installed (for SSL certs)
+    if ! command -v mkcert &> /dev/null; then
+        log_warning "mkcert is not installed. Install with: brew install mkcert"
+    fi
+    
     # Check AWS credentials for spike account
     if ! aws sts get-caller-identity --profile ${AWS_PROFILE} &> /dev/null; then
         log_error "AWS credentials not configured for ${AWS_PROFILE}. Please run 'aws configure --profile ${AWS_PROFILE}'."
