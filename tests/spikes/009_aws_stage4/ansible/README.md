@@ -12,6 +12,7 @@ ansible/
     ├── prerequisites.yml     # Check prerequisites and setup
     ├── ssl.yml              # SSL certificate management
     ├── docker.yml           # Docker build and push
+    ├── dynamodb.yml         # DynamoDB table creation
     ├── cloudformation.yml   # CloudFormation deployment
     └── cleanup.yml          # Resource cleanup
 ```
@@ -54,6 +55,9 @@ ansible-playbook playbook.yml --tags "delete"
 # Run only Docker operations
 ansible-playbook playbook.yml --tags "docker"
 
+# Run only DynamoDB table creation
+ansible-playbook playbook.yml --tags "dynamodb"
+
 # Run only SSL setup
 ansible-playbook playbook.yml --tags "ssl"
 
@@ -72,8 +76,11 @@ You can combine multiple tags:
 # Run SSL setup and Docker operations only
 ansible-playbook playbook.yml --tags "ssl,docker"
 
+# Run database and infrastructure deployment
+ansible-playbook playbook.yml --tags "dynamodb,cloudformation"
+
 # Run full deployment pipeline
-ansible-playbook playbook.yml --tags "ssl,docker,cloudformation"
+ansible-playbook playbook.yml --tags "ssl,docker,dynamodb,cloudformation"
 ```
 
 ### Custom Configuration
@@ -87,6 +94,79 @@ ansible-playbook playbook.yml --tags "deploy" \
   -e image_tag=v1.2.3 \
   -e ssl_domain=my-domain.com
 ```
+
+## DynamoDB Table Design
+
+Stage 4 introduces persistent data storage with two DynamoDB tables following a single table design pattern.
+
+### Table Structure
+
+Both tables are created with the following characteristics:
+- **Billing Mode**: PAY_PER_REQUEST for automatic scaling
+- **Encryption**: KMS encryption at rest enabled
+- **Schema**: Flexible PK/SK pattern with GSI for alternative access patterns
+
+#### Main Table: `${STACK_NAME}-main-table`
+
+**Purpose**: Primary application data storage (submissions, organizations, observables)
+
+**Schema Pattern**:
+```
+PK (Partition Key) | SK (Sort Key)    | GSI1PK          | GSI1SK      | Entity Type
+ORG#123           | ORG              | TIER#partner    | 2025-01-01  | Organisation
+SUB#456           | SUB              | ORG#123         | 2025-01-01  | Submission  
+OBS#hash789       | SUB#456          | TYPE#ipv4       | 2025-01-01  | Observable
+SIGHT#abc         | SUB#456          | ORG#123         | 2025-01-01  | Sighting
+STAT#hash789      | STAT#ipv4        | FREQ#daily      | 2025-01-01  | Statistics
+```
+
+**Access Patterns**:
+- Get organization by ID: `PK = ORG#{org_id}, SK = ORG`
+- Get submissions by organization: `GSI1PK = ORG#{org_id}`
+- Get observables by type: `GSI1PK = TYPE#{obs_type}`
+- Get sightings by organization: `GSI1PK = ORG#{org_id} AND EntityType = Sighting`
+
+#### Audit Table: `${STACK_NAME}-audit-table`
+
+**Purpose**: Audit logs and compliance tracking with automatic TTL cleanup
+
+**Schema Pattern**:
+```
+PK (Partition Key) | SK (Sort Key)    | GSI1PK          | GSI1SK      | Entity Type
+LOG#123           | LOG#timestamp    | ACTION#query    | 2025-01-01  | AccessLog
+AUDIT#456         | AUDIT#timestamp  | EVENT#create    | 2025-01-01  | AuditEvent
+METRIC#789        | METRIC#daily     | TYPE#usage      | 2025-01-01  | Metrics
+```
+
+**Features**:
+- **TTL Enabled**: Automatic cleanup of old audit records via `TTL` attribute
+- **Action Indexing**: GSI allows querying by action type and time range
+- **Compliance Ready**: Structured logging for security and compliance requirements
+
+### Table Configuration
+
+**Attributes**:
+- `PK` (String): Partition key for data distribution
+- `SK` (String): Sort key for item organization within partition
+- `GSI1PK` (String): Global Secondary Index partition key for alternative queries
+- `GSI1SK` (String): Global Secondary Index sort key for time-based sorting
+
+**Features**:
+- **DynamoDB Streams**: Enabled on main table for real-time data processing
+- **Point-in-time Recovery**: Enabled for both tables for backup protection
+- **KMS Encryption**: Server-side encryption for data security
+- **Comprehensive Tagging**: Consistent resource tagging for management and cost tracking
+
+### Deployment Order
+
+The deployment follows this sequence to ensure dependencies are met:
+
+1. **Prerequisites** - Environment validation
+2. **SSL Certificate** - Domain certificate lookup
+3. **Docker** - Container build and push to ECR
+4. **DynamoDB Tables** - Database infrastructure ← **New in Stage 4**
+5. **CloudFormation** - ECS service and load balancer
+6. **Cleanup** - Resource cleanup (when using delete tags)
 
 ## Variables
 
@@ -105,12 +185,13 @@ ansible-playbook playbook.yml --tags "deploy" \
 | Tag | Description | Tasks Included |
 |-----|-------------|----------------|
 | `always` | Always runs | Prerequisites, Display info |
-| `create` | Create deployment | SSL, Docker, CloudFormation |
-| `update` | Update deployment | SSL, Docker, CloudFormation |
-| `deploy` | Smart create/update | SSL, Docker, CloudFormation |
+| `create` | Create deployment | SSL, Docker, DynamoDB, CloudFormation |
+| `update` | Update deployment | SSL, Docker, DynamoDB, CloudFormation |
+| `deploy` | Smart create/update | SSL, Docker, DynamoDB, CloudFormation |
 | `ssl` | SSL operations only | SSL certificate lookup |
 | `docker` | Docker operations only | ECR, Build, Push |
-| `cloudformation` | Infrastructure only | CloudFormation deployment |
+| `dynamodb` | Database operations only | DynamoDB table creation |
+| `database` | Database operations only | DynamoDB table creation (alias) |
 | `delete` | Delete resources | Cleanup operations |
 | `cleanup` | Cleanup operations | Delete stack and ECR |
 
@@ -119,15 +200,7 @@ ansible-playbook playbook.yml --tags "deploy" \
 - **Idempotent**: Safe to run multiple times
 - **Error Handling**: Comprehensive error checking and validation
 - **SSL Support**: Automatic SSL certificate lookup and configuration
-- **Logging**: Operations logged to `logs/` directory
 - **Cleanup**: Complete resource cleanup with delete action
-
-## Logs
-
-The playbook creates logs in the `logs/` directory:
-- `docker.log`: Docker operations
-- `deployment.log`: CloudFormation deployments
-- `cleanup.log`: Cleanup operations
 
 ## Troubleshooting
 

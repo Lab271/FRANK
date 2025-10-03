@@ -81,6 +81,15 @@
         - deploy
         - build
     
+    # DynamoDB table creation
+    - import_tasks: tasks/dynamodb.yml
+      tags:
+        - never
+        - dynamodb
+        - database
+        - create
+        - update
+    
     # CloudFormation deployment
     - import_tasks: tasks/cloudformation.yml
       tags:
