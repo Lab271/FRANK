@@ -26,6 +26,43 @@ class AccessTier(str, Enum):
         members = list(type(self))
         return members.index(self) >= members.index(required_level)
 
+    @classmethod
+    def from_string(cls, value: str) -> 'AccessTier':
+        """Convert string (case-insensitive) to AccessTier enum value.
+        
+        Args:
+            value: String representation of access tier (case-insensitive)
+            
+        Returns:
+            AccessTier enum value
+            
+        Raises:
+            ValueError: If the string doesn't match any AccessTier value
+            
+        Examples:
+            >>> AccessTier.from_string("contributor")
+            <AccessTier.CONTRIBUTOR: 'contributor'>
+            >>> AccessTier.from_string("PARTNER")
+            <AccessTier.PARTNER: 'partner'>
+            >>> AccessTier.from_string("Core_Member")
+            <AccessTier.CORE_MEMBER: 'core_member'>
+        """
+        if not isinstance(value, str):
+            raise ValueError(f"Expected string, got {type(value).__name__}")
+        
+        # Normalize the input string: strip whitespace, lowercase, and replace spaces with underscores
+        normalized = value.strip().lower().replace(" ", "_")
+        
+        # Try to find matching enum value
+        for member in cls:
+            if member.value == normalized:
+                return member
+        
+        # If no direct match, raise an error with helpful message
+        valid_values = [member.value for member in cls]
+        raise ValueError(f"'{value}' is not a valid AccessTier. Valid values are: {valid_values}")
+
+
 class ObservableType(str, Enum):
     """Network observable types"""
     IPV4 = "ipv4"

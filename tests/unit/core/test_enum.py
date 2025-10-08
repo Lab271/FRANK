@@ -105,6 +105,86 @@ class TestAccessTier(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     AccessTier(invalid_val)
 
+    def test_from_string_method(self):
+        """Test AccessTier.from_string() class method"""
+        # Test basic case-insensitive conversion
+        test_cases = [
+            ("contributor", AccessTier.CONTRIBUTOR),
+            ("CONTRIBUTOR", AccessTier.CONTRIBUTOR),
+            ("Contributor", AccessTier.CONTRIBUTOR),
+            ("partner", AccessTier.PARTNER),
+            ("PARTNER", AccessTier.PARTNER),
+            ("Partner", AccessTier.PARTNER),
+            ("observer", AccessTier.OBSERVER),
+            ("OBSERVER", AccessTier.OBSERVER),
+            ("public", AccessTier.PUBLIC),
+            ("PUBLIC", AccessTier.PUBLIC),
+            ("core_member", AccessTier.CORE_MEMBER),
+            ("CORE_MEMBER", AccessTier.CORE_MEMBER),
+            ("Core_Member", AccessTier.CORE_MEMBER),
+        ]
+        
+        for input_str, expected_enum in test_cases:
+            with self.subTest(input_str=input_str):
+                result = AccessTier.from_string(input_str)
+                self.assertEqual(result, expected_enum)
+                self.assertIsInstance(result, AccessTier)
+
+    def test_from_string_with_spaces(self):
+        """Test AccessTier.from_string() with space handling"""
+        space_cases = [
+            ("core member", AccessTier.CORE_MEMBER),
+            ("Core Member", AccessTier.CORE_MEMBER),
+            ("CORE MEMBER", AccessTier.CORE_MEMBER),
+            (" core member ", AccessTier.CORE_MEMBER),  # with extra spaces
+        ]
+        
+        for input_str, expected_enum in space_cases:
+            with self.subTest(input_str=input_str):
+                result = AccessTier.from_string(input_str)
+                self.assertEqual(result, expected_enum)
+
+    def test_from_string_invalid_inputs(self):
+        """Test AccessTier.from_string() with invalid inputs"""
+        invalid_inputs = [
+            "invalid_tier",
+            "admin", 
+            "superuser",
+            "",
+            "contributor_extra",
+            "part_ner",
+            "123",
+        ]
+        
+        for invalid_input in invalid_inputs:
+            with self.subTest(invalid_input=invalid_input):
+                with self.assertRaises(ValueError) as context:
+                    AccessTier.from_string(invalid_input)
+                
+                # Check that error message contains helpful information
+                error_msg = str(context.exception)
+                self.assertIn(invalid_input, error_msg)
+                self.assertIn("Valid values are:", error_msg)
+
+    def test_from_string_non_string_inputs(self):
+        """Test AccessTier.from_string() with non-string inputs"""
+        non_string_inputs = [
+            None,
+            123,
+            [],
+            {},
+            AccessTier.PARTNER,  # enum itself
+        ]
+        
+        for invalid_input in non_string_inputs:
+            with self.subTest(invalid_input=invalid_input):
+                with self.assertRaises(ValueError) as context:
+                    AccessTier.from_string(invalid_input)
+                
+                # Check that error message mentions type mismatch
+                error_msg = str(context.exception)
+                self.assertIn("Expected string", error_msg)
+
     def test_tier_level_can_submit(self):
         """Test the can_submit method of AccessTier"""
         self.assertFalse(AccessTier.PUBLIC.can_submit())
