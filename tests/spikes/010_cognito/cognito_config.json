@@ -1,0 +1,18 @@
+{
+  "mock_cognito_endpoint": "http://localhost:8080",
+  "service_type": "mock",
+  "test_users": [
+    {
+      "username": "testuser_a",
+      "password": "TempPass123!",
+      "group": "user_role_a",
+      "email": "usera@example.com"
+    },
+    {
+      "username": "testuser_b",
+      "password": "TempPass123!",
+      "group": "user_role_b",
+      "email": "userb@example.com"
+    }
+  ]
+}
