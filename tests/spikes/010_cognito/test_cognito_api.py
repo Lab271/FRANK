@@ -27,11 +27,11 @@ def load_config():
     
     # Fallback to JSON file
     try:
-        with open("cognito_config.json", "r") as f:
-            print("✅ Configuration loaded from cognito_config.json")
+        with open("cognito-config-local.json", "r") as f:
+            print("✅ Configuration loaded from cognito-config-local.json")
             return json.load(f)
     except FileNotFoundError:
-        print("❌ Cannot load configuration from mock service or cognito_config.json")
+        print("❌ Cannot load configuration from mock service or cognito-config-local.json")
         print("   Make sure the mock service is running or run test_cognito_setup.py first.")
         exit(1)
 
@@ -225,8 +225,10 @@ def test_token_based_access():
     # Simulate API calls with different endpoints
     endpoints = [
         {"name": "Public Endpoint", "requires_auth": False, "required_group": None},
-        {"name": "User Role A Endpoint", "requires_auth": True, "required_group": "user_role_a"},
-        {"name": "User Role B Endpoint", "requires_auth": True, "required_group": "user_role_b"},
+        {"name": "Observer Endpoint", "requires_auth": True, "required_group": "observer"},
+        {"name": "Contributor Endpoint", "requires_auth": True, "required_group": "contributor"},
+        {"name": "Partner Endpoint", "requires_auth": True, "required_group": "partner"},
+        {"name": "Core Member Endpoint", "requires_auth": True, "required_group": "core_member"},
     ]
     
     print(f"\n📍 Simulating access control for user: {user['username']} (Group: {user['group']})")

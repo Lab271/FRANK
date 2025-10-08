@@ -18,7 +18,7 @@ Our Mock Cognito implements a MINIMAL subset focused on authentication patterns:
 - JWT token generation (access, id, refresh tokens)
 - JWT token validation and verification  
 - User info retrieval from tokens
-- Role-based group membership (user_role_a, user_role_b)
+- Role-based group membership (observer, contributor, partner, core_member)
 - Health check endpoint
 
 ❌ NOT IMPLEMENTED (Available in cognito-local):
@@ -86,18 +86,32 @@ JWT_ALGORITHM = "HS256"
 
 # In-memory user store (simulates Cognito User Pool)
 USERS_DB = {
-    "testuser_a": {
-        "username": "testuser_a",
+    "testuser_observer": {
+        "username": "testuser_observer",
         "password": "TempPass123!",
-        "email": "usera@example.com",
-        "groups": ["user_role_a"],
+        "email": "observer@example.com",
+        "groups": ["observer"],
         "enabled": True
     },
-    "testuser_b": {
-        "username": "testuser_b", 
+    "testuser_contributor": {
+        "username": "testuser_contributor", 
         "password": "TempPass123!",
-        "email": "userb@example.com",
-        "groups": ["user_role_b"],
+        "email": "contributor@example.com",
+        "groups": ["contributor"],
+        "enabled": True
+    },
+    "testuser_partner": {
+        "username": "testuser_partner", 
+        "password": "TempPass123!",
+        "email": "partner@example.com",
+        "groups": ["partner"],
+        "enabled": True
+    },
+    "testuser_core_member": {
+        "username": "testuser_core_member", 
+        "password": "TempPass123!",
+        "email": "core_member@example.com",
+        "groups": ["core_member"],
         "enabled": True
     }
 }
@@ -253,7 +267,7 @@ async def list_users():
 async def get_config():
     """
     Get mock service configuration for test scripts
-    Replaces the need for external cognito_config.json file
+    Replaces the need for external cognito-config.json file
     """
     return {
         "mock_cognito_endpoint": "http://localhost:8100",

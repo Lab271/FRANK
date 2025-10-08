@@ -65,17 +65,14 @@ def test_service_endpoints():
         print(f"❌ Error getting service info: {e}")
         return False
 
-def save_configuration():
+def retrieve_configuration():
     """Save configuration for test scripts by fetching from mock service"""
     try:
         response = requests.get(f"{MOCK_COGNITO_ENDPOINT}/config", timeout=5)
         if response.status_code == 200:
             config = response.json()
-            
-            with open("cognito_config.json", "w") as f:
-                json.dump(config, f, indent=2)
-            
-            print("✅ Configuration fetched from mock service and saved to cognito_config.json")
+                    
+            print("✅ Configuration fetched from mock service")
             return True
         else:
             print(f"❌ Failed to get config from mock service: {response.status_code}")
@@ -110,7 +107,7 @@ def main():
         exit(1)
     
     # Save configuration
-    if not save_configuration():
+    if not retrieve_configuration():
         print("\n❌ Failed to fetch configuration from mock service!")
         exit(1)
     

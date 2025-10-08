@@ -106,15 +106,15 @@ test-api: ## Test Simple API endpoints with authentication
 	@echo "📍 Getting authentication token..."
 	@TOKEN=$$(curl -s "$(MOCK_COGNITO_ENDPOINT)/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"username":"testuser_a","password":"TempPass123!"}' | jq -r '.access_token') && \
-	echo "📍 Testing authenticated endpoint (user_role_a)..." && \
-	curl -s "$(SIMPLE_API_ENDPOINT)/user_role_a" -H "Authorization: Bearer $$TOKEN" | jq '.' || true
+		-d '{"username":"testuser_contributor","password":"TempPass123!"}' | jq -r '.access_token') && \
+	echo "📍 Testing authenticated endpoint (contributor)..." && \
+	curl -s "$(SIMPLE_API_ENDPOINT)/contributor" -H "Authorization: Bearer $$TOKEN" | jq '.' || true
 	@echo ""
 	@echo "📍 Testing access control (should get 403)..." 
 	@TOKEN=$$(curl -s "$(MOCK_COGNITO_ENDPOINT)/auth/login" \
 		-H "Content-Type: application/json" \
-		-d '{"username":"testuser_a","password":"TempPass123!"}' | jq -r '.access_token') && \
-	curl -s -w "HTTP Status: %{http_code}\n" "$(SIMPLE_API_ENDPOINT)/user_role_b" -H "Authorization: Bearer $$TOKEN" || true
+		-d '{"username":"testuser_contributor","password":"TempPass123!"}' | jq -r '.access_token') && \
+	curl -s -w "HTTP Status: %{http_code}\n" "$(SIMPLE_API_ENDPOINT)/partner" -H "Authorization: Bearer $$TOKEN" || true
 	@echo ""
 	@echo "✅ Simple API tests completed"
 
@@ -146,22 +146,6 @@ check-endpoints: ## Check if Mock Cognito endpoints are available
 		echo "   Check service logs: make logs"; \
 	fi
 
-validate-config: ## Validate cognito_config.json exists and is valid
-	@if [ ! -f cognito_config.json ]; then \
-		echo "❌ cognito_config.json not found. Run 'make setup' first."; \
-		exit 1; \
-	fi
-	@echo "✅ Configuration file found:"
-	@python -c "import json; config=json.load(open('cognito_config.json')); print(f'  User Pool ID: {config[\"user_pool_id\"]}'); print(f'  Client ID: {config[\"client_id\"]}'); print(f'  Test Users: {len(config[\"test_users\"])}')"
-
-clean-config: ## Remove generated configuration files
-	@echo "🧹 Cleaning configuration files..."
-	@rm -f cognito_config.json
-	@echo "✅ Configuration files removed"
-
-reset: down clean-config ## Full reset: stop containers and clean config
-	@echo "🔄 Full reset completed"
-
 logs: ## Show Mock Cognito logs
 	docker-compose logs -f
 
@@ -175,12 +159,6 @@ status: ## Show overall spike status
 	@echo ""
 	@make check-endpoints
 	@echo ""
-	@if [ -f cognito_config.json ]; then \
-		echo "📄 Configuration: ✅ Ready"; \
-		make validate-config; \
-	else \
-		echo "📄 Configuration: ❌ Missing (run 'make setup')"; \
-	fi
 
 # AWS Cognito deployment and testing targets
 aws-prerequisites: ## Check AWS prerequisites for deployment
@@ -195,7 +173,7 @@ aws-status: ## Check AWS Cognito deployment status
 	@echo "📊 Checking AWS Cognito deployment status..."
 	@./deploy-cognito.sh status
 
-aws-config: ## Generate cognito_config.json from AWS deployment
+aws-config: ## Generate cognito-config-local.json from AWS deployment
 	@echo "📄 Generating AWS Cognito configuration..."
 	@./deploy-cognito.sh config
 
@@ -205,18 +183,10 @@ aws-cleanup: ## Delete AWS Cognito CloudFormation stack
 
 aws-test: ## Test AWS Cognito authentication and API
 	@echo "🧪 Testing AWS Cognito authentication..."
-	@if [ ! -f cognito_config.json ]; then \
-		echo "❌ cognito_config.json not found. Run 'make aws-config' first."; \
-		exit 1; \
-	fi
 	python test_aws_cognito.py
 
 aws-api: ## Run Simple API with AWS Cognito (port 8000)
 	@echo "🚀 Starting Simple API with AWS Cognito..."
-	@if [ ! -f cognito_config.json ]; then \
-		echo "❌ cognito_config.json not found. Run 'make aws-config' first."; \
-		exit 1; \
-	fi
 	@echo "   API will run at: http://localhost:8000"
 	@echo "   Swagger docs: http://localhost:8000/docs"
 	python simple_api_aws.py

@@ -19,7 +19,7 @@ ARCHITECTURE HYPOTHESIS:
 -----------------------
 By implementing Cognito in progressive steps, we can achieve:
 - Standardized authentication across FRANK platform
-- Role-based access control (user_role_a, user_role_b)
+- Role-based access control (observer, contributor, partner, core_member)
 - Local development environment parity with cloud
 - Testable authentication flows
 
@@ -37,7 +37,7 @@ COMPONENT RATIONALE:
    - Risk: Limited to basic flows, not representative of real usage
 
 3. **FastAPI Integration (Step 3)**
-   - Hypothesis: Three endpoint types (public, user_role_a, user_role_b) demonstrate complete auth patterns
+   - Hypothesis: Five endpoint types (public, observer, contributor, partner, core_member) demonstrate complete auth patterns
    - Expected outcome: Proper access control enforcement
    - Risk: Complex integration may reveal unexpected auth edge cases
 
@@ -66,7 +66,7 @@ VALIDATION CRITERIA:
 **Step 3 - FastAPI Integration:**
 - Public endpoints accessible without authentication
 - Protected endpoints require valid tokens
-- Role-based access correctly enforced (user_role_a vs user_role_b)
+- Role-based access correctly enforced (observer < contributor < partner < core_member)
 
 **Step 4 - Cloud Deployment:**
 - Real AWS Cognito integration follows same patterns as Mock Cognito
@@ -124,7 +124,7 @@ CURRENT IMPLEMENTATION STATUS:
 - Simple API service with role-based access control
 - Public endpoints accessible without authentication
 - Protected endpoints require valid JWT tokens
-- Role-based access correctly enforced (user_role_a vs user_role_b)
+- Role-based access correctly enforced (observer < contributor < partner < core_member)
 - Proper HTTP status codes (401/403) for auth/authz failures
 - Swagger UI documentation auto-generated and accessible
 - Multi-container Docker deployment working
@@ -157,8 +157,8 @@ python test_cognito_api.py
 ```
 ✅ Configuration loaded from mock service
 🧪 Testing User Authentication
-👤 Testing user: testuser_a (Group: user_role_a)
-✅ Authentication successful for testuser_a
+👤 Testing user: testuser_observer (Group: observer)
+✅ Authentication successful for testuser_observer
 ✅ Access Token validation passed
 ✅ All authentication tests passed!
 ```
@@ -185,8 +185,10 @@ The Simple API (`simple_api.py`) demonstrates complete FastAPI integration with 
 - `GET /docs` - Swagger UI documentation
 
 **Authenticated Access:**
-- `GET /user_role_a` - Requires CONTRIBUTOR access tier
-- `GET /user_role_b` - Requires PARTNER access tier  
+- `GET /observer` - Requires OBSERVER access tier or higher
+- `GET /contributor` - Requires CONTRIBUTOR access tier or higher
+- `GET /partner` - Requires PARTNER access tier or higher
+- `GET /core_member` - Requires CORE_MEMBER access tier
 - `GET /user-info` - User information (any authenticated user)
 
 #### 🔐 Authentication & Authorization Flow
@@ -197,12 +199,8 @@ The Simple API (`simple_api.py`) demonstrates complete FastAPI integration with 
 4. **Authorization**: `check_access_level()` enforces tier hierarchy
 
 ```python
-ROLE_TO_ACCESS_TIER = {
-    "user_role_a": AccessTier.CONTRIBUTOR,   # Can access /user_role_a
-    "user_role_b": AccessTier.PARTNER,       # Can access both endpoints
-    "admin_role": AccessTier.CORE_MEMBER,    # Future: highest access
-    "public_role": AccessTier.PUBLIC         # Public access only
-}
+# Role mapping now uses AccessTier.from_string() method
+access_tier = AccessTier.from_string(primary_group, default=True)
 ```
 
 #### 🚀 Deployment & Testing
@@ -232,9 +230,9 @@ curl http://localhost/public
 # Get token and test authenticated endpoint
 TOKEN=$(curl -s "http://localhost:8080/auth/login" \
   -H "Content-Type: application/json" \
-  -d '{"username":"testuser_a","password":"TempPass123!"}' | jq -r '.access_token')
+  -d '{"username":"testuser_observer","password":"TempPass123!"}' | jq -r '.access_token')
 
-curl "http://localhost/user_role_a" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost/observer" -H "Authorization: Bearer $TOKEN"
 ```
 
 **Automated Testing:**
@@ -312,10 +310,9 @@ make aws-full-test
 
 This will:
 1. Deploy CloudFormation stack with Cognito User Pool
-2. Create user groups (`user_role_a`, `user_role_b`)
-3. Create test users (`testuser_a`, `testuser_b`)
-4. Generate `cognito_config.json` configuration
-5. Run authentication tests
+2. Create user groups (observer, contributor, partner, core_member)
+3. Create test users (testuser_observer, testuser_contributor, testuser_partner, testuser_core_member)
+4. Run authentication tests
 
 ### Manual Step-by-Step
 
@@ -344,15 +341,23 @@ make aws-api
 - **Pool Name**: `frank-cognito-spike-user-pool`
 - **App Client**: `frank-cognito-spike-app-client`
 - **Groups**: 
-  - `user_role_a` (higher privileges)
-  - `user_role_b` (lower privileges)
+  - `observer` (basic threat intelligence access)
+  - `contributor` (can submit indicators)
+  - `partner` (enhanced access to feeds and analysis)
+  - `core_member` (highest access level)
 
 ### Test Users
-- **testuser_a**: Member of `user_role_a` group
-  - Username: `testuser_a`
+- **testuser_observer**: Member of `observer` group
+  - Username: `testuser_observer`
   - Temporary Password: `TempPass123!`
-- **testuser_b**: Member of `user_role_b` group
-  - Username: `testuser_b`
+- **testuser_contributor**: Member of `contributor` group
+  - Username: `testuser_contributor`
+  - Temporary Password: `TempPass123!`
+- **testuser_partner**: Member of `partner` group
+  - Username: `testuser_partner`
+  - Temporary Password: `TempPass123!`
+- **testuser_core_member**: Member of `core_member` group
+  - Username: `testuser_core_member`
   - Temporary Password: `TempPass123!`
 
 ## Testing AWS Cognito
@@ -380,7 +385,7 @@ make aws-api
 
 The API will run on `http://localhost:8000` with:
 - Public endpoint: `/public`
-- Protected endpoints: `/user_role_a`, `/user_role_b`
+- Protected endpoints: `/observer`, `/contributor`, `/partner`, `/core_member`
 - Swagger docs: `/docs`
 
 ### Manual API Testing
@@ -393,16 +398,16 @@ The API will run on `http://localhost:8000` with:
 
 2. **Test protected endpoints**:
    ```bash
-   # With valid token from testuser_a
-   curl -H "Authorization: Bearer <token>" http://localhost:8000/user_role_a
+   # With valid token from testuser_contributor
+   curl -H "Authorization: Bearer <token>" http://localhost:8000/contributor
    
-   # Should return 403 for insufficient privileges
-   curl -H "Authorization: Bearer <token>" http://localhost:8000/user_role_b
+   # Should return 403 for insufficient privileges (contributor trying to access partner)
+   curl -H "Authorization: Bearer <token>" http://localhost:8000/partner
    ```
 
 ## Configuration Files
 
-### cognito_config.json
+### cognito-config-local.json
 Generated by `make aws-config` or `./deploy-cognito.sh config`:
 
 ```json
@@ -414,13 +419,23 @@ Generated by `make aws-config` or `./deploy-cognito.sh config`:
   "jwks_uri": "https://cognito-idp.eu-central-1.amazonaws.com/eu-central-1_xxxxxxxxx/.well-known/jwks.json",
   "test_users": [
     {
-      "username": "testuser_a",
-      "groups": ["user_role_a"],
+      "username": "testuser_observer",
+      "groups": ["observer"],
       "temporary_password": "TempPass123!"
     },
     {
-      "username": "testuser_b", 
-      "groups": ["user_role_b"],
+      "username": "testuser_contributor", 
+      "groups": ["contributor"],
+      "temporary_password": "TempPass123!"
+    },
+    {
+      "username": "testuser_partner", 
+      "groups": ["partner"],
+      "temporary_password": "TempPass123!"
+    },
+    {
+      "username": "testuser_core_member", 
+      "groups": ["core_member"],
       "temporary_password": "TempPass123!"
     }
   ]

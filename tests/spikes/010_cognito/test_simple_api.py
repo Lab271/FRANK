@@ -30,13 +30,15 @@ def print_test(description: str):
     print(f"\n📍 {description}")
     print("-" * 50)
 
-def get_auth_token(username: str, password: str) -> str:
-    """Get authentication token from Mock Cognito"""
+from typing import Optional
+
+def get_auth_token(username: str, password: str) -> Optional[str]:
+    """Get JWT token from Mock Cognito service"""
     try:
         response = requests.post(
             f"{MOCK_COGNITO_URL}/auth/login",
             json={"username": username, "password": password},
-            headers={"Content-Type": "application/json"}
+            timeout=10
         )
         response.raise_for_status()
         return response.json()["access_token"]
@@ -44,7 +46,7 @@ def get_auth_token(username: str, password: str) -> str:
         print(f"❌ Failed to get token for {username}: {e}")
         return None
 
-def test_endpoint(url: str, token: str = None, description: str = ""):
+def test_endpoint(url: str, token: Optional[str] = None, description: str = ""):
     """Test an API endpoint with optional authentication"""
     headers = {}
     if token:
@@ -96,42 +98,69 @@ def main():
     
     # Test 3: Authentication required endpoints (no token)
     print_section("Authentication Required - No Token Provided")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_a", description="Contributor endpoint without token")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_b", description="Partner endpoint without token")
+    test_endpoint(f"{SIMPLE_API_URL}/observer", description="Observer endpoint without token")
+    test_endpoint(f"{SIMPLE_API_URL}/contributor", description="Contributor endpoint without token")
+    test_endpoint(f"{SIMPLE_API_URL}/partner", description="Partner endpoint without token")
+    test_endpoint(f"{SIMPLE_API_URL}/core_member", description="Core member endpoint without token")
     test_endpoint(f"{SIMPLE_API_URL}/user-info", description="User info endpoint without token")
     
     # Test 4: Get authentication tokens
     print_section("Authentication Token Acquisition")
     print_test("Getting tokens for test users")
     
-    token_a = get_auth_token("testuser_a", "TempPass123!")
-    token_b = get_auth_token("testuser_b", "TempPass123!")
+    # Get tokens for different users
+    token_observer = get_auth_token("testuser_observer", "TempPass123!")
+    token_contributor = get_auth_token("testuser_contributor", "TempPass123!")
+    token_partner = get_auth_token("testuser_partner", "TempPass123!")
+    token_core_member = get_auth_token("testuser_core_member", "TempPass123!")
     
-    if not token_a or not token_b:
-        print("❌ Cannot proceed without authentication tokens")
-        sys.exit(1)
+    if not all([token_observer, token_contributor, token_partner, token_core_member]):
+        print("❌ Failed to get tokens for all users")
+        return
     
-    print(f"✅ Token A (testuser_a): {token_a[:50]}...")
-    print(f"✅ Token B (testuser_b): {token_b[:50]}...")
+    print(f"✅ Token Observer: {token_observer[:50] if token_observer else 'None'}...")
+    print(f"✅ Token Contributor: {token_contributor[:50] if token_contributor else 'None'}...")
+    print(f"✅ Token Partner: {token_partner[:50] if token_partner else 'None'}...")
+    print(f"✅ Token Core Member: {token_core_member[:50] if token_core_member else 'None'}...")
     
-    # Test 5: User info with authentication
-    print_section("User Information Retrieval")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_a, "User A info")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_b, "User B info")
+    # Test user info endpoint with all tokens
+    print("\n🔍 Testing user info endpoints:")
+    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_observer, "Observer user info")
+    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_contributor, "Contributor user info")
+    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_partner, "Partner user info")
+    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_core_member, "Core member user info")
     
-    # Test 6: Role-based access control - User A (Contributor)
-    print_section("User A (Contributor) Access Control")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_a", token_a, "User A accessing contributor endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_b", token_a, "User A accessing partner endpoint (should fail)")
+    # Test access control - Observer user
+    print("\n🔐 Testing access control for Observer user:")
+    test_endpoint(f"{SIMPLE_API_URL}/observer", token_observer, "Observer accessing observer endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_observer, "Observer accessing contributor endpoint (should fail)")
+    test_endpoint(f"{SIMPLE_API_URL}/partner", token_observer, "Observer accessing partner endpoint (should fail)")
+    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_observer, "Observer accessing core member endpoint (should fail)")
     
-    # Test 7: Role-based access control - User B (Partner)
-    print_section("User B (Partner) Access Control")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_a", token_b, "User B accessing contributor endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_b", token_b, "User B accessing partner endpoint")
+    # Test access control - Contributor user
+    print("\n🔐 Testing access control for Contributor user:")
+    test_endpoint(f"{SIMPLE_API_URL}/observer", token_contributor, "Contributor accessing observer endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_contributor, "Contributor accessing contributor endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/partner", token_contributor, "Contributor accessing partner endpoint (should fail)")
+    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_contributor, "Contributor accessing core member endpoint (should fail)")
+    
+    # Test access control - Partner user
+    print("\n🔐 Testing access control for Partner user:")
+    test_endpoint(f"{SIMPLE_API_URL}/observer", token_partner, "Partner accessing observer endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_partner, "Partner accessing contributor endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/partner", token_partner, "Partner accessing partner endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_partner, "Partner accessing core member endpoint (should fail)")
+    
+    # Test access control - Core Member user
+    print("\n🔐 Testing access control for Core Member user:")
+    test_endpoint(f"{SIMPLE_API_URL}/observer", token_core_member, "Core member accessing observer endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_core_member, "Core member accessing contributor endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/partner", token_core_member, "Core member accessing partner endpoint")
+    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_core_member, "Core member accessing core member endpoint")
     
     # Test 8: Invalid token handling
     print_section("Invalid Token Handling")
-    test_endpoint(f"{SIMPLE_API_URL}/user_role_a", "invalid_token", "Invalid token test")
+    test_endpoint(f"{SIMPLE_API_URL}/contributor", "invalid_token", "Invalid token test")
     
     # Test 9: API Documentation
     print_section("API Documentation")

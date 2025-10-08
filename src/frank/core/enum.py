@@ -27,17 +27,18 @@ class AccessTier(str, Enum):
         return members.index(self) >= members.index(required_level)
 
     @classmethod
-    def from_string(cls, value: str) -> 'AccessTier':
+    def from_string(cls, value: str, default: bool = False) -> 'AccessTier':
         """Convert string (case-insensitive) to AccessTier enum value.
         
         Args:
             value: String representation of access tier (case-insensitive)
+            default: If True, return PUBLIC for invalid values instead of raising ValueError
             
         Returns:
             AccessTier enum value
             
         Raises:
-            ValueError: If the string doesn't match any AccessTier value
+            ValueError: If the string doesn't match any AccessTier value and default=False
             
         Examples:
             >>> AccessTier.from_string("contributor")
@@ -46,8 +47,12 @@ class AccessTier(str, Enum):
             <AccessTier.PARTNER: 'partner'>
             >>> AccessTier.from_string("Core_Member")
             <AccessTier.CORE_MEMBER: 'core_member'>
+            >>> AccessTier.from_string("invalid", default=True)
+            <AccessTier.PUBLIC: 'public'>
         """
         if not isinstance(value, str):
+            if default:
+                return cls.PUBLIC
             raise ValueError(f"Expected string, got {type(value).__name__}")
         
         # Normalize the input string: strip whitespace, lowercase, and replace spaces with underscores
@@ -58,7 +63,10 @@ class AccessTier(str, Enum):
             if member.value == normalized:
                 return member
         
-        # If no direct match, raise an error with helpful message
+        # If no direct match, either return default or raise error
+        if default:
+            return cls.PUBLIC
+        
         valid_values = [member.value for member in cls]
         raise ValueError(f"'{value}' is not a valid AccessTier. Valid values are: {valid_values}")
 

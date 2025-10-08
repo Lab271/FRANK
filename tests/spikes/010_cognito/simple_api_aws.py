@@ -55,14 +55,6 @@ app.add_middleware(
 # Security
 security = HTTPBearer()
 
-# User role to access tier mapping (matches Cognito groups)
-ROLE_TO_ACCESS_TIER = {
-    "user_role_a": AccessTier.CONTRIBUTOR,
-    "user_role_b": AccessTier.PARTNER,
-    "admin_role": AccessTier.CORE_MEMBER,
-    "public_role": AccessTier.PUBLIC
-}
-
 # Global variables for AWS Cognito configuration
 JWKS_CLIENT = None
 COGNITO_CLIENT = None
@@ -110,9 +102,19 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             token,
             signing_key.key,
             algorithms=["RS256"],
-            audience=APP_CLIENT_ID,
+            # AWS Cognito access tokens don't have "aud" claim, skip audience validation
+            # audience=APP_CLIENT_ID,
             issuer=f"https://cognito-idp.{AWS_REGION}.amazonaws.com/{USER_POOL_ID}"
         )
+        
+        # Verify client_id manually since access tokens don't have "aud" claim
+        token_client_id = payload.get("client_id")
+        if token_client_id != APP_CLIENT_ID:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=f"Invalid token: client_id mismatch. Expected {APP_CLIENT_ID}, got {token_client_id}",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
         
         username = payload.get("username") or payload.get("cognito:username")
         groups = payload.get("cognito:groups", [])
@@ -126,8 +128,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             )
 
         # Map first group to access tier
-        primary_group = groups[0] if groups else "public_role"
-        access_tier = ROLE_TO_ACCESS_TIER.get(primary_group, AccessTier.PUBLIC)
+        primary_group = groups[0] if groups else "public"
+        access_tier = AccessTier.from_string(primary_group, default=True)
 
         return {
             "username": username,
@@ -137,7 +139,7 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             "organisation_id": f"org-{username}",
             "token_valid": True,
             "token_type": payload.get("token_use", "access"),
-            "client_id": payload.get("aud"),
+            "client_id": payload.get("client_id"),  # AWS Cognito uses "client_id" not "aud"
             "issued_at": payload.get("iat"),
             "expires_at": payload.get("exp")
         }
@@ -161,21 +163,6 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             headers={"WWW-Authenticate": "Bearer"},
         )
 
-def check_access_level(user_access_tier: AccessTier, required_tier: AccessTier) -> bool:
-    """Check if user access tier meets required level using enum hierarchy"""
-    tier_hierarchy = {
-        AccessTier.PUBLIC: 0,
-        AccessTier.OBSERVER: 1,
-        AccessTier.CONTRIBUTOR: 2,
-        AccessTier.PARTNER: 3,
-        AccessTier.CORE_MEMBER: 4,
-    }
-    
-    user_level = tier_hierarchy.get(user_access_tier, 0)
-    required_level = tier_hierarchy.get(required_tier, 0)
-    
-    return user_level >= required_level
-
 # API Endpoints
 
 @app.get("/")
@@ -187,8 +174,10 @@ async def root():
         "authentication": "AWS Cognito JWT",
         "endpoints": {
             "public": "/public",
-            "user_role_a": "/user_role_a",
-            "user_role_b": "/user_role_b",
+            "observer": "/observer",
+            "contributor": "/contributor",
+            "partner": "/partner",
+            "core_member": "/core_member",
             "auth_test": "/auth/test",
             "docs": "/docs",
             "health": "/health"
@@ -231,15 +220,47 @@ async def public_endpoint():
         }
     }
 
-@app.get("/user_role_a")
-async def user_role_a_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.get("/observer")
+async def observer_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Endpoint requiring CONTRIBUTOR access tier (user_role_a)
+    Endpoint requiring OBSERVER access tier
+    Throws 403 if user doesn't have sufficient access level
+    """
+    required_tier = AccessTier.OBSERVER
+    
+    if not current_user["access_tier"].check_access_level(required_tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient access level. Required: {required_tier.value}, User has: {current_user['access_tier'].value}"
+        )
+    
+    return {
+        "message": "Welcome to the OBSERVER level endpoint",
+        "access_level": "observer",
+        "description": "This endpoint requires OBSERVER or higher access tier",
+        "user_info": {
+            "username": current_user["username"],
+            "email": current_user["email"],
+            "access_tier": current_user["access_tier"].value,
+            "groups": current_user["groups"],
+            "organisation_id": current_user["organisation_id"]
+        },
+        "data": {
+            "observer_data": "This is basic threat intelligence for observers and above",
+            "permissions": ["read_public_intel"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+@app.get("/contributor")
+async def contributor_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    Endpoint requiring CONTRIBUTOR access tier
     Throws 403 if user doesn't have sufficient access level
     """
     required_tier = AccessTier.CONTRIBUTOR
     
-    if not check_access_level(current_user["access_tier"], required_tier):
+    if not current_user["access_tier"].check_access_level(required_tier):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Insufficient access level. Required: {required_tier.value}, User has: {current_user['access_tier'].value}"
@@ -263,15 +284,15 @@ async def user_role_a_endpoint(current_user: Dict[str, Any] = Depends(get_curren
         }
     }
 
-@app.get("/user_role_b")
-async def user_role_b_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.get("/partner")
+async def partner_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Endpoint requiring PARTNER access tier (user_role_b)
+    Endpoint requiring PARTNER access tier
     Throws 403 if user doesn't have sufficient access level
     """
     required_tier = AccessTier.PARTNER
     
-    if not check_access_level(current_user["access_tier"], required_tier):
+    if not current_user["access_tier"].check_access_level(required_tier):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail=f"Insufficient access level. Required: {required_tier.value}, User has: {current_user['access_tier'].value}"
@@ -292,6 +313,39 @@ async def user_role_b_endpoint(current_user: Dict[str, Any] = Depends(get_curren
             "partner_data": "This is highly sensitive information for partners and core members only",
             "permissions": ["read_threat_intel", "submit_indicators", "access_iocs", "manage_feeds"],
             "exclusive_features": ["advanced_analytics", "custom_reports", "api_integrations"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+@app.get("/core_member")
+async def core_member_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    Endpoint requiring CORE_MEMBER access tier
+    Throws 403 if user doesn't have sufficient access level
+    """
+    required_tier = AccessTier.CORE_MEMBER
+    
+    if not current_user["access_tier"].check_access_level(required_tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient access level. Required: {required_tier.value}, User has: {current_user['access_tier'].value}"
+        )
+    
+    return {
+        "message": "Welcome to the CORE_MEMBER level endpoint",
+        "access_level": "core_member",
+        "description": "This endpoint requires CORE_MEMBER access tier - highest level",
+        "user_info": {
+            "username": current_user["username"],
+            "email": current_user["email"],
+            "access_tier": current_user["access_tier"].value,
+            "groups": current_user["groups"],
+            "organisation_id": current_user["organisation_id"]
+        },
+        "data": {
+            "core_member_data": "This is the most sensitive information for core members only",
+            "permissions": ["read_threat_intel", "submit_indicators", "access_iocs", "manage_feeds", "admin_access", "platform_management"],
+            "exclusive_features": ["advanced_analytics", "custom_reports", "api_integrations", "user_management", "system_configuration"],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     }
@@ -317,9 +371,10 @@ async def get_user_info(current_user: Dict[str, Any] = Depends(get_current_user)
             },
             "permissions": {
                 "can_access_public": True,
-                "can_access_contributor": check_access_level(current_user["access_tier"], AccessTier.CONTRIBUTOR),
-                "can_access_partner": check_access_level(current_user["access_tier"], AccessTier.PARTNER),
-                "can_access_core": check_access_level(current_user["access_tier"], AccessTier.CORE_MEMBER)
+                "can_access_observer": current_user["access_tier"].check_access_level(AccessTier.OBSERVER),
+                "can_access_contributor": current_user["access_tier"].check_access_level(AccessTier.CONTRIBUTOR),
+                "can_access_partner": current_user["access_tier"].check_access_level(AccessTier.PARTNER),
+                "can_access_core_member": current_user["access_tier"].check_access_level(AccessTier.CORE_MEMBER)
             }
         },
         "timestamp": datetime.now(timezone.utc).isoformat()
@@ -336,7 +391,7 @@ async def test_auth():
         "instructions": {
             "step_1": "Get a token using AWS CLI or boto3",
             "step_2": "Use the access_token in Authorization header",
-            "aws_cli_example": f"aws cognito-idp admin-initiate-auth --user-pool-id {USER_POOL_ID} --client-id {APP_CLIENT_ID} --auth-flow ADMIN_NO_SRP_AUTH --auth-parameters USERNAME=testuser_a,PASSWORD=YourPassword --region {AWS_REGION}",
+            "aws_cli_example": f"aws cognito-idp admin-initiate-auth --user-pool-id {USER_POOL_ID} --client-id {APP_CLIENT_ID} --auth-flow ADMIN_USER_PASSWORD_AUTH --auth-parameters USERNAME=testuser_contributor,PASSWORD=YourPassword --region {AWS_REGION}",
             "header_format": "Authorization: Bearer <access_token>"
         },
         "aws_cognito_config": {
@@ -376,7 +431,7 @@ def main():
     parser.add_argument("--user-pool-id", help="Cognito User Pool ID")
     parser.add_argument("--app-client-id", help="Cognito App Client ID")
     parser.add_argument("--region", help="AWS Region", default="eu-central-1")
-    parser.add_argument("--port", type=int, help="Port to run on", default=8080)
+    parser.add_argument("--port", type=int, help="Port to run on", default=8001)
     parser.add_argument("--config", help="Configuration file", default="cognito-config.json")
     parser.add_argument("--token", help="Test with provided JWT token (for testing)")
     

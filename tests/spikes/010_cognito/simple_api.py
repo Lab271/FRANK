@@ -12,7 +12,7 @@ SPDX-License-Identifier: Apache-2.0
 import os
 import sys
 import requests
-from typing import Dict, Any
+from typing import Dict, Any, List
 from datetime import datetime, timezone
 
 from fastapi import FastAPI, HTTPException, Depends, status
@@ -57,13 +57,16 @@ MOCK_COGNITO_URL = os.getenv("MOCK_COGNITO_URL", "http://localhost:8100")
 JWT_SECRET = "mock-cognito-secret-key"  # Should match mock_cognito.py
 JWT_ALGORITHM = "HS256"
 
-# User role to access tier mapping
-ROLE_TO_ACCESS_TIER = {
-    "user_role_a": AccessTier.CONTRIBUTOR,
-    "user_role_b": AccessTier.PARTNER,
-    "admin_role": AccessTier.CORE_MEMBER,
-    "public_role": AccessTier.PUBLIC
-}
+# Role mapping now uses AccessTier.from_string() method for flexible group handling
+# This maps Mock Cognito groups to FRANK AccessTier enum values
+def get_access_tier_from_groups(groups: List[str]) -> AccessTier:
+    """Convert user groups to AccessTier using from_string method"""
+    if not groups:
+        return AccessTier.PUBLIC
+    
+    # Use the first group and convert it using the from_string method
+    primary_group = groups[0]
+    return AccessTier.from_string(primary_group, default=True)
 
 async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
     """
@@ -99,8 +102,8 @@ async def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(s
             )
 
         # Map first group to access tier
-        primary_group = groups[0] if groups else "public_role"
-        access_tier = ROLE_TO_ACCESS_TIER.get(primary_group, AccessTier.PUBLIC)
+        # Use AccessTier.from_string() method to convert user groups
+        access_tier = get_access_tier_from_groups(groups)
 
         return {
             "username": username,
@@ -155,8 +158,11 @@ async def root():
         "authentication": "Mock Cognito JWT",
         "endpoints": {
             "public": "/public",
-            "user_role_a": "/user_role_a",
-            "user_role_b": "/user_role_b",
+            "observer": "/observer",
+            "contributor": "/contributor", 
+            "partner": "/partner",
+            "core_member": "/core_member",
+            "user_info": "/user-info",
             "docs": "/docs",
             "health": "/health"
         },
@@ -190,10 +196,32 @@ async def public_endpoint():
         }
     }
 
-@app.get("/user_role_a")
-async def user_role_a_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.get("/observer")
+async def observer_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Endpoint requiring CONTRIBUTOR access tier (user_role_a)
+    Endpoint requiring OBSERVER access tier
+    Throws 403 if user doesn't have sufficient access level
+    """
+    required_tier = AccessTier.OBSERVER
+    
+    if not check_access_level(current_user["access_tier"], required_tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient access level. Required: {required_tier.value}, User has: {current_user['access_tier'].value}"
+        )
+    
+    return {
+        "message": "Observer access granted",
+        "user": current_user["username"],
+        "access_tier": current_user["access_tier"].value,
+        "observer_data": "Data accessible to observer level and above",
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    }
+
+@app.get("/contributor")
+async def contributor_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    Endpoint requiring CONTRIBUTOR access tier
     Throws 403 if user doesn't have sufficient access level
     """
     required_tier = AccessTier.CONTRIBUTOR
@@ -221,10 +249,10 @@ async def user_role_a_endpoint(current_user: Dict[str, Any] = Depends(get_curren
         }
     }
 
-@app.get("/user_role_b")
-async def user_role_b_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+@app.get("/partner")
+async def partner_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
     """
-    Endpoint requiring PARTNER access tier (user_role_b)
+    Endpoint requiring PARTNER access tier
     Throws 403 if user doesn't have sufficient access level
     """
     required_tier = AccessTier.PARTNER
@@ -249,6 +277,38 @@ async def user_role_b_endpoint(current_user: Dict[str, Any] = Depends(get_curren
             "partner_data": "This is highly sensitive information for partners and core members only",
             "permissions": ["read_threat_intel", "submit_indicators", "access_iocs", "manage_feeds"],
             "exclusive_features": ["advanced_analytics", "custom_reports", "api_integrations"],
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+    }
+
+@app.get("/core_member")
+async def core_member_endpoint(current_user: Dict[str, Any] = Depends(get_current_user)):
+    """
+    Endpoint requiring CORE_MEMBER access tier
+    Throws 403 if user doesn't have sufficient access level
+    """
+    required_tier = AccessTier.CORE_MEMBER
+    
+    if not check_access_level(current_user["access_tier"], required_tier):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail=f"Insufficient access level. Required: {required_tier.value}, User has: {current_user['access_tier'].value}"
+        )
+    
+    return {
+        "message": "Welcome to the CORE_MEMBER level endpoint",
+        "access_level": "core_member",
+        "description": "This endpoint requires CORE_MEMBER access tier - highest level",
+        "user_info": {
+            "username": current_user["username"],
+            "access_tier": current_user["access_tier"].value,
+            "groups": current_user["groups"],
+            "organisation_id": current_user["organisation_id"]
+        },
+        "data": {
+            "core_member_data": "This is the most sensitive information for core members only",
+            "permissions": ["read_threat_intel", "submit_indicators", "access_iocs", "manage_feeds", "admin_access", "system_config"],
+            "admin_features": ["user_management", "system_monitoring", "full_api_access", "data_export"],
             "timestamp": datetime.now(timezone.utc).isoformat()
         }
     }

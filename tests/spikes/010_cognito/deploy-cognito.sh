@@ -14,7 +14,7 @@ set -e
 STACK_NAME="frank-cognito-spike"
 REGION="eu-central-1"
 PROFILE="spike-account"
-TEMPLATE_FILE="cognito-infrastructure.yaml"
+TEMPLATE_FILE="cognito-aws-infrastructure.yaml"
 
 # Colors for output
 RED='\033[0;31m'
@@ -158,32 +158,60 @@ setup_user_passwords() {
         exit 1
     fi
     
-    # Set password for testuser_a
-    echo "Setting password for testuser_a..."
+    # Set password for testuser_observer
+    echo "Setting password for testuser_observer..."
     if aws cognito-idp admin-set-user-password \
         --user-pool-id "$USER_POOL_ID" \
-        --username "testuser_a" \
+        --username "testuser_observer" \
         --password "TempPass123!" \
         --permanent \
         --profile "$PROFILE" \
         --region "$REGION"; then
-        print_success "Password set for testuser_a"
+        print_success "Password set for testuser_observer"
     else
-        print_warning "Failed to set password for testuser_a (user may not exist yet)"
+        print_warning "Failed to set password for testuser_observer (user may not exist yet)"
     fi
     
-    # Set password for testuser_b
-    echo "Setting password for testuser_b..."
+    # Set password for testuser_contributor
+    echo "Setting password for testuser_contributor..."
     if aws cognito-idp admin-set-user-password \
         --user-pool-id "$USER_POOL_ID" \
-        --username "testuser_b" \
+        --username "testuser_contributor" \
         --password "TempPass123!" \
         --permanent \
         --profile "$PROFILE" \
         --region "$REGION"; then
-        print_success "Password set for testuser_b"
+        print_success "Password set for testuser_contributor"
     else
-        print_warning "Failed to set password for testuser_b (user may not exist yet)"
+        print_warning "Failed to set password for testuser_contributor (user may not exist yet)"
+    fi
+    
+    # Set password for testuser_partner
+    echo "Setting password for testuser_partner..."
+    if aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_partner" \
+        --password "TempPass123!" \
+        --permanent \
+        --profile "$PROFILE" \
+        --region "$REGION"; then
+        print_success "Password set for testuser_partner"
+    else
+        print_warning "Failed to set password for testuser_partner (user may not exist yet)"
+    fi
+    
+    # Set password for testuser_core_member
+    echo "Setting password for testuser_core_member..."
+    if aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_core_member" \
+        --password "TempPass123!" \
+        --permanent \
+        --profile "$PROFILE" \
+        --region "$REGION"; then
+        print_success "Password set for testuser_core_member"
+    else
+        print_warning "Failed to set password for testuser_core_member (user may not exist yet)"
     fi
 }
 
@@ -222,33 +250,6 @@ get_outputs() {
         --query 'Stacks[0].Outputs[?OutputKey==`CognitoAuthEndpoint`].OutputValue' \
         --output text)
     
-    # Save configuration
-    cat > cognito-config.json << EOF
-{
-    "user_pool_id": "$USER_POOL_ID",
-    "app_client_id": "$APP_CLIENT_ID",
-    "client_id": "$APP_CLIENT_ID",
-    "region": "$REGION",
-    "issuer": "https://cognito-idp.$REGION.amazonaws.com/$USER_POOL_ID",
-    "jwks_uri": "https://cognito-idp.$REGION.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json",
-    "cognito_endpoint": "$COGNITO_ENDPOINT",
-    "test_users": [
-        {
-            "username": "testuser_a",
-            "groups": ["user_role_a"],
-            "temporary_password": "TempPass123!"
-        },
-        {
-            "username": "testuser_b",
-            "groups": ["user_role_b"],
-            "temporary_password": "TempPass123!"
-        }
-    ]
-}
-EOF
-    
-    print_success "Configuration saved to cognito-config.json"
-    
     echo ""
     print_header "Next Steps"
     echo "1. Test authentication:"
@@ -259,7 +260,7 @@ EOF
     echo "     --user-pool-id $USER_POOL_ID \\"
     echo "     --client-id $APP_CLIENT_ID \\"
     echo "     --auth-flow ADMIN_NO_SRP_AUTH \\"
-    echo "     --auth-parameters USERNAME=testuser_a,PASSWORD=TempPass123! \\"
+    echo "     --auth-parameters USERNAME=testuser_contributor,PASSWORD=TempPass123! \\"
     echo "     --profile $PROFILE \\"
     echo "     --region $REGION"
     echo ""
@@ -308,13 +309,7 @@ case "${1:-deploy}" in
         setup_user_passwords
         get_outputs
         ;;
-    "config")
-        get_outputs
-        ;;
     "status")
-        get_outputs
-        ;;
-    "outputs")
         get_outputs
         ;;
     "cleanup"|"destroy"|"delete")
@@ -326,9 +321,7 @@ case "${1:-deploy}" in
         echo "Commands:"
         echo "  check    - Check AWS prerequisites only"
         echo "  deploy   - Deploy Cognito infrastructure and setup users"
-        echo "  config   - Generate configuration file from existing stack"
         echo "  status   - Show stack status and configuration"
-        echo "  outputs  - Show stack outputs and configuration (alias for status)"
         echo "  cleanup  - Delete the stack and clean up"
         echo "  help     - Show this help message"
         ;;

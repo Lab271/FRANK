@@ -168,22 +168,135 @@ class TestAccessTier(unittest.TestCase):
 
     def test_from_string_non_string_inputs(self):
         """Test AccessTier.from_string() with non-string inputs"""
+        # Non-string inputs that should raise ValueError
         non_string_inputs = [
             None,
             123,
             [],
             {},
-            AccessTier.PARTNER,  # enum itself
         ]
         
+        # Test default behavior (should raise ValueError since default=False by default)
         for invalid_input in non_string_inputs:
-            with self.subTest(invalid_input=invalid_input):
+            with self.subTest(invalid_input=invalid_input, behavior="default"):
                 with self.assertRaises(ValueError) as context:
                     AccessTier.from_string(invalid_input)
                 
                 # Check that error message mentions type mismatch
                 error_msg = str(context.exception)
                 self.assertIn("Expected string", error_msg)
+        
+        # Test explicit default=False behavior (should raise ValueError)
+        for invalid_input in non_string_inputs:
+            with self.subTest(invalid_input=invalid_input, default=False):
+                with self.assertRaises(ValueError) as context:
+                    AccessTier.from_string(invalid_input, default=False)
+                
+                # Check that error message mentions type mismatch
+                error_msg = str(context.exception)
+                self.assertIn("Expected string", error_msg)
+        
+        # Test default=True behavior (should return PUBLIC)
+        for invalid_input in non_string_inputs:
+            with self.subTest(invalid_input=invalid_input, default=True):
+                result = AccessTier.from_string(invalid_input, default=True)
+                self.assertEqual(result, AccessTier.PUBLIC)
+                self.assertIsInstance(result, AccessTier)
+
+    def test_from_string_enum_input(self):
+        """Test AccessTier.from_string() with enum inputs (special case)"""
+        # AccessTier enums inherit from str, so they are valid string inputs
+        enum_inputs = [
+            (AccessTier.PARTNER, AccessTier.PARTNER),
+            (AccessTier.CONTRIBUTOR, AccessTier.CONTRIBUTOR),
+            (AccessTier.PUBLIC, AccessTier.PUBLIC),
+            (AccessTier.CORE_MEMBER, AccessTier.CORE_MEMBER),
+        ]
+        
+        for enum_input, expected_output in enum_inputs:
+            with self.subTest(enum_input=enum_input):
+                # Should work fine since AccessTier inherits from str
+                result = AccessTier.from_string(enum_input)
+                self.assertEqual(result, expected_output)
+                
+                # Should also work with default=True
+                result_with_default = AccessTier.from_string(enum_input, default=True)
+                self.assertEqual(result_with_default, expected_output)
+                
+                # Should also work with default=False
+                result_explicit_false = AccessTier.from_string(enum_input, default=False)
+                self.assertEqual(result_explicit_false, expected_output)
+
+    def test_from_string_default_parameter(self):
+        """Test AccessTier.from_string() with default parameter"""
+        
+        # Test default=False (should raise ValueError for invalid inputs)
+        invalid_inputs = ["invalid_tier", "admin", "", "unknown_role"]
+        
+        for invalid_input in invalid_inputs:
+            with self.subTest(invalid_input=invalid_input, default=False):
+                with self.assertRaises(ValueError):
+                    AccessTier.from_string(invalid_input, default=False)
+        
+        # Test default=True (should return PUBLIC for invalid inputs)
+        for invalid_input in invalid_inputs:
+            with self.subTest(invalid_input=invalid_input, default=True):
+                result = AccessTier.from_string(invalid_input, default=True)
+                self.assertEqual(result, AccessTier.PUBLIC)
+                self.assertIsInstance(result, AccessTier)
+        
+        # Test default=True with non-string inputs
+        non_string_inputs = [None, 123, [], {}]
+        for invalid_input in non_string_inputs:
+            with self.subTest(invalid_input=invalid_input, default=True):
+                result = AccessTier.from_string(invalid_input, default=True)
+                self.assertEqual(result, AccessTier.PUBLIC)
+                self.assertIsInstance(result, AccessTier)
+        
+        # Test that valid inputs still work correctly with default=True
+        valid_cases = [
+            ("contributor", AccessTier.CONTRIBUTOR),
+            ("PARTNER", AccessTier.PARTNER),
+            ("core_member", AccessTier.CORE_MEMBER),
+            ("Core Member", AccessTier.CORE_MEMBER),
+        ]
+        
+        for input_str, expected_enum in valid_cases:
+            with self.subTest(input_str=input_str, default=True):
+                result = AccessTier.from_string(input_str, default=True)
+                self.assertEqual(result, expected_enum)
+                self.assertIsInstance(result, AccessTier)
+        
+        # Test that valid inputs still work correctly with default=False
+        for input_str, expected_enum in valid_cases:
+            with self.subTest(input_str=input_str, default=False):
+                result = AccessTier.from_string(input_str, default=False)
+                self.assertEqual(result, expected_enum)
+                self.assertIsInstance(result, AccessTier)
+
+    def test_from_string_default_parameter_edge_cases(self):
+        """Test AccessTier.from_string() default parameter edge cases"""
+        
+        # Test empty string with different default values
+        with self.assertRaises(ValueError):
+            AccessTier.from_string("", default=False)
+        
+        result = AccessTier.from_string("", default=True)
+        self.assertEqual(result, AccessTier.PUBLIC)
+        
+        # Test whitespace-only string
+        with self.assertRaises(ValueError):
+            AccessTier.from_string("   ", default=False)
+        
+        result = AccessTier.from_string("   ", default=True)
+        self.assertEqual(result, AccessTier.PUBLIC)
+        
+        # Test case where normalized string is empty after processing
+        with self.assertRaises(ValueError):
+            AccessTier.from_string("  \t\n  ", default=False)
+        
+        result = AccessTier.from_string("  \t\n  ", default=True)
+        self.assertEqual(result, AccessTier.PUBLIC)
 
     def test_tier_level_can_submit(self):
         """Test the can_submit method of AccessTier"""

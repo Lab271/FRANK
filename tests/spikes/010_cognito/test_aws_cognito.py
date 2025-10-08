@@ -2,7 +2,21 @@
 """
 FRANK Platform - Cognito Authentication Spike - AWS Cognito Test Script
 
-Tests AWS Cognito authentication and validates Simple API access.
+Tests AWS Cognito authentication and validates Sim    # Test Simple API with AWS Cognito (should be running on port     print("🔗 Manual testing:")
+    print(f"  Simple API (AWS): {api_base}")
+    print(f"  Swagger UI: {api_base}/docs")
+    print(f"  Mock Cognito: http://localhost:8100")
+    print("")
+    print("💡 To run Simple API with AWS Cognito:")
+    print("  python simple_api_aws.py --port 8081")
+    print("")
+    print("💡 To run Simple API with Mock Cognito:")
+    print("  python simple_api.py --port 8000")api_base = "http://localhost:8081"
+    print(f"\n🔍 Testing Simple API with AWS Cognito...")
+    print(f"API Base: {api_base}")
+    print("⚠️  Note: Make sure Simple API is running with AWS Cognito:")
+    print("   python simple_api_aws.py --port 8081")
+    print("") access.
 Demonstrates how to authenticate users and use JWT tokens with the API.
 
 Copyright (c) 2025 Schuberg Philis B.V.
@@ -84,14 +98,14 @@ def authenticate_user(config, username, password, new_password=None):
             print("❌ Authentication failed - no tokens returned")
             return None
             
-    except cognito_client.exceptions.NotAuthorizedException:
-        print("❌ Authentication failed - invalid credentials")
-        return None
-    except cognito_client.exceptions.UserNotFoundException:
-        print("❌ Authentication failed - user not found")
-        return None
     except Exception as e:
-        print(f"❌ Authentication error: {e}")
+        error_msg = str(e)
+        if "NotAuthorized" in error_msg:
+            print("❌ Authentication failed - invalid credentials")
+        elif "UserNotFound" in error_msg:
+            print("❌ Authentication failed - user not found")
+        else:
+            print(f"❌ Authentication error: {e}")
         return None
 
 def test_api_endpoint(url, token=None, description=""):
@@ -148,8 +162,8 @@ def main():
     cognito_endpoint = f"https://cognito-idp.{config['region']}.amazonaws.com/"
     print(f"Cognito IDP Endpoint: {cognito_endpoint}")
     
-    # Test Simple API with AWS Cognito (should be running on port 8080)
-    api_base = "http://localhost:8080"
+    # Test Simple API with AWS Cognito (should be running on port 8001)
+    api_base = "http://localhost:8001"
     print(f"\n🔍 Testing Simple API with AWS Cognito...")
     print(f"API Base: {api_base}")
     print("⚠️  Note: Make sure Simple API is running with AWS Cognito:")
@@ -188,13 +202,13 @@ def main():
             )
             
             test_api_endpoint(
-                f"{api_base}/user_role_a", 
+                f"{api_base}/contributor", 
                 access_token, 
                 f"Contributor endpoint access for {username}"
             )
             
             test_api_endpoint(
-                f"{api_base}/user_role_b", 
+                f"{api_base}/partner", 
                 access_token, 
                 f"Partner endpoint access for {username}"
             )
@@ -214,10 +228,10 @@ def main():
     print(f"  Mock Cognito: http://localhost:8100")
     print("")
     print("💡 To run Simple API with AWS Cognito:")
-    print("  python simple_api_aws.py")
+    print("  python simple_api_aws.py --port 8001")
     print("")
     print("💡 To run Simple API with Mock Cognito:")
-    print("  python simple_api.py")
+    print("  python simple_api.py --port 8000")
 
 if __name__ == "__main__":
     main()
