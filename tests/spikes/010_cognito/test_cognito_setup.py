@@ -12,9 +12,10 @@ SPDX-License-Identifier: Apache-2.0
 import requests
 import json
 import time
+import os
 
-# Mock Cognito configuration
-MOCK_COGNITO_ENDPOINT = "http://localhost:8080"
+# Mock Cognito configuration - can be overridden by environment variable
+MOCK_COGNITO_ENDPOINT = os.getenv("MOCK_COGNITO_ENDPOINT", "http://localhost:8080")
 
 def check_mock_cognito():
     """Check if mock Cognito service is running"""

@@ -22,4 +22,4 @@ COPY mock_cognito.py .
 EXPOSE 8080
 
 # Run the application
-CMD ["uvicorn", "mock_cognito:app", "--host", "0.0.0.0", "--port", "8080"]
+CMD ["uvicorn", "mock_cognito:app", "--host", "0.0.0.0", "--port", "8100"]

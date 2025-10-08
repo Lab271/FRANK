@@ -18,7 +18,7 @@ def load_config():
     """Load configuration from mock service or fallback to JSON file"""
     # First try to get config from mock service
     try:
-        response = requests.get("http://localhost:8080/config", timeout=5)
+        response = requests.get("http://localhost:8100/config", timeout=5)
         if response.status_code == 200:
             print("✅ Configuration loaded from mock service")
             return response.json()

@@ -4,22 +4,37 @@
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
 #
-# This spike tests authentication patterns using a Mock Cognito service:
+# This spike tests authentication patterns using Mock Cognito service and Simple API:
 #
-# 1. Mock Cognito service: FastAPI-based authentication service on :8080
-#    - Access via: http://localhost:8080 (Mock Cognito API endpoint)
-#    - Use: make up / make setup / make test
+# 1. Mock Cognito service: FastAPI-based authentication service
+#    - Docker internal: :8100, External via nginx: :8100
 #
-# 2. Python test execution: Direct test runner
-#    - Setup: make setup (validates mock service is running)
-#    - Test: make test (runs authentication and API tests)
+# 2. Simple API service: Role-based access control demo
+#    - Docker internal: :8000, External via nginx: :443 (HTTPS), :8080 (HTTP)
+#    - Swagger: https://frank-010-cognito.local/docs
+#
+# 3. Nginx Load Balancer: SSL termination and routing
+#    - :80 -> redirect to :443 (HTTPS)
+#    - :443 -> HTTPS to Simple API
+#    - :8000 -> Direct HTTP to Simple API locally
+#    - :8080 -> Direct HTTP to Simple API externally to Docker
+#    - :8100 -> Direct HTTP to Mock Cognito
+#
+# Usage: make up / make setup / make test / make test-api / make run-local
 # ==============================================================================
 
-MOCK_COGNITO_ENDPOINT = http://localhost:8080
+LOCAL_DOMAIN = frank-010-cognito.local
+MOCK_COGNITO_ENDPOINT = http://localhost:8100
+SIMPLE_API_ENDPOINT = https://$(LOCAL_DOMAIN)
+SIMPLE_API_HTTP_ENDPOINT = http://localhost:8000
 
 start: ## Start Colima if not already running
 	@colima start
 	@colima status
+
+ssl-certs/nginx.crt: ~/.ssl-certs/ca.crt
+	@mkdir -p ssl-certs
+	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt $(LOCAL_DOMAIN)
 
 cleanup: ## Clean up docker
 	@docker rm -f $$(docker ps -aq) || true
@@ -30,41 +45,86 @@ cleanup: ## Clean up docker
 stop: cleanup ## Stop Colima and clean up
 	@colima stop
 
-up: ## Start Mock Cognito service
-	@echo "🚀 Starting Mock Cognito service..."
-	docker-compose up -d
-	@echo "⏳ Waiting for Mock Cognito to be ready..."
-	@sleep 10
-	@echo "✅ Mock Cognito should be ready at $(MOCK_COGNITO_ENDPOINT)"
+up: ssl-certs/nginx.crt ## Build and start all services with SSL
+	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
+		echo "127.0.0.1 $(LOCAL_DOMAIN)" | sudo tee -a /etc/hosts; \
+	fi
+	@echo "🚀 Starting services with SSL..."
+	docker-compose up -d --build
+	@echo "✅ Services should be ready"
+	@echo "   Simple API (HTTPS): $(SIMPLE_API_ENDPOINT)"
+	@echo "   Simple API (HTTP):  $(SIMPLE_API_HTTP_ENDPOINT)"
+	@echo "   Swagger Docs:       $(SIMPLE_API_ENDPOINT)/docs"
+	@echo "   Mock Cognito:       $(MOCK_COGNITO_ENDPOINT)"
+	@echo "   Swagger Docs: $(SIMPLE_API_ENDPOINT)/docs"
 
-down: ## Stop and remove Mock Cognito containers
-	@echo "🛑 Stopping Mock Cognito..."
+down: ## Stop and remove all containers
+	@echo "🛑 Stopping services..."
 	docker-compose down
-	@echo "✅ Mock Cognito stopped"
+	@echo "✅ All services stopped"
 
 destroy: down ## Stop and remove containers (alias for down)
 
-rebuild: ## Force rebuild and restart Mock Cognito
-	@echo "🔄 Rebuilding Mock Cognito..."
+run-local: ## Run services locally for development (Simple API on :8080, Mock Cognito on :8080)
+	@echo "🚀 Starting services locally for development..."
+	@echo "   Mock Cognito will run on :8100"
+	@echo "   Simple API will run on :8000 locally"
+	@echo ""
+	@echo "To run both services:"
+	@echo "  Terminal 1: python mock_cognito.py"
+	@echo "  Terminal 2: MOCK_COGNITO_URL=http://localhost:8100 python simple_api.py"
+	@echo ""
+	@echo "Then access:"
+	@echo "  Mock Cognito: http://localhost:8100"
+	@echo "  Simple API: http://localhost:8000"
+	@echo "  Swagger: http://localhost:8000/docs"
+
+rebuild: ## Force rebuild and restart all services
+	@echo "🔄 Rebuilding services..."
 	docker-compose down
 	docker-compose up -d --build --force-recreate
-	@echo "⏳ Waiting for Mock Cognito to be ready..."
+	@echo "⏳ Waiting for services to be ready..."
 	@sleep 10
-	@echo "✅ Mock Cognito rebuilt and ready"
+	@echo "✅ Services rebuilt and ready"
 
-setup: up ## Validate Mock Cognito service is running and accessible
-	@echo "🔧 Validating Mock Cognito service..."
-	@sleep 5  # Extra wait to ensure service is ready
-	python test_cognito_setup.py
-	@echo "✅ Mock Cognito validation completed"
+setup: up ## Validate services are running and accessible
+	@echo "🔧 Validating services..."
+	@sleep 5  # Extra wait to ensure services are ready
+	MOCK_COGNITO_ENDPOINT=$(MOCK_COGNITO_ENDPOINT) python test_cognito_setup.py
+	@echo "✅ Service validation completed"
 
 test: ## Run Mock Cognito API authentication tests
 	@echo "🧪 Running Mock Cognito API tests..."
 	python test_cognito_api.py
 	@echo "✅ Mock Cognito tests completed"
 
-full-test: setup test ## Complete workflow: setup + test
-	@echo "🎯 Full Mock Cognito spike test completed"
+test-api: ## Test Simple API endpoints with authentication
+	@echo "🧪 Testing Simple API endpoints..."
+	@echo "📍 Testing public endpoint..."
+	@curl -s "$(SIMPLE_API_ENDPOINT)/public" | jq '.' || true
+	@echo ""
+	@echo "📍 Getting authentication token..."
+	@TOKEN=$$(curl -s "$(MOCK_COGNITO_ENDPOINT)/auth/login" \
+		-H "Content-Type: application/json" \
+		-d '{"username":"testuser_a","password":"TempPass123!"}' | jq -r '.access_token') && \
+	echo "📍 Testing authenticated endpoint (user_role_a)..." && \
+	curl -s "$(SIMPLE_API_ENDPOINT)/user_role_a" -H "Authorization: Bearer $$TOKEN" | jq '.' || true
+	@echo ""
+	@echo "📍 Testing access control (should get 403)..." 
+	@TOKEN=$$(curl -s "$(MOCK_COGNITO_ENDPOINT)/auth/login" \
+		-H "Content-Type: application/json" \
+		-d '{"username":"testuser_a","password":"TempPass123!"}' | jq -r '.access_token') && \
+	curl -s -w "HTTP Status: %{http_code}\n" "$(SIMPLE_API_ENDPOINT)/user_role_b" -H "Authorization: Bearer $$TOKEN" || true
+	@echo ""
+	@echo "✅ Simple API tests completed"
+
+test-simple: ## Run comprehensive Simple API test suite
+	@echo "🧪 Running comprehensive Simple API tests..."
+	MOCK_COGNITO_ENDPOINT=$(MOCK_COGNITO_ENDPOINT) SIMPLE_API_ENDPOINT=$(SIMPLE_API_ENDPOINT) python test_simple_api.py
+	@echo "✅ Comprehensive Simple API tests completed"
+
+full-test: setup test test-api test-simple ## Complete workflow: setup + all tests
+	@echo "🎯 Full spike test completed"
 
 check-mock-cognito: ## Check if Mock Cognito is running and healthy
 	@echo "🔍 Checking Mock Cognito status..."
@@ -142,4 +202,11 @@ help: ## Shows help screen
 	@echo "  Health Check:     $(MOCK_COGNITO_ENDPOINT)/health"
 	@echo "  Login:            $(MOCK_COGNITO_ENDPOINT)/auth/login"
 	@echo "  Configuration:    $(MOCK_COGNITO_ENDPOINT)/config"
+	@echo ""
+	@echo "\033[33mDocker Endpoints:\033[0m"
+	@echo "   Simple API (HTTPS): $(SIMPLE_API_ENDPOINT)"
+	@echo "   Simple API (HTTP):  $(SIMPLE_API_HTTP_ENDPOINT)"
+	@echo "   Swagger Docs:       $(SIMPLE_API_ENDPOINT)/docs"
+	@echo "   Mock Cognito:       $(MOCK_COGNITO_ENDPOINT)"
+	@echo "   Swagger Docs: $(SIMPLE_API_ENDPOINT)/docs"
 	@echo ""

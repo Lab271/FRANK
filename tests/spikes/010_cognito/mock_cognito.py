@@ -67,11 +67,19 @@ from pydantic import BaseModel
 import jwt
 import json
 from typing import Optional, List
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
+
+import logging
 
 app = FastAPI(title="Mock Cognito Service", version="1.0.0")
 security = HTTPBearer()
 
+logger = app.logger if hasattr(app, 'logger') else None
+if logger is None:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger("frank-simple-api")  
+    
 # JWT Secret for signing tokens (in production, use proper key management)
 JWT_SECRET = "mock-cognito-secret-key"
 JWT_ALGORITHM = "HS256"
@@ -122,7 +130,7 @@ class UserInfo(BaseModel):
 
 def create_jwt_token(username: str, groups: List[str], token_type: str = "access") -> str:
     """Create a JWT token with user information"""
-    now = datetime.utcnow()
+    now = datetime.now(timezone.utc)
     payload = {
         "username": username,
         "cognito:groups": groups,
@@ -159,7 +167,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {"status": "healthy", "service": "mock-cognito", "timestamp": datetime.utcnow().isoformat()}
+    return {"status": "healthy", "service": "mock-cognito", "timestamp": datetime.now(timezone.utc).isoformat()}
 
 @app.post("/auth/login", response_model=AuthResponse)
 async def login(auth_request: AuthRequest):
@@ -216,11 +224,13 @@ async def get_user_info(current_user: dict = Depends(get_current_user)):
     """
     Get current user information from valid token
     """
-    return UserInfo(
+    info = UserInfo(
         username=current_user["username"],
         email=current_user["email"],
         groups=current_user["groups"]
     )
+    logger.debug(f"User info retrieved for {current_user['username']}")
+    return info
 
 @app.get("/auth/users")
 async def list_users():
@@ -246,7 +256,7 @@ async def get_config():
     Replaces the need for external cognito_config.json file
     """
     return {
-        "mock_cognito_endpoint": "http://localhost:8080",
+        "mock_cognito_endpoint": "http://localhost:8100",
         "service_type": "mock",
         "test_users": [
             {
@@ -278,4 +288,4 @@ async def root():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8080)
+    uvicorn.run(app, host="0.0.0.0", port=8100)

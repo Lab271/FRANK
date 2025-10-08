@@ -1,15 +1,60 @@
 services:
+  # Nginx Load Balancer with SSL termination
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"     # HTTP redirect to HTTPS
+      - "443:443"   # HTTPS to Simple API
+      - "8080:8000" # Direct HTTP access to Simple API
+      - "8100:8100" # Direct HTTP access to Mock Cognito
+    container_name: nginx-lb
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf
+      - ./ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
+      - ./ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
+    depends_on:
+      - simple-api
+      - mock-cognito
+    networks:
+      - cognito-net
+
   # Mock Cognito service using FastAPI
   mock-cognito:
-    build: .
+    build:
+      context: .
+      dockerfile: Dockerfile.cognito
     container_name: mock-cognito
-    ports:
-      - "8080:8080"
+    expose:
+      - "8100"  # Internal port only
     environment:
       - ENVIRONMENT=development
+      - PORT=8100
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - cognito-net
+
+  # Simple API service demonstrating role-based access control
+  simple-api:
+    build:
+      context: .
+      dockerfile: Dockerfile.api
+    container_name: simple-api
+    expose:
+      - "8000"  # Internal port only
+    environment:
+      - ENVIRONMENT=development
+      - MOCK_COGNITO_URL=http://mock-cognito:8100
+      - PORT=8000
+    depends_on:
+      - mock-cognito
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
