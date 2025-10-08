@@ -1,31 +1,12 @@
 ---
 # tasks/cloudformation.yml
-- name: Check if ECR repository exists
-  command: >
-    aws ecr describe-repositories 
-    --repository-names {{ repository_name }}
-    --region {{ aws_region }}
-    --profile {{ aws_profile }}
-  register: ecr_check
-  failed_when: false
-  changed_when: false
-
-- name: Create ECR repository if it doesn't exist
-  command: >
-    aws ecr create-repository 
-    --repository-name {{ repository_name }}
-    --region {{ aws_region }}
-    --profile {{ aws_profile }}
-  register: ecr_create
-  when: ecr_check.rc != 0
-
 - name: Prepare CloudFormation parameters
   set_fact:
     cf_parameters:
       - ParameterKey: "StackName"
         ParameterValue: "{{ stack_name }}"
       - ParameterKey: "ContainerImage"
-        ParameterValue: "{{ ecr_url }}/{{ app_name }}:{{ image_tag }}"
+        ParameterValue: "{{ container_image }}"
 
 - name: Add SSL parameters if certificate is available
   set_fact:
@@ -50,61 +31,72 @@
     --stack-name {{ stack_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
+    --query 'Stacks[0].StackStatus'
+    --output text
   register: stack_check
   failed_when: false
   changed_when: false
 
-- name: Deploy CloudFormation stack (create)
+- name: Display stack status when stack exists
+  debug:
+    msg: "Stack {{ stack_name }} is in {{ stack_check.stdout }} state"
+  when: stack_check.rc == 0
+
+- name: Skip update if stack is in transitional state
+  debug:
+    msg: "Stack {{ stack_name }} is in {{ stack_check.stdout }} state. Skipping update operation."
+  when: 
+    - stack_check.rc == 0
+    - stack_check.stdout in ['CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS', 'DELETE_IN_PROGRESS']
+
+# # Include changeset management for existing resources
+# - include_tasks: changeset-management.yml
+#   when: use_changeset_deployment | default(true) | bool
+
+# Fallback to direct deployment if changeset is disabled
+- name: Deploy CloudFormation stack (create) - Direct method
   command: >
     aws cloudformation create-stack
     --stack-name {{ stack_name }}
-    --template-body file://{{ cloudformation_template }}
+    --template-body file://templates/{{ cloudformation_template }}
     --parameters '{{ cf_parameters | to_json }}'
     --capabilities CAPABILITY_IAM
+    --disable-rollback
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: cf_create
-  when: stack_check.rc != 0
+  when: 
+    - stack_check.rc != 0
+    - not (use_changeset_deployment | default(true) | bool)
 
-- name: Deploy CloudFormation stack (update)
+- name: Deploy CloudFormation stack (update) - Direct method
   command: >
     aws cloudformation update-stack
     --stack-name {{ stack_name }}
-    --template-body "file://../{{ cloudformation_template }}"
+    --template-body "file://templates/{{ cloudformation_template }}"
     --parameters '{{ cf_parameters | to_json }}'
     --capabilities CAPABILITY_IAM
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: cf_update
-  failed_when: false
-  when: stack_check.rc == 0
-
-- name: Handle no updates required
-  debug:
-    msg: "No updates required for stack {{ stack_name }}"
-  when:
-    - cf_update is defined
-    - cf_update.rc != 0
-    - "'No updates are to be performed' in cf_update.stderr"
-
-- name: Fail if update failed for other reasons
-  fail:
-    msg: "CloudFormation update failed: {{ cf_update.stderr }}"
-  when:
-    - cf_update is defined
+  failed_when: 
     - cf_update.rc != 0
     - "'No updates are to be performed' not in cf_update.stderr"
+  when: 
+    - stack_check.rc == 0
+    - stack_check.stdout not in ['CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS', 'DELETE_IN_PROGRESS']
+    - not (use_changeset_deployment | default(true) | bool)
 
-- name: Wait for CloudFormation stack operation to complete
+- name: Wait for CloudFormation stack operation to complete - Direct method
   command: >
     aws cloudformation wait stack-{{ 'create' if stack_check.rc != 0 else 'update' }}-complete
     --stack-name {{ stack_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
-  register: cf_wait
   when: 
-    - (stack_check.rc != 0 and cf_create is defined and cf_create.rc == 0) or
-      (stack_check.rc == 0 and cf_update is defined and cf_update.rc == 0)
+    - not (use_changeset_deployment | default(true) | bool)
+    - (cf_create is defined and not cf_create is skipped) or 
+      (cf_update is defined and not cf_update is skipped and cf_update.rc == 0)
 
 - name: Get CloudFormation stack outputs
   command: >
@@ -116,10 +108,6 @@
     --output json
   register: stack_outputs
   changed_when: false
-  when: 
-    - (stack_check.rc != 0 and cf_create is defined and cf_create.rc == 0) or
-      (stack_check.rc == 0 and cf_update is defined and cf_update.rc == 0) or
-      (stack_check.rc == 0 and cf_update is defined and cf_update.rc != 0 and "'No updates are to be performed' in cf_update.stderr")
 
 - name: Parse stack outputs
   set_fact:

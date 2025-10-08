@@ -1,0 +1,120 @@
+---
+# tasks/cloudformation.yml
+- name: Prepare CloudFormation parameters
+  set_fact:
+    cf_parameters:
+      - ParameterKey: "StackName"
+        ParameterValue: "{{ stack_name }}"
+      - ParameterKey: "ContainerImage"
+        ParameterValue: "{{ container_image }}"
+
+- name: Add SSL parameters if certificate is available
+  set_fact:
+    cf_parameters: "{{ cf_parameters + ssl_params }}"
+  vars:
+    ssl_params:
+      - ParameterKey: "CertificateArn"
+        ParameterValue: "{{ ssl_certificate_arn }}"
+      - ParameterKey: "DomainName"
+        ParameterValue: "{{ spike_subdomain }}"
+  when: 
+    - ssl_certificate_arn is defined
+    - ssl_certificate_arn != ""
+
+- name: Display CloudFormation parameters
+  debug:
+    msg: "CloudFormation parameters: {{ cf_parameters }}"
+
+- name: Check if CloudFormation stack exists
+  command: >
+    aws cloudformation describe-stacks 
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'Stacks[0].StackStatus'
+    --output text
+  register: stack_check
+  failed_when: false
+  changed_when: false
+
+- name: Display stack status when stack exists
+  debug:
+    msg: "Stack {{ stack_name }} is in {{ stack_check.stdout }} state"
+  when: stack_check.rc == 0
+
+- name: Skip update if stack is in transitional state
+  debug:
+    msg: "Stack {{ stack_name }} is in {{ stack_check.stdout }} state. Skipping update operation."
+  when: 
+    - stack_check.rc == 0
+    - stack_check.stdout in ['CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS', 'DELETE_IN_PROGRESS']
+
+# # Include changeset management for existing resources
+# - include_tasks: changeset-management.yml
+#   when: use_changeset_deployment | default(true) | bool
+
+# Fallback to direct deployment if changeset is disabled
+- name: Deploy CloudFormation stack (create) - Direct method
+  command: >
+    aws cloudformation create-stack
+    --stack-name {{ stack_name }}
+    --template-body file://templates/{{ cloudformation_template }}
+    --parameters '{{ cf_parameters | to_json }}'
+    --capabilities CAPABILITY_IAM
+    --disable-rollback
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_create
+  when: 
+    - stack_check.rc != 0
+    - not (use_changeset_deployment | default(true) | bool)
+
+- name: Deploy CloudFormation stack (update) - Direct method
+  command: >
+    aws cloudformation update-stack
+    --stack-name {{ stack_name }}
+    --template-body "file://templates/{{ cloudformation_template }}"
+    --parameters '{{ cf_parameters | to_json }}'
+    --capabilities CAPABILITY_IAM
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: cf_update
+  failed_when: 
+    - cf_update.rc != 0
+    - "'No updates are to be performed' not in cf_update.stderr"
+  when: 
+    - stack_check.rc == 0
+    - stack_check.stdout not in ['CREATE_IN_PROGRESS', 'UPDATE_IN_PROGRESS', 'DELETE_IN_PROGRESS']
+    - not (use_changeset_deployment | default(true) | bool)
+
+- name: Wait for CloudFormation stack operation to complete - Direct method
+  command: >
+    aws cloudformation wait stack-{{ 'create' if stack_check.rc != 0 else 'update' }}-complete
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  when: 
+    - not (use_changeset_deployment | default(true) | bool)
+    - (cf_create is defined and not cf_create is skipped) or 
+      (cf_update is defined and not cf_update is skipped and cf_update.rc == 0)
+
+- name: Get CloudFormation stack outputs
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'Stacks[0].Outputs'
+    --output json
+  register: stack_outputs
+  changed_when: false
+
+- name: Parse stack outputs
+  set_fact:
+    outputs: "{{ stack_outputs.stdout | from_json }}"
+  when: stack_outputs is defined and stack_outputs.stdout is defined
+
+- name: Display stack outputs
+  debug:
+    msg: "{{ outputs }}"
+  when: outputs is defined

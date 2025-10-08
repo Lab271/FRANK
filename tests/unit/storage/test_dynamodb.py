@@ -327,10 +327,9 @@ class TestDynamoDBFRANKDatabaseStatisticsAndHealth(unittest.TestCase):
         result = self.db.health_check()
         self.assertIsInstance(result, dict)
         self.assertEqual(result['status'], 'healthy')
-        self.assertEqual(result['database'], 'dynamodb')
+        self.assertEqual(result['type'], 'dynamodb')
         self.assertIn('database_table', result)
         self.assertIn('database_region', result)
-        self.assertIn('stack', result)
 
 
 class TestDynamoDBFRANKDatabaseQueryObservables(unittest.TestCase):

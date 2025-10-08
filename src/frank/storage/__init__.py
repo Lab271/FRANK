@@ -14,14 +14,14 @@ SPDX-License-Identifier: Apache-2.0
 # from .exceptions import *
 from .base import BaseFRANKDatabase
 from .sqlite import create_sqlite_database
-from .mysql import create_mysql_database
+# from .mysql import create_mysql_database
 from .dynamodb import create_dynamodb_database
 from .exceptions import FRANKDatabaseError, FRANKConfigurationError, FRANKConnectionError
 from .exceptions import FRANKStorageError, FRANKQueryError
 
 __all__ = [
     'create_sqlite_database',
-    'create_mysql_database',
+    # 'create_mysql_database',
     'create_dynamodb_database',
     'BaseFRANKDatabase',
     'FRANKDatabaseError',

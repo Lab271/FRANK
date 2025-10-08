@@ -410,7 +410,7 @@ create() {
         --stack-name ${STACK_NAME} \
         --profile ${AWS_PROFILE} \
         --region ${AWS_REGION} \
-        --template-body file://${STACK_NAME}-infra.yaml \
+        --template-body file://ansible/templates/${STACK_NAME}-infra.yaml \
         --parameters ${CF_PARAMS} \
         --capabilities CAPABILITY_IAM 2>&1)
     

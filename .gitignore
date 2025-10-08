@@ -256,6 +256,7 @@ ehthumbs.db
 logs/
 
 # Local environment files
+.env
 .env.*
 
 # Temporary files
