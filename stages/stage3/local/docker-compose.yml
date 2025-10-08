@@ -1,0 +1,114 @@
+# Define reusable configurations using YAML anchors
+x-frank-app-common: &frank-app-common
+  build: 
+    context: ../../..
+    dockerfile: stages/stage3/Dockerfile
+    args:
+      BUILD_CONTEXT: stages/stage3
+      PACKAGE_CONTEXT: .
+  depends_on:
+    localstack:
+      condition: service_started
+  healthcheck:
+    test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 3
+    start_period: 40s
+  networks:
+    - localstack-net
+
+services:
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    container_name: nginx-lb
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf
+      - ./ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
+      - ./ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
+    depends_on:
+      - frank-app-1
+      - frank-app-2
+    networks:
+      - localstack-net
+
+  frank-app-1:
+    <<: *frank-app-common
+    container_name: frank-api-1
+    ports:
+      - "8000:8000"
+    environment:
+      - FRANK_ENVIRONMENT=localstack
+      - ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+      - DYNAMODB_TABLE=frank-data
+      - DYNAMODB_AUDIT_TABLE=frank-audit
+      - CONTAINER_ID=api-1  # Override for container identification
+
+  frank-app-2:
+    <<: *frank-app-common
+    container_name: frank-api-2
+    ports:
+      - "8001:8000"
+    environment:
+      - FRANK_ENVIRONMENT=localstack
+      - ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+      - DYNAMODB_TABLE=frank-data
+      - DYNAMODB_AUDIT_TABLE=frank-audit
+      - CONTAINER_ID=api-2  # Override for container identification
+
+  localstack:
+    image: localstack/localstack:latest
+    # image: localstack/localstack:2.0
+    container_name: localstack
+    ports:
+      - "4566:4566"  # LocalStack API
+      - "4571:4571"  # LocalStack Dashboard (optional)
+    environment:
+  #      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
+      - SERVICES=dynamodb
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test 
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    #   - "./localstack_init:/etc/localstack/init/ready.d"    
+    networks:
+      - localstack-net
+
+  dynamodb-admin:
+    container_name: dynamodb-admin
+    image: aaronshaf/dynamodb-admin:latest
+    ports:
+      - "8100:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://localstack:4566
+      - AWS_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - localstack
+    networks:
+      - localstack-net
+
+networks:
+  localstack-net:
+    driver: bridge
+
+volumes:
+  logs:

@@ -1,0 +1,27 @@
+---
+# ===================================
+# Force ECS Service Redeployment
+# ===================================
+
+- name: Force ECS service redeployment to pick up new image
+  command: >
+    aws ecs update-service
+    --cluster {{ stack_name }}-cluster
+    --service {{ stack_name }}-service
+    --force-new-deployment
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecs_force_deploy
+  changed_when: true
+
+- name: Wait for ECS service deployment to complete
+  command: >
+    aws ecs wait services-stable
+    --cluster {{ stack_name }}-cluster
+    --services {{ stack_name }}-service
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: ecs_wait
+  when: ecs_force_deploy is not skipped and ecs_force_deploy.rc == 0
+  async: 120  # 2 minutes
+  poll: 10  # Check every 10 seconds

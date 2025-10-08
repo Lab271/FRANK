@@ -1,7 +1,7 @@
 # FRANK Implementation Plan - Stage 2: LocalStack + Dual Database
 
 ## Overview
-This stage 2 is part of the 5-stage progressive development approach for FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sharing), evolving from a local SQLite/FastAPI prototype to a scalable AWS production system.
+This stage 2 is part of the 4-stage progressive development approach for FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sharing), evolving from a local SQLite/FastAPI prototype to a scalable Cloud agnostic production system.
 
 This stage implements the FRANK platform with LocalStack simulation for AWS services and dual database support (MySQL + DynamoDB) for performance comparison and learning.
 
@@ -263,7 +263,7 @@ make performance
 FRANK_ENVIRONMENT=localstack
 
 # LocalStack
-LOCALSTACK_ENDPOINT=http://localhost:4566
+ENDPOINT=http://localhost:4566
 
 # RDS Settings
 RDS_HOST=mysql

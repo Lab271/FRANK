@@ -1,0 +1,215 @@
+---
+# Security roles creation tasks for FRANK project
+# Creates IAM roles with least privilege access for different operations
+
+- name: Get AWS caller identity for account ID
+  amazon.aws.aws_caller_info:
+    profile: "{{ aws_profile }}"
+  register: aws_identity
+  tags: [security, roles]
+
+- name: Set account ID fact
+  set_fact:
+    aws_account_id: "{{ aws_identity.account }}"
+    aws_user_id: "{{ aws_identity.user_id }}"
+  tags: [security, roles]
+
+- name: Display security role creation information
+  debug:
+    msg:
+      - "🔐 Creating FRANK Security IAM Roles"
+      - "Using AWS Profile: {{ aws_profile }}"
+      - "Account ID: {{ aws_account_id }}"
+      - "External ID: {{ security_external_id | default('frank-deployment-access') }}"
+  tags: [security, roles]
+
+- name: Create trust policy template
+  template:
+    src: trust-policy.json.j2
+    dest: "{{ ansible_env.HOME }}/.ansible/tmp/trust-policy-{{ aws_account_id }}.json"
+    mode: '0600'
+  vars:
+    account_id: "{{ aws_account_id }}"
+    external_id: "{{ security_external_id | default('frank-deployment-access') }}"
+  tags: [security, roles]
+
+- name: Create frank-infra-creator role
+  amazon.aws.iam_role:
+    name: frank-infra-creator
+    assume_role_policy_document: "{{ lookup('file', ansible_env.HOME + '/.ansible/tmp/trust-policy-' + aws_account_id + '.json') }}"
+    description: "FRANK Infrastructure Creator - Create AWS resources"
+    max_session_duration: 7200
+    state: present
+    tags:
+      Purpose: InfrastructureCreation
+      Project: FRANK
+      CreatedBy: Ansible
+    profile: "{{ aws_profile }}"
+  register: infra_creator_role
+  tags: [security, roles, infra-creator]
+
+- name: Attach policy to frank-infra-creator role
+  amazon.aws.iam_role:
+    name: frank-infra-creator
+    managed_policies: []
+    state: present
+    profile: "{{ aws_profile }}"
+  tags: [security, roles, infra-creator]
+
+- name: Create inline policy for frank-infra-creator
+  amazon.aws.iam_role:
+    name: frank-infra-creator
+    inline_policies:
+      InfraCreatorPolicy: "{{ lookup('file', 'templates/infra-creator-policy.json') | from_json }}"
+    state: present
+    profile: "{{ aws_profile }}"
+  tags: [security, roles, infra-creator]
+
+- name: Create frank-infra-destroyer role
+  amazon.aws.iam_role:
+    name: frank-infra-destroyer
+    assume_role_policy_document: "{{ lookup('file', ansible_env.HOME + '/.ansible/tmp/trust-policy-' + aws_account_id + '.json') }}"
+    description: "FRANK Infrastructure Destroyer - Delete AWS resources"
+    max_session_duration: 1800
+    state: present
+    tags:
+      Purpose: InfrastructureDestruction
+      Project: FRANK
+      CreatedBy: Ansible
+    profile: "{{ aws_profile }}"
+  register: infra_destroyer_role
+  tags: [security, roles, infra-destroyer]
+
+- name: Create inline policy for frank-infra-destroyer
+  amazon.aws.iam_role:
+    name: frank-infra-destroyer
+    inline_policies:
+      InfraDestroyerPolicy: "{{ lookup('file', 'templates/infra-destroyer-policy.json') | from_json }}"
+    state: present
+    profile: "{{ aws_profile }}"
+  tags: [security, roles, infra-destroyer]
+
+- name: Create frank-app-deployer role
+  amazon.aws.iam_role:
+    name: frank-app-deployer
+    assume_role_policy_document: "{{ lookup('file', ansible_env.HOME + '/.ansible/tmp/trust-policy-' + aws_account_id + '.json') }}"
+    description: "FRANK Application Deployer - Deploy containers and applications"
+    max_session_duration: 14400
+    state: present
+    tags:
+      Purpose: ApplicationDeployment
+      Project: FRANK
+      CreatedBy: Ansible
+    profile: "{{ aws_profile }}"
+  register: app_deployer_role
+  tags: [security, roles, app-deployer]
+
+- name: Create inline policy for frank-app-deployer
+  amazon.aws.iam_role:
+    name: frank-app-deployer
+    inline_policies:
+      AppDeployerPolicy: "{{ lookup('file', 'templates/app-deployer-policy.json') | from_json }}"
+    state: present
+    profile: "{{ aws_profile }}"
+  tags: [security, roles, app-deployer]
+
+- name: Create frank-data-reader role
+  amazon.aws.iam_role:
+    name: frank-data-reader
+    assume_role_policy_document: "{{ lookup('file', ansible_env.HOME + '/.ansible/tmp/trust-policy-' + aws_account_id + '.json') }}"
+    description: "FRANK Data Reader - Read-only access to data and logs"
+    max_session_duration: 28800
+    state: present
+    tags:
+      Purpose: DataReading
+      Project: FRANK
+      CreatedBy: Ansible
+    profile: "{{ aws_profile }}"
+  register: data_reader_role
+  tags: [security, roles, data-reader]
+
+- name: Create inline policy for frank-data-reader
+  amazon.aws.iam_role:
+    name: frank-data-reader
+    inline_policies:
+      DataReaderPolicy: "{{ lookup('file', 'templates/data-reader-policy.json') | from_json }}"
+    state: present
+    profile: "{{ aws_profile }}"
+  tags: [security, roles, data-reader]
+
+- name: Create frank-emergency-admin role
+  amazon.aws.iam_role:
+    name: frank-emergency-admin
+    assume_role_policy_document: "{{ lookup('file', ansible_env.HOME + '/.ansible/tmp/trust-policy-' + aws_account_id + '.json') }}"
+    description: "FRANK Emergency Admin - Break glass full access"
+    max_session_duration: 900
+    state: present
+    tags:
+      Purpose: EmergencyAccess
+      Project: FRANK
+      CreatedBy: Ansible
+      EmergencyAccess: "true"
+    profile: "{{ aws_profile }}"
+  register: emergency_admin_role
+  tags: [security, roles, emergency-admin]
+
+- name: Create inline policy for frank-emergency-admin
+  amazon.aws.iam_role:
+    name: frank-emergency-admin
+    inline_policies:
+      EmergencyAdminPolicy: "{{ lookup('file', 'templates/emergency-admin-policy.json') | from_json }}"
+    state: present
+    profile: "{{ aws_profile }}"
+  tags: [security, roles, emergency-admin]
+
+- name: Clean up temporary trust policy file
+  file:
+    path: "{{ ansible_env.HOME }}/.ansible/tmp/trust-policy-{{ aws_account_id }}.json"
+    state: absent
+  tags: [security, roles, cleanup]
+
+- name: Display created roles summary
+  debug:
+    msg:
+      - "✅ All FRANK security roles created successfully!"
+      - ""
+      - "📋 Created Roles:"
+      - "  • frank-infra-creator    (2 hours, MFA required)"
+      - "  • frank-infra-destroyer  (30 minutes, MFA required)"
+      - "  • frank-app-deployer     (4 hours)"
+      - "  • frank-data-reader      (8 hours)"
+      - "  • frank-emergency-admin  (15 minutes, MFA required)"
+      - ""
+      - "🔗 Role ARNs:"
+      - "  frank-infra-creator:    arn:aws:iam::{{ aws_account_id }}:role/frank-infra-creator"
+      - "  frank-infra-destroyer:  arn:aws:iam::{{ aws_account_id }}:role/frank-infra-destroyer"
+      - "  frank-app-deployer:     arn:aws:iam::{{ aws_account_id }}:role/frank-app-deployer"
+      - "  frank-data-reader:      arn:aws:iam::{{ aws_account_id }}:role/frank-data-reader"
+      - "  frank-emergency-admin:  arn:aws:iam::{{ aws_account_id }}:role/frank-emergency-admin"
+  tags: [security, roles]
+
+- name: Generate AWS CLI configuration template
+  template:
+    src: aws-config-roles.j2
+    dest: "{{ playbook_dir }}/aws-config-roles-{{ aws_account_id }}.ini"
+    mode: '0600'
+  vars:
+    account_id: "{{ aws_account_id }}"
+    external_id: "{{ security_external_id | default('frank-deployment-access') }}"
+    source_profile: "{{ aws_profile }}"
+  tags: [security, roles, config]
+
+- name: Display next steps
+  debug:
+    msg:
+      - "🛠️  Next Steps:"
+      - "1. Review generated AWS CLI config: aws-config-roles-{{ aws_account_id }}.ini"
+      - "2. Append relevant sections to your ~/.aws/config"
+      - "3. Test role assumption with: aws sts assume-role"
+      - "4. Update deployment scripts to use specific roles"
+      - ""
+      - "📖 Example usage:"
+      - "  aws --profile frank-infra cloudformation deploy ..."
+      - "  aws --profile frank-deploy ecs update-service ..."
+      - "  aws --profile frank-data dynamodb scan ..."
+  tags: [security, roles]

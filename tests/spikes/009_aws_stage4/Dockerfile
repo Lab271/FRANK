@@ -7,9 +7,6 @@
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
 
-# Accept build context path (defaults to current directory)
-ARG BUILD_CONTEXT=.
-
 FROM python:3.13-slim AS base
 
 # Platform-specific optimizations
@@ -41,10 +38,13 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Create requirements.txt with minimal dependencies
-RUN echo "fastapi==0.104.1" > requirements.txt && \
-    echo "uvicorn[standard]==0.24.0" >> requirements.txt
+RUN echo "fastapi===0.116.2" > requirements.txt && \
+    echo "uvicorn[standard]==0.24.0" >> requirements.txt && \
+    echo "boto3==1.40.18" >> requirements.txt && \
+    echo "aioboto3==15.2.0" >> requirements.txt && \
+    echo "pydantic==2.11.9" >> requirements.txt
 
-# Install Python dependencies
+    # Install Python dependencies
 RUN pip install --no-cache-dir --user -r requirements.txt
 
 # ===================================
@@ -53,11 +53,15 @@ RUN pip install --no-cache-dir --user -r requirements.txt
 
 FROM base AS production
 
+# Redeclare build context for this stage
+ARG BUILD_CONTEXT=tests/spikes/009_aws_stage4
+ARG PACKAGE_CONTEXT=.
+ARG APP_NAME=simple_api.py
+
 # Create non-root user
 RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
 
-# Set working directory
-WORKDIR /app
+
 
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
@@ -70,15 +74,17 @@ RUN pip install --upgrade pip
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /home/frankuser/.local
 
-# Redeclare build context for this stage
-ARG BUILD_CONTEXT=.
-ARG PACKAGE_CONTEXT=../../..
+
+
+# Set working directory
+WORKDIR /app
 
 # Copy application code
-COPY ${BUILD_CONTEXT}/simple_api.py .
+COPY ${BUILD_CONTEXT}/${APP_NAME} .
 COPY ${BUILD_CONTEXT}/README.md .
-COPY ${PACKAGE_CONTEXT}/src/ ./src/
 COPY ${PACKAGE_CONTEXT}/setup.py .
+COPY ${PACKAGE_CONTEXT}/src/ ./src/
+
 RUN pip install -e .
 
 # Set environment variables
@@ -87,6 +93,8 @@ ENV PATH=/home/frankuser/.local/bin:$PATH
 ENV FRANK_ENVIRONMENT=aws
 ENV HOST=0.0.0.0
 ENV PORT=8000
+ENV UVICORN_LOG_LEVEL=debug
+ENV UVICORN_ACCESS_LOG=true
 
 # Change ownership to frankuser
 RUN chown -R frankuser:frankuser /app
@@ -102,4 +110,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/v1/health || exit 1
 
 # Run the application
-CMD ["python", "simple_api.py"]
+CMD ["python", "${APP_NAME}"]

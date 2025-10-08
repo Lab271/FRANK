@@ -51,7 +51,7 @@ services:
       - "8000:8000"
     environment:
       - FRANK_ENVIRONMENT=hybrid
-      - LOCALSTACK_ENDPOINT=http://localstack:4566
+      - ENDPOINT=http://localstack:4566
       - RDS_HOST=mysql
       - RDS_PORT=3306
       - RDS_DATABASE=frank

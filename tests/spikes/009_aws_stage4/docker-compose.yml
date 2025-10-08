@@ -12,28 +12,83 @@ services:
     depends_on:
       - simple-api
     networks:
-      - private-net
+      - localstack-net
 
   simple-api:
-    build: 
-      context: ../../..
-      dockerfile: tests/spikes/009_aws_stage4/Dockerfile
-      args:
-        BUILD_CONTEXT: tests/spikes/009_aws_stage4
-        PACKAGE_CONTEXT: .
-    container_name: simple-api
-    # External ports - accessible without nginx
+      build: 
+        context: ../../..
+        dockerfile: tests/spikes/009_aws_stage4/Dockerfile
+        args:
+          BUILD_CONTEXT: tests/spikes/009_aws_stage4
+          PACKAGE_CONTEXT: .
+      environment:
+        - FRANK_ENVIRONMENT=localstack
+        - ENDPOINT=http://localstack:4566
+        - AWS_ACCESS_KEY_ID=test
+        - AWS_SECRET_ACCESS_KEY=test
+        - AWS_DEFAULT_REGION=eu-west-1
+        - DYNAMODB_TABLE=frank-data
+        - DYNAMODB_AUDIT_TABLE=frank-audit
+      container_name: 009_aws_stage4
+      # External ports - accessible without nginx
+      ports:
+        - "8000:8000"    
+      depends_on:
+        localstack:
+          condition: service_started
+      healthcheck:
+        test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+        interval: 30s
+        timeout: 10s
+        retries: 3
+        start_period: 40s
+      networks:
+        - localstack-net
+
+  localstack:
+    image: localstack/localstack:latest
+    # image: localstack/localstack:2.0
+    container_name: frank-localstack-stage4
     ports:
-      - "8000:8000"    
+      - "4566:4566"  # LocalStack API
+      - "4571:4571"  # LocalStack Dashboard (optional)
+    environment:
+  #      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
+      - SERVICES=dynamodb
+      - DEBUG=1
+      - AWS_DEFAULT_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test 
+    restart: unless-stopped
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
-      interval: 30s
-      timeout: 10s
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
       retries: 3
-      start_period: 40s
+    volumes:
+      - "/var/run/docker.sock:/var/run/docker.sock"
+    #   - "./localstack_init:/etc/localstack/init/ready.d"    
     networks:
-      - private-net
-    
+      - localstack-net
+
+  dynamodb-admin:
+    container_name: minimal-dynamodb-admin
+    image: aaronshaf/dynamodb-admin:latest
+    ports:
+      - "8001:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://localstack:4566
+      - AWS_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      - localstack
+    networks:
+      - localstack-net
+
 networks:
-  private-net:
+  localstack-net:
     driver: bridge
+
+volumes:
+  logs:

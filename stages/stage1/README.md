@@ -1,7 +1,7 @@
 # FRANK Implementation Plan - Stage 1
 
 ## Overview
-This stage 1 is part of the 5-stage progressive development approach for FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sharing), evolving from a local SQLite/FastAPI prototype to a scalable AWS production system.
+This stage 1 is part of the 4-stage progressive development approach for FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sharing), evolving from a local SQLite/FastAPI prototype to a scalable AWS production system.
 
 
 **Technology Stack**:
