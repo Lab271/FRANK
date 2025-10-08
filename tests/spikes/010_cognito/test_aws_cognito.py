@@ -32,14 +32,21 @@ def load_config(config_file="cognito-config.json"):
 def authenticate_user(config, username, password, new_password=None):
     """Authenticate user with AWS Cognito and handle password challenges"""
     try:
-        cognito_client = boto3.client('cognito-idp', region_name=config['region'])
+        # Create session with profile
+        session = boto3.Session(profile_name=os.environ.get('AWS_PROFILE', 'spike-account'))
+        cognito_client = session.client('cognito-idp', region_name=config['region'])
         
         print(f"🔐 Authenticating user: {username}")
+        print(f"   User Pool: {config['user_pool_id']}")
+        print(f"   Client ID: {config['client_id']}")
+        print(f"   Region: {config['region']}")
+        print(f"   Issuer: {config['issuer']}")
+        print(f"   JWKS URI: {config['jwks_uri']}")
         
         response = cognito_client.admin_initiate_auth(
             UserPoolId=config['user_pool_id'],
-            ClientId=config['app_client_id'],
-            AuthFlow='ADMIN_NO_SRP_AUTH',
+            ClientId=config['client_id'],
+            AuthFlow='ADMIN_USER_PASSWORD_AUTH',
             AuthParameters={
                 'USERNAME': username,
                 'PASSWORD': password
@@ -55,7 +62,7 @@ def authenticate_user(config, username, password, new_password=None):
             
             response = cognito_client.admin_respond_to_auth_challenge(
                 UserPoolId=config['user_pool_id'],
-                ClientId=config['app_client_id'],
+                ClientId=config['client_id'],
                 ChallengeName='NEW_PASSWORD_REQUIRED',
                 Session=response['Session'],
                 ChallengeResponses={
@@ -132,11 +139,25 @@ def main():
     
     print(f"AWS Region: {config['region']}")
     print(f"User Pool ID: {config['user_pool_id']}")
-    print(f"App Client ID: {config['app_client_id']}")
+    print(f"App Client ID: {config['client_id']}")
+    print(f"Cognito Issuer: {config.get('issuer', 'N/A')}")
+    print(f"JWKS URI: {config.get('jwks_uri', 'N/A')}")
     
-    # Test API base endpoint
+    # Test AWS Cognito endpoint directly
+    print(f"\n🔍 Testing AWS Cognito endpoint directly...")
+    cognito_endpoint = f"https://cognito-idp.{config['region']}.amazonaws.com/"
+    print(f"Cognito IDP Endpoint: {cognito_endpoint}")
+    
+    # Test Simple API with AWS Cognito (should be running on port 8080)
     api_base = "http://localhost:8080"
-    test_api_endpoint(f"{api_base}/health", description="Health check")
+    print(f"\n🔍 Testing Simple API with AWS Cognito...")
+    print(f"API Base: {api_base}")
+    print("⚠️  Note: Make sure Simple API is running with AWS Cognito:")
+    print("   python simple_api_aws.py")
+    print("")
+    
+    # Test API endpoints
+    test_api_endpoint(f"{api_base}/health", description="Health check (AWS Cognito enabled)")
     test_api_endpoint(f"{api_base}/public", description="Public endpoint")
     
     # Test authentication for each user
@@ -144,11 +165,11 @@ def main():
     
     for user in test_users:
         username = user['username']
-        temp_password = user['temp_password']
-        group = user['group']
+        temp_password = user['temporary_password']
+        groups = user['groups']
         
         print(f"\n{'='*50}")
-        print(f"🧪 Testing user: {username} (Group: {group})")
+        print(f"🧪 Testing user: {username} (Groups: {groups})")
         print(f"{'='*50}")
         
         # Authenticate user
@@ -188,11 +209,15 @@ def main():
     print("✅ JWT token validation working")
     print("")
     print("🔗 Manual testing:")
-    print(f"  Simple API: {api_base}")
+    print(f"  Simple API (AWS): {api_base}")
     print(f"  Swagger UI: {api_base}/docs")
+    print(f"  Mock Cognito: http://localhost:8100")
     print("")
     print("💡 To run Simple API with AWS Cognito:")
     print("  python simple_api_aws.py")
+    print("")
+    print("💡 To run Simple API with Mock Cognito:")
+    print("  python simple_api.py")
 
 if __name__ == "__main__":
     main()

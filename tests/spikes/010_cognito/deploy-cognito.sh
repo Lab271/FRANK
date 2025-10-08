@@ -142,6 +142,51 @@ deploy_stack() {
     fi
 }
 
+setup_user_passwords() {
+    print_header "Setting Up User Passwords"
+    
+    # Get User Pool ID from stack outputs
+    USER_POOL_ID=$(aws cloudformation describe-stacks \
+        --stack-name "$STACK_NAME" \
+        --profile "$PROFILE" \
+        --region "$REGION" \
+        --query 'Stacks[0].Outputs[?OutputKey==`UserPoolId`].OutputValue' \
+        --output text)
+    
+    if [ -z "$USER_POOL_ID" ]; then
+        print_error "Could not get User Pool ID from stack outputs"
+        exit 1
+    fi
+    
+    # Set password for testuser_a
+    echo "Setting password for testuser_a..."
+    if aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_a" \
+        --password "TempPass123!" \
+        --permanent \
+        --profile "$PROFILE" \
+        --region "$REGION"; then
+        print_success "Password set for testuser_a"
+    else
+        print_warning "Failed to set password for testuser_a (user may not exist yet)"
+    fi
+    
+    # Set password for testuser_b
+    echo "Setting password for testuser_b..."
+    if aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_b" \
+        --password "TempPass123!" \
+        --permanent \
+        --profile "$PROFILE" \
+        --region "$REGION"; then
+        print_success "Password set for testuser_b"
+    else
+        print_warning "Failed to set password for testuser_b (user may not exist yet)"
+    fi
+}
+
 get_outputs() {
     print_header "Stack Outputs"
     
@@ -182,18 +227,21 @@ get_outputs() {
 {
     "user_pool_id": "$USER_POOL_ID",
     "app_client_id": "$APP_CLIENT_ID",
+    "client_id": "$APP_CLIENT_ID",
     "region": "$REGION",
+    "issuer": "https://cognito-idp.$REGION.amazonaws.com/$USER_POOL_ID",
+    "jwks_uri": "https://cognito-idp.$REGION.amazonaws.com/$USER_POOL_ID/.well-known/jwks.json",
     "cognito_endpoint": "$COGNITO_ENDPOINT",
     "test_users": [
         {
             "username": "testuser_a",
-            "group": "user_role_a",
-            "temp_password": "TempPass123!"
+            "groups": ["user_role_a"],
+            "temporary_password": "TempPass123!"
         },
         {
             "username": "testuser_b",
-            "group": "user_role_b",
-            "temp_password": "TempPass123!"
+            "groups": ["user_role_b"],
+            "temporary_password": "TempPass123!"
         }
     ]
 }
@@ -249,7 +297,7 @@ cleanup_stack() {
 }
 
 # Main script
-case "${1:-check}" in
+case "${1:-deploy}" in
     "check")
         check_prerequisites
         ;;
@@ -257,6 +305,13 @@ case "${1:-check}" in
         check_prerequisites
         validate_template
         deploy_stack
+        setup_user_passwords
+        get_outputs
+        ;;
+    "config")
+        get_outputs
+        ;;
+    "status")
         get_outputs
         ;;
     "outputs")
@@ -266,12 +321,14 @@ case "${1:-check}" in
         cleanup_stack
         ;;
     "help"|"-h"|"--help")
-        echo "Usage: $0 [check|deploy|outputs|cleanup]"
+        echo "Usage: $0 [check|deploy|config|status|outputs|cleanup]"
         echo ""
         echo "Commands:"
         echo "  check    - Check AWS prerequisites only"
-        echo "  deploy   - Deploy Cognito infrastructure (default)"
-        echo "  outputs  - Show stack outputs and configuration"
+        echo "  deploy   - Deploy Cognito infrastructure and setup users"
+        echo "  config   - Generate configuration file from existing stack"
+        echo "  status   - Show stack status and configuration"
+        echo "  outputs  - Show stack outputs and configuration (alias for status)"
         echo "  cleanup  - Delete the stack and clean up"
         echo "  help     - Show this help message"
         ;;

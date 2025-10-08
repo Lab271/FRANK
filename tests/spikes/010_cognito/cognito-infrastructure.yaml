@@ -86,9 +86,9 @@ Resources:
     Properties:
       ClientName: !Sub '${ProjectName}-${Environment}-api-client'
       UserPoolId: !Ref CognitoUserPool
-      GenerateSecret: true
+      GenerateSecret: false
       ExplicitAuthFlows:
-        - ADMIN_NO_SRP_AUTH
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
         - ALLOW_USER_PASSWORD_AUTH
         - ALLOW_REFRESH_TOKEN_AUTH
       TokenValidityUnits:
@@ -99,15 +99,6 @@ Resources:
       IdTokenValidity: 1
       RefreshTokenValidity: 30
       PreventUserExistenceErrors: ENABLED
-      SupportedIdentityProviders:
-        - COGNITO
-      AllowedOAuthFlows:
-        - code
-      AllowedOAuthScopes:
-        - openid
-        - email
-        - profile
-      AllowedOAuthFlowsUserPoolClient: true
       CallbackURLs:
         - http://localhost:8080/auth/callback
         - https://frank-010-cognito.local/auth/callback
@@ -130,10 +121,7 @@ Resources:
           Value: User A
         - Name: email_verified
           Value: 'true'
-      TemporaryPassword: TempPass123!
       MessageAction: SUPPRESS
-      DesiredDeliveryMediums:
-        - EMAIL
 
   TestUserB:
     Type: AWS::Cognito::UserPoolUser
@@ -149,10 +137,7 @@ Resources:
           Value: User B
         - Name: email_verified
           Value: 'true'
-      TemporaryPassword: TempPass123!
       MessageAction: SUPPRESS
-      DesiredDeliveryMediums:
-        - EMAIL
 
   # Add users to groups
   TestUserAGroupMembership:
