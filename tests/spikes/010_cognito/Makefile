@@ -182,22 +182,70 @@ status: ## Show overall spike status
 		echo "📄 Configuration: ❌ Missing (run 'make setup')"; \
 	fi
 
+# AWS Cognito deployment and testing targets
+aws-prerequisites: ## Check AWS prerequisites for deployment
+	@echo "🔍 Checking AWS prerequisites..."
+	@./deploy-cognito.sh check
+
+aws-deploy: ## Deploy AWS Cognito infrastructure to eu-central-1
+	@echo "🚀 Deploying AWS Cognito infrastructure..."
+	@./deploy-cognito.sh deploy
+
+aws-status: ## Check AWS Cognito deployment status
+	@echo "📊 Checking AWS Cognito deployment status..."
+	@./deploy-cognito.sh status
+
+aws-config: ## Generate cognito_config.json from AWS deployment
+	@echo "📄 Generating AWS Cognito configuration..."
+	@./deploy-cognito.sh config
+
+aws-cleanup: ## Delete AWS Cognito CloudFormation stack
+	@echo "🗑️ Cleaning up AWS Cognito infrastructure..."
+	@./deploy-cognito.sh cleanup
+
+aws-test: ## Test AWS Cognito authentication and API
+	@echo "🧪 Testing AWS Cognito authentication..."
+	@if [ ! -f cognito_config.json ]; then \
+		echo "❌ cognito_config.json not found. Run 'make aws-config' first."; \
+		exit 1; \
+	fi
+	python test_aws_cognito.py
+
+aws-api: ## Run Simple API with AWS Cognito (port 8000)
+	@echo "🚀 Starting Simple API with AWS Cognito..."
+	@if [ ! -f cognito_config.json ]; then \
+		echo "❌ cognito_config.json not found. Run 'make aws-config' first."; \
+		exit 1; \
+	fi
+	@echo "   API will run at: http://localhost:8000"
+	@echo "   Swagger docs: http://localhost:8000/docs"
+	python simple_api_aws.py
+
+aws-full-test: aws-deploy aws-config aws-test ## Complete AWS workflow: deploy + configure + test
+	@echo "🎯 AWS Cognito deployment and testing completed"
+
 help: ## Shows help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "\033[33mQuick Start:\033[0m"
+	@echo "\033[33mQuick Start (Mock Cognito):\033[0m"
 	@echo "  make start        # Start Colima"
 	@echo "  make full-test    # Complete spike: Mock Cognito + setup + test"
 	@echo "  make status       # Check overall status"
 	@echo "  make stop         # Stop everything and cleanup"
 	@echo ""
-	@echo "\033[33mDevelopment Workflow:\033[0m"
+	@echo "\033[33mDevelopment Workflow (Mock):\033[0m"
 	@echo "  make up           # Start Mock Cognito only"
 	@echo "  make setup        # Validate Mock Cognito service"
 	@echo "  make test         # Run authentication tests"
 	@echo "  make reset        # Clean slate restart"
 	@echo ""
-	@echo "\033[33mEndpoints:\033[0m"
+	@echo "\033[33mAWS Cognito Workflow:\033[0m"
+	@echo "  make aws-prerequisites  # Check AWS CLI and credentials"
+	@echo "  make aws-full-test      # Deploy + configure + test AWS Cognito"
+	@echo "  make aws-api            # Run Simple API with AWS Cognito"
+	@echo "  make aws-cleanup        # Delete AWS infrastructure"
+	@echo ""
+	@echo "\033[33mMock Cognito Endpoints:\033[0m"
 	@echo "  Mock Cognito API: $(MOCK_COGNITO_ENDPOINT)"
 	@echo "  Health Check:     $(MOCK_COGNITO_ENDPOINT)/health"
 	@echo "  Login:            $(MOCK_COGNITO_ENDPOINT)/auth/login"
@@ -208,5 +256,4 @@ help: ## Shows help screen
 	@echo "   Simple API (HTTP):  $(SIMPLE_API_HTTP_ENDPOINT)"
 	@echo "   Swagger Docs:       $(SIMPLE_API_ENDPOINT)/docs"
 	@echo "   Mock Cognito:       $(MOCK_COGNITO_ENDPOINT)"
-	@echo "   Swagger Docs: $(SIMPLE_API_ENDPOINT)/docs"
 	@echo ""
