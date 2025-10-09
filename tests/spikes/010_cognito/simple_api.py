@@ -1,9 +1,11 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - Cognito Authentication Spike - Simple API with Role-based Access Control
+FRANK Platform - Cognito Authentication Spike - Simple API with Mock Cognito
 
 Demonstrates FastAPI with JWT authentication using Mock Cognito service.
 Shows how to implement role-based access control with different access tiers.
+
+This is the Mock Cognito variant - use simple_api_unified.py for both Mock and AWS Cognito support.
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
@@ -43,11 +45,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-logger = app.logger if hasattr(app, 'logger') else None
-if logger is None:
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("frank-simple-api")  
+# Setup logging
+import logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("frank-simple-api")  
 
 # Security
 security = HTTPBearer()

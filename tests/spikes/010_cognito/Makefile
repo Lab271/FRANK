@@ -9,7 +9,10 @@
 # 1. Mock Cognito service: FastAPI-based authentication service
 #    - Docker internal: :8100, External via nginx: :8100
 #
-# 2. Simple API service: Role-based access control demo
+# 2. Simple API service: Role-based access control demo (Multiple variants)
+#    - simple_api.py: Mock Cognito only
+#    - simple_api_aws.py: AWS Cognito only  
+#    - simple_api_unified.py: Both Mock and AWS Cognito (RECOMMENDED)
 #    - Docker internal: :8000, External via nginx: :443 (HTTPS), :8080 (HTTP)
 #    - Swagger: https://frank-010-cognito.local/docs
 #
@@ -65,12 +68,14 @@ down: ## Stop and remove all containers
 
 destroy: down ## Stop and remove containers (alias for down)
 
-run-local: ## Run services locally for development (Simple API on :8080, Mock Cognito on :8080)
+run-local: ## Run services locally for development (deprecated - use run-unified-mock)
 	@echo "🚀 Starting services locally for development..."
 	@echo "   Mock Cognito will run on :8100"
 	@echo "   Simple API will run on :8000 locally"
 	@echo ""
-	@echo "To run both services:"
+	@echo "⚠️  DEPRECATED: Use 'make run-unified-mock' for the recommended unified API"
+	@echo ""
+	@echo "To run legacy services:"
 	@echo "  Terminal 1: python mock_cognito.py"
 	@echo "  Terminal 2: MOCK_COGNITO_URL=http://localhost:8100 python simple_api.py"
 	@echo ""
@@ -78,6 +83,38 @@ run-local: ## Run services locally for development (Simple API on :8080, Mock Co
 	@echo "  Mock Cognito: http://localhost:8100"
 	@echo "  Simple API: http://localhost:8000"
 	@echo "  Swagger: http://localhost:8000/docs"
+
+run-unified-mock: ## Run unified API with Mock Cognito (RECOMMENDED)
+	@echo "🚀 Starting Unified API with Mock Cognito..."
+	@echo "   Mock Cognito will run on :8100"
+	@echo "   Unified API will run on :8000"
+	@echo ""
+	@echo "To run unified services:"
+	@echo "  Terminal 1: python mock_cognito.py"
+	@echo "  Terminal 2: python simple_api_unified.py"
+	@echo ""
+	@echo "Then access:"
+	@echo "  Mock Cognito: http://localhost:8100"
+	@echo "  Unified API: http://localhost:8000"
+	@echo "  Swagger: http://localhost:8000/docs"
+	@echo ""
+	@echo "Test with: make test-unified"
+
+run-unified-aws: ## Run unified API with AWS Cognito
+	@echo "🚀 Starting Unified API with AWS Cognito..."
+	@echo "   ⚠️  Requires AWS configuration:"
+	@echo "   export USER_POOL_ID=eu-central-1_xxxxxxxxx"
+	@echo "   export APP_CLIENT_ID=xxxxxxxxxxxxxxxxxx"
+	@echo "   export AWS_REGION=eu-central-1"
+	@echo ""
+	@echo "To run:"
+	@echo "  python simple_api_unified.py --use-aws"
+	@echo ""
+	@echo "Then access:"
+	@echo "  Unified API: http://localhost:8000"
+	@echo "  Swagger: http://localhost:8000/docs"
+	@echo ""
+	@echo "Test with: make test-unified-aws"
 
 rebuild: ## Force rebuild and restart all services
 	@echo "🔄 Rebuilding services..."
@@ -118,13 +155,28 @@ test-api: ## Test Simple API endpoints with authentication
 	@echo ""
 	@echo "✅ Simple API tests completed"
 
-test-simple: ## Run comprehensive Simple API test suite
-	@echo "🧪 Running comprehensive Simple API tests..."
+test-simple: ## Run comprehensive Simple API test suite (legacy)
+	@echo "🧪 Running comprehensive Simple API tests (legacy)..."
+	@echo "⚠️  DEPRECATED: Use 'make test-unified' for the recommended unified API tests"
 	MOCK_COGNITO_ENDPOINT=$(MOCK_COGNITO_ENDPOINT) SIMPLE_API_ENDPOINT=$(SIMPLE_API_ENDPOINT) python test_simple_api.py
 	@echo "✅ Comprehensive Simple API tests completed"
 
-full-test: setup test test-api test-simple ## Complete workflow: setup + all tests
-	@echo "🎯 Full spike test completed"
+test-unified: ## Run unified API test suite with Mock Cognito (RECOMMENDED)
+	@echo "🧪 Running Unified API tests with Mock Cognito..."
+	python test_unified_api.py --api-url http://localhost:8000 --mock-cognito-url http://localhost:8100
+	@echo "✅ Unified API tests completed"
+
+test-unified-aws: ## Run unified API test suite with AWS Cognito
+	@echo "🧪 Running Unified API tests with AWS Cognito..."
+	@echo "⚠️  Requires AWS configuration and running API with --use-aws flag"
+	python test_unified_api.py --api-url http://localhost:8000 --test-aws
+	@echo "✅ Unified API AWS tests completed"
+
+full-test: setup test test-api test-unified ## Complete workflow: setup + all tests (RECOMMENDED)
+	@echo "🎯 Full spike test completed with unified API"
+
+full-test-legacy: setup test test-api test-simple ## Complete workflow with legacy APIs
+	@echo "🎯 Full spike test completed with legacy APIs"
 
 check-mock-cognito: ## Check if Mock Cognito is running and healthy
 	@echo "🔍 Checking Mock Cognito status..."
@@ -173,9 +225,6 @@ aws-status: ## Check AWS Cognito deployment status
 	@echo "📊 Checking AWS Cognito deployment status..."
 	@./deploy-cognito.sh status
 
-aws-config: ## Generate cognito-config-local.json from AWS deployment
-	@echo "📄 Generating AWS Cognito configuration..."
-	@./deploy-cognito.sh config
 
 aws-cleanup: ## Delete AWS Cognito CloudFormation stack
 	@echo "🗑️ Cleaning up AWS Cognito infrastructure..."
@@ -198,16 +247,22 @@ help: ## Shows help screen
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
 	@echo ""
 	@echo "\033[33mQuick Start (Mock Cognito):\033[0m"
-	@echo "  make start        # Start Colima"
-	@echo "  make full-test    # Complete spike: Mock Cognito + setup + test"
-	@echo "  make status       # Check overall status"
-	@echo "  make stop         # Stop everything and cleanup"
+	@echo "  make start              # Start Colima"
+	@echo "  make full-test          # Complete spike: Mock Cognito + setup + test (unified API)"
+	@echo "  make status             # Check overall status"
+	@echo "  make stop               # Stop everything and cleanup"
+	@echo ""
+	@echo "\033[33mUnified API Workflow (RECOMMENDED):\033[0m"
+	@echo "  make run-unified-mock   # Run unified API with Mock Cognito"
+	@echo "  make run-unified-aws    # Run unified API with AWS Cognito"
+	@echo "  make test-unified       # Test unified API with Mock Cognito"
+	@echo "  make test-unified-aws   # Test unified API with AWS Cognito"
 	@echo ""
 	@echo "\033[33mDevelopment Workflow (Mock):\033[0m"
-	@echo "  make up           # Start Mock Cognito only"
-	@echo "  make setup        # Validate Mock Cognito service"
-	@echo "  make test         # Run authentication tests"
-	@echo "  make reset        # Clean slate restart"
+	@echo "  make up                 # Start Mock Cognito only"
+	@echo "  make setup              # Validate Mock Cognito service"
+	@echo "  make test               # Run authentication tests"
+	@echo "  make reset              # Clean slate restart"
 	@echo ""
 	@echo "\033[33mAWS Cognito Workflow:\033[0m"
 	@echo "  make aws-prerequisites  # Check AWS CLI and credentials"

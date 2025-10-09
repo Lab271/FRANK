@@ -25,16 +25,6 @@ def load_config():
     except requests.exceptions.RequestException:
         pass  # Fallback to JSON file
     
-    # Fallback to JSON file
-    try:
-        with open("cognito-config-local.json", "r") as f:
-            print("✅ Configuration loaded from cognito-config-local.json")
-            return json.load(f)
-    except FileNotFoundError:
-        print("❌ Cannot load configuration from mock service or cognito-config-local.json")
-        print("   Make sure the mock service is running or run test_cognito_setup.py first.")
-        exit(1)
-
 CONFIG = load_config()
 
 def authenticate_user(username, password):

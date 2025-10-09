@@ -5,6 +5,8 @@ FRANK Platform - Cognito Authentication Spike - Simple API with AWS Cognito Inte
 Demonstrates FastAPI with JWT authentication using real AWS Cognito service.
 Shows how to implement role-based access control with AWS Cognito User Pool.
 
+This is the AWS Cognito variant - use simple_api_unified.py for both Mock and AWS Cognito support.
+
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
@@ -402,27 +404,6 @@ async def test_auth():
         "timestamp": datetime.now(timezone.utc).isoformat()
     }
 
-def load_config_from_file(config_file: str = "cognito-config.json"):
-    """Load configuration from deployment output file"""
-    global AWS_REGION, USER_POOL_ID, APP_CLIENT_ID, COGNITO_ENDPOINT
-    
-    try:
-        with open(config_file, 'r') as f:
-            config = json.load(f)
-        
-        AWS_REGION = config.get("region", AWS_REGION)
-        USER_POOL_ID = config.get("user_pool_id", "")
-        APP_CLIENT_ID = config.get("app_client_id", "")
-        COGNITO_ENDPOINT = config.get("cognito_endpoint", COGNITO_ENDPOINT)
-        
-        print(f"✅ Configuration loaded from {config_file}")
-        return True
-    except FileNotFoundError:
-        print(f"⚠️  Configuration file {config_file} not found")
-        return False
-    except json.JSONDecodeError:
-        print(f"❌ Invalid JSON in configuration file {config_file}")
-        return False
 
 def main():
     """Main function with command line argument support"""
@@ -432,16 +413,11 @@ def main():
     parser.add_argument("--app-client-id", help="Cognito App Client ID")
     parser.add_argument("--region", help="AWS Region", default="eu-central-1")
     parser.add_argument("--port", type=int, help="Port to run on", default=8001)
-    parser.add_argument("--config", help="Configuration file", default="cognito-config.json")
     parser.add_argument("--token", help="Test with provided JWT token (for testing)")
     
     args = parser.parse_args()
     
-    global AWS_REGION, USER_POOL_ID, APP_CLIENT_ID, COGNITO_ENDPOINT
-    
-    # Load configuration from file first
-    load_config_from_file(args.config)
-    
+   
     # Override with command line arguments
     if args.region:
         AWS_REGION = args.region

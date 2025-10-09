@@ -289,9 +289,6 @@ cleanup_stack() {
         
         print_success "Stack deleted successfully"
         
-        # Clean up local files
-        rm -f cognito-config.json
-        print_success "Local configuration files cleaned up"
     else
         echo "Stack deletion cancelled"
     fi
