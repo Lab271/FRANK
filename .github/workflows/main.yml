@@ -76,7 +76,7 @@ jobs:
           coverage.xml
           
     - name: Comment PR with coverage
-      if: github.event_name == 'pull_request' && matrix.python-version == '3.11'
+      if: github.event_name == 'pull_request' && matrix.python-version == '3.11' && github.actor != 'dependabot[bot]'
       uses: actions/github-script@v6
       with:
         script: |
