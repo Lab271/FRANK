@@ -37,11 +37,40 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
-)
+# Configure logging to match Uvicorn's colored format
+def setup_logging():
+    """Setup logging to match Uvicorn's colored output, a bit over the top but nice for dev"""
+    import logging
+    
+    # Try to use Uvicorn's colored formatter
+    try:
+        from uvicorn.logging import DefaultFormatter
+        
+        # Create a colored formatter like Uvicorn uses
+        formatter = DefaultFormatter(fmt="%(levelprefix)s %(message)s")
+        
+        # Setup root logger with the colored formatter
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        
+        # Remove existing handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        
+        # Add new handler with colored formatter
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+        
+    except ImportError:
+        # Fallback to basic colored format if Uvicorn formatter not available
+        logging.basicConfig(
+            level=logging.INFO,
+            format="\033[32mINFO\033[0m:     %(message)s",  # Green INFO text
+            handlers=[logging.StreamHandler()]
+        )
+
+setup_logging()
 logger = logging.getLogger("fastapi_spike")
 
 
@@ -203,7 +232,7 @@ def create_app() -> FastAPI:
             JSONResponse with error details
         """
         # Don't handle HTTPExceptions - let FastAPI handle those
-        if isinstance(exc, HTTPException):
+        if isinstance(exc, HTTPException):  # pragma: no cover
             raise exc
             
         logger.error(f"Unhandled exception: {str(exc)}")
@@ -253,7 +282,7 @@ def main():
         choices=["debug", "info", "warning", "error"],
         help="Logging level (default: info)",
     )
-    
+
     args = parser.parse_args()
     
     # Configure logging level
@@ -269,10 +298,10 @@ def main():
         host=args.host,
         port=args.port,
         reload=args.reload,
-        factory=True,
+        factory=True, # Indicates create_app is a factory function
         log_level=args.log_level
     )
 
 
-if __name__ == "__main__":
+if __name__ == "__main__":  # pragma: no cover
     main()

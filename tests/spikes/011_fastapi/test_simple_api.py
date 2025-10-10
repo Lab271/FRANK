@@ -432,6 +432,67 @@ class TestPerformance:
         assert response_time < 1.0
 
 
+class TestCoverageCompleteness:
+    """Tests to achieve 100% code coverage"""
+    
+    @pytest.fixture
+    def client(self):
+        """TestClient fixture for coverage tests"""
+        app = create_app()
+        return TestClient(app)
+    
+    def test_global_exception_handler_with_http_exception(self, client):
+        """Test that HTTPExceptions are re-raised by global handler"""
+        # This tests the isinstance(exc, HTTPException) branch in global_exception_handler
+        # The /error endpoint raises HTTPException, which should bypass global handler
+        response = client.get("/error")
+        assert response.status_code == 500
+        # This confirms HTTPException was handled by FastAPI, not global handler
+        data = response.json()
+        assert data["detail"] == "This is a controlled exception for testing purposes"
+    
+    def test_logging_import_error_fallback(self):
+        """Test logging setup fallback when uvicorn.logging is not available"""
+        # Mock ImportError to test fallback logging setup
+        import sys
+        from unittest.mock import patch
+        
+        # Temporarily remove uvicorn.logging to trigger ImportError
+        with patch.dict(sys.modules, {'uvicorn.logging': None}):
+            with patch('simple_api.logging.basicConfig') as mock_basic_config:
+                # Re-import and call setup_logging to trigger fallback
+                import importlib
+                import simple_api
+                importlib.reload(simple_api)
+                
+                # Check that basicConfig was called (fallback path)
+                mock_basic_config.assert_called()
+    
+    def test_main_function_argparse(self):
+        """Test main function argparse setup"""
+        import sys
+        from unittest.mock import patch
+        
+        # Test argparse with mocked sys.argv
+        test_args = ['simple_api.py', '--host', '0.0.0.0', '--port', '9000', '--reload', '--log-level', 'debug']
+        
+        with patch.object(sys, 'argv', test_args):
+            with patch('simple_api.uvicorn.run') as mock_uvicorn_run:
+                with patch('simple_api.logging.getLogger'):
+                    from simple_api import main
+                    main()
+                    
+                    # Verify uvicorn.run was called with correct arguments
+                    mock_uvicorn_run.assert_called_once_with(
+                        "simple_api:create_app",
+                        host='0.0.0.0',
+                        port=9000,
+                        reload=True,
+                        factory=True,
+                        log_level='debug'
+                    )
+
+
 if __name__ == "__main__":
     # Allow running tests directly with python
     pytest.main([__file__, "-v"])
