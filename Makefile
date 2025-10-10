@@ -33,7 +33,6 @@ clean: ## Clean all build files
 dev:$(VIRTUALENV)/bin/python  ## Install this for development
 	@$(PYTHON) -m pip install --upgrade pip
 	@$(PYTHON) -m pip install -e .
-	@$(PYTHON) -m pip install lark
 	@$(PYTHON) -m pip install ruff
 	@$(PYTHON) -m pip install pytest
 	@$(PYTHON) -m pip install coverage
