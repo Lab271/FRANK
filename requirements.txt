@@ -69,7 +69,6 @@ pydantic_core==2.41.1
 Pygments==2.19.2
 PyHamcrest==2.1.0
 PyMySQL==1.1.2
-pypdf==6.0.0
 pytest==8.4.2
 pytest-bdd==8.1.0
 pytest-cov==7.0.0
