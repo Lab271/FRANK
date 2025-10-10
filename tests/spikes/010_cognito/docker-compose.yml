@@ -19,11 +19,14 @@ services:
   # Mock Cognito service using FastAPI
   mock-cognito:
     build:
-      context: .
-      dockerfile: Dockerfile.cognito
+      context: ../../..
+      dockerfile: tests/spikes/010_cognito/Dockerfile.cognito
+      args:
+        BUILD_CONTEXT: tests/spikes/010_cognito
+        PACKAGE_CONTEXT: .      
     container_name: mock-cognito
-    expose:
-      - "8100:8100" # Direct HTTP access to Mock Cognito
+    ports:
+      - "8100:8100" # Direct HTTP access to Mock Cognito (exposed to localhost)
     environment:
       - ENVIRONMENT=development
     restart: unless-stopped
@@ -44,8 +47,8 @@ services:
         BUILD_CONTEXT: tests/spikes/010_cognito
         PACKAGE_CONTEXT: .      
     container_name: simple-api
-    expose:
-      - "8080:8000" # Direct HTTP access to Simple API
+    ports:
+      - "8000:8000" # Direct HTTP access to Simple API (exposed to localhost)
     environment:
       - ENVIRONMENT=development
       - MOCK_COGNITO_URL=http://mock-cognito:8100

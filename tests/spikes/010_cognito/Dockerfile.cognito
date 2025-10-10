@@ -3,24 +3,77 @@
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM python:3.13-slim
+# Accept platform arguments from buildx
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+FROM python:3.13-slim AS base
+
+# Platform-specific optimizations
+RUN case "${TARGETPLATFORM}" in \
+    "linux/amd64") \
+        echo "Building for AMD64 (AWS Fargate compatible)" \
+        ;; \
+    "linux/arm64") \
+        echo "Building for ARM64 (M1/M2 Mac and AWS Graviton compatible)" \
+        ;; \
+    *) \
+        echo "Building for platform: ${TARGETPLATFORM}" \
+        ;; \
+    esac
+
+# ===================================
+# Builder Stage
+# ===================================
+FROM base AS builder
 
 WORKDIR /app
 
-# Install dependencies inline
+# Install system dependencies for building
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install dependencies
 RUN pip install --no-cache-dir \
     fastapi==0.104.1 \
     uvicorn==0.24.0 \
     pyjwt==2.8.0 \
+    requests==2.31.0 \
     python-multipart==0.0.6 \
     cryptography==41.0.7
 
-# Copy application code
-COPY mock_cognito.py .
 
-# Expose port
+# ===================================
+# Production Stage
+# ===================================
+
+FROM builder AS production
+
+ARG BUILD_CONTEXT=tests/spikes/010_cognito
+ARG PACKAGE_CONTEXT=.
+
+
+# Set working directory
+WORKDIR /app
+
+COPY ${BUILD_CONTEXT}/README.md .
+COPY ${PACKAGE_CONTEXT}/setup.py .
+COPY ${PACKAGE_CONTEXT}/src/ ./src/
+
+# RUN pip install -e .
+RUN pip install --no-cache-dir .
+
+COPY ${BUILD_CONTEXT}/mock_cognito.py .
+
+
+# Expose port 8100 for internal communication
 EXPOSE 8100
-ENV PORT 8100
+
+# Set environment variables
+ENV PORT=8100
 
 # Run the application
 CMD ["python", "mock_cognito.py"]

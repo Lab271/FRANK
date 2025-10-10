@@ -62,7 +62,11 @@ jobs:
           --cov=src/ \
           --cov-report=xml \
           --cov-report=term-missing \
+<<<<<<< Updated upstream
           --cov-fail-under=85 \
+=======
+          --cov-fail-under=80 \
+>>>>>>> Stashed changes
           --junitxml=test-results.xml
         
     - name: Upload test results

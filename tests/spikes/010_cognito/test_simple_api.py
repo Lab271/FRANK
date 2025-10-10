@@ -1,192 +1,498 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - Cognito Authentication Spike - Simple API Test Script
+FRANK Platform - Simple API Test Suite with Mocked Cognito
 
-Comprehensive testing of the Simple API with role-based access control.
-Demonstrates authentication flows, access control, and error handling.
+Comprehensive test suite for simple_api.py that mocks JWT token validation
+instead of requiring the actual mock_cognito service to be running.
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import requests
-import json
-import sys
-import os
-from typing import Dict, Any
+import unittest
+import jwt
+from datetime import datetime, timezone, timedelta
+from fastapi.testclient import TestClient
 
-# Service endpoints - can be overridden by environment variables
-MOCK_COGNITO_URL = os.getenv("MOCK_COGNITO_ENDPOINT", "http://localhost:8100")
-SIMPLE_API_URL = os.getenv("SIMPLE_API_ENDPOINT", "https://frank-010-cognito.local")
+# Import the module under test
+from simple_api import (
+    create_app,
+    get_access_tier_from_groups,
+    check_access_level,
+    JWT_SECRET,
+    JWT_ALGORITHM,
+    MOCK_COGNITO_URL
+)
+from frank.core.enum import AccessTier
 
-def print_section(title: str):
-    """Print a formatted section header"""
-    print(f"\n{'='*60}")
-    print(f"🧪 {title}")
-    print(f"{'='*60}")
 
-def print_test(description: str):
-    """Print a test description"""
-    print(f"\n📍 {description}")
-    print("-" * 50)
-
-from typing import Optional
-
-def get_auth_token(username: str, password: str) -> Optional[str]:
-    """Get JWT token from Mock Cognito service"""
-    try:
-        response = requests.post(
-            f"{MOCK_COGNITO_URL}/auth/login",
-            json={"username": username, "password": password},
-            timeout=10
-        )
-        response.raise_for_status()
-        return response.json()["access_token"]
-    except Exception as e:
-        print(f"❌ Failed to get token for {username}: {e}")
-        return None
-
-def test_endpoint(url: str, token: Optional[str] = None, description: str = ""):
-    """Test an API endpoint with optional authentication"""
-    headers = {}
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
+class TestSimpleAPIApp(unittest.TestCase):
+    """Test cases for the Simple API FastAPI application"""
     
-    try:
-        # Disable SSL verification for self-signed certificates
-        response = requests.get(url, headers=headers, verify=False)
-        print(f"Status: {response.status_code}")
+    def setUp(self):
+        """Set up test fixtures before each test method"""
+        self.app = create_app()
+        self.client = TestClient(self.app)
         
-        if response.status_code == 200:
-            print("✅ Success:")
-            print(json.dumps(response.json(), indent=2))
-        elif response.status_code == 401:
-            print("🔒 Authentication Required (401):")
-            print(json.dumps(response.json(), indent=2))
-        elif response.status_code == 403:
-            print("🚫 Access Forbidden (403):")
-            print(json.dumps(response.json(), indent=2))
-        else:
-            print(f"❓ Unexpected response ({response.status_code}):")
-            print(response.text)
-            
-    except Exception as e:
-        print(f"❌ Request failed: {e}")
+        # Create test JWT tokens for different user types
+        self.observer_token = self._create_test_token("testuser_observer", ["observer"])
+        self.contributor_token = self._create_test_token("testuser_contributor", ["contributor"])
+        self.partner_token = self._create_test_token("testuser_partner", ["partner"])
+        self.core_member_token = self._create_test_token("testuser_core_member", ["core_member"])
+        self.invalid_token = "invalid.jwt.token"
+    
+    def _create_test_token(self, username: str, groups: list, token_type: str = "access") -> str:
+        """Create a test JWT token"""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": username,
+            "username": username,
+            "cognito:groups": groups,
+            "token_use": token_type,
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(hours=1)).timestamp()),
+            "client_id": "mock-client-id-123456",
+            "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
+        }
+        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    def _create_expired_token(self, username: str, groups: list) -> str:
+        """Create an expired JWT token for testing"""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": username,
+            "username": username,
+            "cognito:groups": groups,
+            "token_use": "access",
+            "iat": int((now - timedelta(hours=2)).timestamp()),
+            "exp": int((now - timedelta(hours=1)).timestamp()),  # Expired 1 hour ago
+            "client_id": "mock-client-id-123456",
+            "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
+        }
+        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    
+    def test_root_endpoint(self):
+        """Test the root endpoint"""
+        response = self.client.get("/")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["service"], "FRANK Simple API")
+        self.assertEqual(data["version"], "1.0.0")
+        self.assertEqual(data["authentication"], "Mock Cognito JWT")
+        self.assertIn("endpoints", data)
+        self.assertEqual(data["mock_cognito"], MOCK_COGNITO_URL)
+        self.assertIn("timestamp", data)
+    
+    def test_health_endpoint(self):
+        """Test the health check endpoint"""
+        response = self.client.get("/health")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["status"], "healthy")
+        self.assertEqual(data["service"], "frank-simple-api")
+        self.assertEqual(data["mock_cognito_url"], MOCK_COGNITO_URL)
+        self.assertIn("timestamp", data)
+    
+    def test_public_endpoint(self):
+        """Test the public endpoint (no authentication required)"""
+        response = self.client.get("/public")
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["message"], "This is a public endpoint")
+        self.assertEqual(data["access_level"], "public")
+        self.assertIn("data", data)
+        self.assertIn("public_info", data["data"])
+    
+    def test_observer_endpoint_with_observer_token(self):
+        """Test observer endpoint with valid observer token"""
+        headers = {"Authorization": f"Bearer {self.observer_token}"}
+        response = self.client.get("/observer", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["message"], "Observer access granted")
+        self.assertEqual(data["user"], "testuser_observer")
+        self.assertEqual(data["access_tier"], "observer")
+        self.assertIn("observer_data", data)
+    
+    def test_observer_endpoint_with_contributor_token(self):
+        """Test observer endpoint with contributor token (should work - higher privilege)"""
+        headers = {"Authorization": f"Bearer {self.contributor_token}"}
+        response = self.client.get("/observer", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["user"], "testuser_contributor")
+        self.assertEqual(data["access_tier"], "contributor")
+    
+    def test_observer_endpoint_no_auth(self):
+        """Test observer endpoint without authentication"""
+        response = self.client.get("/observer")
+        self.assertEqual(response.status_code, 403)  # FastAPI HTTPBearer returns 403 for missing auth
+    
+    def test_observer_endpoint_invalid_token(self):
+        """Test observer endpoint with invalid token"""
+        headers = {"Authorization": f"Bearer {self.invalid_token}"}
+        response = self.client.get("/observer", headers=headers)
+        
+        self.assertEqual(response.status_code, 401)
+        data = response.json()
+        self.assertIn("Invalid token", data["detail"])
+    
+    def test_observer_endpoint_expired_token(self):
+        """Test observer endpoint with expired token"""
+        expired_token = self._create_expired_token("testuser_observer", ["observer"])
+        headers = {"Authorization": f"Bearer {expired_token}"}
+        response = self.client.get("/observer", headers=headers)
+        
+        self.assertEqual(response.status_code, 401)
+        data = response.json()
+        self.assertIn("Token has expired", data["detail"])
+    
+    def test_contributor_endpoint_with_contributor_token(self):
+        """Test contributor endpoint with valid contributor token"""
+        headers = {"Authorization": f"Bearer {self.contributor_token}"}
+        response = self.client.get("/contributor", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["message"], "Welcome to the CONTRIBUTOR level endpoint")
+        self.assertEqual(data["access_level"], "contributor")
+        self.assertIn("user_info", data)
+        self.assertEqual(data["user_info"]["username"], "testuser_contributor")
+        self.assertEqual(data["user_info"]["access_tier"], "contributor")
+        self.assertIn("data", data)
+        self.assertIn("contributor_data", data["data"])
+    
+    def test_contributor_endpoint_with_observer_token(self):
+        """Test contributor endpoint with observer token (should fail - insufficient privilege)"""
+        headers = {"Authorization": f"Bearer {self.observer_token}"}
+        response = self.client.get("/contributor", headers=headers)
+        
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn("Insufficient access level", data["detail"])
+        self.assertIn("Required: contributor", data["detail"])
+        self.assertIn("User has: observer", data["detail"])
+    
+    def test_contributor_endpoint_with_partner_token(self):
+        """Test contributor endpoint with partner token (should work - higher privilege)"""
+        headers = {"Authorization": f"Bearer {self.partner_token}"}
+        response = self.client.get("/contributor", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertEqual(data["user_info"]["username"], "testuser_partner")
+        self.assertEqual(data["user_info"]["access_tier"], "partner")
+    
+    def test_partner_endpoint_with_partner_token(self):
+        """Test partner endpoint with valid partner token"""
+        headers = {"Authorization": f"Bearer {self.partner_token}"}
+        response = self.client.get("/partner", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["message"], "Welcome to the PARTNER level endpoint")
+        self.assertEqual(data["access_level"], "partner")
+        self.assertIn("user_info", data)
+        self.assertEqual(data["user_info"]["username"], "testuser_partner")
+        self.assertIn("data", data)
+        self.assertIn("partner_data", data["data"])
+        self.assertIn("exclusive_features", data["data"])
+    
+    def test_partner_endpoint_with_contributor_token(self):
+        """Test partner endpoint with contributor token (should fail - insufficient privilege)"""
+        headers = {"Authorization": f"Bearer {self.contributor_token}"}
+        response = self.client.get("/partner", headers=headers)
+        
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn("Insufficient access level", data["detail"])
+        self.assertIn("Required: partner", data["detail"])
+    
+    def test_core_member_endpoint_with_core_member_token(self):
+        """Test core member endpoint with valid core member token"""
+        headers = {"Authorization": f"Bearer {self.core_member_token}"}
+        response = self.client.get("/core_member", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["message"], "Welcome to the CORE_MEMBER level endpoint")
+        self.assertEqual(data["access_level"], "core_member")
+        self.assertIn("user_info", data)
+        self.assertEqual(data["user_info"]["username"], "testuser_core_member")
+        self.assertIn("data", data)
+        self.assertIn("core_member_data", data["data"])
+        self.assertIn("admin_features", data["data"])
+    
+    def test_core_member_endpoint_with_partner_token(self):
+        """Test core member endpoint with partner token (should fail - insufficient privilege)"""
+        headers = {"Authorization": f"Bearer {self.partner_token}"}
+        response = self.client.get("/core_member", headers=headers)
+        
+        self.assertEqual(response.status_code, 403)
+        data = response.json()
+        self.assertIn("Insufficient access level", data["detail"])
+        self.assertIn("Required: core_member", data["detail"])
+    
+    def test_user_info_endpoint(self):
+        """Test user info endpoint with valid token"""
+        headers = {"Authorization": f"Bearer {self.contributor_token}"}
+        response = self.client.get("/user-info", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        self.assertEqual(data["message"], "Current user information")
+        self.assertIn("user", data)
+        
+        user_info = data["user"]
+        self.assertEqual(user_info["username"], "testuser_contributor")
+        self.assertEqual(user_info["access_tier"], "contributor")
+        self.assertEqual(user_info["groups"], ["contributor"])
+        self.assertEqual(user_info["organisation_id"], "org-testuser_contributor")
+        
+        # Test permissions
+        permissions = user_info["permissions"]
+        self.assertTrue(permissions["can_access_public"])
+        self.assertTrue(permissions["can_access_contributor"])
+        self.assertFalse(permissions["can_access_partner"])
+        self.assertFalse(permissions["can_access_core"])
+    
+    def test_user_info_endpoint_partner_permissions(self):
+        """Test user info endpoint permissions for partner user"""
+        headers = {"Authorization": f"Bearer {self.partner_token}"}
+        response = self.client.get("/user-info", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        permissions = data["user"]["permissions"]
+        self.assertTrue(permissions["can_access_public"])
+        self.assertTrue(permissions["can_access_contributor"])
+        self.assertTrue(permissions["can_access_partner"])
+        self.assertFalse(permissions["can_access_core"])
+    
+    def test_user_info_endpoint_core_member_permissions(self):
+        """Test user info endpoint permissions for core member user"""
+        headers = {"Authorization": f"Bearer {self.core_member_token}"}
+        response = self.client.get("/user-info", headers=headers)
+        
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        
+        permissions = data["user"]["permissions"]
+        self.assertTrue(permissions["can_access_public"])
+        self.assertTrue(permissions["can_access_contributor"])
+        self.assertTrue(permissions["can_access_partner"])
+        self.assertTrue(permissions["can_access_core"])
+    
+    def test_token_without_username(self):
+        """Test token that's missing username field"""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": "testuser_observer",
+            # Missing "username" field
+            "cognito:groups": ["observer"],
+            "token_use": "access",
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(hours=1)).timestamp()),
+            "client_id": "mock-client-id-123456",
+            "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
+        }
+        token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        
+        headers = {"Authorization": f"Bearer {token}"}
+        response = self.client.get("/observer", headers=headers)
+        
+        self.assertEqual(response.status_code, 401)
+        data = response.json()
+        self.assertIn("Invalid token: missing username", data["detail"])
 
-def main():
-    """Run comprehensive Simple API tests"""
+
+class TestAccessTierMapping(unittest.TestCase):
+    """Test cases for access tier mapping functions"""
     
-    # Disable SSL warnings for self-signed certificates
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+    def test_get_access_tier_from_groups_observer(self):
+        """Test mapping observer group to AccessTier"""
+        tier = get_access_tier_from_groups(["observer"])
+        self.assertEqual(tier, AccessTier.OBSERVER)
     
-    print("🚀 FRANK Simple API - Comprehensive Test Suite")
-    print("=" * 60)
-    print(f"Mock Cognito: {MOCK_COGNITO_URL}")
-    print(f"Simple API: {SIMPLE_API_URL}")
-    print(f"Swagger Docs: {SIMPLE_API_URL}/docs")
-    print("⚠️  SSL verification disabled for self-signed certificates")
+    def test_get_access_tier_from_groups_contributor(self):
+        """Test mapping contributor group to AccessTier"""
+        tier = get_access_tier_from_groups(["contributor"])
+        self.assertEqual(tier, AccessTier.CONTRIBUTOR)
     
-    # Test 1: Public endpoint (no authentication)
-    print_section("Public Access - No Authentication Required")
-    test_endpoint(f"{SIMPLE_API_URL}/public", description="Public endpoint")
+    def test_get_access_tier_from_groups_partner(self):
+        """Test mapping partner group to AccessTier"""
+        tier = get_access_tier_from_groups(["partner"])
+        self.assertEqual(tier, AccessTier.PARTNER)
     
-    # Test 2: Service information
-    print_section("Service Information")
-    test_endpoint(f"{SIMPLE_API_URL}/", description="Root endpoint with service info")
-    test_endpoint(f"{SIMPLE_API_URL}/health", description="Health check")
+    def test_get_access_tier_from_groups_core_member(self):
+        """Test mapping core_member group to AccessTier"""
+        tier = get_access_tier_from_groups(["core_member"])
+        self.assertEqual(tier, AccessTier.CORE_MEMBER)
     
-    # Test 3: Authentication required endpoints (no token)
-    print_section("Authentication Required - No Token Provided")
-    test_endpoint(f"{SIMPLE_API_URL}/observer", description="Observer endpoint without token")
-    test_endpoint(f"{SIMPLE_API_URL}/contributor", description="Contributor endpoint without token")
-    test_endpoint(f"{SIMPLE_API_URL}/partner", description="Partner endpoint without token")
-    test_endpoint(f"{SIMPLE_API_URL}/core_member", description="Core member endpoint without token")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", description="User info endpoint without token")
+    def test_get_access_tier_from_groups_empty(self):
+        """Test mapping empty groups to PUBLIC"""
+        tier = get_access_tier_from_groups([])
+        self.assertEqual(tier, AccessTier.PUBLIC)
     
-    # Test 4: Get authentication tokens
-    print_section("Authentication Token Acquisition")
-    print_test("Getting tokens for test users")
+    def test_get_access_tier_from_groups_multiple(self):
+        """Test mapping multiple groups (should use first one)"""
+        tier = get_access_tier_from_groups(["partner", "contributor"])
+        self.assertEqual(tier, AccessTier.PARTNER)
     
-    # Get tokens for different users
-    token_observer = get_auth_token("testuser_observer", "TempPass123!")
-    token_contributor = get_auth_token("testuser_contributor", "TempPass123!")
-    token_partner = get_auth_token("testuser_partner", "TempPass123!")
-    token_core_member = get_auth_token("testuser_core_member", "TempPass123!")
+    def test_get_access_tier_from_groups_unknown(self):
+        """Test mapping unknown group (should use default)"""
+        tier = get_access_tier_from_groups(["unknown_group"])
+        # AccessTier.from_string with default=True should return PUBLIC for unknown values
+        self.assertEqual(tier, AccessTier.PUBLIC)
+
+
+class TestAccessLevelChecking(unittest.TestCase):
+    """Test cases for access level checking functions"""
     
-    if not all([token_observer, token_contributor, token_partner, token_core_member]):
-        print("❌ Failed to get tokens for all users")
-        return
+    def test_check_access_level_exact_match(self):
+        """Test access level check with exact tier match"""
+        self.assertTrue(check_access_level(AccessTier.CONTRIBUTOR, AccessTier.CONTRIBUTOR))
+        self.assertTrue(check_access_level(AccessTier.PARTNER, AccessTier.PARTNER))
     
-    print(f"✅ Token Observer: {token_observer[:50] if token_observer else 'None'}...")
-    print(f"✅ Token Contributor: {token_contributor[:50] if token_contributor else 'None'}...")
-    print(f"✅ Token Partner: {token_partner[:50] if token_partner else 'None'}...")
-    print(f"✅ Token Core Member: {token_core_member[:50] if token_core_member else 'None'}...")
+    def test_check_access_level_higher_privilege(self):
+        """Test access level check with higher privilege user"""
+        self.assertTrue(check_access_level(AccessTier.PARTNER, AccessTier.CONTRIBUTOR))
+        self.assertTrue(check_access_level(AccessTier.CORE_MEMBER, AccessTier.OBSERVER))
+        self.assertTrue(check_access_level(AccessTier.CORE_MEMBER, AccessTier.PARTNER))
     
-    # Test user info endpoint with all tokens
-    print("\n🔍 Testing user info endpoints:")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_observer, "Observer user info")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_contributor, "Contributor user info")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_partner, "Partner user info")
-    test_endpoint(f"{SIMPLE_API_URL}/user-info", token_core_member, "Core member user info")
+    def test_check_access_level_insufficient_privilege(self):
+        """Test access level check with insufficient privilege"""
+        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.CONTRIBUTOR))
+        self.assertFalse(check_access_level(AccessTier.CONTRIBUTOR, AccessTier.PARTNER))
+        self.assertFalse(check_access_level(AccessTier.PARTNER, AccessTier.CORE_MEMBER))
     
-    # Test access control - Observer user
-    print("\n🔐 Testing access control for Observer user:")
-    test_endpoint(f"{SIMPLE_API_URL}/observer", token_observer, "Observer accessing observer endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_observer, "Observer accessing contributor endpoint (should fail)")
-    test_endpoint(f"{SIMPLE_API_URL}/partner", token_observer, "Observer accessing partner endpoint (should fail)")
-    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_observer, "Observer accessing core member endpoint (should fail)")
+    def test_check_access_level_public_access(self):
+        """Test access level check for public access"""
+        self.assertTrue(check_access_level(AccessTier.OBSERVER, AccessTier.PUBLIC))
+        self.assertTrue(check_access_level(AccessTier.PUBLIC, AccessTier.PUBLIC))
     
-    # Test access control - Contributor user
-    print("\n🔐 Testing access control for Contributor user:")
-    test_endpoint(f"{SIMPLE_API_URL}/observer", token_contributor, "Contributor accessing observer endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_contributor, "Contributor accessing contributor endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/partner", token_contributor, "Contributor accessing partner endpoint (should fail)")
-    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_contributor, "Contributor accessing core member endpoint (should fail)")
+    def test_access_hierarchy_complete(self):
+        """Test complete access hierarchy"""
+        # Core member should have access to everything
+        for required_tier in [AccessTier.PUBLIC, AccessTier.OBSERVER, AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER]:
+            self.assertTrue(check_access_level(AccessTier.CORE_MEMBER, required_tier))
+        
+        # Observer should only have access to public and observer
+        self.assertTrue(check_access_level(AccessTier.OBSERVER, AccessTier.PUBLIC))
+        self.assertTrue(check_access_level(AccessTier.OBSERVER, AccessTier.OBSERVER))
+        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.CONTRIBUTOR))
+        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.PARTNER))
+        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.CORE_MEMBER))
+
+
+class TestEndpointIntegration(unittest.TestCase):
+    """Integration tests for complete endpoint workflows"""
     
-    # Test access control - Partner user
-    print("\n🔐 Testing access control for Partner user:")
-    test_endpoint(f"{SIMPLE_API_URL}/observer", token_partner, "Partner accessing observer endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_partner, "Partner accessing contributor endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/partner", token_partner, "Partner accessing partner endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_partner, "Partner accessing core member endpoint (should fail)")
+    def setUp(self):
+        """Set up test fixtures"""
+        self.app = create_app()
+        self.client = TestClient(self.app)
+        
+        # Create tokens for different users
+        self.tokens = {
+            "observer": self._create_test_token("testuser_observer", ["observer"]),
+            "contributor": self._create_test_token("testuser_contributor", ["contributor"]),
+            "partner": self._create_test_token("testuser_partner", ["partner"]),
+            "core_member": self._create_test_token("testuser_core_member", ["core_member"])
+        }
     
-    # Test access control - Core Member user
-    print("\n🔐 Testing access control for Core Member user:")
-    test_endpoint(f"{SIMPLE_API_URL}/observer", token_core_member, "Core member accessing observer endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/contributor", token_core_member, "Core member accessing contributor endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/partner", token_core_member, "Core member accessing partner endpoint")
-    test_endpoint(f"{SIMPLE_API_URL}/core_member", token_core_member, "Core member accessing core member endpoint")
+    def _create_test_token(self, username: str, groups: list) -> str:
+        """Create a test JWT token"""
+        now = datetime.now(timezone.utc)
+        payload = {
+            "sub": username,
+            "username": username,
+            "cognito:groups": groups,
+            "token_use": "access",
+            "iat": int(now.timestamp()),
+            "exp": int((now + timedelta(hours=1)).timestamp()),
+            "client_id": "mock-client-id-123456",
+            "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
+        }
+        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
     
-    # Test 8: Invalid token handling
-    print_section("Invalid Token Handling")
-    test_endpoint(f"{SIMPLE_API_URL}/contributor", "invalid_token", "Invalid token test")
+    def test_access_matrix(self):
+        """Test complete access matrix for all users and endpoints"""
+        # Define expected access matrix: user_type -> endpoint -> should_succeed
+        access_matrix = {
+            "observer": {
+                "/public": True,
+                "/observer": True,
+                "/contributor": False,
+                "/partner": False,
+                "/core_member": False,
+                "/user-info": True
+            },
+            "contributor": {
+                "/public": True,
+                "/observer": True,
+                "/contributor": True,
+                "/partner": False,
+                "/core_member": False,
+                "/user-info": True
+            },
+            "partner": {
+                "/public": True,
+                "/observer": True,
+                "/contributor": True,
+                "/partner": True,
+                "/core_member": False,
+                "/user-info": True
+            },
+            "core_member": {
+                "/public": True,
+                "/observer": True,
+                "/contributor": True,
+                "/partner": True,
+                "/core_member": True,
+                "/user-info": True
+            }
+        }
+        
+        for user_type, token in self.tokens.items():
+            for endpoint, should_succeed in access_matrix[user_type].items():
+                with self.subTest(user=user_type, endpoint=endpoint):
+                    headers = {"Authorization": f"Bearer {token}"}
+                    response = self.client.get(endpoint, headers=headers)
+                    
+                    if should_succeed:
+                        self.assertEqual(response.status_code, 200, 
+                                       f"{user_type} should have access to {endpoint}")
+                    else:
+                        self.assertEqual(response.status_code, 403, 
+                                       f"{user_type} should NOT have access to {endpoint}")
     
-    # Test 9: API Documentation
-    print_section("API Documentation")
-    print_test("Checking Swagger documentation availability")
-    try:
-        response = requests.get(f"{SIMPLE_API_URL}/docs", verify=False)
-        if response.status_code == 200:
-            print("✅ Swagger documentation is available")
-            print(f"   Access at: {SIMPLE_API_URL}/docs")
-        else:
-            print(f"❌ Swagger docs not available (Status: {response.status_code})")
-    except Exception as e:
-        print(f"❌ Failed to check docs: {e}")
-    
-    # Summary
-    print_section("Test Summary")
-    print("✅ Public endpoints: Working")
-    print("✅ Authentication: Working") 
-    print("✅ Role-based access control: Working")
-    print("✅ Error handling: Working")
-    print("✅ API documentation: Available")
-    print("\n🎉 All tests completed successfully!")
-    print(f"\n🔗 Quick access:")
-    print(f"   Simple API: {SIMPLE_API_URL}")
-    print(f"   Swagger UI: {SIMPLE_API_URL}/docs")
-    print(f"   Mock Cognito: {MOCK_COGNITO_URL}")
+    def test_endpoint_without_auth_matrix(self):
+        """Test that protected endpoints properly require authentication"""
+        protected_endpoints = ["/observer", "/contributor", "/partner", "/core_member", "/user-info"]
+        
+        for endpoint in protected_endpoints:
+            with self.subTest(endpoint=endpoint):
+                response = self.client.get(endpoint)
+                self.assertEqual(response.status_code, 403, 
+                               f"{endpoint} should require authentication")
+
 
 if __name__ == "__main__":
-    main()
+    # Configure test runner
+    unittest.main(verbosity=2, buffer=True)

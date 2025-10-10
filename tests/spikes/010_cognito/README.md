@@ -29,6 +29,7 @@ COMPONENT RATIONALE:
 1. **Mock Cognito Service (Step 1)**
    - Hypothesis: Local FastAPI-based Cognito emulation enables rapid development iteration
    - Expected outcome: Full auth flows testable without AWS dependencies or costs
+   - **X-Amz-Target Header Support**: Handles AWS service requests using the `X-Amz-Target` header
    - Risk: Mock behavior differences from real Cognito
 
 2. **Simple Test Script (Step 2)**
@@ -147,6 +148,44 @@ docker-compose up -d
 python test_cognito_setup.py
 ```
 
+### Complete Workflow Example
+
+Here's a complete example of using the AWS CLI token with other APIs:
+
+1. **Get access token using AWS CLI**:
+   ```bash
+   # Set dummy credentials first
+   export AWS_ACCESS_KEY_ID=dummy
+   export AWS_SECRET_ACCESS_KEY=dummy
+   
+   # Get tokens
+   AUTH_RESPONSE=$(aws cognito-idp initiate-auth \
+     --endpoint-url http://localhost:8100 \
+     --auth-flow USER_PASSWORD_AUTH \
+     --client-id mock-client-id-123456 \
+     --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123! \
+     --output json)
+   
+   # Extract access token
+   ACCESS_TOKEN=$(echo "$AUTH_RESPONSE" | jq -r '.AuthenticationResult.AccessToken')
+   echo "Access Token: $ACCESS_TOKEN"
+   ```
+
+2. **Use token with FRANK APIs**:
+   ```bash
+   # Example: Call a protected FRANK API endpoint
+   curl -X GET "http://localhost:8000/api/samples" \
+     -H "Authorization: Bearer $ACCESS_TOKEN" \
+     -H "Content-Type: application/json"
+   ```
+
+3. **Validate token using Cognito GetUser**:
+   ```bash
+   aws cognito-idp get-user \
+     --endpoint-url http://localhost:8100 \
+     --access-token "$ACCESS_TOKEN"
+   ```
+   
 **Phase 2 (API Testing):**
 ```bash
 # Test direct Mock Cognito authentication calls

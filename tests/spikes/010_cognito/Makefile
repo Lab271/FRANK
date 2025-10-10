@@ -35,7 +35,7 @@ start: ## Start Colima if not already running
 	@colima start
 	@colima status
 
-ssl-certs/nginx.crt: ~/.ssl-certs/ca.crt
+ssl-certs/nginx.crt: 
 	@mkdir -p ssl-certs
 	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt $(LOCAL_DOMAIN)
 
@@ -45,7 +45,7 @@ clean: ## Clean up docker
 	@docker network prune -f || true
 	@docker system prune -f || true
 
-stop: cleanup ## Stop Colima and clean up
+stop: clean ## Stop Colima and clean up
 	@colima stop
 
 up: ssl-certs/nginx.crt ## Build and start all services with SSL

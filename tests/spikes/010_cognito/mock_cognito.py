@@ -20,9 +20,10 @@ Our Mock Cognito implements a MINIMAL subset focused on authentication patterns:
 - User info retrieval from tokens
 - Role-based group membership (observer, contributor, partner, core_member)
 - Health check endpoint
+- AWS CLI compatibility via InitiateAuth and AdminInitiateAuth
+- AWS Cognito API action-based routing with X-Amz-Target header
 
 ❌ NOT IMPLEMENTED (Available in cognito-local):
-- AdminInitiateAuth / InitiateAuth (we use simplified /auth/login)
 - User Pool management (CreateUserPool, DeleteUserPool, DescribeUserPool)
 - App Client management (CreateUserPoolClient, DeleteUserPoolClient)
 - User management (AdminCreateUser, AdminDeleteUser, SignUp, ConfirmSignUp)
@@ -38,7 +39,7 @@ Our Mock Cognito implements a MINIMAL subset focused on authentication patterns:
 
 AUTHENTICATION FLOW COMPARISON:
 - cognito-local: Full AWS Cognito API compatibility (AdminInitiateAuth, etc.)
-- Our Mock: Simplified REST endpoints (/auth/login, /auth/validate, /auth/userinfo)
+- Our Mock: Both simplified REST endpoints (/auth/login) AND AWS API compatibility (InitiateAuth)
 
 JWT TOKEN CLAIMS COMPATIBILITY:
 ✅ Our tokens include standard claims that match Cognito patterns:
@@ -61,28 +62,64 @@ For production or advanced testing, consider using:
 - Our mock for rapid authentication pattern development and learning
 """
 
-from fastapi import FastAPI, HTTPException, Depends, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
-import jwt
-import json
-from typing import Optional, List
+import argparse
+import logging
+import time
+import os
+from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 
-import logging
+import uvicorn
+import jwt
+from fastapi import FastAPI, HTTPException, Depends, Request, Header
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from pydantic import BaseModel
 
-app = FastAPI(title="Mock Cognito Service", version="1.0.0")
-security = HTTPBearer()
 
-logger = app.logger if hasattr(app, 'logger') else None
-if logger is None:
-    import logging
-    logging.basicConfig(level=logging.INFO)
-    logger = logging.getLogger("frank-simple-api")  
-    
+# Configure logging to match Uvicorn's colored format
+def setup_logging():
+    """Setup logging to match Uvicorn's colored output"""
+    try:
+        from uvicorn.logging import DefaultFormatter
+        
+        # Create a colored formatter like Uvicorn uses
+        formatter = DefaultFormatter(fmt="%(levelprefix)s %(message)s")
+        
+        # Setup root logger with the colored formatter
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        
+        # Remove existing handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        
+        # Add new handler with colored formatter
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+        
+    except ImportError:
+        # Fallback to basic colored format if Uvicorn formatter not available
+        logging.basicConfig(
+            level=logging.INFO,
+            format="\033[32mINFO\033[0m:     %(message)s",  # Green INFO text
+            handlers=[logging.StreamHandler()]
+        )
+
+setup_logging()
+logger = logging.getLogger("mock_cognito")
+
 # JWT Secret for signing tokens (in production, use proper key management)
 JWT_SECRET = "mock-cognito-secret-key"
 JWT_ALGORITHM = "HS256"
+
+# AWS Cognito configuration for AWS CLI compatibility
+USER_POOL_ID = "eu-west-1_MOCKPOOL"
+CLIENT_ID = "mock-client-id-123456"
+REGION = "eu-west-1"
+
+# Security scheme for Bearer token authentication
+security = HTTPBearer()
 
 # In-memory user store (simulates Cognito User Pool)
 USERS_DB = {
@@ -91,28 +128,32 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "observer@example.com",
         "groups": ["observer"],
-        "enabled": True
+        "enabled": True,
+        "user_status": "CONFIRMED"
     },
     "testuser_contributor": {
         "username": "testuser_contributor", 
         "password": "TempPass123!",
         "email": "contributor@example.com",
         "groups": ["contributor"],
-        "enabled": True
+        "enabled": True,
+        "user_status": "CONFIRMED"
     },
     "testuser_partner": {
         "username": "testuser_partner", 
         "password": "TempPass123!",
         "email": "partner@example.com",
         "groups": ["partner"],
-        "enabled": True
+        "enabled": True,
+        "user_status": "CONFIRMED"
     },
     "testuser_core_member": {
         "username": "testuser_core_member", 
         "password": "TempPass123!",
         "email": "core_member@example.com",
         "groups": ["core_member"],
-        "enabled": True
+        "enabled": True,
+        "user_status": "CONFIRMED"
     }
 }
 
@@ -142,19 +183,30 @@ class UserInfo(BaseModel):
     email: str
     groups: List[str]
 
+
 def create_jwt_token(username: str, groups: List[str], token_type: str = "access") -> str:
-    """Create a JWT token with user information"""
+    """Create a JWT token with user information matching Cognito format"""
     now = datetime.now(timezone.utc)
     payload = {
-        "username": username,
+        "sub": username,  # Cognito uses 'sub' for user identifier
         "cognito:groups": groups,
         "token_use": token_type,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(hours=1)).timestamp()),
-        "aud": "mock-cognito-client",
-        "iss": "mock-cognito"
+        "client_id": CLIENT_ID,
+        "username": username,
+        "iss": f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}"
     }
+    
+    # Add additional claims for ID tokens
+    if token_type == "id":
+        user = USERS_DB[username]
+        payload["email"] = user["email"]
+        payload["email_verified"] = True
+        payload["aud"] = CLIENT_ID
+    
     return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+
 
 def verify_jwt_token(token: str) -> dict:
     """Verify and decode JWT token"""
@@ -167,6 +219,7 @@ def verify_jwt_token(token: str) -> dict:
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
 
+
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     """Get current user from JWT token"""
     token = credentials.credentials
@@ -178,30 +231,74 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     
     return USERS_DB[username]
 
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "mock-cognito", "timestamp": datetime.now(timezone.utc).isoformat()}
 
-@app.post("/auth/login", response_model=AuthResponse)
-async def login(auth_request: AuthRequest):
-    """
-    Authenticate user and return tokens
-    Simulates AWS Cognito AdminInitiateAuth
-    """
-    username = auth_request.username
-    password = auth_request.password
+def handle_cognito_action(action: str, body: Dict[str, Any]) -> Dict[str, Any]:
+    """Route requests based on AWS Cognito action"""
+    logger.info(f"Handling Cognito action: {action}")
     
-    # Validate user exists and password is correct
+    if action == "InitiateAuth":
+        return handle_initiate_auth(body)
+    elif action == "AdminInitiateAuth":
+        return handle_admin_initiate_auth(body)
+    elif action == "GetUser":
+        return handle_get_user(body)
+    elif action == "RespondToAuthChallenge":
+        return handle_respond_to_auth_challenge(body)
+    elif action == "GlobalSignOut":
+        return handle_global_sign_out(body)
+    else:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unknown operation: {action}"
+        )
+
+
+def handle_initiate_auth(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle InitiateAuth request"""
+    auth_flow = body.get("AuthFlow")
+    auth_parameters = body.get("AuthParameters", {})
+    client_id = body.get("ClientId")
+    
+    logger.info(f"InitiateAuth: AuthFlow={auth_flow}, ClientId={client_id}")
+    
+    if auth_flow != "USER_PASSWORD_AUTH":
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported auth flow: {auth_flow}"
+        )
+    
+    username = auth_parameters.get("USERNAME")
+    password = auth_parameters.get("PASSWORD")
+    
+    if not username or not password:
+        raise HTTPException(
+            status_code=400,
+            detail="USERNAME and PASSWORD required in AuthParameters"
+        )
+    
+    # Validate credentials
     if username not in USERS_DB:
-        raise HTTPException(status_code=401, detail="User not found")
+        logger.warning(f"InitiateAuth failed: User not found: {username}")
+        raise HTTPException(
+            status_code=400,
+            detail="User does not exist"
+        )
     
     user = USERS_DB[username]
+    
     if not user["enabled"]:
-        raise HTTPException(status_code=401, detail="User account is disabled")
+        logger.warning(f"InitiateAuth failed: User account disabled: {username}")
+        raise HTTPException(
+            status_code=400,
+            detail="User is disabled"
+        )
     
     if user["password"] != password:
-        raise HTTPException(status_code=401, detail="Invalid password")
+        logger.warning(f"InitiateAuth failed: Invalid password for user: {username}")
+        raise HTTPException(
+            status_code=400,
+            detail="Incorrect username or password"
+        )
     
     # Generate tokens
     groups = user["groups"]
@@ -209,106 +306,357 @@ async def login(auth_request: AuthRequest):
     id_token = create_jwt_token(username, groups, "id")
     refresh_token = create_jwt_token(username, groups, "refresh")
     
-    return AuthResponse(
-        access_token=access_token,
-        id_token=id_token,
-        refresh_token=refresh_token
-    )
-
-@app.post("/auth/validate", response_model=TokenValidationResponse)
-async def validate_token(request: TokenValidationRequest):
-    """
-    Validate JWT token and return user information
-    """
-    try:
-        payload = verify_jwt_token(request.token)
-        return TokenValidationResponse(
-            valid=True,
-            username=payload.get("username"),
-            groups=payload.get("cognito:groups", [])
-        )
-    except HTTPException as e:
-        return TokenValidationResponse(
-            valid=False,
-            error=e.detail
-        )
-
-@app.get("/auth/userinfo", response_model=UserInfo)
-async def get_user_info(current_user: dict = Depends(get_current_user)):
-    """
-    Get current user information from valid token
-    """
-    info = UserInfo(
-        username=current_user["username"],
-        email=current_user["email"],
-        groups=current_user["groups"]
-    )
-    logger.debug(f"User info retrieved for {current_user['username']}")
-    return info
-
-@app.get("/auth/users")
-async def list_users():
-    """
-    List all users in the mock user pool (for testing)
-    """
+    logger.info(f"InitiateAuth successful for user: {username} with groups: {groups}")
+    
     return {
-        "users": [
-            {
-                "username": user["username"],
-                "email": user["email"],
-                "groups": user["groups"],
-                "enabled": user["enabled"]
-            }
-            for user in USERS_DB.values()
-        ]
-    }
-
-@app.get("/config")
-async def get_config():
-    """
-    Get mock service configuration for test scripts
-    Replaces the need for external cognito-config.json file
-    """
-    return {
-        "mock_cognito_endpoint": "http://localhost:8100",
-        "service_type": "mock",
-        "test_users": [
-            {
-                "username": user["username"],
-                "password": user["password"],  # In real Cognito, passwords wouldn't be exposed
-                "group": user["groups"][0] if user["groups"] else None,
-                "email": user["email"]
-            }
-            for user in USERS_DB.values()
-        ]
-    }
-
-@app.get("/")
-async def root():
-    """Root endpoint with service information"""
-    return {
-        "service": "Mock Cognito Service",
-        "version": "1.0.0",
-        "endpoints": {
-            "login": "/auth/login",
-            "validate": "/auth/validate",
-            "userinfo": "/auth/userinfo",
-            "users": "/auth/users",
-            "config": "/config",
-            "health": "/health"
+        "AuthenticationResult": {
+            "AccessToken": access_token,
+            "IdToken": id_token,
+            "RefreshToken": refresh_token,
+            "TokenType": "Bearer",
+            "ExpiresIn": 3600
         },
-        "test_users": list(USERS_DB.keys())
+        "ChallengeParameters": {}
     }
 
-if __name__ == "__main__":
-    import os
-    import argparse
-    import uvicorn
 
-    parser = argparse.ArgumentParser(description="Run FRANK Simple API with Mock Cognito authentication")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
-    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8100")) , help="Port to run the Simple API on (default: 8100)")
+def handle_admin_initiate_auth(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle AdminInitiateAuth request (same logic as InitiateAuth for mock)"""
+    logger.info("AdminInitiateAuth called - delegating to InitiateAuth logic")
+    return handle_initiate_auth(body)
+
+
+def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle GetUser request"""
+    access_token = body.get("AccessToken")
+    
+    if not access_token:
+        raise HTTPException(status_code=400, detail="AccessToken required")
+    
+    try:
+        payload = jwt.decode(
+            access_token,
+            JWT_SECRET,
+            algorithms=[JWT_ALGORITHM],
+            options={"verify_aud": False}
+        )
+        username = payload.get("username") or payload.get("sub")
+        
+        if username not in USERS_DB:
+            raise HTTPException(status_code=400, detail="User not found")
+        
+        user = USERS_DB[username]
+        
+        logger.info(f"GetUser successful for user: {username}")
+        
+        return {
+            "Username": username,
+            "UserAttributes": [
+                {"Name": "sub", "Value": username},
+                {"Name": "email", "Value": user["email"]},
+                {"Name": "email_verified", "Value": "true"}
+            ]
+        }
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=400, detail="Token expired")
+    except jwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Invalid token")
+
+
+def handle_respond_to_auth_challenge(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle RespondToAuthChallenge (not implemented in mock)"""
+    raise HTTPException(
+        status_code=400,
+        detail="No auth challenges in mock service"
+    )
+
+
+def handle_global_sign_out(body: Dict[str, Any]) -> Dict[str, Any]:
+    """Handle GlobalSignOut"""
+    logger.info("GlobalSignOut called - returning success")
+    # In mock, just return success
+    return {}
+
+
+def create_app() -> FastAPI:
+    """
+    Create and configure FastAPI application
+    
+    Returns:
+        FastAPI: Configured FastAPI application instance
+    """
+    app = FastAPI(
+        title="Mock Cognito Service",
+        description="Simulates AWS Cognito authentication flows for local development",
+        version="1.0.0"
+    )
+
+    # Request logging middleware
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start_time = time.time()
+        
+        logger.info(f"Request: {request.method} {request.url}")
+        
+        response = await call_next(request)
+        
+        process_time = time.time() - start_time
+        logger.info(
+            f"Response: {response.status_code} "
+            f"Time: {process_time:.4f}s"
+        )
+        
+        return response
+
+    @app.get("/health")
+    async def health_check() -> Dict[str, Any]:
+        """Health check endpoint"""
+        logger.info("Health check endpoint accessed")
+        return {
+            "status": "healthy", 
+            "service": "mock-cognito", 
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "user_pool_id": USER_POOL_ID,
+            "region": REGION
+        }
+
+    # AWS Cognito API Endpoint (for AWS CLI compatibility)
+    @app.post("/")
+    async def cognito_api_endpoint(
+        request: Request,
+        x_amz_target: Optional[str] = Header(None, alias="X-Amz-Target")
+    ) -> Dict[str, Any]:
+        """
+        Main AWS Cognito API endpoint for AWS CLI compatibility
+        AWS CLI sends requests to / with X-Amz-Target header
+        """
+        
+        if not x_amz_target:
+            raise HTTPException(
+                status_code=400,
+                detail="Missing X-Amz-Target header"
+            )
+        
+        # Extract action from target header
+        # Format: AWSCognitoIdentityProviderService.InitiateAuth
+        try:
+            action = x_amz_target.split(".")[-1]
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid X-Amz-Target format"
+            )
+        
+        # Parse request body
+        try:
+            body = await request.json()
+        except Exception:
+            body = {}
+        
+        logger.info(f"AWS Cognito API call - Action: {action}")
+        logger.debug(f"Request body: {body}")
+        
+        # Handle the action
+        response = handle_cognito_action(action, body)
+        
+        logger.debug(f"Response: {response}")
+        return response
+
+    @app.post("/auth/login", response_model=AuthResponse)
+    async def login(auth_request: AuthRequest) -> AuthResponse:
+        """
+        Authenticate user and return tokens
+        Simulates AWS Cognito AdminInitiateAuth
+        """
+        username = auth_request.username
+        password = auth_request.password
+        
+        logger.info(f"Login attempt for user: {username}")
+        
+        # Validate user exists and password is correct
+        if username not in USERS_DB:
+            logger.warning(f"Login failed: User not found: {username}")
+            raise HTTPException(status_code=401, detail="User not found")
+        
+        user = USERS_DB[username]
+        if not user["enabled"]:
+            logger.warning(f"Login failed: User account disabled: {username}")
+            raise HTTPException(status_code=401, detail="User account is disabled")
+        
+        if user["password"] != password:
+            logger.warning(f"Login failed: Invalid password for user: {username}")
+            raise HTTPException(status_code=401, detail="Invalid password")
+        
+        # Generate tokens
+        groups = user["groups"]
+        access_token = create_jwt_token(username, groups, "access")
+        id_token = create_jwt_token(username, groups, "id")
+        refresh_token = create_jwt_token(username, groups, "refresh")
+        
+        logger.info(f"Login successful for user: {username} with groups: {groups}")
+        
+        return AuthResponse(
+            access_token=access_token,
+            id_token=id_token,
+            refresh_token=refresh_token
+        )
+
+    @app.post("/auth/validate", response_model=TokenValidationResponse)
+    async def validate_token(request: TokenValidationRequest) -> TokenValidationResponse:
+        """
+        Validate JWT token and return user information
+        """
+        try:
+            payload = verify_jwt_token(request.token)
+            username = payload.get("username")
+            groups = payload.get("cognito:groups", [])
+            
+            logger.info(f"Token validation successful for user: {username}")
+            
+            return TokenValidationResponse(
+                valid=True,
+                username=username,
+                groups=groups
+            )
+        except HTTPException as e:
+            logger.warning(f"Token validation failed: {e.detail}")
+            return TokenValidationResponse(
+                valid=False,
+                error=e.detail
+            )
+
+    @app.get("/auth/userinfo", response_model=UserInfo)
+    async def get_user_info(current_user: dict = Depends(get_current_user)) -> UserInfo:
+        """
+        Get current user information from valid token
+        """
+        username = current_user["username"]
+        logger.info(f"User info requested for: {username}")
+        
+        return UserInfo(
+            username=current_user["username"],
+            email=current_user["email"],
+            groups=current_user["groups"]
+        )
+
+    @app.get("/auth/users")
+    async def list_users() -> Dict[str, Any]:
+        """
+        List all users in the mock user pool (for testing)
+        """
+        logger.info("User list requested")
+        return {
+            "users": [
+                {
+                    "username": user["username"],
+                    "email": user["email"],
+                    "groups": user["groups"],
+                    "enabled": user["enabled"]
+                }
+                for user in USERS_DB.values()
+            ]
+        }
+
+    @app.get("/config")
+    async def get_config() -> Dict[str, Any]:
+        """
+        Get mock service configuration for test scripts
+        Replaces the need for external cognito-config.json file
+        """
+        logger.info("Configuration requested")
+        return {
+            "mock_cognito_endpoint": "http://localhost:8100",
+            "service_type": "mock",
+            "test_users": [
+                {
+                    "username": user["username"],
+                    "password": user["password"],  # In real Cognito, passwords wouldn't be exposed
+                    "group": user["groups"][0] if user["groups"] else None,
+                    "email": user["email"]
+                }
+                for user in USERS_DB.values()
+            ]
+        }
+
+    @app.get("/")
+    async def root() -> Dict[str, Any]:
+        """Root endpoint with service information"""
+        logger.info("Root endpoint accessed")
+        return {
+            "service": "Mock Cognito Service",
+            "version": "1.0.0",
+            "user_pool_id": USER_POOL_ID,
+            "client_id": CLIENT_ID,
+            "region": REGION,
+            "endpoints": {
+                "aws_api": "/",
+                "login": "/auth/login", 
+                "validate": "/auth/validate",
+                "userinfo": "/auth/userinfo",
+                "users": "/auth/users",
+                "config": "/config",
+                "health": "/health"
+            },
+            "supported_aws_operations": [
+                "InitiateAuth",
+                "AdminInitiateAuth", 
+                "GetUser",
+                "GlobalSignOut"
+            ],
+            "test_users": list(USERS_DB.keys()),
+            "aws_cli_usage": {
+                "setup": "export AWS_ACCESS_KEY_ID=test && export AWS_SECRET_ACCESS_KEY=test",
+                "initiate_auth": f"aws cognito-idp initiate-auth --endpoint-url http://localhost:8100 --auth-flow USER_PASSWORD_AUTH --client-id {CLIENT_ID} --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123!",
+                "get_user": "aws cognito-idp get-user --endpoint-url http://localhost:8100 --access-token <access_token_from_login>"
+            }
+        }
+
+    logger.info("Mock Cognito FastAPI application created successfully")
+    return app
+
+
+# Create module-level app instance for ASGI servers
+app = create_app()
+
+
+def main():
+    """
+    Main function with argparse for uvicorn configuration
+    """
+    parser = argparse.ArgumentParser(description="Mock Cognito Service Server")
+    parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=os.environ.get("PORT", 8100), help="Port to bind the server to (default: 8100)")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default="info",
+        choices=["debug", "info", "warning", "error"],
+        help="Logging level (default: info)",
+    )
+
     args = parser.parse_args()
+    
+    # Configure logging level
+    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
+    
+    logger.info(f"Starting Mock Cognito server on {args.host}:{args.port}")
+    logger.info(f"Reload enabled: {args.reload}")
+    logger.info(f"Log level: {args.log_level}")
+    logger.info("Available test users:")
+    for username, user in USERS_DB.items():
+        logger.info(f"  - {username} (groups: {user['groups']})")
+    
+    # Run uvicorn server
+    uvicorn.run(
+        "mock_cognito:create_app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        factory=True,  # Indicates create_app is a factory function
+        log_level=args.log_level
+    )
 
-    logger.info(f"Starting Simple API on port {args.port}")
-    uvicorn.run(app, host="0.0.0.0", port=args.port, reload=args.reload)
+
+if __name__ == "__main__":  # pragma: no cover
+    main()
