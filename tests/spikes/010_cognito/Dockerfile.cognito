@@ -3,7 +3,7 @@
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM python:3.11-slim
+FROM python:3.13-slim
 
 WORKDIR /app
 
@@ -19,7 +19,8 @@ RUN pip install --no-cache-dir \
 COPY mock_cognito.py .
 
 # Expose port
-EXPOSE 8080
+EXPOSE 8100
+ENV PORT 8100
 
 # Run the application
-CMD ["uvicorn", "mock_cognito:app", "--host", "0.0.0.0", "--port", "8100"]
+CMD ["python", "mock_cognito.py"]

@@ -3,9 +3,38 @@
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
 
-FROM python:3.11-slim
+# Accept platform arguments from buildx
+ARG TARGETPLATFORM
+ARG BUILDPLATFORM
+
+FROM python:3.13-slim AS base
+
+# Platform-specific optimizations
+RUN case "${TARGETPLATFORM}" in \
+    "linux/amd64") \
+        echo "Building for AMD64 (AWS Fargate compatible)" \
+        ;; \
+    "linux/arm64") \
+        echo "Building for ARM64 (M1/M2 Mac and AWS Graviton compatible)" \
+        ;; \
+    *) \
+        echo "Building for platform: ${TARGETPLATFORM}" \
+        ;; \
+    esac
+
+# ===================================
+# Builder Stage
+# ===================================
+FROM base AS builder
 
 WORKDIR /app
+
+# Install system dependencies for building
+RUN apt-get update && apt-get install -y \
+    gcc \
+    g++ \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
 RUN pip install --no-cache-dir \
@@ -16,32 +45,36 @@ RUN pip install --no-cache-dir \
     python-multipart==0.0.6 \
     cryptography==41.0.7
 
-# Copy FRANK core module for enum imports
-# Note: In docker build context, we need to copy from the build context
-# For now, we'll install from the local package or copy the enum module directly
 
-# Create frank module structure and copy enum
-RUN mkdir -p /app/frank/core
-COPY simple_api.py .
+# ===================================
+# Production Stage
+# ===================================
 
-# Create a simple enum module for docker (since ../../../src/frank is outside context)
-RUN echo 'from enum import Enum\n\
-class AccessTier(str, Enum):\n\
-    PUBLIC = "public"\n\
-    OBSERVER = "observer"\n\
-    CONTRIBUTOR = "contributor"\n\
-    PARTNER = "partner"\n\
-    CORE_MEMBER = "core_member"' > /app/frank/core/enum.py
+FROM builder AS production
 
-# Create __init__.py files
-RUN touch /app/frank/__init__.py && touch /app/frank/core/__init__.py
+ARG BUILD_CONTEXT=tests/spikes/010_cognito
+ARG PACKAGE_CONTEXT=.
 
-# Expose port 8080 for internal communication
-EXPOSE 8080
+
+# Set working directory
+WORKDIR /app
+
+COPY ${BUILD_CONTEXT}/README.md .
+COPY ${PACKAGE_CONTEXT}/setup.py .
+COPY ${PACKAGE_CONTEXT}/src/ ./src/
+
+# RUN pip install -e .
+RUN pip install --no-cache- .
+
+COPY ${BUILD_CONTEXT}/simple_api.py .
+
+
+# Expose port 8000 for internal communication
+EXPOSE 8000
 
 # Set environment variables
-ENV PORT=8080
-ENV MOCK_COGNITO_URL=http://mock-cognito:8080
+ENV PORT=8000
+ENV MOCK_COGNITO_URL=http://mock-cognito:8100
 
 # Run the application
-CMD ["uvicorn", "simple_api:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["python", "simple_api.py"]

@@ -301,5 +301,14 @@ async def root():
     }
 
 if __name__ == "__main__":
+    import os
+    import argparse
     import uvicorn
-    uvicorn.run(app, host="0.0.0.0", port=8100)
+
+    parser = argparse.ArgumentParser(description="Run FRANK Simple API with Mock Cognito authentication")
+    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8100")) , help="Port to run the Simple API on (default: 8100)")
+    args = parser.parse_args()
+
+    logger.info(f"Starting Simple API on port {args.port}")
+    uvicorn.run(app, host="0.0.0.0", port=args.port, reload=args.reload)

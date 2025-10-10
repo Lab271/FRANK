@@ -5,8 +5,6 @@ services:
     ports:
       - "80:80"     # HTTP redirect to HTTPS
       - "443:443"   # HTTPS to Simple API
-      - "8080:8000" # Direct HTTP access to Simple API
-      - "8100:8100" # Direct HTTP access to Mock Cognito
     container_name: nginx-lb
     volumes:
       - ./nginx-lb.conf:/etc/nginx/nginx.conf
@@ -25,10 +23,9 @@ services:
       dockerfile: Dockerfile.cognito
     container_name: mock-cognito
     expose:
-      - "8100"  # Internal port only
+      - "8100:8100" # Direct HTTP access to Mock Cognito
     environment:
       - ENVIRONMENT=development
-      - PORT=8100
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
@@ -41,15 +38,17 @@ services:
   # Simple API service demonstrating role-based access control
   simple-api:
     build:
-      context: .
-      dockerfile: Dockerfile.api
+      context: ../../..
+      dockerfile: tests/spikes/010_cognito/Dockerfile.api
+      args:
+        BUILD_CONTEXT: tests/spikes/010_cognito
+        PACKAGE_CONTEXT: .      
     container_name: simple-api
     expose:
-      - "8000"  # Internal port only
+      - "8080:8000" # Direct HTTP access to Simple API
     environment:
       - ENVIRONMENT=development
       - MOCK_COGNITO_URL=http://mock-cognito:8100
-      - PORT=8000
     depends_on:
       - mock-cognito
     restart: unless-stopped

@@ -27,7 +27,7 @@ SPDX-License-Identifier: Apache-2.0
 import pytest
 import json
 from fastapi.testclient import TestClient
-from simple_api import create_app, UnauthenticatedError
+from simple_api_011 import create_app, UnauthenticatedError
 
 
 class TestSimpleAPI:
@@ -477,14 +477,14 @@ class TestCoverageCompleteness:
         test_args = ['simple_api.py', '--host', '0.0.0.0', '--port', '9000', '--reload', '--log-level', 'debug']
         
         with patch.object(sys, 'argv', test_args):
-            with patch('simple_api.uvicorn.run') as mock_uvicorn_run:
-                with patch('simple_api.logging.getLogger'):
-                    from simple_api import main
+            with patch('simple_api_011.uvicorn.run') as mock_uvicorn_run:
+                with patch('simple_api_011.logging.getLogger'):
+                    from simple_api_011 import main
                     main()
                     
                     # Verify uvicorn.run was called with correct arguments
                     mock_uvicorn_run.assert_called_once_with(
-                        "simple_api:create_app",
+                        "simple_api_011:create_app",
                         host='0.0.0.0',
                         port=9000,
                         reload=True,

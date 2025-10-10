@@ -39,7 +39,7 @@ ssl-certs/nginx.crt: ~/.ssl-certs/ca.crt
 	@mkdir -p ssl-certs
 	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt $(LOCAL_DOMAIN)
 
-cleanup: ## Clean up docker
+clean: ## Clean up docker
 	@docker rm -f $$(docker ps -aq) || true
 	@docker volume prune -f || true
 	@docker network prune -f || true
@@ -120,8 +120,6 @@ rebuild: ## Force rebuild and restart all services
 	@echo "🔄 Rebuilding services..."
 	docker-compose down
 	docker-compose up -d --build --force-recreate
-	@echo "⏳ Waiting for services to be ready..."
-	@sleep 10
 	@echo "✅ Services rebuilt and ready"
 
 setup: up ## Validate services are running and accessible
