@@ -4,7 +4,7 @@ SHELL := /bin/bash
 PACKAGE=frank
 VIRTUALENV = ./.$(PACKAGE)
 PYTHON = $(VIRTUALENV)/bin/python
-.PHONY: test lint coverage help unittests integration clean env dev update freeze outdated check
+.PHONY: test lint help unittests integration clean env dev update freeze outdated check
 
 default: clean env test
 
@@ -38,27 +38,15 @@ dev:$(VIRTUALENV)/bin/python  ## Install this for development
 	@$(PYTHON) -m pip install pytest
 	@$(PYTHON) -m pip install coverage
 
-
-unittests:  		## Run all unittests
-	@$(PYTHON) -mpytest tests/unit/ \
-		--verbose \
-		--tb=short \
-		--cov=src/ \
-		--cov-report=xml \
-		--cov-report=html \
-		--cov-report=term-missing \
-		--cov-fail-under=65 \
-		--junitxml=test-results.xml
+test: ## Run unit tests and coverage
+	@coverage run -m pytest
+	@coverage report -m --fail-under=85
 
 integration:  ## Run all integration tests
 	@behave tests/integration
 
 lint: test ## Static code checking
 	@ruff check .
-
-coverage: ## Code coverage
-	@coverage run -m pytest
-	@coverage report -m 
 
 env: $(VIRTUALENV)/bin/python ## create the virtualenv
 	@$(PYTHON) -m pip install -r requirements.txt
