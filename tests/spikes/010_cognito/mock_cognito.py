@@ -73,7 +73,17 @@ import uvicorn
 import jwt
 from fastapi import FastAPI, HTTPException, Depends, Request, Header
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel
+
+
+# Custom AWS-style exception for Cognito API compatibility
+class AWSCognitoException(Exception):
+    def __init__(self, error_type: str, message: str, status_code: int = 400):
+        self.error_type = error_type
+        self.message = message
+        self.status_code = status_code
+        super().__init__(message)
 
 
 # Configure logging to match Uvicorn's colored format
@@ -247,9 +257,9 @@ def handle_cognito_action(action: str, body: Dict[str, Any]) -> Dict[str, Any]:
     elif action == "GlobalSignOut":
         return handle_global_sign_out(body)
     else:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unknown operation: {action}"
+        raise AWSCognitoException(
+            "InvalidParameterException",
+            f"Unknown operation: {action}"
         )
 
 
@@ -262,42 +272,43 @@ def handle_initiate_auth(body: Dict[str, Any]) -> Dict[str, Any]:
     logger.info(f"InitiateAuth: AuthFlow={auth_flow}, ClientId={client_id}")
     
     if auth_flow != "USER_PASSWORD_AUTH":
-        raise HTTPException(
-            status_code=400,
-            detail=f"Unsupported auth flow: {auth_flow}"
+        raise AWSCognitoException(
+            "InvalidParameterException",
+            f"Unsupported auth flow: {auth_flow}"
         )
     
     username = auth_parameters.get("USERNAME")
     password = auth_parameters.get("PASSWORD")
     
     if not username or not password:
-        raise HTTPException(
-            status_code=400,
-            detail="USERNAME and PASSWORD required in AuthParameters"
+        raise AWSCognitoException(
+            "InvalidParameterException",
+            "USERNAME and PASSWORD required in AuthParameters"
         )
     
     # Validate credentials
     if username not in USERS_DB:
         logger.warning(f"InitiateAuth failed: User not found: {username}")
-        raise HTTPException(
-            status_code=400,
-            detail="User does not exist"
+        raise AWSCognitoException(
+            "UserNotFoundException", 
+            "User does not exist"
         )
     
     user = USERS_DB[username]
     
     if not user["enabled"]:
         logger.warning(f"InitiateAuth failed: User account disabled: {username}")
-        raise HTTPException(
-            status_code=400,
-            detail="User is disabled"
+        raise AWSCognitoException(
+            "NotAuthorizedException",
+            "User is disabled"
         )
     
     if user["password"] != password:
         logger.warning(f"InitiateAuth failed: Invalid password for user: {username}")
-        raise HTTPException(
-            status_code=400,
-            detail="Incorrect username or password"
+        # AWS Cognito returns NotAuthorizedException for invalid passwords
+        raise AWSCognitoException(
+            "NotAuthorizedException",
+            "Incorrect username or password"
         )
     
     # Generate tokens
@@ -331,7 +342,10 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
     access_token = body.get("AccessToken")
     
     if not access_token:
-        raise HTTPException(status_code=400, detail="AccessToken required")
+        raise AWSCognitoException(
+            "InvalidParameterException",
+            "AccessToken required"
+        )
     
     try:
         payload = jwt.decode(
@@ -343,7 +357,10 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
         username = payload.get("username") or payload.get("sub")
         
         if username not in USERS_DB:
-            raise HTTPException(status_code=400, detail="User not found")
+            raise AWSCognitoException(
+                "UserNotFoundException",
+                "User not found"
+            )
         
         user = USERS_DB[username]
         
@@ -358,16 +375,22 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
             ]
         }
     except jwt.ExpiredSignatureError:
-        raise HTTPException(status_code=400, detail="Token expired")
+        raise AWSCognitoException(
+            "NotAuthorizedException",
+            "Token expired"
+        )
     except jwt.InvalidTokenError:
-        raise HTTPException(status_code=400, detail="Invalid token")
+        raise AWSCognitoException(
+            "NotAuthorizedException", 
+            "Invalid token"
+        )
 
 
 def handle_respond_to_auth_challenge(body: Dict[str, Any]) -> Dict[str, Any]:
     """Handle RespondToAuthChallenge (not implemented in mock)"""
-    raise HTTPException(
-        status_code=400,
-        detail="No auth challenges in mock service"
+    raise AWSCognitoException(
+        "InvalidParameterException",
+        "No auth challenges in mock service"
     )
 
 
@@ -390,6 +413,18 @@ def create_app() -> FastAPI:
         description="Simulates AWS Cognito authentication flows for local development",
         version="1.0.0"
     )
+
+    # Custom exception handler for AWS-style errors
+    @app.exception_handler(AWSCognitoException)
+    async def aws_cognito_exception_handler(request: Request, exc: AWSCognitoException):
+        """Handle AWS Cognito exceptions with proper AWS error format"""
+        return JSONResponse(
+            status_code=exc.status_code,
+            content={
+                "__type": exc.error_type,
+                "message": exc.message
+            }
+        )
 
     # Request logging middleware
     @app.middleware("http")
@@ -432,9 +467,9 @@ def create_app() -> FastAPI:
         """
         
         if not x_amz_target:
-            raise HTTPException(
-                status_code=400,
-                detail="Missing X-Amz-Target header"
+            raise AWSCognitoException(
+                "InvalidParameterException",
+                "Missing X-Amz-Target header"
             )
         
         # Extract action from target header
@@ -442,9 +477,9 @@ def create_app() -> FastAPI:
         try:
             action = x_amz_target.split(".")[-1]
         except Exception:
-            raise HTTPException(
-                status_code=400,
-                detail="Invalid X-Amz-Target format"
+            raise AWSCognitoException(
+                "InvalidParameterException",
+                "Invalid X-Amz-Target format"
             )
         
         # Parse request body

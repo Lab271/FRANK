@@ -266,7 +266,9 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Unsupported auth flow", response.json()["detail"])
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
+        self.assertIn("Unsupported auth flow", response_data["message"])
     
     def test_admin_initiate_auth(self):
         """Test AdminInitiateAuth (should work same as InitiateAuth)"""
@@ -358,7 +360,9 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("No auth challenges", response.json()["detail"])
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
+        self.assertIn("No auth challenges", response_data["message"])
     
     def test_unknown_operation(self):
         """Test unknown AWS operation"""
@@ -371,13 +375,17 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Unknown operation", response.json()["detail"])
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
+        self.assertIn("Unknown operation", response_data["message"])
     
     def test_missing_target_header(self):
         """Test AWS API call without X-Amz-Target header"""
         response = self.client.post("/", json={})
         self.assertEqual(response.status_code, 400)
-        self.assertIn("Missing X-Amz-Target header", response.json()["detail"])
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
+        self.assertIn("Missing X-Amz-Target header", response_data["message"])
     
     def test_invalid_target_header(self):
         """Test AWS API call with invalid X-Amz-Target header"""
@@ -388,8 +396,10 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json={})
         self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
         # The invalid target "InvalidTarget" becomes action "InvalidTarget" which is unknown
-        self.assertIn("Unknown operation: InvalidTarget", response.json()["detail"])
+        self.assertIn("Unknown operation: InvalidTarget", response_data["message"])
     
     def test_empty_target_header(self):
         """Test AWS API call with empty X-Amz-Target header"""
@@ -401,8 +411,10 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json={})
         self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
         # Empty string triggers the "Missing X-Amz-Target header" check
-        self.assertIn("Missing X-Amz-Target header", response.json()["detail"])
+        self.assertIn("Missing X-Amz-Target header", response_data["message"])
     
     def test_action_only_target_header(self):
         """Test AWS API call with target header that contains only action name"""
@@ -413,8 +425,10 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json={})
         self.assertEqual(response.status_code, 400)
+        response_data = response.json()
+        self.assertEqual(response_data["__type"], "InvalidParameterException")
         # "SomeAction".split(".")[-1] would return "SomeAction", which is unknown
-        self.assertIn("Unknown operation: SomeAction", response.json()["detail"])
+        self.assertIn("Unknown operation: SomeAction", response_data["message"])
 
 
 class TestJWTTokenFunctions(unittest.TestCase):
@@ -576,8 +590,8 @@ class TestCognitoActionHandlers(unittest.TestCase):
         self.assertIn("AuthenticationResult", result)
         
         # Test unknown action
-        from fastapi import HTTPException
-        with self.assertRaises(HTTPException):
+        from mock_cognito import AWSCognitoException
+        with self.assertRaises(AWSCognitoException):
             handle_cognito_action("UnknownAction", {})
 
 
