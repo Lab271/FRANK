@@ -68,38 +68,6 @@ down: ## Stop and remove all containers
 
 destroy: down ## Stop and remove containers (alias for down)
 
-run-local: ## Run services locally for development (deprecated - use run-unified-mock)
-	@echo "🚀 Starting services locally for development..."
-	@echo "   Mock Cognito will run on :8100"
-	@echo "   Simple API will run on :8000 locally"
-	@echo ""
-	@echo "⚠️  DEPRECATED: Use 'make run-unified-mock' for the recommended unified API"
-	@echo ""
-	@echo "To run legacy services:"
-	@echo "  Terminal 1: python mock_cognito.py"
-	@echo "  Terminal 2: MOCK_COGNITO_URL=http://localhost:8100 python simple_api.py"
-	@echo ""
-	@echo "Then access:"
-	@echo "  Mock Cognito: http://localhost:8100"
-	@echo "  Simple API: http://localhost:8000"
-	@echo "  Swagger: http://localhost:8000/docs"
-
-run-unified-mock: ## Run unified API with Mock Cognito (RECOMMENDED)
-	@echo "🚀 Starting Unified API with Mock Cognito..."
-	@echo "   Mock Cognito will run on :8100"
-	@echo "   Unified API will run on :8000"
-	@echo ""
-	@echo "To run unified services:"
-	@echo "  Terminal 1: python mock_cognito.py"
-	@echo "  Terminal 2: python simple_api_unified.py"
-	@echo ""
-	@echo "Then access:"
-	@echo "  Mock Cognito: http://localhost:8100"
-	@echo "  Unified API: http://localhost:8000"
-	@echo "  Swagger: http://localhost:8000/docs"
-	@echo ""
-	@echo "Test with: make test-unified"
-
 run-unified-aws: ## Run unified API with AWS Cognito
 	@echo "🚀 Starting Unified API with AWS Cognito..."
 	@echo "   ⚠️  Requires AWS configuration:"

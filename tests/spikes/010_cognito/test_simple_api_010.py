@@ -15,13 +15,10 @@ from datetime import datetime, timezone, timedelta
 from fastapi.testclient import TestClient
 
 # Import the module under test
-from simple_api import (
+from simple_api_010 import (
     create_app,
     get_access_tier_from_groups,
-    check_access_level,
-    JWT_SECRET,
-    JWT_ALGORITHM,
-    MOCK_COGNITO_URL
+    AppConfig
 )
 from frank.core.enum import AccessTier
 
@@ -31,7 +28,15 @@ class TestSimpleAPIApp(unittest.TestCase):
     
     def setUp(self):
         """Set up test fixtures before each test method"""
-        self.app = create_app()
+        # Create test configuration for consistent testing
+        self.test_config = AppConfig(
+            cognito_url="http://localhost:8100",
+            jwt_secret="test-secret-key",
+            jwt_algorithm="HS256",
+            validation_strategy="local_only"  # Use local validation for testing
+        )
+        
+        self.app = create_app(self.test_config)
         self.client = TestClient(self.app)
         
         # Create test JWT tokens for different user types
@@ -54,7 +59,7 @@ class TestSimpleAPIApp(unittest.TestCase):
             "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
-        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        return jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
     
     def _create_expired_token(self, username: str, groups: list) -> str:
         """Create an expired JWT token for testing"""
@@ -69,7 +74,7 @@ class TestSimpleAPIApp(unittest.TestCase):
             "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
-        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        return jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
     
     def test_root_endpoint(self):
         """Test the root endpoint"""
@@ -82,7 +87,7 @@ class TestSimpleAPIApp(unittest.TestCase):
         self.assertEqual(data["version"], "1.0.0")
         self.assertEqual(data["authentication"], "Mock Cognito JWT")
         self.assertIn("endpoints", data)
-        self.assertEqual(data["mock_cognito"], MOCK_COGNITO_URL)
+        self.assertEqual(data["mock_cognito"], self.test_config.cognito_url)
         self.assertIn("timestamp", data)
     
     def test_health_endpoint(self):
@@ -94,7 +99,7 @@ class TestSimpleAPIApp(unittest.TestCase):
         
         self.assertEqual(data["status"], "healthy")
         self.assertEqual(data["service"], "frank-simple-api")
-        self.assertEqual(data["mock_cognito_url"], MOCK_COGNITO_URL)
+        self.assertEqual(data["cognito_url"], self.test_config.cognito_url)
         self.assertIn("timestamp", data)
     
     def test_public_endpoint(self):
@@ -311,7 +316,7 @@ class TestSimpleAPIApp(unittest.TestCase):
             "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
-        token = jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        token = jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
         
         headers = {"Authorization": f"Bearer {token}"}
         response = self.client.get("/observer", headers=headers)
@@ -361,51 +366,20 @@ class TestAccessTierMapping(unittest.TestCase):
         self.assertEqual(tier, AccessTier.PUBLIC)
 
 
-class TestAccessLevelChecking(unittest.TestCase):
-    """Test cases for access level checking functions"""
-    
-    def test_check_access_level_exact_match(self):
-        """Test access level check with exact tier match"""
-        self.assertTrue(check_access_level(AccessTier.CONTRIBUTOR, AccessTier.CONTRIBUTOR))
-        self.assertTrue(check_access_level(AccessTier.PARTNER, AccessTier.PARTNER))
-    
-    def test_check_access_level_higher_privilege(self):
-        """Test access level check with higher privilege user"""
-        self.assertTrue(check_access_level(AccessTier.PARTNER, AccessTier.CONTRIBUTOR))
-        self.assertTrue(check_access_level(AccessTier.CORE_MEMBER, AccessTier.OBSERVER))
-        self.assertTrue(check_access_level(AccessTier.CORE_MEMBER, AccessTier.PARTNER))
-    
-    def test_check_access_level_insufficient_privilege(self):
-        """Test access level check with insufficient privilege"""
-        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.CONTRIBUTOR))
-        self.assertFalse(check_access_level(AccessTier.CONTRIBUTOR, AccessTier.PARTNER))
-        self.assertFalse(check_access_level(AccessTier.PARTNER, AccessTier.CORE_MEMBER))
-    
-    def test_check_access_level_public_access(self):
-        """Test access level check for public access"""
-        self.assertTrue(check_access_level(AccessTier.OBSERVER, AccessTier.PUBLIC))
-        self.assertTrue(check_access_level(AccessTier.PUBLIC, AccessTier.PUBLIC))
-    
-    def test_access_hierarchy_complete(self):
-        """Test complete access hierarchy"""
-        # Core member should have access to everything
-        for required_tier in [AccessTier.PUBLIC, AccessTier.OBSERVER, AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER]:
-            self.assertTrue(check_access_level(AccessTier.CORE_MEMBER, required_tier))
-        
-        # Observer should only have access to public and observer
-        self.assertTrue(check_access_level(AccessTier.OBSERVER, AccessTier.PUBLIC))
-        self.assertTrue(check_access_level(AccessTier.OBSERVER, AccessTier.OBSERVER))
-        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.CONTRIBUTOR))
-        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.PARTNER))
-        self.assertFalse(check_access_level(AccessTier.OBSERVER, AccessTier.CORE_MEMBER))
-
-
 class TestEndpointIntegration(unittest.TestCase):
     """Integration tests for complete endpoint workflows"""
     
     def setUp(self):
         """Set up test fixtures"""
-        self.app = create_app()
+        # Create test configuration for consistent testing
+        self.test_config = AppConfig(
+            cognito_url="http://localhost:8100",
+            jwt_secret="test-secret-key",
+            jwt_algorithm="HS256",
+            validation_strategy="local_only"  # Use local validation for testing
+        )
+        
+        self.app = create_app(self.test_config)
         self.client = TestClient(self.app)
         
         # Create tokens for different users
@@ -429,7 +403,7 @@ class TestEndpointIntegration(unittest.TestCase):
             "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
-        return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        return jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
     
     def test_access_matrix(self):
         """Test complete access matrix for all users and endpoints"""

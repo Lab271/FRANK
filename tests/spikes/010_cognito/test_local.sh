@@ -144,8 +144,104 @@ else
     echo "   ❌ Failed to get contributor token"
 fi
 
+# | **AccessTier Role** | `/public` | `/observer` | `/contributor` | `/partner` | `/core_member` |
+# |-------------------|-----------|------------|----------------|------------|---------------|
+# | **PUBLIC**        | ✅        | ❌         | ❌             | ❌         | ❌            |
+# | **OBSERVER**      | ✅        | ✅         | ❌             | ❌         | ❌            |
+# | **CONTRIBUTOR**   | ✅        | ✅         | ✅             | ❌         | ❌            |
+# | **PARTNER**       | ✅        | ✅         | ✅             | ✅         | ❌            |
+# | **CORE_MEMBER**   | ✅        | ✅         | ✅             | ✅         | ✅       
+
+# Get access token for a given username
+get_access_token() {
+    local username="$1"
+    local password="$2"
+    local response
+
+    response=$(aws cognito-idp initiate-auth \
+        --endpoint-url http://localhost:8100 \
+        --auth-flow USER_PASSWORD_AUTH \
+        --client-id mock-client-id-123456 \
+        --auth-parameters USERNAME="$username",PASSWORD="$password" \
+        --output json)
+
+    echo "$response" | jq -r '.AuthenticationResult.AccessToken'
+}
+
+# Take a  web endpoint,a role with the access token, a result and tests access accordingly
+test_access() {
+    local endpoint="$1"
+    local role="$2"
+    local http_result="$3"
+    local ACCESS_TOKEN="$4"
+
+
+    if [[ "$role" == "public" ]]; then
+        RESPONSE=$(curl -s -w "%{http_code}" "$SIMPLE_API_URL$endpoint")
+    else
+        if [[ -z "$ACCESS_TOKEN" ]]; then
+            echo "❌ ERROR: No access token provided for role $role"
+            return
+        fi
+    fi
+    RESPONSE=$(curl -s -w "%{http_code}" -H "Authorization: Bearer $ACCESS_TOKEN" "$SIMPLE_API_URL$endpoint")
+    HTTP_CODE="${RESPONSE: -3}"
+    if [[ "$HTTP_CODE" == "$http_result" ]]; then
+        printf "   ✅ PASS"
+    else
+        printf "   ❌ FAIL"
+    fi
+    echo ": testing $endpoint with role $role... Expected $http_result, got $HTTP_CODE"
+}
+
+# Test all roles observer, contributor, partner, core_member
 echo
-echo "📋 Manual Commands Reference:"
+echo "4. Testing all combinations of roles and endpoints..."
+
+test_access "/public" "public" 200 ""
+test_access "/observer" "public" 200 "$ACCESS_TOKEN"
+test_access "/contributor" "public" 403 "$ACCESS_TOKEN"
+test_access "/partner" "public" 403 "$ACCESS_TOKEN"
+test_access "/core_member" "public" 403 "$ACCESS_TOKEN"
+
+echo
+ACCESS_TOKEN=$(get_access_token "testuser_observer" "TempPass123!")
+
+test_access "/public" "observer" 200 "$ACCESS_TOKEN"
+test_access "/observer" "observer" 200 "$ACCESS_TOKEN"
+test_access "/contributor" "observer" 403 "$ACCESS_TOKEN"
+test_access "/partner" "observer" 403 "$ACCESS_TOKEN"
+test_access "/core_member" "observer" 403 "$ACCESS_TOKEN"
+
+echo
+ACCESS_TOKEN=$(get_access_token "testuser_contributor" "TempPass123!")
+
+test_access "/public" "contributor" 200 "$ACCESS_TOKEN"
+test_access "/observer" "contributor" 200 "$ACCESS_TOKEN"
+test_access "/contributor" "contributor" 200 "$ACCESS_TOKEN"
+test_access "/partner" "contributor" 403 "$ACCESS_TOKEN"
+test_access "/core_member" "contributor" 403 "$ACCESS_TOKEN"
+
+echo
+ACCESS_TOKEN=$(get_access_token "testuser_partner" "TempPass123!")
+
+test_access "/public" "partner" 200 "$ACCESS_TOKEN"
+test_access "/observer" "partner" 200 "$ACCESS_TOKEN"
+test_access "/contributor" "partner" 200 "$ACCESS_TOKEN"
+test_access "/partner" "partner" 200 "$ACCESS_TOKEN"
+test_access "/core_member" "partner" 403 "$ACCESS_TOKEN"
+
+echo
+ACCESS_TOKEN=$(get_access_token "testuser_core_member" "TempPass123!")
+
+test_access "/public" "core_member" 200 "$ACCESS_TOKEN"
+test_access "/observer" "core_member" 200 "$ACCESS_TOKEN"
+test_access "/contributor" "core_member" 200 "$ACCESS_TOKEN"
+test_access "/partner" "core_member" 200 "$ACCESS_TOKEN"
+test_access "/core_member" "core_member" 200 "$ACCESS_TOKEN"
+
+echo
+echo "4. 📋 Manual Commands Reference:"
 echo "==============================="
 echo "# Set the observer token as environment variable:"
 echo "export ACCESS_TOKEN='$ACCESS_TOKEN'"

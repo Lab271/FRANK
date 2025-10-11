@@ -1,4 +1,4 @@
-# Generated on Fri Oct 10 20:29:40 CEST 2025
+# Generated on Sat Oct 11 12:15:23 CEST 2025
 aioboto3==15.2.0
 aiobotocore==2.24.2
 aiofiles==24.1.0
@@ -65,6 +65,7 @@ PyHamcrest==2.1.0
 PyJWT==2.10.1
 PyMySQL==1.1.2
 pytest==8.4.2
+pytest-asyncio==1.2.0
 pytest-bdd==8.1.0
 pytest-cov==7.0.0
 python-dateutil==2.9.0.post0

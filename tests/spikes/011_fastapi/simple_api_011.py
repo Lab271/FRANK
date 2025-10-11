@@ -32,7 +32,7 @@ import logging
 import os
 from pathlib import Path
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -42,7 +42,7 @@ import uvicorn
 
 class AppConfig:
     """Configuration class for Simple API settings"""
-    _instance: "AppConfig" = None
+    _instance: Optional['AppConfig'] = None
 
     def __init__(self,
         setting_a: str,

@@ -66,12 +66,13 @@ import argparse
 import logging
 import time
 import os
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from datetime import datetime, timedelta, timezone
 
 import uvicorn
 import jwt
-from fastapi import FastAPI, HTTPException, Depends, Request, Header
+from fastapi import FastAPI, HTTPException, Depends, Request, Header, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
@@ -79,7 +80,7 @@ from pydantic import BaseModel
 
 # Custom AWS-style exception for Cognito API compatibility
 class AWSCognitoException(Exception):
-    def __init__(self, error_type: str, message: str, status_code: int = 400):
+    def __init__(self, error_type: str, message: str, status_code: int = status.HTTP_400_BAD_REQUEST):
         self.error_type = error_type
         self.message = message
         self.status_code = status_code
@@ -119,17 +120,54 @@ def setup_logging():
 setup_logging()
 logger = logging.getLogger("mock_cognito")
 
-# JWT Secret for signing tokens (in production, use proper key management)
-JWT_SECRET = "mock-cognito-secret-key"
-JWT_ALGORITHM = "HS256"
+class AppConfig:
+    """Configuration class for Simple API settings"""
+    _instance: Optional['AppConfig'] = None
 
-# AWS Cognito configuration for AWS CLI compatibility
-USER_POOL_ID = "eu-west-1_MOCKPOOL"
-CLIENT_ID = "mock-client-id-123456"
-REGION = "eu-west-1"
+    def __init__(self,
+        jwt_secret: str,
+        jwt_algorithm: str,
+        user_pool_id: str,
+        client_id: str,
+        region: str
+    ):
+        self.jwt_secret = jwt_secret
+        self.jwt_algorithm = jwt_algorithm
+        self.user_pool_id = user_pool_id
+        self.client_id = client_id
+        self.region = region
 
-# Security scheme for Bearer token authentication
-security = HTTPBearer()
+    @classmethod
+    def get_config(cls) -> "AppConfig":
+        """Get singleton AppConfig instance, creating it from environment if needed"""
+        if cls._instance is None:
+            cls._instance = cls(
+                jwt_secret=os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
+                jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
+                user_pool_id=os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
+                client_id=os.getenv("CLIENT_ID", "mock-client-id-123456"),
+                region=os.getenv("REGION", "eu-west-1")
+            )
+        return cls._instance
+    
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance"""
+        cls._instance = None
+
+    @classmethod
+    def update(cls, **kwargs) -> None:
+        """Update configuration values"""
+        config = cls.get_config()
+        for key, value in kwargs.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+
+def get_config() -> AppConfig:
+    """Dependency to get AppConfig instance"""
+    return AppConfig.get_config()   
+
+
 
 # In-memory user store (simulates Cognito User Pool)
 USERS_DB = {
@@ -197,15 +235,17 @@ class UserInfo(BaseModel):
 def create_jwt_token(username: str, groups: List[str], token_type: str = "access") -> str:
     """Create a JWT token with user information matching Cognito format"""
     now = datetime.now(timezone.utc)
+    current_config = AppConfig.get_config()
+
     payload = {
         "sub": username,  # Cognito uses 'sub' for user identifier
         "cognito:groups": groups,
         "token_use": token_type,
         "iat": int(now.timestamp()),
         "exp": int((now + timedelta(hours=1)).timestamp()),
-        "client_id": CLIENT_ID,
+        "client_id": current_config.client_id,
         "username": username,
-        "iss": f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}"
+        "iss": f"https://cognito-idp.{current_config.region}.amazonaws.com/{current_config.user_pool_id}"
     }
     
     # Add additional claims for ID tokens
@@ -213,33 +253,23 @@ def create_jwt_token(username: str, groups: List[str], token_type: str = "access
         user = USERS_DB[username]
         payload["email"] = user["email"]
         payload["email_verified"] = True
-        payload["aud"] = CLIENT_ID
-    
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+        payload["aud"] = current_config.client_id
+
+    return jwt.encode(payload, current_config.jwt_secret, algorithm=current_config.jwt_algorithm)
 
 
 def verify_jwt_token(token: str) -> dict:
     """Verify and decode JWT token"""
+    current_config = AppConfig.get_config()
+
     try:
         # Decode without audience verification for mock service simplicity
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_aud": False})
+        payload = jwt.decode(token, current_config.jwt_secret, algorithms=[current_config.jwt_algorithm], options={"verify_aud": False})
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=401, detail="Invalid token")
-
-
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
-    """Get current user from JWT token"""
-    token = credentials.credentials
-    payload = verify_jwt_token(token)
-    username = payload.get("username")
-    
-    if not username or username not in USERS_DB:
-        raise HTTPException(status_code=401, detail="Invalid user")
-    
-    return USERS_DB[username]
 
 
 def handle_cognito_action(action: str, body: Dict[str, Any]) -> Dict[str, Any]:
@@ -340,6 +370,7 @@ def handle_admin_initiate_auth(body: Dict[str, Any]) -> Dict[str, Any]:
 def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
     """Handle GetUser request"""
     access_token = body.get("AccessToken")
+    current_config = AppConfig.get_config()
     
     if not access_token:
         raise AWSCognitoException(
@@ -350,8 +381,8 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
     try:
         payload = jwt.decode(
             access_token,
-            JWT_SECRET,
-            algorithms=[JWT_ALGORITHM],
+            current_config.jwt_secret,
+            algorithms=[current_config.jwt_algorithm],
             options={"verify_aud": False}
         )
         username = payload.get("username") or payload.get("sub")
@@ -414,6 +445,10 @@ def create_app() -> FastAPI:
         version="1.0.0"
     )
 
+    current_config = AppConfig.get_config()
+    # Security scheme for Bearer token authentication
+    security = HTTPBearer()
+
     # Custom exception handler for AWS-style errors
     @app.exception_handler(AWSCognitoException)
     async def aws_cognito_exception_handler(request: Request, exc: AWSCognitoException):
@@ -443,6 +478,17 @@ def create_app() -> FastAPI:
         
         return response
 
+    def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+        """Get current user from JWT token"""
+        token = credentials.credentials
+        payload = verify_jwt_token(token)
+        username = payload.get("username")
+        
+        if not username or username not in USERS_DB:
+            raise HTTPException(status_code=401, detail="Invalid user")
+        
+        return USERS_DB[username]
+
     @app.get("/health")
     async def health_check() -> Dict[str, Any]:
         """Health check endpoint"""
@@ -451,8 +497,8 @@ def create_app() -> FastAPI:
             "status": "healthy", 
             "service": "mock-cognito", 
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "user_pool_id": USER_POOL_ID,
-            "region": REGION
+            "user_pool_id": current_config.user_pool_id,
+            "region": current_config.region
         }
 
     # AWS Cognito API Endpoint (for AWS CLI compatibility)
@@ -511,16 +557,16 @@ def create_app() -> FastAPI:
         # Validate user exists and password is correct
         if username not in USERS_DB:
             logger.warning(f"Login failed: User not found: {username}")
-            raise HTTPException(status_code=401, detail="User not found")
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
         
         user = USERS_DB[username]
         if not user["enabled"]:
             logger.warning(f"Login failed: User account disabled: {username}")
-            raise HTTPException(status_code=401, detail="User account is disabled")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is disabled")
         
         if user["password"] != password:
             logger.warning(f"Login failed: Invalid password for user: {username}")
-            raise HTTPException(status_code=401, detail="Invalid password")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
         
         # Generate tokens
         groups = user["groups"]
@@ -600,7 +646,7 @@ def create_app() -> FastAPI:
         """
         logger.info("Configuration requested")
         return {
-            "mock_cognito_endpoint": "http://localhost:8100",
+            "cognito_endpoint": "http://localhost:8100",
             "service_type": "mock",
             "test_users": [
                 {
@@ -620,9 +666,9 @@ def create_app() -> FastAPI:
         return {
             "service": "Mock Cognito Service",
             "version": "1.0.0",
-            "user_pool_id": USER_POOL_ID,
-            "client_id": CLIENT_ID,
-            "region": REGION,
+            "user_pool_id": current_config.user_pool_id,
+            "client_id": current_config.client_id,
+            "region": current_config.region,
             "endpoints": {
                 "aws_api": "/",
                 "login": "/auth/login", 
@@ -641,7 +687,7 @@ def create_app() -> FastAPI:
             "test_users": list(USERS_DB.keys()),
             "aws_cli_usage": {
                 "setup": "export AWS_ACCESS_KEY_ID=test && export AWS_SECRET_ACCESS_KEY=test",
-                "initiate_auth": f"aws cognito-idp initiate-auth --endpoint-url http://localhost:8100 --auth-flow USER_PASSWORD_AUTH --client-id {CLIENT_ID} --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123!",
+                "initiate_auth": f"aws cognito-idp initiate-auth --endpoint-url http://localhost:8100 --auth-flow USER_PASSWORD_AUTH --client-id {current_config.client_id} --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123!",
                 "get_user": "aws cognito-idp get-user --endpoint-url http://localhost:8100 --access-token <access_token_from_login>"
             }
         }
@@ -658,6 +704,8 @@ def main():
     """
     Main function with argparse for uvicorn configuration
     """
+    CURRENT_MODULE = Path(__file__).stem  # Filename without extension: "simple_api_011"
+
     parser = argparse.ArgumentParser(description="Mock Cognito Service Server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=os.environ.get("PORT", 8100), help="Port to bind the server to (default: 8100)")
@@ -665,9 +713,9 @@ def main():
     parser.add_argument(
         "--log-level",
         type=str,
-        default="info",
+        default=os.getenv("LOG_LEVEL", "debug"),
         choices=["debug", "info", "warning", "error"],
-        help="Logging level (default: info)",
+        help="Logging level (default: debug)",
     )
 
     args = parser.parse_args()
@@ -684,7 +732,7 @@ def main():
     
     # Run uvicorn server
     uvicorn.run(
-        "mock_cognito:create_app",
+        f"{CURRENT_MODULE}:create_app",
         host=args.host,
         port=args.port,
         reload=args.reload,

@@ -3,8 +3,7 @@ FRANK Application - Spike 010: Cognito Authentication Integration
 
 HYPOTHESIS:
 -----------
-AWS Cognito can be incrementally integrated with FRANK's FastAPI application to provide user authentication and role-based access control, starting with local development 
-using a Mock Cognito service and progressing to cloud deployment.
+AWS Cognito can be incrementally integrated with FRANK's FastAPI application to provide user authentication and role-based access control, starting with local development using a Mock Cognito service and progressing to cloud deployment.
 
 OBJECTIVE:
 ----------
@@ -35,6 +34,7 @@ COMPONENT RATIONALE:
 2. **Simple Test Script (Step 2)**
    - Hypothesis: Direct API calls validate basic authentication functionality
    - Expected outcome: Authentication tokens obtained and validated
+   - Tested in `test_local.sh`
    - Risk: Limited to basic flows, not representative of real usage
 
 3. **FastAPI Integration (Step 3)**
@@ -78,6 +78,18 @@ VALIDATION CRITERIA:
 - Mocked Cognito responses match real behavior
 - Fast test execution (under 1 second per test)
 - Complete coverage of authentication scenarios
+
+
+VALIDATION OF PERMISSIONS:
+-------------------------
+
+| **AccessTier Role** | `/public` | `/observer` | `/contributor` | `/partner` | `/core_member` |
+|-------------------|-----------|------------|----------------|------------|---------------|
+| **PUBLIC**        | ✅        | ❌         | ❌             | ❌         | ❌            |
+| **OBSERVER**      | ✅        | ✅         | ❌             | ❌         | ❌            |
+| **CONTRIBUTOR**   | ✅        | ✅         | ✅             | ❌         | ❌            |
+| **PARTNER**       | ✅        | ✅         | ✅             | ✅         | ❌            |
+| **CORE_MEMBER**   | ✅        | ✅         | ✅             | ✅         | ✅       
 
 EXPECTED LIMITATIONS:
 --------------------
@@ -191,6 +203,58 @@ Here's a complete example of using the AWS CLI token with other APIs:
 # Test direct Mock Cognito authentication calls
 python test_cognito_api.py
 ```
+# Injecting Variables into Docker Compose Files
+
+Docker Compose supports several ways to inject variables into your `docker-compose.yml` files for flexible configuration:
+
+1. **Environment Variable Substitution**  
+   Use `${VAR_NAME}` in your Compose file, and set the variable in your shell or `.env` file:
+   ```yaml
+   services:
+     web:
+       image: "myapp:${TAG}"
+   ```
+   ```bash
+   export TAG=latest
+   docker-compose up
+   ```
+
+2. **.env File**  
+   Place a `.env` file in the same directory as your Compose file:
+   ```
+   TAG=dev
+   ```
+   Docker Compose automatically loads these variables.
+
+3. **Override with `environment` Section**  
+   Pass environment variables to containers:
+   ```yaml
+   services:
+     web:
+       environment:
+         - DEBUG=true
+         - API_KEY=${API_KEY}
+   ```
+
+4. **Command Line Override**  
+   You can override variables inline:
+   ```bash
+   TAG=prod docker-compose up
+   ```
+
+5. **Multiple Compose Files**  
+   Use `-f` to override or extend configuration:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+   ```
+
+6. **Using `--env-file` Option**  
+   Specify an environment file explicitly using the `--env-file` flag:
+   ```bash
+   docker-compose --env-file custom.env up
+   ```
+
+See the [Docker Compose documentation](https://docs.docker.com/compose/environment-variables/) for more details.
 
 **Example Output:**
 ```

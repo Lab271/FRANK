@@ -3,13 +3,13 @@ services:
   nginx-lb:
     image: nginx:alpine
     ports:
-      - "80:80"     # HTTP redirect to HTTPS
-      - "443:443"   # HTTPS to Simple API
+      - "${NGINX_HTTP_PORT:-80}:80"     # HTTP redirect to HTTPS
+      - "${NGINX_HTTPS_PORT:-443}:443"   # HTTPS to Simple API
     container_name: nginx-lb
     volumes:
       - ./nginx-lb.conf:/etc/nginx/nginx.conf
-      - ./ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
-      - ./ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
+      - ${SSL_CERT_PATH:-./ssl-certs/nginx.crt}:/etc/nginx/ssl/nginx.crt:ro
+      - ${SSL_KEY_PATH:-./ssl-certs/nginx.key}:/etc/nginx/ssl/nginx.key:ro
     depends_on:
       - simple-api
       - mock-cognito
@@ -26,9 +26,14 @@ services:
         PACKAGE_CONTEXT: .      
     container_name: mock-cognito
     ports:
-      - "8100:8100" # Direct HTTP access to Mock Cognito (exposed to localhost)
+      - "${MOCK_COGNITO_PORT:-8100}:8100" # Direct HTTP access to Mock Cognito (exposed to localhost)
     environment:
-      - ENVIRONMENT=development
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
+      - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
+      - CLIENT_ID=${CLIENT_ID:-mock-client-id-123456}
+      - REGION=${REGION:-eu-west-1}
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
@@ -48,10 +53,12 @@ services:
         PACKAGE_CONTEXT: .      
     container_name: simple-api
     ports:
-      - "8000:8000" # Direct HTTP access to Simple API (exposed to localhost)
+      - "${SIMPLE_API_PORT:-8000}:8000" # Direct HTTP access to Simple API (exposed to localhost)
     environment:
-      - ENVIRONMENT=development
+      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
       - MOCK_COGNITO_URL=http://mock-cognito:8100
+      - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
     depends_on:
       - mock-cognito
     restart: unless-stopped
