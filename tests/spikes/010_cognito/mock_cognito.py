@@ -138,15 +138,20 @@ class AppConfig:
         self.region = region
 
     @classmethod
-    def get_config(cls) -> "AppConfig":
+    def get_config(cls, 
+                   jwt_secret: str = None, 
+                   jwt_algorithm: str = None,
+                   user_pool_id: str = None,
+                   client_id: str = None,
+                   region: str = None) -> "AppConfig":
         """Get singleton AppConfig instance, creating it from environment if needed"""
         if cls._instance is None:
             cls._instance = cls(
-                jwt_secret=os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
-                jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
-                user_pool_id=os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
-                client_id=os.getenv("CLIENT_ID", "mock-client-id-123456"),
-                region=os.getenv("REGION", "eu-west-1")
+                jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
+                jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
+                user_pool_id=user_pool_id or os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
+                client_id=client_id or os.getenv("CLIENT_ID", "mock-client-id-123456"),
+                region=region or os.getenv("REGION", "eu-west-1")
             )
         return cls._instance
     

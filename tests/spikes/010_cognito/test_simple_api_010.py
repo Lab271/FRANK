@@ -29,14 +29,16 @@ class TestSimpleAPIApp(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures before each test method"""
         # Create test configuration for consistent testing
-        self.test_config = AppConfig(
+        self.test_config = AppConfig.set_config(
             cognito_url="http://localhost:8100",
             jwt_secret="test-secret-key",
             jwt_algorithm="HS256",
-            validation_strategy="local_only"  # Use local validation for testing
+            validation_strategy="local_only",  # Use local validation for testing
+            client_id="mock-client-id-123456",
+            region="eu-west-1"
         )
         
-        self.app = create_app(self.test_config)
+        self.app = create_app()
         self.client = TestClient(self.app)
         
         # Create test JWT tokens for different user types
@@ -84,10 +86,9 @@ class TestSimpleAPIApp(unittest.TestCase):
         data = response.json()
         
         self.assertEqual(data["service"], "FRANK Simple API")
-        self.assertEqual(data["version"], "1.0.0")
-        self.assertEqual(data["authentication"], "Mock Cognito JWT")
+        self.assertEqual(data["authentication"], "Cognito JWT")
         self.assertIn("endpoints", data)
-        self.assertEqual(data["mock_cognito"], self.test_config.cognito_url)
+        self.assertEqual(data["cognito_url"], self.test_config.cognito_url)
         self.assertIn("timestamp", data)
     
     def test_health_endpoint(self):
@@ -123,9 +124,9 @@ class TestSimpleAPIApp(unittest.TestCase):
         data = response.json()
         
         self.assertEqual(data["message"], "Observer access granted")
-        self.assertEqual(data["user"], "testuser_observer")
-        self.assertEqual(data["access_tier"], "observer")
-        self.assertIn("observer_data", data)
+        self.assertEqual(data["user_info"]["username"], "testuser_observer")
+        self.assertEqual(data["user_info"]["access_tier"], "observer")
+        self.assertIn("data", data)
     
     def test_observer_endpoint_with_contributor_token(self):
         """Test observer endpoint with contributor token (should work - higher privilege)"""
@@ -135,8 +136,8 @@ class TestSimpleAPIApp(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         
-        self.assertEqual(data["user"], "testuser_contributor")
-        self.assertEqual(data["access_tier"], "contributor")
+        self.assertEqual(data["user_info"]["username"], "testuser_contributor")
+        self.assertEqual(data["user_info"]["access_tier"], "contributor")
     
     def test_observer_endpoint_no_auth(self):
         """Test observer endpoint without authentication"""
@@ -260,9 +261,8 @@ class TestSimpleAPIApp(unittest.TestCase):
         data = response.json()
         
         self.assertEqual(data["message"], "Current user information")
-        self.assertIn("user", data)
         
-        user_info = data["user"]
+        user_info = data["user_info"]
         self.assertEqual(user_info["username"], "testuser_contributor")
         self.assertEqual(user_info["access_tier"], "contributor")
         self.assertEqual(user_info["groups"], ["contributor"])
@@ -283,7 +283,7 @@ class TestSimpleAPIApp(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         
-        permissions = data["user"]["permissions"]
+        permissions = data["user_info"]["permissions"]
         self.assertTrue(permissions["can_access_public"])
         self.assertTrue(permissions["can_access_contributor"])
         self.assertTrue(permissions["can_access_partner"])
@@ -297,7 +297,7 @@ class TestSimpleAPIApp(unittest.TestCase):
         self.assertEqual(response.status_code, 200)
         data = response.json()
         
-        permissions = data["user"]["permissions"]
+        permissions = data["user_info"]["permissions"]
         self.assertTrue(permissions["can_access_public"])
         self.assertTrue(permissions["can_access_contributor"])
         self.assertTrue(permissions["can_access_partner"])
@@ -372,14 +372,16 @@ class TestEndpointIntegration(unittest.TestCase):
     def setUp(self):
         """Set up test fixtures"""
         # Create test configuration for consistent testing
-        self.test_config = AppConfig(
+        self.test_config = AppConfig.set_config(
             cognito_url="http://localhost:8100",
             jwt_secret="test-secret-key",
             jwt_algorithm="HS256",
-            validation_strategy="local_only"  # Use local validation for testing
+            validation_strategy="local_only",  # Use local validation for testing
+            client_id="mock-client-id-123456",
+            region="eu-west-1"            
         )
-        
-        self.app = create_app(self.test_config)
+
+        self.app = create_app()
         self.client = TestClient(self.app)
         
         # Create tokens for different users

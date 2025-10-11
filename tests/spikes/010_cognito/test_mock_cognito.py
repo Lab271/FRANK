@@ -12,6 +12,8 @@ SPDX-License-Identifier: Apache-2.0
 import unittest
 import jwt
 from datetime import datetime, timezone, timedelta
+
+from fastapi import status
 from fastapi.testclient import TestClient
 
 # Import the module under test
@@ -23,11 +25,7 @@ from mock_cognito import (
     handle_initiate_auth,
     handle_admin_initiate_auth,
     handle_get_user,
-    JWT_SECRET,
-    JWT_ALGORITHM,
-    USER_POOL_ID,
-    CLIENT_ID,
-    REGION,
+    get_config,
     USERS_DB
 )
 
@@ -53,27 +51,27 @@ class TestMockCognitoApp(unittest.TestCase):
         """Test the health check endpoint"""
         response = self.client.get("/health")
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertEqual(data["status"], "healthy")
         self.assertEqual(data["service"], "mock-cognito")
-        self.assertEqual(data["user_pool_id"], USER_POOL_ID)
-        self.assertEqual(data["region"], REGION)
+        self.assertEqual(data["user_pool_id"], get_config().user_pool_id)
+        self.assertEqual(data["region"], get_config().region)
         self.assertIn("timestamp", data)
     
     def test_root_endpoint(self):
         """Test the root endpoint with service information"""
         response = self.client.get("/")
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertEqual(data["service"], "Mock Cognito Service")
         self.assertEqual(data["version"], "1.0.0")
-        self.assertEqual(data["user_pool_id"], USER_POOL_ID)
-        self.assertEqual(data["client_id"], CLIENT_ID)
-        self.assertEqual(data["region"], REGION)
+        self.assertEqual(data["user_pool_id"], get_config().user_pool_id)
+        self.assertEqual(data["client_id"], get_config().client_id)
+        self.assertEqual(data["region"], get_config().region)
         self.assertIn("endpoints", data)
         self.assertIn("supported_aws_operations", data)
         self.assertIn("test_users", data)
@@ -88,7 +86,7 @@ class TestMockCognitoApp(unittest.TestCase):
         
         response = self.client.post("/auth/login", json=login_data)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertIn("access_token", data)
@@ -98,21 +96,21 @@ class TestMockCognitoApp(unittest.TestCase):
         self.assertEqual(data["expires_in"], 3600)
         
         # Verify the access token is valid
-        payload = jwt.decode(data["access_token"], JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_aud": False})
+        payload = jwt.decode(data["access_token"], get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
         self.assertEqual(payload["username"], "testuser_observer")
         self.assertEqual(payload["cognito:groups"], ["observer"])
     
     def test_rest_login_invalid_credentials(self):
         """Test login with invalid credentials"""
         test_cases = [
-            {"username": "nonexistent", "password": "TempPass123!"},  # Non-existent user
-            {"username": "testuser_observer", "password": "wrongpassword"},  # Wrong password
+            {"username": "nonexistent", "password": "TempPass123!", "status": status.HTTP_404_NOT_FOUND},  # Non-existent user
+            {"username": "testuser_observer", "password": "wrongpassword", "status": status.HTTP_401_UNAUTHORIZED},  # Wrong password
         ]
         
         for login_data in test_cases:
             with self.subTest(login_data=login_data):
                 response = self.client.post("/auth/login", json=login_data)
-                self.assertEqual(response.status_code, 401)
+                self.assertEqual(response.status_code, login_data["status"])
     
     def test_token_validation_endpoint(self):
         """Test token validation endpoint"""
@@ -120,7 +118,7 @@ class TestMockCognitoApp(unittest.TestCase):
         validation_data = {"token": self.observer_token}
         response = self.client.post("/auth/validate", json=validation_data)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertTrue(data["valid"])
@@ -132,7 +130,7 @@ class TestMockCognitoApp(unittest.TestCase):
         validation_data = {"token": self.invalid_token}
         response = self.client.post("/auth/validate", json=validation_data)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertFalse(data["valid"])
@@ -145,7 +143,7 @@ class TestMockCognitoApp(unittest.TestCase):
         headers = {"Authorization": f"Bearer {self.observer_token}"}
         response = self.client.get("/auth/userinfo", headers=headers)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertEqual(data["username"], "testuser_observer")
@@ -161,7 +159,7 @@ class TestMockCognitoApp(unittest.TestCase):
         """Test the list users endpoint"""
         response = self.client.get("/auth/users")
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertIn("users", data)
@@ -176,10 +174,10 @@ class TestMockCognitoApp(unittest.TestCase):
         """Test the configuration endpoint"""
         response = self.client.get("/config")
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
-        self.assertEqual(data["mock_cognito_endpoint"], "http://localhost:8100")
+        self.assertEqual(data["cognito_endpoint"], "http://localhost:8100")
         self.assertEqual(data["service_type"], "mock")
         self.assertIn("test_users", data)
         self.assertEqual(len(data["test_users"]), len(USERS_DB))
@@ -202,7 +200,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         payload = {
             "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "testuser_observer",
                 "PASSWORD": "TempPass123!"
@@ -211,7 +209,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertIn("AuthenticationResult", data)
@@ -225,7 +223,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         # Verify token structure
         access_token = auth_result["AccessToken"]
-        payload = jwt.decode(access_token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_aud": False})
+        payload = jwt.decode(access_token, get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
         self.assertEqual(payload["username"], "testuser_observer")
         self.assertEqual(payload["cognito:groups"], ["observer"])
     
@@ -238,7 +236,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         payload = {
             "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "nonexistent",
                 "PASSWORD": "wrongpassword"
@@ -246,7 +244,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         }
         
         response = self.client.post("/", headers=headers, json=payload)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
     
     def test_initiate_auth_unsupported_flow(self):
         """Test InitiateAuth with unsupported auth flow"""
@@ -257,7 +255,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         payload = {
             "AuthFlow": "SRP_AUTH",  # Unsupported flow
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "testuser_observer",
                 "PASSWORD": "TempPass123!"
@@ -265,7 +263,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         }
         
         response = self.client.post("/", headers=headers, json=payload)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         self.assertIn("Unsupported auth flow", response_data["message"])
@@ -279,7 +277,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         payload = {
             "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "testuser_contributor",
                 "PASSWORD": "TempPass123!"
@@ -288,7 +286,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertIn("AuthenticationResult", data)
     
@@ -308,7 +306,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
         self.assertEqual(data["Username"], "testuser_partner")
@@ -332,7 +330,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         }
         
         response = self.client.post("/", headers=headers, json=payload)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
     
     def test_global_sign_out(self):
         """Test GlobalSignOut API call"""
@@ -345,7 +343,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         response = self.client.post("/", headers=headers, json=payload)
         
-        self.assertEqual(response.status_code, 200)
+        self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         self.assertEqual(data, {})  # Should return empty dict
     
@@ -359,7 +357,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         payload = {}
         
         response = self.client.post("/", headers=headers, json=payload)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         self.assertIn("No auth challenges", response_data["message"])
@@ -374,7 +372,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         payload = {}
         
         response = self.client.post("/", headers=headers, json=payload)
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         self.assertIn("Unknown operation", response_data["message"])
@@ -382,7 +380,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
     def test_missing_target_header(self):
         """Test AWS API call without X-Amz-Target header"""
         response = self.client.post("/", json={})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         self.assertIn("Missing X-Amz-Target header", response_data["message"])
@@ -395,7 +393,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         }
         
         response = self.client.post("/", headers=headers, json={})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         # The invalid target "InvalidTarget" becomes action "InvalidTarget" which is unknown
@@ -410,7 +408,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         }
         
         response = self.client.post("/", headers=headers, json={})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         # Empty string triggers the "Missing X-Amz-Target header" check
@@ -424,7 +422,7 @@ class TestAWSCognitoAPI(unittest.TestCase):
         }
         
         response = self.client.post("/", headers=headers, json={})
-        self.assertEqual(response.status_code, 400)
+        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
         response_data = response.json()
         self.assertEqual(response_data["__type"], "InvalidParameterException")
         # "SomeAction".split(".")[-1] would return "SomeAction", which is unknown
@@ -441,13 +439,13 @@ class TestJWTTokenFunctions(unittest.TestCase):
         token = create_jwt_token(username, groups, "access")
         
         # Decode and verify
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_aud": False})
+        payload = jwt.decode(token, get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
         
         self.assertEqual(payload["sub"], username)
         self.assertEqual(payload["username"], username)
         self.assertEqual(payload["cognito:groups"], groups)
         self.assertEqual(payload["token_use"], "access")
-        self.assertEqual(payload["client_id"], CLIENT_ID)
+        self.assertEqual(payload["client_id"], get_config().client_id)
         self.assertIn("iat", payload)
         self.assertIn("exp", payload)
         self.assertIn("iss", payload)
@@ -465,12 +463,12 @@ class TestJWTTokenFunctions(unittest.TestCase):
         token = create_jwt_token(username, groups, "id")
         
         # Decode and verify
-        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM], options={"verify_aud": False})
+        payload = jwt.decode(token, get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
         
         self.assertEqual(payload["token_use"], "id")
         self.assertEqual(payload["email"], "contributor@example.com")
         self.assertTrue(payload["email_verified"])
-        self.assertEqual(payload["aud"], CLIENT_ID)
+        self.assertEqual(payload["aud"], get_config().client_id)
     
     def test_verify_jwt_token_valid(self):
         """Test verifying valid JWT tokens"""
@@ -508,15 +506,15 @@ class TestJWTTokenFunctions(unittest.TestCase):
             "token_use": "access",
             "iat": int((now - timedelta(hours=2)).timestamp()),
             "exp": int((now - timedelta(hours=1)).timestamp()),  # Expired 1 hour ago
-            "client_id": CLIENT_ID,
-            "iss": f"https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}"
+            "client_id": get_config().client_id,
+            "iss": f"https://cognito-idp.{get_config().region}.amazonaws.com/{get_config().user_pool_id}"
         }
-        expired_token = jwt.encode(expired_payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
-        
+        expired_token = jwt.encode(expired_payload, get_config().jwt_secret, algorithm=get_config().jwt_algorithm)
+
         with self.assertRaises(HTTPException) as context:
             verify_jwt_token(expired_token)
         
-        self.assertEqual(context.exception.status_code, 401)
+        self.assertEqual(context.exception.status_code, status.HTTP_401_UNAUTHORIZED)
         self.assertIn("Token has expired", context.exception.detail)
 
 
@@ -527,7 +525,7 @@ class TestCognitoActionHandlers(unittest.TestCase):
         """Test handle_initiate_auth function directly"""
         body = {
             "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "testuser_observer",
                 "PASSWORD": "TempPass123!"
@@ -549,7 +547,7 @@ class TestCognitoActionHandlers(unittest.TestCase):
         """Test handle_admin_initiate_auth function"""
         body = {
             "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "testuser_contributor",
                 "PASSWORD": "TempPass123!"
@@ -579,7 +577,7 @@ class TestCognitoActionHandlers(unittest.TestCase):
         # Test InitiateAuth routing
         body = {
             "AuthFlow": "USER_PASSWORD_AUTH",
-            "ClientId": CLIENT_ID,
+            "ClientId": get_config().client_id,
             "AuthParameters": {
                 "USERNAME": "testuser_observer",
                 "PASSWORD": "TempPass123!"

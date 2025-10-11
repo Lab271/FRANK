@@ -37,7 +37,7 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies
-RUN pip install --no-cache-dir \
+RUN pip install --no-cache-dir --user \
     fastapi==0.104.1 \
     uvicorn==0.24.0 \
     pyjwt==2.8.0 \
@@ -51,11 +51,16 @@ RUN pip install --no-cache-dir \
 # Production Stage
 # ===================================
 
-FROM builder AS production
+FROM base AS production
+
+# Create non-root user
+RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
+
+# Copy Python dependencies from builder stage
+COPY --from=builder /root/.local /home/frankuser/.local
 
 ARG BUILD_CONTEXT=tests/spikes/010_cognito
 ARG PACKAGE_CONTEXT=.
-
 
 # Set working directory
 WORKDIR /app
@@ -65,15 +70,18 @@ COPY ${PACKAGE_CONTEXT}/setup.py .
 COPY ${PACKAGE_CONTEXT}/src/ ./src/
 
 # RUN pip install -e .
-RUN pip install --no-cache- .
+RUN pip install --no-cache-dir .
 
 COPY ${BUILD_CONTEXT}/simple_api_010.py simple_api.py
 
+# Change ownership to frankuser
+RUN chown -R frankuser:frankuser /app
 
-# Expose port 8000 for internal communication
-EXPOSE 8000
+# Switch to non-root user
+USER frankuser
 
 # Set environment variables
+ENV PATH=/home/frankuser/.local/bin:$PATH
 ENV PORT=8000
 ENV MOCK_COGNITO_URL=http://mock-cognito:8100
 

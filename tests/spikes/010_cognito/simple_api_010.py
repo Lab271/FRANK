@@ -50,23 +50,44 @@ class AppConfig:
         cognito_url: str,
         jwt_secret: str,
         jwt_algorithm: str,
-        validation_strategy: str
+        validation_strategy: str,
+        client_id: str,
+        region: str
     ):
         self.cognito_url = cognito_url
         self.jwt_secret = jwt_secret
         self.jwt_algorithm = jwt_algorithm
         self.validation_strategy = validation_strategy
+        self.client_id = client_id
+        self.region = region
+
     
     @classmethod
-    def get_config(cls) -> 'AppConfig':
-        """Get singleton AppConfig instance, creating it from environment if needed"""
-        if cls._instance is None:
-            cls._instance = cls(
-            cognito_url=os.getenv("COGNITO_URL", "http://localhost:8100"),
-            jwt_secret=os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
-            jwt_algorithm=os.getenv("JWT_ALGORITHM", "HS256"),
-            validation_strategy=os.getenv("VALIDATION_STRATEGY", "local_only")
+    def set_config(cls,
+                   cognito_url: str = None,
+                   jwt_secret: str = None,
+                   jwt_algorithm: str = None,
+                   validation_strategy: str = None,
+                   client_id: str = None,
+                   region: str = None) -> "AppConfig":
+
+
+        """Set singleton AppConfig instance, creating it from environment if needed"""
+        cls._instance = cls(
+            cognito_url=cognito_url or os.getenv("COGNITO_URL", "http://localhost:8100"),
+            jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
+            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
+            client_id=client_id or os.getenv("CLIENT_ID", "mock-client-id-123456"),
+            validation_strategy=validation_strategy or os.getenv("VALIDATION_STRATEGY", "local_only"),
+            region=region or os.getenv("REGION", "eu-west-1")
         )
+        return cls._instance
+
+    @classmethod
+    def get_config(cls) -> "AppConfig":
+        """Get the singleton AppConfig instance"""
+        if cls._instance is None:
+            cls.set_config()
         return cls._instance
 
     @classmethod
