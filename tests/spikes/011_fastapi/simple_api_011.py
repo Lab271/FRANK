@@ -28,7 +28,6 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import argparse
-from functools import lru_cache
 import logging
 import os
 from pathlib import Path
@@ -45,8 +44,7 @@ class AppConfig:
     """Configuration class for Simple API settings"""
     _instance: "AppConfig" = None
 
-    def __init__(
-        self,
+    def __init__(self,
         setting_a: str,
         setting_n: str
     ):
@@ -81,8 +79,22 @@ def get_config() -> AppConfig:
     return AppConfig.get_config()   
 
 # Configure logging to match Uvicorn's colored format
-def setup_logging():
+def setup_logging(silent=False):
     """Setup logging to match Uvicorn's colored output, a bit over the top but nice for dev"""
+    
+    if silent:
+        # Silent mode - disable ALL logging
+       
+        # Specifically silence known loggers
+        for logger_name in ['uvicorn', 'uvicorn.access', 'uvicorn.error', 'fastapi', 'root']:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.CRITICAL)
+            logger.disabled = True
+            # Remove all handlers
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+        
+        return logging.getLogger("uvicorn")  # Return a silenced logger
     
     # Try to use Uvicorn's colored formatter
     try:
@@ -104,6 +116,11 @@ def setup_logging():
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
         
+        # Also setup uvicorn logger specifically
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_logger.setLevel(logging.INFO)
+        return uvicorn_logger
+        
     except ImportError:
         # Fallback to basic colored format if Uvicorn formatter not available
         logging.basicConfig(
@@ -111,9 +128,9 @@ def setup_logging():
             format="\033[32mINFO\033[0m:     %(message)s",  # Green INFO text
             handlers=[logging.StreamHandler()]
         )
+        return logging.getLogger("uvicorn")
 
-setup_logging()
-logger = logging.getLogger("uvicorn")
+
 
 
 class UnauthenticatedError(HTTPException):
@@ -145,7 +162,6 @@ def create_app() -> FastAPI:
         FastAPI: Configured FastAPI application instance
     """
 
-
     # Security scheme for Bearer token authentication
     security = HTTPBearer()
 
@@ -175,18 +191,18 @@ def create_app() -> FastAPI:
         allow_headers=["*"],
     )
 
+    # Don't setup logging at module level - let main() handle it
+    logger = logging.getLogger("uvicorn")
+
     # Request logging middleware
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start_time = time.time()
-        
-        logger.info(f"Request: {request.method} {request.url}")
-        
+               
         response = await call_next(request)
         
         process_time = time.time() - start_time
         logger.info(
-            f"Response: {response.status_code} "
             f"Time: {process_time:.4f}s"
         )
         
@@ -322,7 +338,6 @@ def create_app() -> FastAPI:
             "filename": Path(__file__).name, # "simple_api_011.py"
         }
     
-    logger.info("FastAPI application created successfully")
     return app
 
 
@@ -349,7 +364,14 @@ def main():
         choices=["debug", "info", "warning", "error"],
         help="Logging level (default: debug or LOG_LEVEL)",
     )
+    parser.add_argument(
+        "-s", "--silent",
+        action="store_true",
+        default=os.getenv("SILENT", "False").lower() in ("true", "1", "yes"),
+        help="Enable silent mode (default: False or SILENT)"
+    )
 
+    ### Example configuration settings for the AppConfig
     parser.add_argument("--setting_a", type=str, default=os.getenv("SETTING_A", "default_value_a"), help="Configuration setting A (default: SETTING_A or 'default_value_a')")
     parser.add_argument("--setting_n", type=str, default=os.getenv("SETTING_N", "default_value_n"), help="Configuration setting N (default: SETTING_N or 'default_value_n')")   
 
@@ -360,13 +382,20 @@ def main():
     os.environ["SETTING_A"] = args.setting_a
     os.environ["SETTING_N"] = args.setting_n
     
-    # Configure logging level
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
-    
-    logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
-    logger.info(f"Reload enabled: {args.reload}")
-    logger.info(f"Log level: {args.log_level}")
-    logger.info(f"Module: {CURRENT_MODULE}")
+    # Setup logging based on silent flag
+    if args.silent:
+        logger = setup_logging(silent=True)
+        # Set uvicorn log level to critical+ to silence it completely
+        args.log_level = "critical"
+        # Also disable uvicorn's own logging       
+    else:
+        logger = setup_logging(silent=False)
+        logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
+        logger.info(f"Reload enabled: {args.reload}")
+        logger.info(f"Log level: {args.log_level}")
+        logger.info(f"Module: {CURRENT_MODULE}")
+        
+    logging.getLogger('uvicorn').setLevel(getattr(logging, args.log_level.upper()))
     
     # Run uvicorn server with dynamic module name
     uvicorn.run(
@@ -374,8 +403,9 @@ def main():
         host=args.host,
         port=args.port,
         reload=args.reload,
-        factory=True, # Indicates create_app is a factory function
-        log_level=args.log_level
+        factory=True,  # Indicates create_app is a factory function
+        access_log=not args.silent,  # Disable access logging
+        log_level=args.log_level if not args.silent else 'critical'
     )
 
 
