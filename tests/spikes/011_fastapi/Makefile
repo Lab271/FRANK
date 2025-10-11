@@ -28,7 +28,8 @@ dev: install ## Install development dependencies (includes testing tools)
 	pip install pytest pytest-cov pytest-xdist coverage[toml]
 
 test: ## Run all tests
-	pytest test_simple_api.py -v
+	@coverage run -m pytest
+	@coverage report -m 
 
 test-outside: ## Run tests simulating external calls
 	@echo "🔍 Testing all FastAPI endpoints..."
