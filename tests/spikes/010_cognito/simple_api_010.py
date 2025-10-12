@@ -5,9 +5,6 @@ FRANK Platform - Cognito Authentication Spike - Simple API with Mock Cognito
 Demonstrates FastAPI with JWT authentication using Mock Cognito service.
 Shows how to implement role-based access control with different access tiers.
 
-This module demonstrates a FastAPI application implementing JWT authentication using a Mock Cognito service.
-It showcases role-based access control (RBAC) with different access tiers, mapping Cognito groups to internal access levels.
-
 Three token validation [VALIDATION_STRATEGY] strategies are supported:
 1. "server_first": Attempt server-side validation with Cognito first, then fall back to local JWT validation if the server is unavailable.
 2. "local_only": Only perform local JWT validation, without contacting any Cognito server.
@@ -16,7 +13,7 @@ Three token validation [VALIDATION_STRATEGY] strategies are supported:
 Key Features:
 - AppConfig that can be configured via environment variables or command line arguments.
 - FastAPI endpoints protected by access tier (OBSERVER, CONTRIBUTOR, PARTNER, CORE_MEMBER).
-- External Cognito server validation (mock or AWS) with fallback to local JWT validation.
+- External Cognito server validation (mock or AWS) with local JWT validation.
 - Role mapping from Cognito groups to FRANK AccessTier enum.
 - Health check and public endpoints.
 
@@ -36,6 +33,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 import httpx
 import jwt
+from jwt import PyJWKClient
 import uvicorn
 
 import frank
@@ -51,13 +49,29 @@ class AppConfig:
         jwt_secret: str,
         jwt_algorithm: str,
         validation_strategy: str,
-        region: str
+        region: str,
+        user_pool_id: str = None
     ):
         self.cognito_url = cognito_url
         self.jwt_secret = jwt_secret
         self.jwt_algorithm = jwt_algorithm
         self.validation_strategy = validation_strategy
         self.region = region
+        self.user_pool_id = user_pool_id
+        
+        # Construct JWKS URL for local validation
+        if self.cognito_url.startswith("http"):
+            # Mock Cognito
+            self.jwks_url = f"{self.cognito_url}/{self.user_pool_id}/.well-known/jwks.json"
+        else:
+            # Real AWS Cognito
+            self.jwks_url = f"https://cognito-idp.{self.region}.amazonaws.com/{self.user_pool_id}/.well-known/jwks.json"
+
+        # Validate configuration
+        if self.validation_strategy not in ["server_first", "local_only", "server_only"]:
+            raise ValueError(f"Invalid validation strategy: {self.validation_strategy}")
+        if self.jwt_algorithm not in ["RS256", "HS256"]:
+            raise ValueError(f"Unsupported JWT algorithm: {self.jwt_algorithm}")
 
     
     @classmethod
@@ -66,16 +80,18 @@ class AppConfig:
                    jwt_secret: str = None,
                    jwt_algorithm: str = None,
                    validation_strategy: str = None,
-                   region: str = None) -> "AppConfig":
-
-
+                   region: str = None,
+                   user_pool_id: str = None) -> "AppConfig":
         """Set singleton AppConfig instance, creating it from environment if needed"""
+        
+        # Priority order: passed parameters > environment variables > defaults
         cls._instance = cls(
             cognito_url=cognito_url or os.getenv("COGNITO_URL", "http://localhost:8100"),
             jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
-            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
+            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "RS256"),
             validation_strategy=validation_strategy or os.getenv("VALIDATION_STRATEGY", "local_only"),
-            region=region or os.getenv("REGION", "eu-west-1")
+            region=region or os.getenv("REGION", "eu-west-1"),
+            user_pool_id=user_pool_id or os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL")
         )
         return cls._instance
 
@@ -149,25 +165,48 @@ def get_access_tier_from_groups(groups: List[str]) -> AccessTier:
     return AccessTier.from_string(primary_group, default=True)
 
 async def validate_token_locally(token: str) -> Dict[str, Any]:
-    """Validate JWT token locally"""
+    """Validate JWT token locally using JWKS (AWS Cognito compatible)"""
     current_config = get_config()
+    
     try:
-        payload = jwt.decode(
-            token,
-            current_config.jwt_secret,
-            algorithms=[current_config.jwt_algorithm],
-            options={"verify_aud": False}
-        )
+        if current_config.jwt_algorithm == "RS256":
+            # Use JWKS for RS256 tokens (AWS Cognito style)
+            jwks_client = PyJWKClient(current_config.jwks_url)
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["RS256"],
+                options={"verify_aud": False},  # Skip audience verification for mock
+                issuer=f"https://cognito-idp.{current_config.region}.amazonaws.com/{current_config.user_pool_id}"
+            )
+        else:
+            # Fallback to HS256 for backwards compatibility
+            payload = jwt.decode(
+                token,
+                current_config.jwt_secret,
+                algorithms=[current_config.jwt_algorithm],
+                options={"verify_aud": False}
+            )
+            
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    except jwt.InvalidTokenError:
+    except jwt.InvalidTokenError as e:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token",
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        # Handle JWKS errors
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Token validation failed: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
     
@@ -193,60 +232,23 @@ async def validate_token_locally(token: str) -> Dict[str, Any]:
     }
 
 async def validate_token_with_server(token: str) -> Optional[Dict[str, Any]]:
-    """Validate token with Cognito server (mock or AWS)"""
+    """Validate token with AWS Cognito GetUser API (real AWS only)"""
+    current_config = get_config()
+    
+    # Only use this for real AWS Cognito, not for mock
+    if current_config.cognito_url.startswith("http://localhost") or current_config.cognito_url.startswith("http://127.0.0.1"):
+        logger.debug("Skipping server validation for mock Cognito - use local JWKS validation")
+        return None
 
     async with httpx.AsyncClient() as client:
-        # Try Cognito validation endpoint first
-        current_config = get_config()
         try:
-            logger.debug(f"Validating token with Cognito at {current_config.cognito_url}")
-
-            response = await client.post(
-                f"{current_config.cognito_url}/auth/validate",
-                json={"token": token},
-                timeout=10.0
-            )
+            logger.debug("Using AWS Cognito GetUser API for server validation")
             
-            if response.status_code == 200:
-                validation_result = response.json()
-                
-                if validation_result.get("valid"):
-                    username = validation_result.get("username")
-                    groups = validation_result.get("groups", [])
-                    
-                    if username:
-                        access_tier = get_access_tier_from_groups(groups)
-                        logger.info(f"Token validated for user: {username} with groups: {groups}")
-                        
-                        return {
-                            "username": username,
-                            "groups": groups,
-                            "access_tier": access_tier,
-                            "organisation_id": f"org-{username}",
-                            "token_valid": True,
-                            "validation_source": "cognito-direct"
-                        }
-                else:
-                    error_msg = validation_result.get("error", "Token validation failed")
-                    raise HTTPException(
-                        status_code=status.HTTP_401_UNAUTHORIZED,
-                        detail=f"Token validation failed: {error_msg}",
-                        headers={"WWW-Authenticate": "Bearer"},
-                    )
-            else:
-                logger.warning(f"Cognito validation failed with status {response.status_code}")
-                
-        except httpx.ConnectError:
-            logger.warning(f"Could not connect to Cognito at {get_config().cognito_url}")
-        except httpx.TimeoutException:
-            logger.warning("Cognito validation request timed out")
-        
-        # If Cognito fails, try AWS Cognito GetUser API
-        try:
-            logger.debug("Trying AWS Cognito GetUser API")
+            # Construct proper AWS Cognito endpoint
+            aws_endpoint = f"https://cognito-idp.{current_config.region}.amazonaws.com/"
             
             response = await client.post(
-                current_config.cognito_url,  # For now, still use URL but with AWS API format
+                aws_endpoint,
                 headers={
                     "X-Amz-Target": "AWSCognitoIdentityProviderService.GetUser",
                     "Content-Type": "application/x-amz-json-1.1"
@@ -260,11 +262,17 @@ async def validate_token_with_server(token: str) -> Optional[Dict[str, Any]]:
                 username = user_info.get("Username")
                 
                 if username:
-                    # Default to observer for AWS Cognito users
-                    groups = ["observer"]
+                    # Extract groups from UserAttributes if available
+                    groups = ["observer"]  # Default group for AWS users
+                    user_attributes = user_info.get("UserAttributes", [])
+                    for attr in user_attributes:
+                        if attr.get("Name") == "custom:groups":
+                            groups = attr.get("Value", "observer").split(",")
+                            break
+                    
                     access_tier = get_access_tier_from_groups(groups)
                     
-                    logger.info(f"Token validated via AWS API for user: {username}")
+                    logger.info(f"Token validated via AWS GetUser API for user: {username}")
                     
                     return {
                         "username": username,
@@ -272,15 +280,17 @@ async def validate_token_with_server(token: str) -> Optional[Dict[str, Any]]:
                         "access_tier": access_tier,
                         "organisation_id": f"org-{username}",
                         "token_valid": True,
-                        "validation_source": "cognito-getuser"
+                        "validation_source": "aws-cognito-getuser"
                     }
             else:
-                logger.warning(f"AWS Cognito validation failed with status {response.status_code}")
+                logger.warning(f"AWS Cognito GetUser failed with status {response.status_code}")
                 
         except httpx.ConnectError:
             logger.warning("Could not connect to AWS Cognito endpoint")
         except httpx.TimeoutException:
-            logger.warning("AWS Cognito validation request timed out")
+            logger.warning("AWS Cognito GetUser request timed out")
+        except Exception as e:
+            logger.warning(f"AWS Cognito GetUser failed: {str(e)}")
     
     return None
 
@@ -620,14 +630,20 @@ def main():
     parser.add_argument(
         "--jwt-algorithm",
         type=str,
-        default=os.getenv("JWT_ALGORITHM", "HS256"),
-        help="JWT algorithm for token validation (default: HS256 or JWT_ALGORITHM)"
+        default=os.getenv("JWT_ALGORITHM", "RS256"),
+        help="JWT algorithm for token validation (default: RS256 or JWT_ALGORITHM)"
     )
     parser.add_argument(
         "--region",
         type=str,
         default=os.getenv("REGION", "eu-west-1"),
         help="AWS region (default: eu-west-1 or REGION)"
+    )
+    parser.add_argument(
+        "--user-pool-id",
+        type=str,
+        default=os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
+        help="Cognito User Pool ID (default: eu-west-1_MOCKPOOL or USER_POOL_ID)"
     )
     parser.add_argument(
         "--validation-strategy",
@@ -639,14 +655,17 @@ def main():
 
     args = parser.parse_args()
     
+    # Set environment variables for uvicorn worker processes
+    # This ensures configuration survives process restarts and reloads
+    os.environ["COGNITO_URL"] = args.cognito_url
+    os.environ["JWT_SECRET"] = args.jwt_secret
+    os.environ["JWT_ALGORITHM"] = args.jwt_algorithm
+    os.environ["VALIDATION_STRATEGY"] = args.validation_strategy
+    os.environ["REGION"] = args.region
+    os.environ["USER_POOL_ID"] = args.user_pool_id
+    
     # Create configuration from command line arguments and set as singleton
-    config = AppConfig.set_config(
-        cognito_url=args.cognito_url,
-        jwt_secret=args.jwt_secret,
-        jwt_algorithm=args.jwt_algorithm,
-        validation_strategy=args.validation_strategy,
-        region=args.region
-    )
+    config = AppConfig.get_config()
     
     # Configure logging level
     setup_logging()
@@ -658,7 +677,11 @@ def main():
     logger.info(f"Log level: {args.log_level}")
     logger.info(f"Validation strategy: {config.validation_strategy}")
     logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
-    logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")
+    logger.info(f"User Pool ID: {config.user_pool_id}")
+    if config.jwt_algorithm == "RS256":
+        logger.info(f"JWKS URL: {config.jwks_url}")
+    else:
+        logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")
     if config.validation_strategy != "local_only": 
         logger.info(f"Cognito URL: {config.cognito_url}")
         logger.info(f"Region: {config.region}")

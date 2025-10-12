@@ -108,17 +108,15 @@ test_rest_login() {
         if [ "$ACCESS_TOKEN" != "null" ] && [ -n "$ACCESS_TOKEN" ]; then
             echo "✅ PASS"
             
-            # Test token validation
-            printf "      Testing token validation: "
-            VALIDATION_RESPONSE=$(curl -s -H "Content-Type: application/json" \
-                -d "{\"token\": \"$ACCESS_TOKEN\"}" \
-                "$MOCK_COGNITO_URL/auth/validate")
+            # Test JWKS endpoint
+            printf "      Testing JWKS endpoint: "
+            JWKS_RESPONSE=$(curl -s "$MOCK_COGNITO_URL/eu-west-1_MOCKPOOL/.well-known/jwks.json")
             
-            VALID=$(echo "$VALIDATION_RESPONSE" | jq -r '.valid')
-            if [ "$VALID" = "true" ]; then
-                echo "✅ PASS"
+            KEYS_COUNT=$(echo "$JWKS_RESPONSE" | jq -r '.keys | length')
+            if [ "$KEYS_COUNT" -gt 0 ]; then
+                echo "✅ PASS (JWKS has $KEYS_COUNT keys)"
             else
-                echo "❌ FAIL (validation failed)"
+                echo "❌ FAIL (no keys in JWKS)"
             fi
         else
             echo "❌ FAIL (no access token)"
@@ -263,3 +261,4 @@ rm -f /tmp/response.json
 
 echo
 echo "✅ Mock Cognito tests completed!"
+exit 0 # success

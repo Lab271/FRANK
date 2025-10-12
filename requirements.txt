@@ -1,4 +1,4 @@
-# Generated on Sat Oct 11 12:15:23 CEST 2025
+# Generated on Sun Oct 12 09:50:04 CEST 2025
 aioboto3==15.2.0
 aiobotocore==2.24.2
 aiofiles==24.1.0
@@ -23,7 +23,7 @@ click==8.3.0
 colorama==0.4.6
 comm==0.2.3
 coverage==7.10.7
-cryptography==46.0.1
+cryptography==46.0.2
 cucumber-expressions==18.0.1
 cucumber-tag-expressions==6.2.0
 debugpy==1.8.17

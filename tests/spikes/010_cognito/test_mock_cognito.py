@@ -96,7 +96,12 @@ class TestMockCognitoApp(unittest.TestCase):
         self.assertEqual(data["expires_in"], 3600)
         
         # Verify the access token is valid
-        payload = jwt.decode(data["access_token"], get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
+        payload = jwt.decode(
+            data["access_token"], 
+            get_config().get_verification_key(), 
+            algorithms=[get_config().jwt_algorithm], 
+            options={"verify_aud": False}
+        )
         self.assertEqual(payload["username"], "testuser_observer")
         self.assertEqual(payload["cognito:groups"], ["observer"])
     
@@ -112,31 +117,30 @@ class TestMockCognitoApp(unittest.TestCase):
                 response = self.client.post("/auth/login", json=login_data)
                 self.assertEqual(response.status_code, login_data["status"])
     
-    def test_token_validation_endpoint(self):
-        """Test token validation endpoint"""
-        # Test valid token
-        validation_data = {"token": self.observer_token}
-        response = self.client.post("/auth/validate", json=validation_data)
+    def test_jwks_endpoint(self):
+        """Test JWKS endpoint for public key retrieval"""
+        # Test valid user pool ID
+        response = self.client.get("/eu-west-1_MOCKPOOL/.well-known/jwks.json")
         
         self.assertEqual(response.status_code, status.HTTP_200_OK)
         data = response.json()
         
-        self.assertTrue(data["valid"])
-        self.assertEqual(data["username"], "testuser_observer")
-        self.assertEqual(data["groups"], ["observer"])
-        self.assertIsNone(data["error"])
+        self.assertIn("keys", data)
+        self.assertIsInstance(data["keys"], list)
+        self.assertGreater(len(data["keys"]), 0)
         
-        # Test invalid token
-        validation_data = {"token": self.invalid_token}
-        response = self.client.post("/auth/validate", json=validation_data)
+        # Verify key structure
+        key = data["keys"][0]
+        self.assertEqual(key["kty"], "RSA")
+        self.assertEqual(key["use"], "sig")
+        self.assertEqual(key["alg"], "RS256")
+        self.assertIn("n", key)  # RSA modulus
+        self.assertIn("e", key)  # RSA exponent
+        self.assertIn("kid", key)  # Key ID
         
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        data = response.json()
-        
-        self.assertFalse(data["valid"])
-        self.assertIsNone(data["username"])
-        self.assertIsNone(data["groups"])
-        self.assertIsNotNone(data["error"])
+        # Test invalid user pool ID
+        response = self.client.get("/invalid-pool/.well-known/jwks.json")
+        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
     
     def test_user_info_endpoint(self):
         """Test user info endpoint with authentication"""
@@ -223,7 +227,12 @@ class TestAWSCognitoAPI(unittest.TestCase):
         
         # Verify token structure
         access_token = auth_result["AccessToken"]
-        payload = jwt.decode(access_token, get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
+        payload = jwt.decode(
+            access_token, 
+            get_config().get_verification_key(), 
+            algorithms=[get_config().jwt_algorithm], 
+            options={"verify_aud": False}
+        )
         self.assertEqual(payload["username"], "testuser_observer")
         self.assertEqual(payload["cognito:groups"], ["observer"])
     
@@ -439,7 +448,12 @@ class TestJWTTokenFunctions(unittest.TestCase):
         token = create_jwt_token(username, groups, "access")
         
         # Decode and verify
-        payload = jwt.decode(token, get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
+        payload = jwt.decode(
+            token, 
+            get_config().get_verification_key(), 
+            algorithms=[get_config().jwt_algorithm], 
+            options={"verify_aud": False}
+        )
         
         self.assertEqual(payload["sub"], username)
         self.assertEqual(payload["username"], username)
@@ -463,7 +477,12 @@ class TestJWTTokenFunctions(unittest.TestCase):
         token = create_jwt_token(username, groups, "id")
         
         # Decode and verify
-        payload = jwt.decode(token, get_config().jwt_secret, algorithms=[get_config().jwt_algorithm], options={"verify_aud": False})
+        payload = jwt.decode(
+            token, 
+            get_config().get_verification_key(), 
+            algorithms=[get_config().jwt_algorithm], 
+            options={"verify_aud": False}
+        )
         
         self.assertEqual(payload["token_use"], "id")
         self.assertEqual(payload["email"], "contributor@example.com")
@@ -509,7 +528,14 @@ class TestJWTTokenFunctions(unittest.TestCase):
             "client_id": get_config().client_id,
             "iss": f"https://cognito-idp.{get_config().region}.amazonaws.com/{get_config().user_pool_id}"
         }
-        expired_token = jwt.encode(expired_payload, get_config().jwt_secret, algorithm=get_config().jwt_algorithm)
+        
+        # Use the proper signing key for the current algorithm
+        if get_config().jwt_algorithm == "RS256":
+            signing_key = get_config().get_signing_key()
+            headers = {"kid": "mock-cognito-key-1"}
+            expired_token = jwt.encode(expired_payload, signing_key, algorithm=get_config().jwt_algorithm, headers=headers)
+        else:
+            expired_token = jwt.encode(expired_payload, get_config().get_signing_key(), algorithm=get_config().jwt_algorithm)
 
         with self.assertRaises(HTTPException) as context:
             verify_jwt_token(expired_token)

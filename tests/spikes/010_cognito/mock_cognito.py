@@ -72,6 +72,11 @@ from datetime import datetime, timedelta, timezone
 
 import uvicorn
 import jwt
+import base64
+import json
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization, hashes
+from cryptography.hazmat.backends import default_backend
 from fastapi import FastAPI, HTTPException, Depends, Request, Header, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
@@ -137,6 +142,69 @@ class AppConfig:
         self.user_pool_id = user_pool_id
         self.client_id = client_id
         self.region = region
+        
+        # Generate RSA key pair for RS256 if needed
+        if jwt_algorithm == "RS256":
+            self._generate_rsa_keys()
+        else:
+            self.private_key = None
+            self.public_key = None
+            self.jwks = None
+    
+    def _generate_rsa_keys(self):
+        """Generate RSA key pair for JWT signing"""
+        # Generate private key
+        self.private_key = rsa.generate_private_key(
+            public_exponent=65537,
+            key_size=2048,
+            backend=default_backend()
+        )
+        
+        # Get public key
+        self.public_key = self.private_key.public_key()
+        
+        # Generate JWKS (JSON Web Key Set)
+        public_numbers = self.public_key.public_numbers()
+        
+        # Convert to base64url-encoded strings
+        def int_to_base64url(value):
+            """Convert integer to base64url string"""
+            # Convert to bytes (big endian)
+            byte_length = (value.bit_length() + 7) // 8
+            value_bytes = value.to_bytes(byte_length, 'big')
+            # Base64url encode (no padding)
+            return base64.urlsafe_b64encode(value_bytes).rstrip(b'=').decode('ascii')
+        
+        n = int_to_base64url(public_numbers.n)
+        e = int_to_base64url(public_numbers.e)
+        
+        # Create JWKS
+        self.jwks = {
+            "keys": [
+                {
+                    "kty": "RSA",
+                    "use": "sig",
+                    "kid": "mock-cognito-key-1",
+                    "alg": "RS256",
+                    "n": n,
+                    "e": e
+                }
+            ]
+        }
+    
+    def get_signing_key(self):
+        """Get the key for JWT signing"""
+        if self.jwt_algorithm == "RS256":
+            return self.private_key
+        else:
+            return self.jwt_secret
+    
+    def get_verification_key(self):
+        """Get the key for JWT verification"""
+        if self.jwt_algorithm == "RS256":
+            return self.public_key
+        else:
+            return self.jwt_secret
 
     @classmethod
     def set_config(cls, 
@@ -148,7 +216,7 @@ class AppConfig:
         """Set singleton AppConfig instance, creating it from environment if needed"""
         cls._instance = cls(
             jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
-            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
+            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "RS256"),
             user_pool_id=user_pool_id or os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
             client_id=client_id or os.getenv("CLIENT_ID", "mock-client-id-123456"),
             region=region or os.getenv("REGION", "eu-west-1")
@@ -222,21 +290,12 @@ class AuthRequest(BaseModel):
     username: str
     password: str
 
-class TokenValidationRequest(BaseModel):
-    token: str
-
 class AuthResponse(BaseModel):
     access_token: str
     id_token: str
     refresh_token: str
     token_type: str = "Bearer"
     expires_in: int = 3600
-
-class TokenValidationResponse(BaseModel):
-    valid: bool
-    username: Optional[str] = None
-    groups: Optional[List[str]] = None
-    error: Optional[str] = None
 
 class UserInfo(BaseModel):
     username: str
@@ -266,8 +325,13 @@ def create_jwt_token(username: str, groups: List[str], token_type: str = "access
         payload["email"] = user["email"]
         payload["email_verified"] = True
         payload["aud"] = current_config.client_id
-
-    return jwt.encode(payload, current_config.jwt_secret, algorithm=current_config.jwt_algorithm)
+    
+    # Add kid (key ID) for RS256
+    if current_config.jwt_algorithm == "RS256":
+        headers = {"kid": "mock-cognito-key-1"}
+        return jwt.encode(payload, current_config.get_signing_key(), algorithm=current_config.jwt_algorithm, headers=headers)
+    else:
+        return jwt.encode(payload, current_config.get_signing_key(), algorithm=current_config.jwt_algorithm)
 
 
 def verify_jwt_token(token: str) -> dict:
@@ -276,7 +340,12 @@ def verify_jwt_token(token: str) -> dict:
 
     try:
         # Decode without audience verification for mock service simplicity
-        payload = jwt.decode(token, current_config.jwt_secret, algorithms=[current_config.jwt_algorithm], options={"verify_aud": False})
+        payload = jwt.decode(
+            token, 
+            current_config.get_verification_key(), 
+            algorithms=[current_config.jwt_algorithm], 
+            options={"verify_aud": False}
+        )
         return payload
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")
@@ -393,7 +462,7 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
     try:
         payload = jwt.decode(
             access_token,
-            current_config.jwt_secret,
+            current_config.get_verification_key(),
             algorithms=[current_config.jwt_algorithm],
             options={"verify_aud": False}
         )
@@ -513,6 +582,35 @@ def create_app() -> FastAPI:
             "region": current_config.region
         }
 
+    @app.get("/{user_pool_id}/.well-known/jwks.json")
+    async def jwks_endpoint(user_pool_id: str) -> Dict[str, Any]:
+        """
+        AWS Cognito compatible JWKS (JSON Web Key Set) endpoint
+        This provides the public keys needed for JWT token verification
+        """
+        logger.info(f"JWKS endpoint accessed for user pool: {user_pool_id}")
+        
+        # Validate user pool ID
+        if user_pool_id != current_config.user_pool_id:
+            raise HTTPException(
+                status_code=404, 
+                detail=f"User pool {user_pool_id} not found"
+            )
+        
+        if current_config.jwt_algorithm != "RS256":
+            raise HTTPException(
+                status_code=400,
+                detail="JWKS endpoint only available when using RS256 algorithm"
+            )
+        
+        if not current_config.jwks:
+            raise HTTPException(
+                status_code=500,
+                detail="JWKS not available - RSA keys not generated"
+            )
+        
+        return current_config.jwks
+
     # AWS Cognito API Endpoint (for AWS CLI compatibility)
     @app.post("/")
     async def cognito_api_endpoint(
@@ -594,30 +692,6 @@ def create_app() -> FastAPI:
             refresh_token=refresh_token
         )
 
-    @app.post("/auth/validate", response_model=TokenValidationResponse)
-    async def validate_token(request: TokenValidationRequest) -> TokenValidationResponse:
-        """
-        Validate JWT token and return user information
-        """
-        try:
-            payload = verify_jwt_token(request.token)
-            username = payload.get("username")
-            groups = payload.get("cognito:groups", [])
-            
-            logger.info(f"Token validation successful for user: {username}")
-            
-            return TokenValidationResponse(
-                valid=True,
-                username=username,
-                groups=groups
-            )
-        except HTTPException as e:
-            logger.warning(f"Token validation failed: {e.detail}")
-            return TokenValidationResponse(
-                valid=False,
-                error=e.detail
-            )
-
     @app.get("/auth/userinfo", response_model=UserInfo)
     async def get_user_info(current_user: dict = Depends(get_current_user)) -> UserInfo:
         """
@@ -684,7 +758,7 @@ def create_app() -> FastAPI:
             "endpoints": {
                 "aws_api": "/",
                 "login": "/auth/login", 
-                "validate": "/auth/validate",
+                "jwks": "/{user_pool_id}/.well-known/jwks.json",
                 "userinfo": "/auth/userinfo",
                 "users": "/auth/users",
                 "config": "/config",
@@ -706,11 +780,6 @@ def create_app() -> FastAPI:
 
     logger.info("Mock Cognito FastAPI application created successfully")
     return app
-
-
-# Create module-level app instance for ASGI servers
-app = create_app()
-
 
 def main():
     """
@@ -740,8 +809,8 @@ def main():
     parser.add_argument(
         "--jwt-algorithm",
         type=str,
-        default=os.getenv("JWT_ALGORITHM", "HS256"),
-        help="JWT algorithm for token validation (default: HS256 or JWT_ALGORITHM)"
+        default=os.getenv("JWT_ALGORITHM", "RS256"),
+        help="JWT algorithm for token validation (default: RS256 or JWT_ALGORITHM)"
     )
     parser.add_argument(
         "--region",
@@ -764,14 +833,16 @@ def main():
 
     args = parser.parse_args()
     
+    # Set environment variables for uvicorn worker processes
+    # This ensures configuration survives process restarts and reloads
+    os.environ["JWT_SECRET"] = args.jwt_secret
+    os.environ["JWT_ALGORITHM"] = args.jwt_algorithm
+    os.environ["REGION"] = args.region
+    os.environ["USER_POOL_ID"] = args.user_pool_id
+    os.environ["CLIENT_ID"] = args.client_id
+
     # Create configuration from command line arguments and set as singleton
-    config = AppConfig.set_config(
-        jwt_secret=args.jwt_secret,
-        jwt_algorithm=args.jwt_algorithm,
-        client_id=args.client_id,
-        region=args.region,
-        user_pool_id=args.user_pool_id
-    )
+    config = AppConfig.get_config()
     
     # Configure logging level
     setup_logging()

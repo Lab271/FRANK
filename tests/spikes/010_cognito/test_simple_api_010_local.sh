@@ -9,7 +9,9 @@ echo "🚀 Simple API Service Test"
 echo "=========================="
 
 # Configuration
-SIMPLE_API_URL="http://localhost:8000"
+# Use port from command line argument if provided, otherwise default to 8000
+PORT="${1:-8000}"
+SIMPLE_API_URL="http://localhost:$PORT"
 MOCK_COGNITO_URL="http://localhost:8100"
 
 # Set AWS credentials for mock service
@@ -198,3 +200,4 @@ rm -f /tmp/response.json
 
 echo
 echo "✅ Simple API tests completed!"
+exit 0 # success

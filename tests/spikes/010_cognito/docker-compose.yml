@@ -54,15 +54,14 @@ services:
         PACKAGE_CONTEXT: .      
     container_name: simple-api
     ports:
-      - "${SIMPLE_API_PORT:-8000}:8000" # Direct HTTP access to Simple API (exposed to localhost)
+      - "${SIMPLE_API_PORT:-8080}:8000" # Direct HTTP access to Simple API (exposed to localhost)
     environment:
       - ENVIRONMENT=${ENVIRONMENT:-development}
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - RELOAD=${RELOAD:-false}
       - COGNITO_URL=http://mock-cognito:8100
       - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
-      - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-server_only}
-      - CLIENT_ID=${CLIENT_ID:-mock-client-id-123456}
+      - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-server_first}
       - REGION=${REGION:-eu-west-1}
     depends_on:
       - mock-cognito

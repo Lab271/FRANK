@@ -34,7 +34,6 @@ class TestSimpleAPIApp(unittest.TestCase):
             jwt_secret="test-secret-key",
             jwt_algorithm="HS256",
             validation_strategy="local_only",  # Use local validation for testing
-            client_id="mock-client-id-123456",
             region="eu-west-1"
         )
         
@@ -58,7 +57,6 @@ class TestSimpleAPIApp(unittest.TestCase):
             "token_use": token_type,
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=1)).timestamp()),
-            "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
         return jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
@@ -73,7 +71,6 @@ class TestSimpleAPIApp(unittest.TestCase):
             "token_use": "access",
             "iat": int((now - timedelta(hours=2)).timestamp()),
             "exp": int((now - timedelta(hours=1)).timestamp()),  # Expired 1 hour ago
-            "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
         return jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
@@ -313,7 +310,6 @@ class TestSimpleAPIApp(unittest.TestCase):
             "token_use": "access",
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=1)).timestamp()),
-            "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
         token = jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
@@ -377,7 +373,6 @@ class TestEndpointIntegration(unittest.TestCase):
             jwt_secret="test-secret-key",
             jwt_algorithm="HS256",
             validation_strategy="local_only",  # Use local validation for testing
-            client_id="mock-client-id-123456",
             region="eu-west-1"            
         )
 
@@ -402,7 +397,6 @@ class TestEndpointIntegration(unittest.TestCase):
             "token_use": "access",
             "iat": int(now.timestamp()),
             "exp": int((now + timedelta(hours=1)).timestamp()),
-            "client_id": "mock-client-id-123456",
             "iss": "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_MOCKPOOL"
         }
         return jwt.encode(payload, self.test_config.jwt_secret, algorithm=self.test_config.jwt_algorithm)
