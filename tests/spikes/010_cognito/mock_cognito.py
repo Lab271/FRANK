@@ -77,6 +77,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
+import frank
 
 # Custom AWS-style exception for Cognito API compatibility
 class AWSCognitoException(Exception):
@@ -138,23 +139,29 @@ class AppConfig:
         self.region = region
 
     @classmethod
-    def get_config(cls, 
+    def set_config(cls, 
                    jwt_secret: str = None, 
                    jwt_algorithm: str = None,
                    user_pool_id: str = None,
                    client_id: str = None,
                    region: str = None) -> "AppConfig":
-        """Get singleton AppConfig instance, creating it from environment if needed"""
-        if cls._instance is None:
-            cls._instance = cls(
-                jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
-                jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
-                user_pool_id=user_pool_id or os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
-                client_id=client_id or os.getenv("CLIENT_ID", "mock-client-id-123456"),
-                region=region or os.getenv("REGION", "eu-west-1")
-            )
+        """Set singleton AppConfig instance, creating it from environment if needed"""
+        cls._instance = cls(
+            jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
+            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
+            user_pool_id=user_pool_id or os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
+            client_id=client_id or os.getenv("CLIENT_ID", "mock-client-id-123456"),
+            region=region or os.getenv("REGION", "eu-west-1")
+        )
         return cls._instance
     
+    @classmethod
+    def get_config(cls) -> "AppConfig":
+        """Get the singleton AppConfig instance"""
+        if cls._instance is None:
+            cls.set_config()
+        return cls._instance
+
     @classmethod
     def reset(cls) -> None:
         """Reset the singleton instance"""
@@ -447,7 +454,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="Mock Cognito Service",
         description="Simulates AWS Cognito authentication flows for local development",
-        version="1.0.0"
+        version=frank.__version__
     )
 
     current_config = AppConfig.get_config()
@@ -722,15 +729,62 @@ def main():
         choices=["debug", "info", "warning", "error"],
         help="Logging level (default: debug)",
     )
+    
+    # Configuration options
+    parser.add_argument(
+        "--jwt-secret",
+        type=str,
+        default=os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
+        help="JWT secret key for token validation (default: mock-cognito-secret-key or JWT_SECRET)"
+    )
+    parser.add_argument(
+        "--jwt-algorithm",
+        type=str,
+        default=os.getenv("JWT_ALGORITHM", "HS256"),
+        help="JWT algorithm for token validation (default: HS256 or JWT_ALGORITHM)"
+    )
+    parser.add_argument(
+        "--region",
+        type=str,
+        default=os.getenv("REGION", "eu-west-1"),
+        help="AWS region (default: eu-west-1 or REGION)"
+    )
+    parser.add_argument(
+        "--client-id",
+        type=str,
+        default=os.getenv("CLIENT_ID", "mock-client-id-123456"),
+        help="Cognito client ID (default: mock-client-id-123456 or CLIENT_ID)"
+    )
+    parser.add_argument(
+        "--user-pool-id",
+        type=str,
+        default=os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
+        help="Cognito user pool ID (default: eu-west-1_MOCKPOOL or USER_POOL_ID)"
+    )
 
     args = parser.parse_args()
     
-    # Configure logging level
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
+    # Create configuration from command line arguments and set as singleton
+    config = AppConfig.set_config(
+        jwt_secret=args.jwt_secret,
+        jwt_algorithm=args.jwt_algorithm,
+        client_id=args.client_id,
+        region=args.region,
+        user_pool_id=args.user_pool_id
+    )
     
+    # Configure logging level
+    setup_logging()
+    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
+       
     logger.info(f"Starting Mock Cognito server on {args.host}:{args.port}")
+    logger.info(f"Version: {frank.__version__}")
     logger.info(f"Reload enabled: {args.reload}")
     logger.info(f"Log level: {args.log_level}")
+    logger.info(f"Client ID: {config.client_id}")
+    logger.info(f"Region: {config.region}")
+    logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
+    logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")
     logger.info("Available test users:")
     for username, user in USERS_DB.items():
         logger.info(f"  - {username} (groups: {user['groups']})")

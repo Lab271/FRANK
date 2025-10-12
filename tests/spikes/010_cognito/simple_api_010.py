@@ -51,14 +51,12 @@ class AppConfig:
         jwt_secret: str,
         jwt_algorithm: str,
         validation_strategy: str,
-        client_id: str,
         region: str
     ):
         self.cognito_url = cognito_url
         self.jwt_secret = jwt_secret
         self.jwt_algorithm = jwt_algorithm
         self.validation_strategy = validation_strategy
-        self.client_id = client_id
         self.region = region
 
     
@@ -68,7 +66,6 @@ class AppConfig:
                    jwt_secret: str = None,
                    jwt_algorithm: str = None,
                    validation_strategy: str = None,
-                   client_id: str = None,
                    region: str = None) -> "AppConfig":
 
 
@@ -77,7 +74,6 @@ class AppConfig:
             cognito_url=cognito_url or os.getenv("COGNITO_URL", "http://localhost:8100"),
             jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
             jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),
-            client_id=client_id or os.getenv("CLIENT_ID", "mock-client-id-123456"),
             validation_strategy=validation_strategy or os.getenv("VALIDATION_STRATEGY", "local_only"),
             region=region or os.getenv("REGION", "eu-west-1")
         )
@@ -228,7 +224,7 @@ async def validate_token_with_server(token: str) -> Optional[Dict[str, Any]]:
                             "access_tier": access_tier,
                             "organisation_id": f"org-{username}",
                             "token_valid": True,
-                            "validation_source": "mock_cognito"
+                            "validation_source": "cognito-direct"
                         }
                 else:
                     error_msg = validation_result.get("error", "Token validation failed")
@@ -238,19 +234,19 @@ async def validate_token_with_server(token: str) -> Optional[Dict[str, Any]]:
                         headers={"WWW-Authenticate": "Bearer"},
                     )
             else:
-                logger.warning(f"Mock Cognito validation failed with status {response.status_code}")
+                logger.warning(f"Cognito validation failed with status {response.status_code}")
                 
         except httpx.ConnectError:
-            logger.warning(f"Could not connect to Mock Cognito at {get_config().cognito_url}")
+            logger.warning(f"Could not connect to Cognito at {get_config().cognito_url}")
         except httpx.TimeoutException:
-            logger.warning("Mock Cognito validation request timed out")
+            logger.warning("Cognito validation request timed out")
         
-        # If mock Cognito fails, try AWS Cognito GetUser API
+        # If Cognito fails, try AWS Cognito GetUser API
         try:
             logger.debug("Trying AWS Cognito GetUser API")
             
             response = await client.post(
-                current_config.cognito_url,  # For now, still use mock URL but with AWS API format
+                current_config.cognito_url,  # For now, still use URL but with AWS API format
                 headers={
                     "X-Amz-Target": "AWSCognitoIdentityProviderService.GetUser",
                     "Content-Type": "application/x-amz-json-1.1"
@@ -276,7 +272,7 @@ async def validate_token_with_server(token: str) -> Optional[Dict[str, Any]]:
                         "access_tier": access_tier,
                         "organisation_id": f"org-{username}",
                         "token_valid": True,
-                        "validation_source": "aws_cognito"
+                        "validation_source": "cognito-getuser"
                     }
             else:
                 logger.warning(f"AWS Cognito validation failed with status {response.status_code}")
@@ -628,6 +624,12 @@ def main():
         help="JWT algorithm for token validation (default: HS256 or JWT_ALGORITHM)"
     )
     parser.add_argument(
+        "--region",
+        type=str,
+        default=os.getenv("REGION", "eu-west-1"),
+        help="AWS region (default: eu-west-1 or REGION)"
+    )
+    parser.add_argument(
         "--validation-strategy",
         type=str,
         choices=["server_first", "local_only", "server_only"],
@@ -638,13 +640,12 @@ def main():
     args = parser.parse_args()
     
     # Create configuration from command line arguments and set as singleton
-    config = AppConfig.get_config()
-
-    config.update(
+    config = AppConfig.set_config(
         cognito_url=args.cognito_url,
         jwt_secret=args.jwt_secret,
         jwt_algorithm=args.jwt_algorithm,
-        validation_strategy=args.validation_strategy
+        validation_strategy=args.validation_strategy,
+        region=args.region
     )
     
     # Configure logging level
@@ -656,8 +657,11 @@ def main():
     logger.info(f"Reload enabled: {args.reload}")
     logger.info(f"Log level: {args.log_level}")
     logger.info(f"Validation strategy: {config.validation_strategy}")
+    logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
+    logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")
     if config.validation_strategy != "local_only": 
         logger.info(f"Cognito URL: {config.cognito_url}")
+        logger.info(f"Region: {config.region}")
 
     # Run uvicorn server
     uvicorn.run(

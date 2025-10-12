@@ -42,7 +42,7 @@ RUN pip install --no-cache-dir --user \
     uvicorn==0.24.0 \
     pyjwt==2.8.0 \
     httpx==0.28.1 \
-    requests==2.31.0 \
+    # requests==2.31.0 \
     python-multipart==0.0.6 \
     cryptography==41.0.7
 
@@ -67,9 +67,8 @@ WORKDIR /app
 
 COPY ${BUILD_CONTEXT}/README.md .
 COPY ${PACKAGE_CONTEXT}/setup.py .
-COPY ${PACKAGE_CONTEXT}/src/ ./src/
-
-# RUN pip install -e .
+# Load frank package and install
+COPY ${PACKAGE_CONTEXT}/src/ ./src/.
 RUN pip install --no-cache-dir .
 
 COPY ${BUILD_CONTEXT}/simple_api_010.py simple_api.py
@@ -83,7 +82,6 @@ USER frankuser
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
 ENV PORT=8000
-ENV MOCK_COGNITO_URL=http://mock-cognito:8100
 
 # Run the application
 CMD ["python", "simple_api.py"]

@@ -41,7 +41,7 @@ RUN pip install --no-cache-dir --user \
     fastapi==0.104.1 \
     uvicorn==0.24.0 \
     pyjwt==2.8.0 \
-    requests==2.31.0 \
+    # requests==2.31.0 \
     python-multipart==0.0.6 \
     cryptography==41.0.7
 
@@ -67,9 +67,8 @@ WORKDIR /app
 
 COPY ${BUILD_CONTEXT}/README.md .
 COPY ${PACKAGE_CONTEXT}/setup.py .
-COPY ${PACKAGE_CONTEXT}/src/ ./src/
-
-# RUN pip install -e .
+# Load frank package and install
+COPY ${PACKAGE_CONTEXT}/src/ ./src/.
 RUN pip install --no-cache-dir .
 
 COPY ${BUILD_CONTEXT}/mock_cognito.py .
