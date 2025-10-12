@@ -478,12 +478,16 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
         
         logger.info(f"GetUser successful for user: {username}")
         
+        # Convert groups list to comma-separated string for AWS compatibility
+        groups_str = ",".join(user["groups"])
+        
         return {
             "Username": username,
             "UserAttributes": [
                 {"Name": "sub", "Value": username},
                 {"Name": "email", "Value": user["email"]},
-                {"Name": "email_verified", "Value": "true"}
+                {"Name": "email_verified", "Value": "true"},
+                {"Name": "custom:groups", "Value": groups_str}
             ]
         }
     except jwt.ExpiredSignatureError:

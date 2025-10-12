@@ -462,6 +462,87 @@ class TestEndpointIntegration(unittest.TestCase):
                 self.assertEqual(response.status_code, 403, 
                                f"{endpoint} should require authentication")
 
+class TestAppConfig(unittest.TestCase):
+
+    def test_app_config(self):
+        """Test AppConfig singleton behavior"""
+        config1 = AppConfig.get_config()
+        config2 = AppConfig.get_config()
+        self.assertIs(config1, config2, "AppConfig should be a singleton")
+
+    def test_app_config_update(self):
+        """Test updating AppConfig values"""
+        config = AppConfig.set_config(
+            cognito_url="http://localhost:8100",
+            jwt_secret="original-secret",
+            jwt_algorithm="HS256",
+            validation_strategy="local_only",
+            region="eu-west-1"
+        )
+        original_value = config.jwt_secret
+        
+        # Update the configuration
+        AppConfig.update(jwt_secret="new-secret")
+        
+        # Verify the change
+        self.assertEqual(config.jwt_secret, "new-secret", "AppConfig jwt_secret should be updated to new value")
+        self.assertNotEqual(config.jwt_secret, original_value, "AppConfig jwt_secret should be different from original")
+
+    def test_app_config_set_config(self):
+        """Test setting AppConfig with new values"""
+        config = AppConfig.set_config(
+            cognito_url="http://localhost:8100",
+            jwt_secret="new-secret",
+            jwt_algorithm="RS256",
+            validation_strategy="local_only",
+            region="eu-west-1",
+            user_pool_id="eu-west-1_MOCKPOOL",
+            environment="mock"
+        )
+        self.assertEqual(config.cognito_url, "http://localhost:8100/")
+        self.assertEqual(config.jwt_secret, "new-secret")
+        self.assertEqual(config.jwt_algorithm, "RS256")
+        self.assertEqual(config.validation_strategy, "local_only")
+        self.assertEqual(config.region, "eu-west-1")
+        self.assertEqual(config.user_pool_id, "eu-west-1_MOCKPOOL")
+        self.assertEqual(config.environment, "mock")
+
+    def test_app_config_invalid_values(self):
+        """Test AppConfig with invalid values"""
+        with self.assertRaises(ValueError):
+            AppConfig.set_config(jwt_algorithm="INVALID")
+        with self.assertRaises(ValueError):
+            AppConfig.set_config(validation_strategy="INVALID")
+        with self.assertRaises(ValueError):
+            AppConfig.set_config(cognito_url="invalid-url") 
+
+    def test_validation_strategy_values(self):
+        """Test valid and invalid validation_strategy values"""
+        valid_strategies = ["server_first", "local_only", "server_only"]
+        for strategy in valid_strategies:
+            config = AppConfig.set_config(
+                cognito_url="http://localhost:8100",
+                jwt_secret="test-secret",
+                jwt_algorithm="HS256",
+                validation_strategy=strategy,
+                region="eu-west-1"
+            )
+            self.assertEqual(config.validation_strategy, strategy)
+        
+    def test_jwt_algorithm_values(self):
+        """Test valid and invalid jwt_algorithm values"""
+        valid_algorithms = ["RS256", "HS256"]
+        for alg in valid_algorithms:
+            config = AppConfig.set_config(
+                cognito_url="http://localhost:8100",
+                jwt_secret="test-secret",
+                jwt_algorithm=alg,
+                validation_strategy="local_only",
+                region="eu-west-1"
+            )
+            self.assertEqual(config.jwt_algorithm, alg)
+
+
 
 if __name__ == "__main__":
     # Configure test runner

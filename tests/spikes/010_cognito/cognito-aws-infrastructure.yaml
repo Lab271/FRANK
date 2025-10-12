@@ -4,7 +4,7 @@ Description: 'FRANK Platform - Cognito Authentication Spike - AWS Cognito User P
 Parameters:
   ProjectName:
     Type: String
-    Default: frank-cognito-spike
+    Default: frank-cognito
     Description: Name of the project for resource naming
   
   Environment:
@@ -256,11 +256,28 @@ Outputs:
   TestUserCredentials:
     Description: Test user credentials for API testing with AccessTier groups
     Value: !Sub |
-      Test Users (password must be changed on first login):
+      Test Users (created with temporary passwords - use ADMIN auth flow):
       - Username: testuser_observer, Group: observer (Observer), Temp Password: TempPass123!
       - Username: testuser_contributor, Group: contributor (Contributor), Temp Password: TempPass123!
       - Username: testuser_partner, Group: partner (Partner), Temp Password: TempPass123!
       - Username: testuser_core_member, Group: core_member (Core Member), Temp Password: TempPass123!
       
-      AWS CLI login example:
-      aws cognito-idp admin-initiate-auth --user-pool-id ${CognitoUserPool} --client-id ${CognitoUserPoolClient} --auth-flow ADMIN_USER_PASSWORD_AUTH --auth-parameters USERNAME=testuser_contributor,PASSWORD=TempPass123! --profile spike-account --region eu-central-1
+      Note: Users are created with temporary passwords and will be in FORCE_CHANGE_PASSWORD status.
+      
+      For testing, use ADMIN auth flow:
+      aws cognito-idp admin-initiate-auth \
+        --user-pool-id ${CognitoUserPool} \
+        --client-id ${CognitoUserPoolClient} \
+        --auth-flow ADMIN_USER_PASSWORD_AUTH \
+        --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123! \
+        --profile spike-account \
+        --region eu-central-1
+      
+      Or to set permanent passwords (for testing):
+      aws cognito-idp admin-set-user-password \
+        --user-pool-id ${CognitoUserPool} \
+        --username testuser_observer \
+        --password TempPass123! \
+        --permanent \
+        --profile spike-account \
+        --region eu-central-1

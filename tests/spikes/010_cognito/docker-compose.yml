@@ -28,7 +28,6 @@ services:
     ports:
       - "${MOCK_COGNITO_PORT:-8100}:8100" # Direct HTTP access to Mock Cognito (exposed to localhost)
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - RELOAD=${RELOAD:-false}
       - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
@@ -56,12 +55,13 @@ services:
     ports:
       - "${SIMPLE_API_PORT:-8080}:8000" # Direct HTTP access to Simple API (exposed to localhost)
     environment:
-      - ENVIRONMENT=${ENVIRONMENT:-development}
+      - ENVIRONMENT=${ENVIRONMENT:-mock}
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - RELOAD=${RELOAD:-false}
       - COGNITO_URL=http://mock-cognito:8100
       - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
       - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-server_first}
+      - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
       - REGION=${REGION:-eu-west-1}
     depends_on:
       - mock-cognito

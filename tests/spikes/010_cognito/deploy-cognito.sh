@@ -11,7 +11,9 @@
 set -e
 
 # Configuration
-STACK_NAME="frank-cognito-spike"
+PROJECT_NAME="frank-cognito-010"
+ENVIRONMENT="spike"
+STACK_NAME="${PROJECT_NAME}-${ENVIRONMENT}"
 REGION="eu-central-1"
 PROFILE="spike-account"
 TEMPLATE_FILE="cognito-aws-infrastructure.yaml"
@@ -121,8 +123,8 @@ deploy_stack() {
         --stack-name "$STACK_NAME" \
         --template-body "file://$TEMPLATE_FILE" \
         --parameters \
-            ParameterKey=ProjectName,ParameterValue=frank-cognito-spike \
-            ParameterKey=Environment,ParameterValue=spike \
+            ParameterKey=ProjectName,ParameterValue=$PROJECT_NAME \
+            ParameterKey=Environment,ParameterValue=$ENVIRONMENT \
         --capabilities CAPABILITY_IAM \
         --profile "$PROFILE" \
         --region "$REGION"
@@ -243,7 +245,7 @@ get_outputs() {
         --query 'Stacks[0].Outputs[?OutputKey==`AppClientId`].OutputValue' \
         --output text)
     
-    COGNITO_ENDPOINT=$(aws cloudformation describe-stacks \
+    COGNITO_URL=$(aws cloudformation describe-stacks \
         --stack-name "$STACK_NAME" \
         --profile "$PROFILE" \
         --region "$REGION" \
@@ -253,19 +255,17 @@ get_outputs() {
     echo ""
     print_header "Next Steps"
     echo "1. Test authentication:"
-    echo "   python simple_api.py --endpoint=$COGNITO_ENDPOINT --user-pool-id=$USER_POOL_ID --app-client-id=$APP_CLIENT_ID"
+    echo -e "${YELLOW}   python simple_api_010.py --environment=aws --cognito-url=$COGNITO_URL --user-pool-id=$USER_POOL_ID --app-client-id=$APP_CLIENT_ID ${NC}"
     echo ""
     echo "2. Test user login with AWS CLI:"
-    echo "   aws cognito-idp admin-initiate-auth \\"
-    echo "     --user-pool-id $USER_POOL_ID \\"
-    echo "     --client-id $APP_CLIENT_ID \\"
-    echo "     --auth-flow ADMIN_NO_SRP_AUTH \\"
-    echo "     --auth-parameters USERNAME=testuser_contributor,PASSWORD=TempPass123! \\"
-    echo "     --profile $PROFILE \\"
-    echo "     --region $REGION"
+    echo -e "${YELLOW}   aws cognito-idp admin-initiate-auth \\ ${NC}"
+    echo -e "${YELLOW}     --user-pool-id $USER_POOL_ID \\ ${NC}"
+    echo -e "${YELLOW}     --client-id $APP_CLIENT_ID \\ ${NC}"
+    echo -e "${YELLOW}     --auth-flow ADMIN_NO_SRP_AUTH \\ ${NC}"
+    echo -e "${YELLOW}     --auth-parameters USERNAME=testuser_contributor,PASSWORD=TempPass123! \\ ${NC}"
+    echo -e "${YELLOW}     --profile $PROFILE \\ ${NC}"
+    echo -e "${YELLOW}     --region $REGION ${NC}"
     echo ""
-    echo "3. Run Simple API with AWS Cognito:"
-    echo "   python simple_api_aws.py"
 }
 
 cleanup_stack() {

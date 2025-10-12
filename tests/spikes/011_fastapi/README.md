@@ -75,6 +75,61 @@ FastAPI Application (Function-Based)
    - **Features**: `--reload` flag support, configurable host/port, logging integration
    - **Testing**: uvicorn TestClient integration for realistic testing
 
+
+## Injecting Variables into Docker Compose Files
+
+Docker Compose supports several ways to inject variables into your `docker-compose.yml` files for flexible configuration:
+
+1. **Environment Variable Substitution**  
+   Use `${VAR_NAME}` in your Compose file, and set the variable in your shell or `.env` file:
+   ```yaml
+   services:
+     web:
+       image: "myapp:${TAG}"
+   ```
+   ```bash
+   export TAG=latest
+   docker-compose up
+   ```
+
+2. **.env File**  
+   Place a `.env` file in the same directory as your Compose file:
+   ```
+   TAG=dev
+   ```
+   Docker Compose automatically loads these variables.
+
+3. **Override with `environment` Section**  
+   Pass environment variables to containers:
+   ```yaml
+   services:
+     web:
+       environment:
+         - DEBUG=true
+         - API_KEY=${API_KEY}
+   ```
+
+4. **Command Line Override**  
+   You can override variables inline:
+   ```bash
+   TAG=prod docker-compose up
+   ```
+
+5. **Multiple Compose Files**  
+   Use `-f` to override or extend configuration:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+   ```
+
+6. **Using `--env-file` Option**  
+   Specify an environment file explicitly using the `--env-file` flag:
+   ```bash
+   docker-compose --env-file custom.env up
+   ```
+
+See the [Docker Compose documentation](https://docs.docker.com/compose/environment-variables/) for more details.
+
+
 ## Validation Criteria
 
 ### Functional Requirements

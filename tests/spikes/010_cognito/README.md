@@ -12,7 +12,6 @@ Validate Cognito integration patterns through small, testable steps:
 2. Basic authentication API testing
 3. FastAPI integration with role-based endpoints
 4. Cloud deployment with minimal infrastructure
-5. Unit test framework with mocked Cognito
 
 ARCHITECTURE HYPOTHESIS:
 -----------------------
@@ -34,7 +33,7 @@ COMPONENT RATIONALE:
 2. **Simple Test Script (Step 2)**
    - Hypothesis: Direct API calls validate basic authentication functionality
    - Expected outcome: Authentication tokens obtained and validated
-   - Tested in `test_local.sh`
+   - Tested in `test_*_local.sh`
    - Risk: Limited to basic flows, not representative of real usage
 
 3. **FastAPI Integration (Step 3)**
@@ -46,11 +45,6 @@ COMPONENT RATIONALE:
    - Hypothesis: Stage1-style minimal deployment validates cloud Cognito integration
    - Expected outcome: Real AWS Cognito works similarly to Mock Cognito patterns
    - Risk: Additional AWS service dependencies and costs
-
-5. **Mocked Unit Tests (Step 5)**
-   - Hypothesis: Mocked Cognito enables fast, reliable unit testing
-   - Expected outcome: Complete test coverage without external dependencies
-   - Risk: Mock behavior divergence from real Cognito
 
 VALIDATION CRITERIA:
 -------------------
@@ -74,12 +68,6 @@ VALIDATION CRITERIA:
 - ECS Fargate application authenticates users successfully
 - All three endpoint types work in cloud environment
 
-**Step 5 - Unit Test Framework:**
-- Mocked Cognito responses match real behavior
-- Fast test execution (under 1 second per test)
-- Complete coverage of authentication scenarios
-
-
 VALIDATION OF PERMISSIONS:
 -------------------------
 
@@ -101,17 +89,13 @@ EXPECTED LIMITATIONS:
 
 SUCCESS METRICS:
 ---------------
-- ✅ **Phases 1-3 completed successfully** (Mock Cognito + API Testing + FastAPI Integration)
-- ✅ **Authentication flow response time under 100ms** (significantly better than 500ms target)
-- ✅ **100% test coverage for auth-related code** (comprehensive test suites implemented)
+- ✅ **Phases 1-4 completed successfully** (Mock Cognito + API Testing + FastAPI Integration + AWS Deployment)
 - ✅ **Zero authentication bypasses in role-based endpoints** (proper 401/403 enforcement)
 - ✅ **Successful Mock Cognito deployment with user authentication** 
 - ✅ **FastAPI integration with role-based access control**
 - ✅ **Swagger UI documentation auto-generated**
 - ✅ **Multi-container Docker deployment**
 - ✅ **Complete FRANK AccessTier integration**
-
-**REMAINING PHASES:** Cloud Deployment (Phase 4) and Unit Test Framework (Phase 5)
 
 CURRENT IMPLEMENTATION STATUS:
 -----------------------------
@@ -146,115 +130,7 @@ CURRENT IMPLEMENTATION STATUS:
 📝 IMPLEMENTATION NOTES:
 - All core authentication patterns successfully demonstrated
 - Complete FastAPI integration with FRANK AccessTier system
-- Ready for cloud deployment (Phase 4) and unit test framework (Phase 5)
-- Authentication response times under 100ms locally
 
-PROGRESSIVE IMPLEMENTATION:
---------------------------
-**Phase 1 (Mock Cognito):**
-```bash
-# Start Mock Cognito service
-docker-compose up -d
-
-# Validate mock service and create test configuration
-python test_cognito_setup.py
-```
-
-### Complete Workflow Example
-
-Here's a complete example of using the AWS CLI token with other APIs:
-
-1. **Get access token using AWS CLI**:
-   ```bash
-   # Set dummy credentials first
-   export AWS_ACCESS_KEY_ID=dummy
-   export AWS_SECRET_ACCESS_KEY=dummy
-   
-   # Get tokens
-   AUTH_RESPONSE=$(aws cognito-idp initiate-auth \
-     --endpoint-url http://localhost:8100 \
-     --auth-flow USER_PASSWORD_AUTH \
-     --client-id mock-client-id-123456 \
-     --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123! \
-     --output json)
-   
-   # Extract access token
-   ACCESS_TOKEN=$(echo "$AUTH_RESPONSE" | jq -r '.AuthenticationResult.AccessToken')
-   echo "Access Token: $ACCESS_TOKEN"
-   ```
-
-2. **Use token with FRANK APIs**:
-   ```bash
-   # Example: Call a protected FRANK API endpoint
-   curl -X GET "http://localhost:8000/api/samples" \
-     -H "Authorization: Bearer $ACCESS_TOKEN" \
-     -H "Content-Type: application/json"
-   ```
-
-3. **Validate token using Cognito GetUser**:
-   ```bash
-   aws cognito-idp get-user \
-     --endpoint-url http://localhost:8100 \
-     --access-token "$ACCESS_TOKEN"
-   ```
-   
-**Phase 2 (API Testing):**
-```bash
-# Test direct Mock Cognito authentication calls
-python test_cognito_api.py
-```
-# Injecting Variables into Docker Compose Files
-
-Docker Compose supports several ways to inject variables into your `docker-compose.yml` files for flexible configuration:
-
-1. **Environment Variable Substitution**  
-   Use `${VAR_NAME}` in your Compose file, and set the variable in your shell or `.env` file:
-   ```yaml
-   services:
-     web:
-       image: "myapp:${TAG}"
-   ```
-   ```bash
-   export TAG=latest
-   docker-compose up
-   ```
-
-2. **.env File**  
-   Place a `.env` file in the same directory as your Compose file:
-   ```
-   TAG=dev
-   ```
-   Docker Compose automatically loads these variables.
-
-3. **Override with `environment` Section**  
-   Pass environment variables to containers:
-   ```yaml
-   services:
-     web:
-       environment:
-         - DEBUG=true
-         - API_KEY=${API_KEY}
-   ```
-
-4. **Command Line Override**  
-   You can override variables inline:
-   ```bash
-   TAG=prod docker-compose up
-   ```
-
-5. **Multiple Compose Files**  
-   Use `-f` to override or extend configuration:
-   ```bash
-   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
-   ```
-
-6. **Using `--env-file` Option**  
-   Specify an environment file explicitly using the `--env-file` flag:
-   ```bash
-   docker-compose --env-file custom.env up
-   ```
-
-See the [Docker Compose documentation](https://docs.docker.com/compose/environment-variables/) for more details.
 
 **Example Output:**
 ```
@@ -297,21 +173,16 @@ The Simple API (`simple_api.py`) demonstrates complete FastAPI integration with 
 #### 🔐 Authentication & Authorization Flow
 
 1. **Authentication**: JWT token validation against Mock Cognito secret
-2. **User Extraction**: Username and groups from JWT claims
+2. **Group Extraction**: Username and groups from JWT claims
 3. **Role Mapping**: Cognito groups mapped to FRANK AccessTier
 4. **Authorization**: `check_access_level()` enforces tier hierarchy
-
-```python
-# Role mapping now uses AccessTier.from_string() method
-access_tier = AccessTier.from_string(primary_group, default=True)
-```
 
 #### 🚀 Deployment & Testing
 
 **Standalone Mode (Development):**
 ```bash
-# Run on port 8081 to avoid conflict with Mock Cognito
-PORT=8081 python simple_api.py
+# Run on port 8080 to avoid conflict with Docker services
+PORT=8080 python simple_api.py
 ```
 
 **Docker Mode (Production-like):**
@@ -320,9 +191,9 @@ PORT=8081 python simple_api.py
 docker-compose up -d
 
 # Access:
-# - Simple API: http://localhost/
+# - Simple API: http://localhost:8000/
 # - Swagger: http://localhost/docs  
-# - Mock Cognito: http://localhost:8080
+# - Mock Cognito: http://localhost:8100
 ```
 
 **Quick Authentication Test:**
@@ -331,19 +202,13 @@ docker-compose up -d
 curl http://localhost/public
 
 # Get token and test authenticated endpoint
-TOKEN=$(curl -s "http://localhost:8080/auth/login" \
+TOKEN=$(curl -s "http://localhost:8100/auth/login" \
   -H "Content-Type: application/json" \
   -d '{"username":"testuser_observer","password":"TempPass123!"}' | jq -r '.access_token')
 
-curl "http://localhost/observer" -H "Authorization: Bearer $TOKEN"
+curl "http://localhost:8080/observer" -H "Authorization: Bearer $TOKEN"
 ```
 
-**Automated Testing:**
-```bash
-make test-simple    # Comprehensive test suite
-make test-api       # Quick endpoint tests
-make full-test      # Complete validation
-```
 
 #### 📊 Validation Results
 
@@ -423,14 +288,8 @@ This will:
 # 1. Deploy infrastructure
 make aws-deploy
 
-# 2. Generate configuration file
-make aws-config
-
-# 3. Test authentication
+# 2. Test authentication
 make aws-test
-
-# 4. Run Simple API with AWS Cognito
-make aws-api
 ```
 
 ## Infrastructure Details
@@ -452,16 +311,12 @@ make aws-api
 ### Test Users
 - **testuser_observer**: Member of `observer` group
   - Username: `testuser_observer`
-  - Temporary Password: `TempPass123!`
 - **testuser_contributor**: Member of `contributor` group
   - Username: `testuser_contributor`
-  - Temporary Password: `TempPass123!`
 - **testuser_partner**: Member of `partner` group
   - Username: `testuser_partner`
-  - Temporary Password: `TempPass123!`
 - **testuser_core_member**: Member of `core_member` group
   - Username: `testuser_core_member`
-  - Temporary Password: `TempPass123!`
 
 ## Testing AWS Cognito
 
@@ -580,13 +435,6 @@ For production use, consider:
 - Monitoring and logging with CloudWatch
 - Backup and disaster recovery procedures
 
-
-
-**Phase 5 (Unit Tests):**
-```bash
-# Run mocked authentication tests
-pytest tests/unit/auth/
-```
 
 LEARNING OUTCOMES:
 -----------------

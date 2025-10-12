@@ -95,11 +95,11 @@ test_endpoint_access() {
     
     if [ "$HTTP_CODE" = "$expected_status" ]; then
         echo "✅ PASS ($HTTP_CODE)"
-        if [ "$HTTP_CODE" = "200" ]; then
-            echo "   User: $(echo "$BODY" | jq -r '.user_info.username // .username // "unknown"')"
-            echo "   Access Tier: $(echo "$BODY" | jq -r '.user_info.access_tier // .access_tier // "unknown"')"
-            echo "   Validation: $(echo "$BODY" | jq -r '.user.validation_source // "local"')"
-        fi
+        # if [ "$HTTP_CODE" = "200" ]; then
+        #     echo "   User: $(echo "$BODY" | jq -r '.user_info.username // .username // "unknown"')"
+        #     echo "   Access Tier: $(echo "$BODY" | jq -r '.user_info.access_tier // .access_tier // "unknown"')"
+        #     echo "   Validation: $(echo "$BODY" | jq -r '.user.validation_source // "local"')"
+        # fi
     else
         echo "❌ FAIL (expected $expected_status, got $HTTP_CODE)"
         if [ "$HTTP_CODE" != "200" ]; then

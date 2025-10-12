@@ -18,6 +18,7 @@
 
 LOCAL_DOMAIN = frank-010-cognito.local
 SIMPLE_API_ENDPOINT = https://$(LOCAL_DOMAIN)
+SIMPLE_API_LOCAL_ENDPOINT = http://localhost:8000
 SIMPLE_API_HTTP_ENDPOINT = http://localhost:8080
 MOCK_COGNITO_ENDPOINT = http://localhost:8100
 
@@ -74,6 +75,13 @@ integration: up ## Run integration tests simulating external calls to docker
 	@./test_simple_api_010_local.sh 8080 > /dev/null 2>&1 && echo "✅ Simple API tests completed" || (echo "❌ Simple API tests failed"; exit 1)
 	@echo "✅ Integration tests completed"
 
+health: ## Check health of all services
+	@echo "🔍 Checking health of services..."
+	@curl -s "$(MOCK_COGNITO_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Mock Cognito health check passed" || echo "❌ Mock Cognito health check failed"
+	@curl -s "$(SIMPLE_API_LOCAL_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Simple API (8000) health check passed" || echo "❌ Simple API (http) health check failed"
+	@curl -s "$(SIMPLE_API_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Simple API (https) health check passed" || echo "❌ Simple API (https) health check failed"
+	@curl -s "$(SIMPLE_API_HTTP_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Simple API (8080) health check passed" || echo "❌ Simple API (8080) health check failed"
+
 logs: ## Show Mock Cognito logs
 	docker-compose logs -f
 
@@ -84,65 +92,30 @@ logs-api: ## Show Simple API logs
 	docker-compose logs -f simple-api
 
 ###################################################################
-# Old stuff
+# AWS stuff
 ###################################################################
-
-run-unified-aws: ## Run unified API with AWS Cognito
-	@echo "🚀 Starting Unified API with AWS Cognito..."
-	@echo "   ⚠️  Requires AWS configuration:"
-	@echo "   export USER_POOL_ID=eu-central-1_xxxxxxxxx"
-	@echo "   export APP_CLIENT_ID=xxxxxxxxxxxxxxxxxx"
-	@echo "   export AWS_REGION=eu-central-1"
-	@echo ""
-	@echo "To run:"
-	@echo "  python simple_api_unified.py --use-aws"
-	@echo ""
-	@echo "Then access:"
-	@echo "  Unified API: http://localhost:8000"
-	@echo "  Swagger: http://localhost:8000/docs"
-	@echo ""
-	@echo "Test with: make test-unified-aws"
-
-
-
-test-api: ## Test Simple API endpoints with authentication
-	@echo "🧪 Testing Simple API endpoints..."
-	@echo "📍 Testing public endpoint..."
-	@curl -s "$(SIMPLE_API_ENDPOINT)/public" | jq '.' || true
-	@echo ""
-	@echo "📍 Getting authentication token..."
-	@TOKEN=$$(curl -s "$(MOCK_COGNITO_ENDPOINT)/auth/login" \
-		-H "Content-Type: application/json" \
-		-d '{"username":"testuser_contributor","password":"TempPass123!"}' | jq -r '.access_token') && \
-	echo "📍 Testing authenticated endpoint (contributor)..." && \
-	curl -s "$(SIMPLE_API_ENDPOINT)/contributor" -H "Authorization: Bearer $$TOKEN" | jq '.' || true
-	@echo ""
-	@echo "📍 Testing access control (should get 403)..." 
-	@TOKEN=$$(curl -s "$(MOCK_COGNITO_ENDPOINT)/auth/login" \
-		-H "Content-Type: application/json" \
-		-d '{"username":"testuser_contributor","password":"TempPass123!"}' | jq -r '.access_token') && \
-	curl -s -w "HTTP Status: %{http_code}\n" "$(SIMPLE_API_ENDPOINT)/partner" -H "Authorization: Bearer $$TOKEN" || true
-	@echo ""
-	@echo "✅ Simple API tests completed"
-
-
-# AWS Cognito deployment and testing targets
 aws-prerequisites: ## Check AWS prerequisites for deployment
 	@echo "🔍 Checking AWS prerequisites..."
 	@./deploy-cognito.sh check
-
-aws-deploy: ## Deploy AWS Cognito infrastructure to eu-central-1
-	@echo "🚀 Deploying AWS Cognito infrastructure..."
-	@./deploy-cognito.sh deploy
 
 aws-status: ## Check AWS Cognito deployment status
 	@echo "📊 Checking AWS Cognito deployment status..."
 	@./deploy-cognito.sh status
 
+aws-deploy: ## Deploy AWS Cognito infrastructure to eu-central-1
+	@echo "🚀 Deploying AWS Cognito infrastructure..."
+	@./deploy-cognito.sh deploy
 
 aws-cleanup: ## Delete AWS Cognito CloudFormation stack
 	@echo "🗑️ Cleaning up AWS Cognito infrastructure..."
 	@./deploy-cognito.sh cleanup
+
+aws-test: ## Run AWS Simple Cognito user test
+	@./test_aws_cognito.sh || (echo "❌ AWS Cognito user test failed"; exit 1)
+
+###################################################################
+# Old stuff
+###################################################################
 
 
 aws-full-test: aws-deploy aws-config aws-test ## Complete AWS workflow: deploy + configure + test
