@@ -76,7 +76,7 @@ python-dateutil==2.9.0.post0
 PyYAML==6.0.2
 pyzmq==27.0.2
 requests==2.32.5
-resolvelib==1.2.0
+resolvelib==1.2.1
 ruff==0.14.0
 s3transfer==0.13.1
 six==1.17.0
