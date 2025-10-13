@@ -14,7 +14,6 @@ This is the Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdel
 This project contains everything from design to implementation of the FRANK project. To get started, clone this project and run:
 
 ```
-    $ make dev # create virtualenv and install all dependencies for development
     $ make env # install all packages for development
     $ source .*/bin/activate # start the virtual env  PS I have alias venv="source .*/bin/activate"
     $ make test # run all unittests locally

@@ -6,8 +6,9 @@ VIRTUALENV = ./.$(PACKAGE)
 PYTHON = $(VIRTUALENV)/bin/python
 .PHONY: test lint help unittests integration clean env dev update freeze outdated check
 
-default: clean env test
+default: help
 
+TARGETS = check env test
 all: $(TARGETS)
 
 check: ## Validate primary development dependencies
@@ -21,7 +22,7 @@ freeze:  ## Freezes pip requirements
 	@$(PYTHON) -m pip freeze | grep -v "$(PACKAGE)" >> requirements.txt
 	@echo "requirements.txt regenerated"
 
-clean: ## Clean all build files
+clean: ## Clean all build files and virtualenv
 	-@echo y | pip uninstall $(PACKAGE)
 	@rm -rdf $(PACKAGE).egg*
 	@find . -name *.pyc -delete
@@ -30,12 +31,13 @@ clean: ## Clean all build files
 	@rm -frd .pytest_cache .ruff_cache .coverage
 	@rm -rfd __pycache__
 
-dev:$(VIRTUALENV)/bin/python  ## Install this for development
+env: $(VIRTUALENV)/bin/python ## create the virtualenv
 	@$(PYTHON) -m pip install --upgrade pip
 	@$(PYTHON) -m pip install -e .
 	@$(PYTHON) -m pip install ruff
 	@$(PYTHON) -m pip install pytest
 	@$(PYTHON) -m pip install coverage
+	@$(PYTHON) -m pip install -r requirements.txt
 
 test: ## Run unit tests and coverage
 	@coverage run -m pytest
@@ -47,15 +49,9 @@ integration:  ## Run all integration tests
 lint: test ## Static code checking
 	@ruff check .
 
-env: $(VIRTUALENV)/bin/python ## create the virtualenv
-	@$(PYTHON) -m pip install -r requirements.txt
-
 $(VIRTUALENV)/bin/python: # create the local virtualenv
 	virtualenv $(VIRTUALENV)
 	echo "To activate 'source $(VIRTUALENV)/bin/activate'"
-
-update: ## update all packages
-	@$(PYTHON) -m pip install --upgrade pip
 
 outdated: ## list all outdated packages
 	@$(PYTHON) -m pip list --outdated	
