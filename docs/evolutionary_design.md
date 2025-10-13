@@ -6,6 +6,276 @@ FRANK (Feedback Infrastructure for Cyber Risk Analysis and Network Knowledge sha
 
 Rather than attempting to build the complete system in one go, FRANK evolves through deliberate stages where each stage maintains a fully working system, introduces one major complexity dimension at a time, provides fallback options to previous stages, and enables confident experimentation through comprehensive testing.
 
+## Portable Development Environment
+
+FRANK employs a **portable, local-first development environment** strategy that enables developers to work efficiently across multiple branches, worktrees, and machines without environment conflicts or complex setup procedures.
+
+### The `.frank` Virtual Environment Pattern
+
+The project uses a **hidden directory pattern** for virtual environments that provides several key benefits:
+
+```bash
+# Virtual environment location
+.frank/                    # Hidden directory (gitignored)
+├── bin/                   # Python executables
+│   ├── python            # Python 3.13 interpreter
+│   ├── pip               # Package installer
+│   └── pytest            # Test runner
+├── lib/                   # Installed packages
+└── pyvenv.cfg            # Virtualenv configuration
+```
+
+**Key Design Decisions:**
+
+1. **Hidden Directory (`.frank`)**: Using a dot-prefix keeps the virtual environment hidden from casual directory listings while making it easily identifiable as project infrastructure.
+
+2. **Project-Named Pattern**: The virtualenv is named after the project (`.$(PACKAGE)` where `PACKAGE=frank`), making it instantly recognizable and avoiding generic names like `.venv` that could conflict with other conventions.
+
+3. **Local to Repository Root**: Each git clone/worktree gets its own isolated virtual environment, preventing cross-contamination between branches or experimental work.
+
+4. **Python 3.13 Explicit**: The virtualenv explicitly uses Python 3.13, ensuring consistency across all development environments regardless of system Python version.
+
+### Makefile-Driven Setup
+
+The project uses GNU Make to provide a **single command setup** for new developers or new worktrees:
+
+```bash
+# One-command setup for new clone or worktree
+make dev
+```
+
+This single command:
+1. Creates `.frank/` virtualenv if not present
+2. Upgrades pip to latest version
+3. Installs FRANK package in editable mode (`-e .`)
+4. Installs development tools (ruff, pytest, coverage, lark)
+
+**Makefile Pattern:**
+```makefile
+PACKAGE=frank
+VIRTUALENV = ./.$(PACKAGE)
+PYTHON = $(VIRTUALENV)/bin/python
+
+dev:$(VIRTUALENV)/bin/python  ## Install this for development
+	@$(PYTHON) -m pip install --upgrade pip
+	@$(PYTHON) -m pip install -e .
+	@$(PYTHON) -m pip install ruff pytest coverage lark
+
+$(VIRTUALENV)/bin/python: # create the local virtualenv
+	virtualenv $(VIRTUALENV)
+	echo "To activate 'source $(VIRTUALENV)/bin/activate'"
+```
+
+**Benefits:**
+- **Idempotent**: Running `make dev` multiple times is safe and fast
+- **Declarative**: Dependencies declared in one place
+- **Cross-Platform**: Works on macOS, Linux, and WSL2
+- **Version Controlled**: Makefile is committed, ensuring all developers use same setup
+
+### Shell Integration: The `venv` Alias
+
+Developers use a **wildcard shell alias** for rapid environment activation:
+
+```bash
+# In ~/.bashrc or ~/.zshrc
+alias venv='source .*/bin/activate'
+```
+
+**How It Works:**
+- The wildcard `.*` matches any hidden directory (`.frank`, `.venv`, `.python`, etc.)
+- Automatically finds and activates the local virtual environment
+- Works in any project directory without remembering specific names
+- One command across all projects: just type `venv`
+
+**Usage Pattern:**
+```bash
+$ cd ~/wc/FRANK
+$ venv                        # Activates .frank/bin/activate
+(.frank) $ python --version   # Python 3.13.7
+(.frank) $ pytest            # Runs tests in isolated env
+```
+
+### Git Worktree Compatibility
+
+This pattern is **specifically designed for git worktrees**, which allow working on multiple branches simultaneously:
+
+```bash
+# Main development repository
+/Users/iheitlager/wc/FRANK/
+├── .frank/                    # Virtual env for main branch
+├── src/frank/                 # Source code
+└── tests/                     # Tests
+
+# Separate worktree for feature branch
+/Users/iheitlager/wc/new-worktree/background-tasks/
+├── .frank/                    # Independent virtual env
+├── src/frank/                 # Same source, different branch
+└── tests/                     # Same tests, different state
+```
+
+**Worktree Workflow:**
+```bash
+# Create new worktree for feature branch
+git worktree add ../new-worktree/background-tasks feat/background-tasks
+
+# Setup independent environment
+cd ../new-worktree/background-tasks
+make dev                      # Creates separate .frank/ virtualenv
+
+# Activate and work
+venv                          # Activates this worktree's environment
+pytest                        # Tests run in isolation
+```
+
+**Key Benefits for Worktrees:**
+1. **No Interference**: Each worktree has isolated dependencies
+2. **Version Testing**: Can test Python package upgrades in one worktree without affecting others
+3. **Branch-Specific Tools**: Different branches can have different dev tool versions
+4. **Parallel Development**: Work on multiple features without environment switching
+5. **Quick Context Switch**: `cd` to worktree, type `venv`, and you're ready
+
+### VS Code Integration
+
+VS Code's Python extension automatically detects `.frank/` virtual environments:
+
+**Automatic Detection:**
+- Extension scans for `pyvenv.cfg` in hidden directories
+- `.frank/bin/python` appears in Python interpreter selector
+- IntelliSense uses correct package versions
+- Integrated terminal auto-activates environment
+
+**Configuration (Optional):**
+```json
+// .vscode/settings.json (project-specific, gitignored)
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.frank/bin/python",
+  "python.terminal.activateEnvironment": true
+}
+```
+
+**Workspace Setup:**
+1. Open FRANK project in VS Code
+2. Press `Cmd+Shift+P` → "Python: Select Interpreter"
+3. Choose `.frank/bin/python` (Python 3.13.7)
+4. All Python features now use correct environment
+
+**Multi-Worktree Setup:**
+```json
+// VS Code workspace file (optional)
+{
+  "folders": [
+    {"path": "../FRANK"},                        // Main worktree
+    {"path": "../new-worktree/background-tasks"} // Feature worktree
+  ]
+}
+```
+Each folder maintains its own interpreter selection from its local `.frank/`.
+
+### Comparison: `make dev` vs `make env`
+
+The Makefile provides two targets that serve different purposes:
+
+```makefile
+env: $(VIRTUALENV)/bin/python ## create the virtualenv
+	@$(PYTHON) -m pip install -r requirements.txt
+
+dev:$(VIRTUALENV)/bin/python  ## Install this for development
+	@$(PYTHON) -m pip install --upgrade pip
+	@$(PYTHON) -m pip install -e .
+	@$(PYTHON) -m pip install ruff pytest coverage lark
+```
+
+**When to Use Each:**
+
+| Command | Purpose | Use Case |
+|---------|---------|----------|
+| `make env` | **Production-like install** | CI/CD pipelines, testing frozen dependencies |
+| `make dev` | **Development setup** | Local development, adding features, debugging |
+
+**Should They Be Merged?**
+
+**Recommendation: Keep them separate** for these reasons:
+
+1. **Different Dependencies**:
+   - `make env`: Installs from frozen `requirements.txt` (reproducible builds)
+   - `make dev`: Installs latest dev tools + editable package (active development)
+
+2. **Different Installation Modes**:
+   - `make env`: Regular install (like production)
+   - `make dev`: Editable install (`-e .`) - changes reflected immediately
+
+3. **Different Workflows**:
+   - `make env`: CI testing against locked versions
+   - `make dev`: Local iteration with latest tools
+
+**Best Practice Pattern:**
+```bash
+# Starting new feature development
+git worktree add ../feature-branch feat/new-feature
+cd ../feature-branch
+make dev              # Development environment
+venv                  # Activate
+pytest                # Develop and test
+
+# Before committing (verify against frozen deps)
+make clean            # Remove .frank
+make env              # Install from requirements.txt
+make test             # Ensure tests pass with locked versions
+```
+
+### Complete Workflow Example
+
+**Scenario: Starting work on a new feature in a worktree**
+
+```bash
+# 1. Create worktree from main repository
+cd ~/wc/FRANK
+git worktree add ../feature-worktree feat/token-refresh
+cd ../feature-worktree
+
+# 2. Setup development environment (one command)
+make dev
+# Output:
+#   Creating virtualenv at .frank/
+#   Upgrading pip...
+#   Installing frank package in editable mode...
+#   Installing development tools...
+#   Setup complete!
+
+# 3. Activate environment (one command)
+venv
+# Prompt changes to: (.frank) $
+
+# 4. Verify setup
+python --version          # Python 3.13.7
+which python              # .../feature-worktree/.frank/bin/python
+pip list                  # Shows frank, ruff, pytest, etc.
+
+# 5. Work on feature
+pytest tests/spikes/010_cognito/  # Tests run in isolation
+ruff check .                      # Lint with worktree's tools
+
+# 6. Switch to main worktree (different environment)
+cd ~/wc/FRANK
+venv                      # Activates main worktree's .frank
+python --version          # Same Python, different packages
+```
+
+### Benefits Summary
+
+The portable virtual environment strategy provides:
+
+1. **Zero Configuration**: Works immediately after `git clone` + `make dev`
+2. **Worktree Isolation**: Each branch/worktree has independent dependencies
+3. **Fast Context Switching**: `cd` + `venv` = instant environment activation
+4. **IDE Compatible**: VS Code, PyCharm, and other IDEs auto-detect `.frank/`
+5. **CI/CD Friendly**: `make env` provides reproducible builds
+6. **Beginner Friendly**: New developers run two commands: `make dev` + `venv`
+7. **Cross-Platform**: Works on macOS, Linux, WSL2 without modification
+8. **Version Explicit**: Python 3.13 consistently across all environments
+
+This approach exemplifies FRANK's evolutionary design philosophy: **simple, explicit, and portable** - enabling rapid iteration without sacrificing reproducibility or team consistency.
+
 A fundamental aspect of this evolutionary strategy is maintaining one single code library (`src/frank/`) that contains all business logic, data models, and core functionality. This unified library serves as the stable foundation that persists across all infrastructure stages. The library structure encompasses models for data structures, validation for business rules, processing for core threat intelligence logic, repositories for database abstraction interfaces, and serialization for YAML/JSON conversion utilities. This approach ensures the same `frank` library code runs unchanged from SQLite in Stage 1 to ScyllaDB in Stage 4. Infrastructure changes require only new repository implementations while business logic remains completely isolated from deployment concerns.
 
 The benefits of this single library approach include consistency where the same behavior is guaranteed across all stages, testability where core logic is tested once and works everywhere, maintainability where bug fixes and features are applied universally, confidence where infrastructure changes cannot break business logic, and velocity where the team focuses on business value rather than infrastructure porting.

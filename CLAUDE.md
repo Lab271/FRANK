@@ -95,13 +95,13 @@ Access filtering is built into the base class (`_filter_submission_by_access_lev
 
 The platform uses Pydantic v2 models following "be forgiving on input, strong on return" principle:
 
-- `Observable` - Threat indicators (IPs, domains, hashes) with STIX-compliant IDs
-- `Submission` - Complete threat intelligence submission
-- `Sighting` - Observation details with observables
-- `Submitter` - Submitting organization with access tier
-- `HitTarget` - Affected organization with privacy controls
-- `Observables` - Container for network/file/process observables
-- `ThreatContext` - Campaign attribution and MITRE ATT&CK mapping
+- [`Observable`](src/frank/core/models.py#L28) - Threat indicators (IPs, domains, hashes) with STIX-compliant IDs
+- [`Submission`](src/frank/core/models.py#L371) - Complete threat intelligence submission
+- [`Sighting`](src/frank/core/models.py#L290) - Observation details with observables
+- [`Submitter`](src/frank/core/models.py#L88) - Submitting organization with access tier
+- [`HitTarget`](src/frank/core/models.py#L143) - Affected organization with privacy controls
+- [`Observables`](src/frank/core/models.py#L205) - Container for network/file/process observables
+- [`ThreatContext`](src/frank/core/models.py#L259) - Campaign attribution and MITRE ATT&CK mapping
 
 Models support:
 - Factory methods: `Observable.create_ipv4()`, `Submission.create_minimal()`
