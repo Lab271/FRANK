@@ -198,11 +198,11 @@ ansible-playbook ansible/playbook.yml --tags destroy
 
 ### Pydantic Model Guidelines
 
-- Use `ConfigDict(extra="ignore")` to be forgiving on input
-- Provide factory methods for common use cases
-- Implement `from_legacy_dict()` for backward compatibility
-- Use `model_validator(mode="after")` for cross-field validation
-- Always serialize datetimes as ISO strings with `field_serializer`
+- Use `ConfigDict(extra="ignore")` to be forgiving on input.
+- Provide factory methods for common use cases.
+- Implement `from_legacy_dict()` for backward compatibility.
+- Use `model_validator(mode="after")` for cross-field validation.
+- Always serialize datetimes as ISO strings with `field_serializer`.
 
 ### FastAPI Testing Patterns (Spike 011)
 
