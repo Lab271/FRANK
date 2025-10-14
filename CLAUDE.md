@@ -26,6 +26,11 @@ pytest tests/unit/                    # Run only unit tests
 pytest tests/spikes/ -k "*_test.py"   # Run spike validation tests
 behave tests/integration/             # Run BDD integration tests
 
+# Development workflow
+make check        # Validate development dependencies (Python/pip/docker)
+make freeze       # Freeze pip requirements to requirements.txt
+make outdated     # List all outdated packages
+
 # Code quality
 make lint         # Run tests then ruff static analysis
 
@@ -129,17 +134,25 @@ FRANK uses three test layers for confident evolution:
    - Files ending in `*_test.py` are part of pytest suite
    - Each spike has README.md documenting hypothesis, approach, results, decisions
    - Run validation tests: `pytest tests/spikes/ -k "*_test.py"`
+   - Recent spikes: 010_cognito (AWS Cognito authentication), 011_fastapi (FastAPI testability patterns)
 
 **Test Philosophy**: Tests are the safety net enabling aggressive experimentation. Database abstraction ensures all implementations behave identically.
+
+**Test Organization**:
+- `tests/unit/` - Core unit tests organized by module (core/, storage/, util/)
+- `tests/integration/` - BDD tests with Gherkin feature files and step definitions
+- `tests/spikes/` - Exploratory tests for new technologies and patterns
+- `tests/parked/` - Temporarily disabled tests (e.g., MySQL implementation)
 
 ## CI/CD Pipeline
 
 GitHub Actions workflow (`.github/workflows/main.yml`):
 - Triggers on pushes/PRs to main/develop branches affecting src/, tests/, or Python files
 - Tests on Python 3.11 and 3.13 matrix
-- Requires 80% minimum coverage (`--cov-fail-under=80`)
-- Uploads test results and coverage reports
-- Comments PR with coverage percentage
+- Requires 85% minimum coverage (`--cov-fail-under=85`)
+- Uploads test results and coverage reports (as artifacts)
+- Comments PR with coverage percentage (excludes dependabot PRs)
+- Uses pip caching for faster build times
 
 ## AWS Deployment (Stage 3)
 
@@ -191,6 +204,18 @@ ansible-playbook ansible/playbook.yml --tags destroy
 - Use `model_validator(mode="after")` for cross-field validation
 - Always serialize datetimes as ISO strings with `field_serializer`
 
+### FastAPI Testing Patterns (Spike 011)
+
+The 011_fastapi spike established comprehensive testing patterns for FastAPI applications:
+
+- **Function-Based Architecture**: Use `create_app()` functions returning configured FastAPI instances for better testability
+- **Bearer Token Authentication**: Implement `HTTPBearer` security with custom dependency functions
+- **Exception Handling**: Support both standard HTTPException and custom exception extensions
+- **Uvicorn Development**: Use argparse for `--reload` flag and configurable host/port
+- **Test Structure**: Use pytest fixtures with `TestClient` for comprehensive endpoint testing
+- **Authentication Testing**: Test valid tokens, invalid tokens, missing headers, and malformed headers
+- **Logging Integration**: Implement middleware for request/response logging with timing
+
 ### Running Single Tests
 
 ```bash
@@ -210,12 +235,29 @@ pytest tests/unit/ -v --cov=src/frank --cov-report=term-missing
 ## Important Notes
 
 - **Never break Stage 1**: It's the development baseline. All stages must maintain fallback capability.
-- **Coverage requirement**: Tests must maintain ≥85% coverage (CI fails below 80%)
+- **Coverage requirement**: Tests must maintain ≥85% coverage (CI fails below 85%)
 - **Git tags**: Functional milestones use version tags (0.1.0, 0.2.0, etc.)
 - **Documentation**: Each spike must have README.md capturing hypothesis, results, and decisions
 - **Ruff configuration**: Line length limit is 120 characters (pyproject.toml)
 - **AWS profiles**: Development uses `spike-account` profile, main account for SSL certificates
 - **Python versions**: Support 3.11 and 3.13 (tested in CI)
+- **Testing tools**: pytest 8.4.2, coverage 7.10.7 with C extension
+
+## Recent Developments
+
+### Spike 010: AWS Cognito Authentication
+Time-boxed exploration of AWS Cognito integration for user authentication, token management, and secure API access patterns.
+
+### Spike 011: FastAPI Testability Validation
+Established comprehensive patterns for:
+- Function-based FastAPI architecture for improved testability
+- Bearer token authentication with HTTPBearer security
+- Exception handling (standard and custom HTTPException extensions)
+- Uvicorn development workflow with hot-reload
+- Comprehensive pytest testing patterns with TestClient
+- Request/response logging middleware
+
+These patterns are now applicable across all FRANK API implementations.
 
 ## Evolutionary Design Philosophy
 
@@ -227,3 +269,12 @@ Read `docs/evolutionary_design.md` before making architectural changes. Key prin
 - Comprehensive testing enables confident experimentation
 - Infrastructure complexity separated from functional complexity
 - Single library approach ensures consistency across stages
+
+## Dependency Management
+
+- **Package Management**: Uses setuptools with dynamic versioning via setuptools_scm
+- **Version File**: Auto-generated `src/frank/__version__.py` from git tags
+- **Requirements**: Frozen requirements in `requirements.txt` (use `make freeze` to update)
+- **Virtual Environment**: `.frank/` directory (created by `make dev` or `make env`)
+- **Dependency Checking**: `make outdated` lists packages needing updates
+- **Build System**: Modern pyproject.toml configuration (PEP 621)
