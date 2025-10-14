@@ -216,6 +216,18 @@ The 011_fastapi spike established comprehensive testing patterns for FastAPI app
 - **Authentication Testing**: Test valid tokens, invalid tokens, missing headers, and malformed headers
 - **Logging Integration**: Implement middleware for request/response logging with timing
 
+### FastAPI Testing Patterns (Spike 011)
+
+The 011_fastapi spike established comprehensive testing patterns for FastAPI applications:
+
+- **Function-Based Architecture**: Use `create_app()` functions returning configured FastAPI instances for better testability
+- **Bearer Token Authentication**: Implement `HTTPBearer` security with custom dependency functions
+- **Exception Handling**: Support both standard HTTPException and custom exception extensions
+- **Uvicorn Development**: Use argparse for `--reload` flag and configurable host/port
+- **Test Structure**: Use pytest fixtures with `TestClient` for comprehensive endpoint testing
+- **Authentication Testing**: Test valid tokens, invalid tokens, missing headers, and malformed headers
+- **Logging Integration**: Implement middleware for request/response logging with timing
+
 ### Running Single Tests
 
 ```bash
