@@ -10,9 +10,10 @@ This is the Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdel
 This project contains everything from design to implementation of the FRANK project. To get started, clone this project and run:
 
 ```
-    $ make env # install all packages for development
-    $ source .*/bin/activate # start the virtual env  PS I have alias venv="source .*/bin/activate"
-    $ make test # run all unittests locally
+    $ make env                # install all packages for development
+    $ source .*/bin/activate  # start the virtual env  
+    # PS I have alias venv="source .*/bin/activate"
+    $ make test               # run all unittests locally
 ```
 
 This will prep your Macbook to run FRANK locally. It assumes Docker/Python/Make/AWS Cli to be available, you can test it with `make check`.
