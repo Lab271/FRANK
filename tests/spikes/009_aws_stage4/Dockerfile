@@ -61,8 +61,6 @@ ARG APP_NAME=simple_api.py
 # Create non-root user
 RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
 
-
-
 # Install runtime dependencies
 RUN apt-get update && apt-get install -y \
     curl \
@@ -73,8 +71,6 @@ RUN pip install --upgrade pip
 
 # Copy Python dependencies from builder
 COPY --from=builder /root/.local /home/frankuser/.local
-
-
 
 # Set working directory
 WORKDIR /app

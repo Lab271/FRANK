@@ -1,0 +1,283 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'FRANK Platform - Cognito Authentication Spike - AWS Cognito User Pool and App Client'
+
+Parameters:
+  ProjectName:
+    Type: String
+    Default: frank-cognito
+    Description: Name of the project for resource naming
+  
+  Environment:
+    Type: String
+    Default: spike
+    AllowedValues: [spike, dev, staging, prod]
+    Description: Environment name
+
+Resources:
+  # Cognito User Pool
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub '${ProjectName}-${Environment}-user-pool'
+      AliasAttributes:
+        - email
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+          TemporaryPasswordValidityDays: 7
+      MfaConfiguration: 'OFF'
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: given_name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: family_name
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate:
+          - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      VerificationMessageTemplate:
+        DefaultEmailOption: CONFIRM_WITH_CODE
+        EmailSubject: 'FRANK Platform - Verify your email'
+        EmailMessage: 'Welcome to FRANK Platform! Your verification code is {####}'
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UserPoolTags:
+        Project: !Ref ProjectName
+        Environment: !Ref Environment
+        Service: cognito-auth
+
+  # User Pool Groups for Role-based Access Control (Based on AccessTier enum)
+  ObserverGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: observer
+      Description: Observers - can view basic threat intelligence
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 4
+
+  ContributorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: contributor
+      Description: Contributors - can access and submit basic threat intelligence
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 3
+
+  PartnerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: partner
+      Description: Partners - can access advanced threat intelligence and submit data
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 2
+
+  CoreMemberGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties:
+      GroupName: core_member
+      Description: Core Members - full access to all threat intelligence and platform features
+      UserPoolId: !Ref CognitoUserPool
+      Precedence: 1
+
+  # App Client for Simple API
+  CognitoUserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub '${ProjectName}-${Environment}-api-client'
+      UserPoolId: !Ref CognitoUserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_ADMIN_USER_PASSWORD_AUTH
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      TokenValidityUnits:
+        AccessToken: hours
+        IdToken: hours
+        RefreshToken: days
+      AccessTokenValidity: 1
+      IdTokenValidity: 1
+      RefreshTokenValidity: 30
+      PreventUserExistenceErrors: ENABLED
+      CallbackURLs:
+        - http://localhost:8080/auth/callback
+        - https://frank-010-cognito.local/auth/callback
+      LogoutURLs:
+        - http://localhost:8080/auth/logout
+        - https://frank-010-cognito.local/auth/logout
+
+  # Test Users for each Access Tier
+  TestUserObserver:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: testuser_observer
+      UserAttributes:
+        - Name: email
+          Value: testuser_observer@example.com
+        - Name: given_name
+          Value: Observer
+        - Name: family_name
+          Value: User
+        - Name: email_verified
+          Value: 'true'
+      MessageAction: SUPPRESS
+
+  TestUserContributor:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: testuser_contributor
+      UserAttributes:
+        - Name: email
+          Value: testuser_contributor@example.com
+        - Name: given_name
+          Value: Contributor
+        - Name: family_name
+          Value: User
+        - Name: email_verified
+          Value: 'true'
+      MessageAction: SUPPRESS
+
+  TestUserPartner:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: testuser_partner
+      UserAttributes:
+        - Name: email
+          Value: testuser_partner@example.com
+        - Name: given_name
+          Value: Partner
+        - Name: family_name
+          Value: User
+        - Name: email_verified
+          Value: 'true'
+      MessageAction: SUPPRESS
+
+  TestUserCoreMember:
+    Type: AWS::Cognito::UserPoolUser
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: testuser_core_member
+      UserAttributes:
+        - Name: email
+          Value: testuser_core_member@example.com
+        - Name: given_name
+          Value: Core Member
+        - Name: family_name
+          Value: User
+        - Name: email_verified
+          Value: 'true'
+      MessageAction: SUPPRESS
+
+  # Add users to their respective groups
+  TestUserObserverGroupMembership:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref TestUserObserver
+      GroupName: !Ref ObserverGroup
+
+  TestUserContributorGroupMembership:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref TestUserContributor
+      GroupName: !Ref ContributorGroup
+
+  TestUserPartnerGroupMembership:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref TestUserPartner
+      GroupName: !Ref PartnerGroup
+
+  TestUserCoreMemberGroupMembership:
+    Type: AWS::Cognito::UserPoolUserToGroupAttachment
+    Properties:
+      UserPoolId: !Ref CognitoUserPool
+      Username: !Ref TestUserCoreMember
+      GroupName: !Ref CoreMemberGroup
+
+Outputs:
+  UserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-user-pool-id'
+
+  UserPoolArn:
+    Description: Cognito User Pool ARN
+    Value: !GetAtt CognitoUserPool.Arn
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-user-pool-arn'
+
+  AppClientId:
+    Description: Cognito App Client ID
+    Value: !Ref CognitoUserPoolClient
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-app-client-id'
+
+  Region:
+    Description: AWS Region
+    Value: !Ref 'AWS::Region'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-region'
+
+  CognitoIssuer:
+    Description: Cognito Token Issuer URL
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/${CognitoUserPool}'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-cognito-issuer'
+
+  CognitoAuthEndpoint:
+    Description: Cognito Authentication Endpoint
+    Value: !Sub 'https://cognito-idp.${AWS::Region}.amazonaws.com/'
+    Export:
+      Name: !Sub '${ProjectName}-${Environment}-cognito-endpoint'
+
+  TestUserCredentials:
+    Description: Test user credentials for API testing with AccessTier groups
+    Value: !Sub |
+      Test Users (created with temporary passwords - use ADMIN auth flow):
+      - Username: testuser_observer, Group: observer (Observer), Temp Password: TempPass123!
+      - Username: testuser_contributor, Group: contributor (Contributor), Temp Password: TempPass123!
+      - Username: testuser_partner, Group: partner (Partner), Temp Password: TempPass123!
+      - Username: testuser_core_member, Group: core_member (Core Member), Temp Password: TempPass123!
+      
+      Note: Users are created with temporary passwords and will be in FORCE_CHANGE_PASSWORD status.
+      
+      For testing, use ADMIN auth flow:
+      aws cognito-idp admin-initiate-auth \
+        --user-pool-id ${CognitoUserPool} \
+        --client-id ${CognitoUserPoolClient} \
+        --auth-flow ADMIN_USER_PASSWORD_AUTH \
+        --auth-parameters USERNAME=testuser_observer,PASSWORD=TempPass123! \
+        --profile spike-account \
+        --region eu-central-1
+      
+      Or to set permanent passwords (for testing):
+      aws cognito-idp admin-set-user-password \
+        --user-pool-id ${CognitoUserPool} \
+        --username testuser_observer \
+        --password TempPass123! \
+        --permanent \
+        --profile spike-account \
+        --region eu-central-1

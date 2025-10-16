@@ -34,7 +34,6 @@ clean: ## Clean all build files and virtualenv
 env: $(VIRTUALENV)/bin/python ## create the virtualenv
 	@$(PYTHON) -m pip install --upgrade pip
 	@$(PYTHON) -m pip install -e .
-	@$(PYTHON) -m pip install lark
 	@$(PYTHON) -m pip install ruff
 	@$(PYTHON) -m pip install pytest
 	@$(PYTHON) -m pip install coverage

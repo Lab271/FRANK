@@ -8,12 +8,11 @@ This spike validates the testability of FastAPI applications with uvicorn, estab
 
 **Previous Spike (010_cognito):** Authentication token management with Mock Cognito  
 **Current Spike (011_fastapi):** FastAPI testability validation with uvicorn  
-**Next Spike (012_integration):** Integration testing patterns across FRANK components
 
 ## Architectural Hypothesis
 
 ### Core Hypothesis
-> By implementing a function-based FastAPI architecture with comprehensive pytest testing patterns, we can establish a testable, maintainable, and reliable API development framework that supports authenticated endpoints, proper exception handling, and uvicorn development workflows with hot-reload capabilities.
+> By implementing a function-based FastAPI architecture with comprehensive pytest testing patterns, we can establish a testable, maintainable, and reliable API development framework that supports authenticated endpoints, proper exception handling, and uvicorn development workflows with hot-reload option.
 
 ### Problem Statement
 - **Testing Complexity**: FastAPI applications require specific testing patterns for authentication, exceptions, and HTTP status codes
@@ -37,17 +36,8 @@ FastAPI Application (Function-Based)
 ├── Public Endpoint (GET /)
 ├── Authenticated Endpoint (GET /protected) - Bearer Token Required
 ├── Exception Endpoint (GET /error) - Controlled 500 Response
+├── Unhandled Exception Endpoint (GET /python-error) - UnControlled 500 Response
 └── Custom Error Endpoint (GET /unauthorized) - Custom HTTPException Extension
-```
-
-### Testing Framework
-```
-pytest Test Suite
-├── test_public_endpoint() - Public access validation
-├── test_authenticated_endpoint() - Bearer token authentication
-├── test_exception_handling() - 500 error response validation
-├── test_custom_error_handling() - Custom HTTPException testing
-└── test_uvicorn_integration() - Server integration testing
 ```
 
 ### Component Details
@@ -84,6 +74,61 @@ pytest Test Suite
    - **Expected Outcome**: Seamless development experience with configurable reload
    - **Features**: `--reload` flag support, configurable host/port, logging integration
    - **Testing**: uvicorn TestClient integration for realistic testing
+
+
+## Injecting Variables into Docker Compose Files
+
+Docker Compose supports several ways to inject variables into your `docker-compose.yml` files for flexible configuration:
+
+1. **Environment Variable Substitution**  
+   Use `${VAR_NAME}` in your Compose file, and set the variable in your shell or `.env` file:
+   ```yaml
+   services:
+     web:
+       image: "myapp:${TAG}"
+   ```
+   ```bash
+   export TAG=latest
+   docker-compose up
+   ```
+
+2. **.env File**  
+   Place a `.env` file in the same directory as your Compose file:
+   ```
+   TAG=dev
+   ```
+   Docker Compose automatically loads these variables.
+
+3. **Override with `environment` Section**  
+   Pass environment variables to containers:
+   ```yaml
+   services:
+     web:
+       environment:
+         - DEBUG=true
+         - API_KEY=${API_KEY}
+   ```
+
+4. **Command Line Override**  
+   You can override variables inline:
+   ```bash
+   TAG=prod docker-compose up
+   ```
+
+5. **Multiple Compose Files**  
+   Use `-f` to override or extend configuration:
+   ```bash
+   docker-compose -f docker-compose.yml -f docker-compose.override.yml up
+   ```
+
+6. **Using `--env-file` Option**  
+   Specify an environment file explicitly using the `--env-file` flag:
+   ```bash
+   docker-compose --env-file custom.env up
+   ```
+
+See the [Docker Compose documentation](https://docs.docker.com/compose/environment-variables/) for more details.
+
 
 ## Validation Criteria
 
@@ -126,6 +171,7 @@ pytest Test Suite
 ### Development Experience
 - **Hot Reload**: Uvicorn --reload enables rapid development iteration
 - **Clean CLI**: Argparse integration provides professional command-line interface
+- **Configuration Setting**: Proper default setting and environment variables
 - **Logging**: Integrated logging captures development and testing insights
 - **Modularity**: Function-based design supports easy configuration changes
 
@@ -180,90 +226,6 @@ pytest Test Suite
 - Exception information leakage (mitigated by environment-specific error handling)
 - Development vs. production configuration drift (mitigated by configuration management)
 
-## Testing Strategy
-
-### Unit Testing Pattern
-```python
-# Test structure template
-import pytest
-from fastapi.testclient import TestClient
-from simple_api import create_app
-
-@pytest.fixture
-def client():
-    app = create_app()
-    return TestClient(app)
-
-def test_public_endpoint(client):
-    response = client.get("/")
-    assert response.status_code == 200
-    assert "message" in response.json()
-
-def test_authenticated_endpoint_valid_token(client):
-    headers = {"Authorization": "Bearer valid-token"}
-    response = client.get("/protected", headers=headers)
-    assert response.status_code == 200
-
-def test_authenticated_endpoint_invalid_token(client):
-    headers = {"Authorization": "Bearer invalid-token"}
-    response = client.get("/protected", headers=headers)
-    assert response.status_code == 401
-```
-
-### Exception Testing Pattern
-```python
-def test_exception_endpoint(client):
-    response = client.get("/error")
-    assert response.status_code == 500
-    assert "error" in response.json()
-    assert "detail" in response.json()
-
-def test_custom_error_endpoint(client):
-    response = client.get("/unauthorized")
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Custom unauthorized error"
-```
-
-### Authentication Testing Pattern
-```python
-class TestAuthentication:
-    def test_no_auth_header(self, client):
-        response = client.get("/protected")
-        assert response.status_code == 401
-        
-    def test_malformed_auth_header(self, client):
-        headers = {"Authorization": "InvalidFormat"}
-        response = client.get("/protected", headers=headers)
-        assert response.status_code == 401
-        
-    def test_valid_bearer_token(self, client):
-        headers = {"Authorization": "Bearer valid-token"}
-        response = client.get("/protected", headers=headers)
-        assert response.status_code == 200
-```
-
-### Uvicorn Integration Testing
-```python
-def test_uvicorn_server_startup():
-    """Test that uvicorn can start the FastAPI app successfully"""
-    import subprocess
-    import time
-    import requests
-    
-    # Start uvicorn in background
-    process = subprocess.Popen([
-        "python", "simple_api.py", "--port", "8001"
-    ])
-    
-    time.sleep(2)  # Allow startup
-    
-    try:
-        response = requests.get("http://localhost:8001/")
-        assert response.status_code == 200
-    finally:
-        process.terminate()
-```
-
 ## Success Metrics
 
 ### Functional Metrics
@@ -271,12 +233,6 @@ def test_uvicorn_server_startup():
 - **Authentication Success Rate**: 100% valid token acceptance, 100% invalid token rejection
 - **Exception Handling**: 100% consistent error response format
 - **Test Discovery**: 100% pytest test function discovery and execution
-
-### Performance Metrics
-- **API Response Time**: <100ms for simple endpoints (95th percentile)
-- **Test Execution Time**: <10 seconds for complete test suite
-- **Uvicorn Startup**: <3 seconds for development server
-- **Hot Reload Time**: <2 seconds for code change detection and reload
 
 ### Development Metrics
 - **Code Coverage**: >95% line coverage for implemented functionality
@@ -290,12 +246,8 @@ def test_uvicorn_server_startup():
 ```
 011_fastapi/
 ├── README.md                    # This hypothesis document
-├── simple_api.py                # Function-based FastAPI implementation
-├── test_simple_api.py           # Comprehensive pytest test suite
-├── requirements.txt             # Python dependencies
-├── logging_config.py            # FastAPI logging configuration
-├── authentication.py           # Bearer token authentication logic
-├── exceptions.py                # Custom HTTPException extensions
+├── simple_api_011.py            # Function-based FastAPI implementation
+├── test_simple_api_011.py       # Comprehensive pytest test suite
 └── Makefile                     # Development and testing automation
 ```
 

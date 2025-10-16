@@ -1,4 +1,3 @@
-"""
 FRANK Application - Stage 1: Absolute Minimal Setup
 ==================================================
 
@@ -120,4 +119,3 @@ curl http://<public-ip>/v1/health
 This stage validates the fundamental hypothesis that cloud-native applications
 can be deployed with minimal complexity while maintaining observability and
 update capabilities essential for production evolution.
-"""

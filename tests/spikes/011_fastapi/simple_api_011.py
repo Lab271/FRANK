@@ -13,6 +13,7 @@ for validating testability patterns across the FRANK platform:
 
 The implementation demonstrates:
 - Function-based FastAPI app creation for better testability and modularity
+- Dependency injection for configuration management
 - Bearer token authentication patterns using FastAPI Depends() dependency injection
 - Comprehensive exception handling with both standard and custom HTTP exceptions
 - Request/response logging middleware for development and debugging
@@ -28,19 +29,72 @@ SPDX-License-Identifier: Apache-2.0
 
 import argparse
 import logging
+import os
+from pathlib import Path
 import time
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
-import uvicorn
-from fastapi import FastAPI, HTTPException, Depends, Request
+from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+import uvicorn
 
+class AppConfig:
+    """Configuration class for Simple API settings"""
+    _instance: Optional['AppConfig'] = None
+
+    def __init__(self,
+        setting_a: str,
+        setting_n: str
+    ):
+        self.setting_a = setting_a
+        self.setting_n = setting_n
+    
+    @classmethod
+    def get_config(cls) -> "AppConfig":
+        """Get singleton AppConfig instance, creating it from environment if needed"""
+        if cls._instance is None:
+            cls._instance = cls(
+                setting_a=os.getenv("SETTING_A", "default_value_a"),
+                setting_n=os.getenv("SETTING_N", "default_value_n")
+            )
+        return cls._instance
+    
+    @classmethod
+    def reset(cls) -> None:
+        """Reset the singleton instance"""
+        cls._instance = None
+
+    @classmethod
+    def update(cls, **kwargs) -> None:
+        """Update configuration values"""
+        config = cls.get_config()
+        for key, value in kwargs.items():
+            if hasattr(config, key):
+                setattr(config, key, value)
+
+def get_config() -> AppConfig:
+    """Dependency to get AppConfig instance"""
+    return AppConfig.get_config()   
 
 # Configure logging to match Uvicorn's colored format
-def setup_logging():
+def setup_logging(silent=False):
     """Setup logging to match Uvicorn's colored output, a bit over the top but nice for dev"""
-    import logging
+    
+    if silent:
+        # Silent mode - disable ALL logging
+       
+        # Specifically silence known loggers
+        for logger_name in ['uvicorn', 'uvicorn.access', 'uvicorn.error', 'fastapi', 'root']:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.CRITICAL)
+            logger.disabled = True
+            # Remove all handlers
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+        
+        return logging.getLogger("uvicorn")  # Return a silenced logger
     
     # Try to use Uvicorn's colored formatter
     try:
@@ -62,6 +116,11 @@ def setup_logging():
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
         
+        # Also setup uvicorn logger specifically
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_logger.setLevel(logging.INFO)
+        return uvicorn_logger
+        
     except ImportError:
         # Fallback to basic colored format if Uvicorn formatter not available
         logging.basicConfig(
@@ -69,13 +128,9 @@ def setup_logging():
             format="\033[32mINFO\033[0m:     %(message)s",  # Green INFO text
             handlers=[logging.StreamHandler()]
         )
-
-setup_logging()
-logger = logging.getLogger("fastapi_spike")
+        return logging.getLogger("uvicorn")
 
 
-# Security scheme for Bearer token authentication
-security = HTTPBearer()
 
 
 class UnauthenticatedError(HTTPException):
@@ -83,26 +138,20 @@ class UnauthenticatedError(HTTPException):
     
     def __init__(self, detail: str = "Custom unauthorized error"):
         super().__init__(
-            status_code=401,
+            status_code=status.HTTP_401_UNAUTHORIZED,
             detail=detail,
             headers={"WWW-Authenticate": "Bearer"}
         )
 
+class InternalError(HTTPException):
+    """Custom HTTPException extension for internal server errors"""
 
-def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
-    """
-    Verify Bearer token authentication
-    
-    For testing purposes, accepts 'valid-token' as a valid token.
-    In production, this would validate against a real authentication system.
-    """
-    if credentials.credentials != "valid-token":
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid authentication token",
-            headers={"WWW-Authenticate": "Bearer"}
+    def __init__(self, detail: str = "Custom internal server error"):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=detail   
         )
-    return credentials.credentials
+
 
 
 def create_app() -> FastAPI:
@@ -112,24 +161,48 @@ def create_app() -> FastAPI:
     Returns:
         FastAPI: Configured FastAPI application instance
     """
+
+    # Security scheme for Bearer token authentication
+    security = HTTPBearer()
+
+    def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+        """
+        Verify Bearer token authentication
+        
+        For testing purposes, accepts 'valid-token' as a valid token.
+        In production, this would validate against a real authentication system.
+        """
+        if credentials.credentials != "valid-token":
+            raise UnauthenticatedError(detail="Invalid authentication token")
+        return credentials.credentials
+
     app = FastAPI(
         title="FRANK FastAPI Testability Spike",
         description="Spike for validating FastAPI testability patterns",
         version="0.1.0"
     )
     
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # In production, specify actual origins
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Don't setup logging at module level - let main() handle it
+    logger = logging.getLogger("uvicorn")
+
     # Request logging middleware
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start_time = time.time()
-        
-        logger.info(f"Request: {request.method} {request.url}")
-        
+               
         response = await call_next(request)
         
         process_time = time.time() - start_time
         logger.info(
-            f"Response: {response.status_code} "
             f"Time: {process_time:.4f}s"
         )
         
@@ -185,10 +258,7 @@ def create_app() -> FastAPI:
         """
         logger.error("Exception endpoint accessed - raising controlled exception")
         # Use HTTPException instead of generic Exception for proper handling
-        raise HTTPException(
-            status_code=500,
-            detail="This is a controlled exception for testing purposes"
-        )
+        raise InternalError(detail="This is a controlled exception for testing purposes")
     
     # 3b. Python exception endpoint - raises Python exception that gets handled
     @app.get("/python-error")
@@ -232,12 +302,12 @@ def create_app() -> FastAPI:
             JSONResponse with error details
         """
         # Don't handle HTTPExceptions - let FastAPI handle those
-        if isinstance(exc, HTTPException):  # pragma: no cover
+        if isinstance(exc, HTTPException):
             raise exc
             
         logger.error(f"Unhandled exception: {str(exc)}")
         return JSONResponse(
-            status_code=500,
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             content={
                 "error": "Internal server error",
                 "detail": str(exc),
@@ -256,14 +326,18 @@ def create_app() -> FastAPI:
         Returns:
             Dict containing health status information
         """
+        current_config = get_config()
+
         return {
             "status": "healthy",
             "service": "fastapi-spike",
             "version": "0.1.0",
-            "timestamp": time.time()
+            "timestamp": time.time(),
+            "setting_a": current_config.setting_a,
+            "setting_n": current_config.setting_n,
+            "filename": Path(__file__).name, # "simple_api_011.py"
         }
     
-    logger.info("FastAPI application created successfully")
     return app
 
 
@@ -271,35 +345,67 @@ def main():
     """
     Main function with argparse for uvicorn configuration
     """
+    # Get current filename dynamically
+    CURRENT_MODULE = Path(__file__).stem  # Filename without extension: "simple_api_011"
+
     parser = argparse.ArgumentParser(description="FastAPI Testability Spike Server")
-    parser.add_argument("--host", type=str, default="127.0.0.1", help="Host to bind the server to (default: 127.0.0.1)")
-    parser.add_argument("--port", type=int, default=8000, help="Port to bind the server to (default: 8000)")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    parser.add_argument("--host", type=str, default=os.getenv("HOST", "0.0.0.0"), help="Host to bind the server to (default: HOST or 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="Port to run the Simple API on (default: PORT or 8000)")
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=os.getenv("RELOAD", "True").lower() in ("true", "1", "yes"),
+        help="Enable auto-reload for development (default: True or RELOAD)"
+    )
     parser.add_argument(
         "--log-level",
         type=str,
-        default="info",
+        default=os.getenv("LOG_LEVEL", "debug"),
         choices=["debug", "info", "warning", "error"],
-        help="Logging level (default: info)",
+        help="Logging level (default: debug or LOG_LEVEL)",
     )
+    parser.add_argument(
+        "-s", "--silent",
+        action="store_true",
+        default=os.getenv("SILENT", "False").lower() in ("true", "1", "yes"),
+        help="Enable silent mode (default: False or SILENT)"
+    )
+
+    ### Example configuration settings for the AppConfig
+    parser.add_argument("--setting_a", type=str, default=os.getenv("SETTING_A", "default_value_a"), help="Configuration setting A (default: SETTING_A or 'default_value_a')")
+    parser.add_argument("--setting_n", type=str, default=os.getenv("SETTING_N", "default_value_n"), help="Configuration setting N (default: SETTING_N or 'default_value_n')")   
 
     args = parser.parse_args()
     
-    # Configure logging level
-    logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
+    # Set environment variables with command-line overrides
+    # This way get_config() will pick them up when called
+    os.environ["SETTING_A"] = args.setting_a
+    os.environ["SETTING_N"] = args.setting_n
     
-    logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
-    logger.info(f"Reload enabled: {args.reload}")
-    logger.info(f"Log level: {args.log_level}")
+    # Setup logging based on silent flag
+    if args.silent:
+        logger = setup_logging(silent=True)
+        # Set uvicorn log level to critical+ to silence it completely
+        args.log_level = "critical"
+        # Also disable uvicorn's own logging       
+    else:
+        logger = setup_logging(silent=False)
+        logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
+        logger.info(f"Reload enabled: {args.reload}")
+        logger.info(f"Log level: {args.log_level}")
+        logger.info(f"Module: {CURRENT_MODULE}")
+        
+    logging.getLogger('uvicorn').setLevel(getattr(logging, args.log_level.upper()))
     
-    # Run uvicorn server
+    # Run uvicorn server with dynamic module name
     uvicorn.run(
-        "simple_api:create_app",
+        f"{CURRENT_MODULE}:create_app",
         host=args.host,
         port=args.port,
         reload=args.reload,
-        factory=True, # Indicates create_app is a factory function
-        log_level=args.log_level
+        factory=True,  # Indicates create_app is a factory function
+        access_log=not args.silent,  # Disable access logging
+        log_level=args.log_level if not args.silent else 'critical'
     )
 
 
