@@ -22,4 +22,4 @@ This project contains everything from design to implementation of the FRANK proj
 
 This will prep your Macbook to run FRANK locally. It assumes Docker/Python/Make/AWS Cli to be available, you can test it with `make check`.
 
-Start to understand the [evolutionary design](docs/evolutionary_design.md) principles, before you continue coding on FRANK.
+Start to understand the [evolutionary design](docs/evolutionary_design.md) principles, before you continue coding on FRANK. 

@@ -4,6 +4,7 @@
 """
 FRANK Platform - Setup Script
 
+
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
@@ -25,7 +26,7 @@ def get_version():
 setup(
     name=PACKAGE,
     version=get_version(),
-    description='Vulnerability platform',
+    description='Vulnerability sharing platform',
     long_description=long_description,
     license='Apache 2.0',
     author='Ilja Heitlager',
