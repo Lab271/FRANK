@@ -1,3 +1,13 @@
+#
+# FRANK Platform - SSL Certificate and DNS Setup Tasks
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Manages SSL certificates, Route53 hosted zones, and DNS configuration
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 # tasks/ssl.yml - Complete SSL Infrastructure Setup
 # This replicates the functionality of setup_ssl() from deploy.sh

@@ -49,9 +49,6 @@ stop: cleanup ## Stop Colima and clean up
 # Local Development
 # ================================
 up: ssl-certs/nginx.crt ## Build and start application containers
-	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
-		echo "127.0.0.1 $(LOCAL_DOMAIN)" | sudo tee -a /etc/hosts; \
-	fi
 	docker-compose -f local/docker-compose.yml up --build -d
 
 down: ## Stop application containers
@@ -59,6 +56,16 @@ down: ## Stop application containers
 
 build: ## Build application container
 	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d
+
+rebuild: ## Rebuild application container
+	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d --force-recreate
+
+health: ## Check health of all services
+	@echo "🔍 Checking health of services..."
+	@curl -s "https://$(LOCAL_DOMAIN)/v1/health" > /dev/null 2>&1 && echo "✅ Simple API health check passed" || echo "❌ Simple API health check failed"	
+
+logs: ## Show logs
+	docker-compose -f local/docker-compose.yml logs -f
 
 create-tables: ## Create DynamoDB tables (matching CloudFormation)
 	@aws dynamodb create-table \
@@ -98,6 +105,9 @@ create-tables: ## Create DynamoDB tables (matching CloudFormation)
 		--no-cli-pager || echo "Audit table already exists"
 
 ssl-certs/nginx.crt: # Create self-signed SSL certificates
+	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
+		echo "127.0.0.1 $(LOCAL_DOMAIN)" | sudo tee -a /etc/hosts; \
+	fi
 	@mkdir -p ssl-certs
 	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt \
 		$(LOCAL_DOMAIN) \

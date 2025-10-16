@@ -81,5 +81,7 @@ USER frankuser
 ENV PATH=/home/frankuser/.local/bin:$PATH
 ENV PORT=8000
 
+EXPOSE 8000
+
 # Run the application
 CMD ["python", "simple_api.py"]

@@ -10,6 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 
 from .__version__ import version
 
+# this is the main version id to include everywhere
 __version__ = version
 __author__ = "Schuberg Philis"
 __description__ = "FRANK Platform - Cybersecurity Threat Intelligence Sharing"

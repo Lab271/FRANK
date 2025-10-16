@@ -1,3 +1,13 @@
+#
+# FRANK Platform - Ansible Collection Requirements
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Defines required Ansible collections for FRANK platform deployment
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 collections:
   - name: amazon.aws

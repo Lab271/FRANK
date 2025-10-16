@@ -1,8 +1,14 @@
-# ===================================
-# Dockerfile for 008_aws_spike.py
+#
+# FRANK Platform - Main container Dockerfile
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
 # Multi-architecture build for AWS ECS deployment
 # Supports both ARM64 (M1/M2 Mac) and AMD64 (AWS Fargate)
-# ===================================
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+
+
 # Accept platform arguments from buildx
 ARG TARGETPLATFORM
 ARG BUILDPLATFORM
@@ -37,15 +43,18 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Create requirements.txt with minimal dependencies
-RUN echo "fastapi===0.116.2" > requirements.txt && \
-    echo "uvicorn[standard]==0.24.0" >> requirements.txt && \
-    echo "boto3==1.40.18" >> requirements.txt && \
-    echo "aioboto3==15.2.0" >> requirements.txt && \
-    echo "pydantic==2.11.9" >> requirements.txt
-
-    # Install Python dependencies
-RUN pip install --no-cache-dir --user -r requirements.txt
+# Install Python dependencies
+RUN pip install --no-cache-dir --user \
+    fastapi==0.118.3 \
+    uvicorn==0.37.0 \
+    boto3==1.40.18 \
+    aioboto3==15.2.0 \
+    requests==2.32.5 \
+    pydantic==2.11.9 \
+    PyJWT==2.10.1 \
+    httpx==0.28.1 \
+    python-multipart==0.0.20 \
+    cryptography==46.0.2
 
 # ===================================
 # Production Stage
@@ -78,19 +87,11 @@ WORKDIR /app
 COPY ${BUILD_CONTEXT}/README.md .
 COPY ${PACKAGE_CONTEXT}/setup.py .
 COPY ${PACKAGE_CONTEXT}/src/ ./src/
-
-RUN pip install --no-cache- .
+RUN pip install --no-cache-dir .
 
 COPY ${BUILD_CONTEXT}/frank_stage3.py .
 
-# Set environment variables
-ENV PATH=/home/frankuser/.local/bin:$PATH
-# ENV PYTHONPATH=/app:$PYTHONPATH
-ENV FRANK_ENVIRONMENT=aws
-ENV HOST=0.0.0.0
-ENV PORT=8000
-ENV UVICORN_LOG_LEVEL=debug
-ENV UVICORN_ACCESS_LOG=true
+
 
 # Change ownership to frankuser
 RUN chown -R frankuser:frankuser /app
@@ -100,6 +101,12 @@ USER frankuser
 
 # Expose port
 EXPOSE 8000
+# Set environment variables
+ENV PORT=8000
+ENV PATH=/home/frankuser/.local/bin:$PATH
+ENV FRANK_ENVIRONMENT=aws
+ENV RELOAD=false
+ENV HOST=0.0.0.0
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

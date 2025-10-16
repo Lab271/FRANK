@@ -1,16 +1,27 @@
+#
+# FRANK Platform - AWS CloudFormation Infrastructure Template
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Complete AWS infrastructure template with VPC, ECS, ALB, WAF, and DynamoDB
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 AWSTemplateFormatVersion: '2010-09-09'
-Description: 'FRANK Application - Stage 4: Add DynamoDB and HTTPS'
+Description: 'FRANK Application - Stage 3: Enhanced Security with WAF and HTTPS'
 
 # CloudFormation Creation Order:
 # 1. NETWORKING FOUNDATION - VPC, Subnets, Gateways, Routes (network isolation & connectivity)
 # 2. SECURITY GROUPS - ALB and ECS traffic rules (firewall rules for components)
 # 3. LOAD BALANCER - ALB, Target Groups, Listeners (internet-facing entry point)
-# 4. COMPUTE PLATFORM - ECS Cluster (container orchestration environment)
-# 5. IAM ROLES - Task execution and application permissions (AWS service access)
-# 6. DATABASE - DynamoDB tables and VPC endpoint (data storage & private access)
-# 7. CONTAINER DEFINITION - Task Definition with environment (container specs & config)
-# 8. SERVICE DEPLOYMENT - ECS Service that runs the containers (actual workload execution)
-# 9. AUTO SCALING - Dynamic scaling based on CPU, memory, and request metrics
+# 4. WEB APPLICATION FIREWALL - WAF rules and ALB association (advanced threat protection)
+# 5. COMPUTE PLATFORM - ECS Cluster (container orchestration environment)
+# 6. IAM ROLES - Task execution and application permissions (AWS service access)
+# 7. DATABASE - DynamoDB tables and VPC endpoint (data storage & private access)
+# 8. CONTAINER DEFINITION - Task Definition with environment (container specs & config)
+# 9. SERVICE DEPLOYMENT - ECS Service that runs the containers (actual workload execution)
+# 10. AUTO SCALING - Dynamic scaling based on CPU, memory, and request metrics
 
 Parameters:
   StackName:
@@ -494,7 +505,75 @@ Resources:
         DNSName: !GetAtt ApplicationLoadBalancer.DNSName
         HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
 
-  # === 4. COMPUTE PLATFORM ===
+  # === 4. WEB APPLICATION FIREWALL ===
+  # Advanced threat protection and rate limiting for the ALB
+  
+  # WAF Web ACL: Protects against common web attacks and implements rate limiting
+  WAFWebACL:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${StackName}-waf-acl'
+      Scope: REGIONAL
+      DefaultAction:
+        Allow: {}
+      Rules:
+        # AWS Managed Rules - Core Rule Set
+        - Name: AWSManagedRulesCommonRuleSet
+          Priority: 1
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: CommonRuleSetMetric
+            SampledRequestsEnabled: true
+
+        # Rate limiting - 2000 requests per 5 minutes per IP
+        - Name: RateLimitRule
+          Priority: 2
+          Statement:
+            RateBasedStatement:
+              Limit: 2000
+              AggregateKeyType: IP
+          Action:
+            Block: {}
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: RateLimitMetric
+            SampledRequestsEnabled: true
+
+        # Block known bad inputs
+        - Name: AWSManagedRulesKnownBadInputsRuleSet
+          Priority: 3
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesKnownBadInputsRuleSet
+          OverrideAction:
+            None: {}
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: BadInputsMetric
+            SampledRequestsEnabled: true
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${StackName}-waf-acl'
+        SampledRequestsEnabled: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-waf-acl'
+
+  # Associate WAF with ALB
+  WAFAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Ref ApplicationLoadBalancer
+      WebACLArn: !GetAtt WAFWebACL.Arn
+
+  # === 5. COMPUTE PLATFORM ===
   # Container orchestration environment for running FRANK application
   
   # ECS Cluster: Logical grouping of compute resources
@@ -511,10 +590,10 @@ Resources:
     Type: AWS::Logs::LogGroup
     DeletionPolicy: Retain
     Properties:
-      LogGroupName: !Sub '/ecs/${StackName}'
+      LogGroupName: !Sub '/ecs/${StackName}-${AWS::AccountId}'
       RetentionInDays: 7
 
-  # === 5. IAM ROLES ===
+  # === 6. IAM ROLES ===
   # AWS permissions for ECS tasks and container execution
   
   # Task Execution Role: ECS service permissions (pull images, write logs)
@@ -573,7 +652,7 @@ Resources:
         - Key: Name
           Value: !Sub '${StackName}-task-role'
 
-  # === 6. DATABASE ===
+  # === 7. DATABASE ===
   # Serverless NoSQL database with private VPC access
   
   # Main DynamoDB Table: FRANK application data with single-table design
@@ -696,7 +775,7 @@ Resources:
               - dynamodb:ListTagsOfResource
             Resource: '*'  
                       
-  # === 7. CONTAINER DEFINITION ===
+  # === 8. CONTAINER DEFINITION ===
   # Specification for FRANK application container with environment variables
   
   # Task Definition: Container blueprint with resource allocation and configuration
@@ -731,14 +810,20 @@ Resources:
               Value: !Ref DynamoDBTable
             - Name: DYNAMODB_AUDIT_TABLE  
               Value: !Ref DynamoDBAuditTable
-            # - Name: ENDPOINT
-            #   Value: ''
+            - Name: LOG_LEVEL  
+              Value: info
+            - Name: ENDPOINT
+              Value: ''
             - Name: AWS_DEFAULT_REGION
               Value: !Ref AWS::Region
             # - Name: AWS_PROFILE
             #   Value: !Ref AWS::AccountId
             - Name: FRANK_ENVIRONMENT
               Value: aws
+            - Name: ECS_ENABLE_CONTAINER_METADATA
+              Value: 'true'
+            - Name: TASK_DEFINITION_FAMILY
+              Value: !Sub '${StackName}-task'
             # - Name: HOST
             #   Value: "0.0.0.0"
             - Name: PORT
@@ -753,7 +838,7 @@ Resources:
         - Key: Name
           Value: !Sub '${StackName}-task'  
           
-  # === 8. SERVICE DEPLOYMENT ===
+  # === 9. SERVICE DEPLOYMENT ===
   # Ensures desired number of containers are running and healthy
   
   # ECS Service: Maintains container availability and integrates with ALB
@@ -790,7 +875,7 @@ Resources:
         - Key: Name
           Value: !Sub '${StackName}-service'
 
-  # === 9. AUTO SCALING CONFIGURATION ===
+  # === 10. AUTO SCALING CONFIGURATION ===
   # Enables dynamic scaling of ECS service based on CPU and memory metrics
   
   # Auto Scaling Target: Defines the scalable ECS service
@@ -968,6 +1053,19 @@ Outputs:
     Export:
       Name: !Sub '${AWS::StackName}-DynamoDBAuditTableArn'
 
+  # WAF Outputs
+  WAFWebACLArn:
+    Description: WAF Web ACL ARN
+    Value: !GetAtt WAFWebACL.Arn
+    Export:
+      Name: !Sub '${AWS::StackName}-WAFWebACL'
+
+  WAFWebACLId:
+    Description: WAF Web ACL ID
+    Value: !Ref WAFWebACL
+    Export:
+      Name: !Sub '${AWS::StackName}-WAFWebACLId'
+
   # Auto Scaling Outputs
   AutoScalingTargetArn:
     Description: Auto Scaling Target ARN
@@ -1006,7 +1104,7 @@ Outputs:
   AccessInstructions:
     Description: How to access your application
     Value: !Sub |
-      Your application is now accessible via the Application Load Balancer with DynamoDB backend!
+      Your application is now accessible via the Application Load Balancer with DynamoDB backend and WAF protection!
       
       URL: http://${ApplicationLoadBalancer.DNSName}
       
@@ -1014,10 +1112,19 @@ Outputs:
       
       DynamoDB Table: ${DynamoDBTable}
       
+      WAF Protection: 
+      - WAF Web ACL: ${WAFWebACL}
+      - Rate Limiting: 2000 requests per 5 minutes per IP
+      - AWS Managed Rules: Common Rule Set + Known Bad Inputs protection
+      - CloudWatch Metrics: Enabled for monitoring blocked requests
+      
       The ALB DNS name is stable and won't change when tasks restart.
       
       To check service health:
       aws ecs describe-services --cluster ${ECSCluster} --services ${ECSService.Name}
+      
+      To monitor WAF activity:
+      aws wafv2 get-web-acl --scope REGIONAL --id ${WAFWebACL} --region ${AWS::Region}
       
       To view target health:
       aws elbv2 describe-target-health --target-group-arn ${TargetGroup}

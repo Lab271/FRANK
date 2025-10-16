@@ -1,3 +1,13 @@
+#
+# FRANK Platform - Docker Build and ECR Push Tasks
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Handles Docker image building, tagging, and pushing to ECR
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 # tasks/docker.yml
 # - name: Check if ECR repository exists

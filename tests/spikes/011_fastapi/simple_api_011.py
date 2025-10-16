@@ -300,7 +300,7 @@ def create_app() -> FastAPI:
         )
     
     # Health check endpoint for monitoring
-    @app.get("/health")
+    @app.get("/v1/health")
     async def health_check() -> Dict[str, Any]:
         """
         Health check endpoint for monitoring and load balancing
@@ -317,6 +317,7 @@ def create_app() -> FastAPI:
             "timestamp": time.time(),
             "SETTING_A": current_config['SETTING_A'],
             "SETTING_N": current_config['SETTING_N'],
+            "CONTAINER_ID": os.getenv("CONTAINER_ID", "unknown"),
             "filename": Path(__file__).name, # "simple_api_011.py"
         }
     

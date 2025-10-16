@@ -1,3 +1,13 @@
+#
+# FRANK Platform - Prerequisites Validation Tasks
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Validates system prerequisites and AWS credentials before deployment
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 # tasks/prerequisites.yml
 - name: Check if AWS CLI is installed

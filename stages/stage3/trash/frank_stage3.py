@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - Simple API Test Application
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
 A minimal FastAPI application for testing AWS deployment infrastructure.
 Provides basic health check and root endpoints for load balancer validation.
@@ -17,6 +18,9 @@ from functools import lru_cache
 import logging
 import sys
 import os
+import socket
+import platform
+import time
 
 import boto3
 import aioboto3
@@ -34,6 +38,63 @@ from frank.util import create_error_response
 # ===================================
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
 logger = logging.getLogger("uvicorn.error")
+
+
+# ===================================
+# Container Metadata
+# ===================================
+def get_container_info():
+    """Get container and runtime information for autoscaling identification"""
+    try:
+        # Get basic system info
+        hostname = socket.gethostname()
+        platform_info = platform.platform()
+        
+        # Try to get ECS task metadata (if running in Fargate)
+        ecs_metadata = {}
+        metadata_uri = os.environ.get('ECS_CONTAINER_METADATA_URI_V4')
+        if metadata_uri:
+            try:
+                # In a real implementation, you'd make an HTTP request to metadata_uri
+                # For now, we'll just note that it's available
+                ecs_metadata = {
+                    "metadata_uri_available": True,
+                    "metadata_uri": metadata_uri
+                }
+            except Exception:
+                ecs_metadata = {"metadata_uri_available": False}
+        
+        # Get process ID for uniqueness
+        pid = os.getpid()
+        
+        # Calculate container uptime (approximate)
+        try:
+            import psutil
+            process = psutil.Process(pid)
+            create_time = process.create_time()
+            uptime_seconds = time.time() - create_time
+            uptime = f"{uptime_seconds:.1f}s"
+        except Exception:
+            uptime = "unknown"
+        
+        return {
+            "hostname": hostname,
+            "process_id": pid,
+            "platform": platform_info,
+            "ecs_metadata": ecs_metadata,
+            "container_id": hostname,  # In Fargate, hostname is often the container ID
+            "instance_type": "fargate" if metadata_uri else "local",
+            "uptime": uptime
+        }
+    except Exception as e:
+        return {
+            "hostname": "unknown",
+            "process_id": os.getpid(),
+            "error": str(e),
+            "container_id": "unknown",
+            "instance_type": "unknown",
+            "uptime": "unknown"
+        }
 
 
 # ===================================
@@ -118,27 +179,46 @@ app.add_middleware(
 @app.get("/")
 async def root():
     """Serve static JSON on root endpoint"""
+    container_info = get_container_info()
+    
     return {
         "application": "FRANK",
         "version": frank.__version__,
         "status": "running",
-        "message": "Welcome to FRANK application"
+        "message": "Welcome to FRANK application",
+        "served_by": {
+            "container_id": container_info["container_id"],
+            "hostname": container_info["hostname"],
+            "instance_type": container_info["instance_type"]
+        }
     }
 
 @app.get("/env")
 async def env():
     """Environment variables endpoint"""
     config = get_client()  # Get cached configuration
+    container_info = get_container_info()  # Get container metadata
+    
     return {
-        "AWS_PROFILE": os.environ.get("AWS_PROFILE", "<NOT SET>"),
-        "AWS_ACCESS_KEY_ID": "<NOT SET>" if not os.environ.get("AWS_ACCESS_KEY_ID") else "<SET>",
-        "AWS_SECRET_ACCESS_KEY": "<NOT SET>" if not os.environ.get("AWS_SECRET_ACCESS_KEY") else "<SET>",
-        "ENDPOINT": config.get("endpoint", "<NOT SET>"),
-        "DYNAMODB_TABLE": config.get("table_name"),
-        "DYNAMODB_AUDIT_TABLE": config.get("audit_table_name"),
-        "AWS_DEFAULT_REGION": config.get("region"),
-        "FRANK_ENVIRONMENT": config.get("environment"),
-        "using_task_role": config.get("environment") == "aws"
+        "container": {
+            "id": container_info["container_id"],
+            "hostname": container_info["hostname"],
+            "process_id": container_info["process_id"],
+            "instance_type": container_info["instance_type"],
+            "platform": container_info["platform"]
+        },
+        "aws_environment": {
+            "AWS_PROFILE": os.environ.get("AWS_PROFILE", "<NOT SET>"),
+            "AWS_ACCESS_KEY_ID": "<NOT SET>" if not os.environ.get("AWS_ACCESS_KEY_ID") else "<SET>",
+            "AWS_SECRET_ACCESS_KEY": "<NOT SET>" if not os.environ.get("AWS_SECRET_ACCESS_KEY") else "<SET>",
+            "ENDPOINT": config.get("endpoint", "<NOT SET>"),
+            "DYNAMODB_TABLE": config.get("table_name"),
+            "DYNAMODB_AUDIT_TABLE": config.get("audit_table_name"),
+            "AWS_DEFAULT_REGION": config.get("region"),
+            "FRANK_ENVIRONMENT": config.get("environment"),
+            "using_task_role": config.get("environment") == "aws"
+        },
+        "ecs_metadata": container_info["ecs_metadata"] if container_info.get("ecs_metadata") else None
     }
 
 
@@ -147,6 +227,7 @@ async def env():
 async def database():
     """Database connection endpoint - uses async aioboto3"""
     config = get_client()  # Get cached configuration
+    container_info = get_container_info()  # Get container metadata
     
     # Get async DynamoDB client and resource
     dynamodb_client, dynamodb_resource = await get_async_dynamodb_client()
@@ -175,6 +256,11 @@ async def database():
         "status": "connected",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "async_implementation": "aioboto3",
+        "served_by": {
+            "container_id": container_info["container_id"],
+            "hostname": container_info["hostname"],
+            "instance_type": container_info["instance_type"]
+        },
         "environment": {
             "DYNAMODB_TABLE": config["table_name"],
             "AUDIT_TABLE": config["audit_table_name"],
@@ -208,11 +294,91 @@ async def database():
 @app.get("/v1/health")
 async def health():
     """Health check endpoint for load balancer"""
+    container_info = get_container_info()
+    
     return {
         "status": "healthy",
         "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "FRANK"
+        "service": "FRANK",
+        "version": frank.__version__,
+        "container_id": container_info["container_id"],
+        "hostname": container_info["hostname"],
+        "instance_type": container_info["instance_type"]
     }
+
+
+@app.get("/v1/health/deep")
+async def deep_health_check():
+    """Comprehensive health check for monitoring systems - NOT for load balancers"""
+    container_info = get_container_info()
+    config = get_client()
+    start_time = datetime.now(timezone.utc)
+    
+    health = {
+        "status": "healthy",
+        "timestamp": start_time.isoformat(),
+        "version": frank.__version__,
+        "service": "FRANK",
+        "container_id": container_info["container_id"],
+        "checks": {},
+        "performance": {}
+    }
+    
+    # Check 1: Database Connectivity
+    try:
+        check_start = datetime.now(timezone.utc)
+        
+        # Check main table
+        main_client, _ = await get_async_dynamodb_client()
+        async with main_client as client:
+            main_response = await client.describe_table(TableName=config["table_name"])
+            
+        # Check audit table with separate client
+        audit_client, _ = await get_async_dynamodb_client()
+        async with audit_client as client:
+            audit_response = await client.describe_table(TableName=config["audit_table_name"])
+            
+        health["checks"]["dynamodb"] = {
+            "status": "healthy",
+            "main_table": {"name": config["table_name"], "status": main_response['Table']['TableStatus']},
+            "audit_table": {"name": config["audit_table_name"], "status": audit_response['Table']['TableStatus']}
+        }
+        health["performance"]["dynamodb_check_duration"] = f"{(datetime.now(timezone.utc) - check_start).total_seconds():.3f}s"
+        
+    except Exception as e:
+        health["checks"]["dynamodb"] = {"status": "unhealthy", "error": str(e)}
+        health["status"] = "degraded"
+    
+    # Check 2: Application Components & Environment
+    try:
+        required_env_vars = ["DYNAMODB_TABLE", "DYNAMODB_AUDIT_TABLE", "AWS_DEFAULT_REGION"]
+        missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
+        
+        health["checks"]["application"] = {
+            "status": "healthy" if not missing_vars else "unhealthy",
+            "frank_version": frank.__version__,
+            "missing_env_vars": missing_vars,
+            "environment": config["environment"]
+        }
+        
+        if missing_vars:
+            health["status"] = "unhealthy"
+            
+    except Exception as e:
+        health["checks"]["application"] = {"status": "unhealthy", "error": str(e)}
+        health["status"] = "unhealthy"
+    
+    # Performance summary
+    health["performance"]["total_duration"] = f"{(datetime.now(timezone.utc) - start_time).total_seconds():.3f}s"
+    health["performance"]["container_uptime"] = container_info.get("uptime", "unknown")
+    
+    # Set overall status based on checks
+    if any(check.get("status") == "unhealthy" for check in health["checks"].values()):
+        health["status"] = "unhealthy"
+    elif any(check.get("status") == "degraded" for check in health["checks"].values()):
+        health["status"] = "degraded"
+    
+    return health
 
 
 @app.exception_handler(Exception)
@@ -232,7 +398,7 @@ if __name__ == "__main__":
     import argparse
     import uvicorn
 
-    parser = argparse.ArgumentParser(description="FRANK Platform 009 - AWS - Stage 4 Server")
+    parser = argparse.ArgumentParser(description="FRANK Platform - AWS - Stage 3 Server")
     parser.add_argument(
         "--environment", choices=["localstack", "aws"], default=os.environ.get("FRANK_ENVIRONMENT", "aws"), help="Environment to run in"
     )    
@@ -253,6 +419,6 @@ if __name__ == "__main__":
     else:
         log_level = os.environ.get("UVICORN_LOG_LEVEL", "info")
 
-    logger.info(f"🚀 Starting FRANK 009 - Stage 3 on {args.host}:{args.port} | Environment: {args.environment} | Profile: {args.profile or '<NOT SET>'}")
+    logger.info(f"🚀 Starting FRANK - Stage 3 on {args.host}:{args.port} | Environment: {args.environment} | Profile: {args.profile or '<NOT SET>'}")
 
     uvicorn.run("frank_stage3:app", host=args.host, port=args.port, reload=args.reload, log_level=log_level)

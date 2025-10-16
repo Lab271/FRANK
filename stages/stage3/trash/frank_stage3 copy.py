@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 FRANK Platform - FastAPI Spike Solution
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
 A working prototype API server implementing the FRANK threat intelligence platform
 using FastAPI and the MySQL database backend.
@@ -12,6 +13,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import os
+import uuid
 import logging
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any

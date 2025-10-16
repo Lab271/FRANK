@@ -1,3 +1,13 @@
+#
+# FRANK Platform - AWS Infrastructure Deployment Playbook
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Main Ansible playbook for deploying FRANK platform infrastructure on AWS
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 - name: Deploy FRANK AWS Infrastructure
   hosts: localhost

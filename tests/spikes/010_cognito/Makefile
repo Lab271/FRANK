@@ -65,7 +65,7 @@ rebuild: ## Force rebuild and restart all services
 	docker-compose down
 	docker-compose up -d --build --force-recreate
 
-test: ## Run Mock Cognito API authentication tests
+test: ## Run unittests
 	@coverage run -m pytest
 	@coverage report -m 
 

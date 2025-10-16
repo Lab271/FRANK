@@ -1,51 +1,139 @@
 #!/usr/bin/env python3
 """
-FRANK Platform - Simple API Test Application
+FRANK Platform - FastAPI Testability Spike - Simple API Implementation
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 
-A minimal FastAPI application for testing AWS deployment infrastructure.
-Provides basic health check and root endpoints for load balancer validation.
+This module implements a function-based FastAPI application with four endpoint types
+for validating testability patterns across the FRANK platform:
 
-to run:
-    >>> uvicorn main:app --host 0.0.0.0 --port 8000
+1. Public endpoint (no authentication required)
+2. Protected endpoint (Bearer token authentication using FastAPI security)
+3. Exception endpoint (controlled 500 error with proper exception handling)
+4. Custom error endpoint (custom HTTPException extension demonstration)
+
+The implementation demonstrates:
+- Function-based FastAPI app creation for better testability and modularity
+- Dependency injection for configuration management
+- Bearer token authentication patterns using FastAPI Depends() dependency injection
+- Comprehensive exception handling with both standard and custom HTTP exceptions
+- Request/response logging middleware for development and debugging
+- Uvicorn integration with argparse for flexible development server configuration
+- Global exception handlers that convert Python exceptions to proper HTTP responses
+
+This spike validates the testability foundations for all FRANK API development
+and establishes reusable patterns for authentication, error handling, and testing.
 
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from datetime import datetime, timezone
+import argparse
+from datetime import datetime, timezone 
 from functools import lru_cache
 import logging
-import sys
+from logging import config
 import os
-import socket
-import platform
+from pathlib import Path
 import time
+from typing import Dict, Any, Optional
 
 import boto3
-import aioboto3
-from fastapi import FastAPI, Request
-from fastapi.security import HTTPBearer
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, Depends, status, Request
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
+import requests
+import uvicorn
+
 
 import frank
-from frank.util import create_error_response
-
+# ===================================
+# Configuration
+# ===================================
+@lru_cache()
+def get_config():
+    """Get application configuration from environment"""
+    endpoint = os.environ.get("ENDPOINT", None)
+    # Convert empty string to None for AWS
+    if endpoint == "":
+        endpoint = None
+    
+    return {
+        "endpoint": endpoint,  # None for AWS, set for LocalStack
+        "environment": os.environ.get("FRANK_ENVIRONMENT", "aws"),  # "aws" or "localstack"
+        "profile": os.environ.get("AWS_PROFILE", None),  # AWS profile name for credentials
+        "aws_access_key_id": os.environ.get("AWS_ACCESS_KEY_ID", None), 
+        "aws_secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY", None),
+        "region": os.environ.get("AWS_DEFAULT_REGION", "eu-central-1"),
+        "table_name": os.environ.get("DYNAMODB_TABLE", "frank-stage3-data"),
+        "audit_table_name": os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit-table")
+    }
+  
 
 # ===================================
 # Logging Setup
 # ===================================
-logging.basicConfig(level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-logger = logging.getLogger("uvicorn.error")
+def setup_logging(silent=False):
+    """Setup logging to match Uvicorn's colored output, a bit over the top but nice for dev"""
+    
+    if silent:
+        # Silent mode - disable ALL logging
+       
+        # Specifically silence known loggers
+        for logger_name in ['uvicorn', 'uvicorn.access', 'uvicorn.error', 'fastapi', 'root']:
+            logger = logging.getLogger(logger_name)
+            logger.setLevel(logging.CRITICAL)
+            logger.disabled = True
+            # Remove all handlers
+            for handler in logger.handlers[:]:
+                logger.removeHandler(handler)
+        
+        return logging.getLogger("uvicorn")  # Return a silenced logger
+    
+    # Try to use Uvicorn's colored formatter
+    try:
+        from uvicorn.logging import DefaultFormatter
+        
+        # Create a colored formatter like Uvicorn uses
+        formatter = DefaultFormatter(fmt="%(levelprefix)s %(message)s")
+        
+        # Setup root logger with the colored formatter
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+        
+        # Remove existing handlers
+        for handler in root_logger.handlers[:]:
+            root_logger.removeHandler(handler)
+        
+        # Add new handler with colored formatter
+        handler = logging.StreamHandler()
+        handler.setFormatter(formatter)
+        root_logger.addHandler(handler)
+        
+        # Also setup uvicorn logger specifically
+        uvicorn_logger = logging.getLogger("uvicorn")
+        uvicorn_logger.setLevel(logging.INFO)
+        return uvicorn_logger
+        
+    except ImportError:
+        # Fallback to basic colored format if Uvicorn formatter not available
+        logging.basicConfig(
+            level=logging.INFO,
+            format="\033[32mINFO\033[0m:     %(message)s",  # Green INFO text
+            handlers=[logging.StreamHandler()]
+        )
+        return logging.getLogger("uvicorn")
 
 
-# ===================================
+# ====================================
 # Container Metadata
-# ===================================
+# ====================================
 def get_container_info():
     """Get container and runtime information for autoscaling identification"""
     try:
         # Get basic system info
+        import socket
+        import platform
         hostname = socket.gethostname()
         platform_info = platform.platform()
         
@@ -54,370 +142,468 @@ def get_container_info():
         metadata_uri = os.environ.get('ECS_CONTAINER_METADATA_URI_V4')
         if metadata_uri:
             try:
-                # In a real implementation, you'd make an HTTP request to metadata_uri
-                # For now, we'll just note that it's available
+                # Get container metadata via HTTP request
+                response = requests.get(metadata_uri, timeout=2)
+                container_data = response.json()
                 ecs_metadata = {
                     "metadata_uri_available": True,
-                    "metadata_uri": metadata_uri
+                    "container_name": container_data.get('Name', 'unknown'),
+                    "docker_id": container_data.get('DockerId', 'unknown')[:12]  # Short format
                 }
             except Exception:
-                ecs_metadata = {"metadata_uri_available": False}
+                ecs_metadata = {"metadata_uri_available": False, "container_name": "unknown", "docker_id": "unknown"}
+        else:
+            ecs_metadata = {"metadata_uri_available": False, "container_name": "unknown", "docker_id": "unknown"}
         
-        # Get process ID for uniqueness
+        # Get process ID for uniqueness  
         pid = os.getpid()
-        
-        # Calculate container uptime (approximate)
-        try:
-            import psutil
-            process = psutil.Process(pid)
-            create_time = process.create_time()
-            uptime_seconds = time.time() - create_time
-            uptime = f"{uptime_seconds:.1f}s"
-        except Exception:
-            uptime = "unknown"
         
         return {
             "hostname": hostname,
-            "process_id": pid,
             "platform": platform_info,
+            "pid": pid,
             "ecs_metadata": ecs_metadata,
-            "container_id": hostname,  # In Fargate, hostname is often the container ID
-            "instance_type": "fargate" if metadata_uri else "local",
-            "uptime": uptime
+            "container_id": ecs_metadata.get("docker_id", "unknown")
         }
     except Exception as e:
         return {
             "hostname": "unknown",
-            "process_id": os.getpid(),
-            "error": str(e),
-            "container_id": "unknown",
-            "instance_type": "unknown",
-            "uptime": "unknown"
+            "platform": "unknown", 
+            "pid": os.getpid(),
+            "ecs_metadata": {"error": str(e)},
+            "container_id": "unknown"
         }
 
+# ====================================
+# Database handler
+# ====================================
 
-# ===================================
-# Database Setup
-# ===================================
-@lru_cache()
-def get_client():
-    """Initialize DynamoDB connection"""
-    # Get configuration from environment
-    table_name = os.environ.get("DYNAMODB_TABLE", "frank-stage3-data")
-    audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit")
-    region = os.environ.get("AWS_DEFAULT_REGION", "eu-central-1")
-    endpoint = os.environ.get("ENDPOINT", None)  # None for AWS, set for LocalStack
-    environment = os.environ.get("FRANK_ENVIRONMENT", "aws")    
-
-    res = {
-        "table_name": table_name,
-        "audit_table_name": audit_table_name,
-        "region": region,
-        "endpoint": endpoint,
-        "environment": environment
-    }
-    return res
-
-async def get_async_dynamodb_client():
-    """Get async DynamoDB client using aioboto3"""
-    config = get_client()  # Get cached configuration
-    session = aioboto3.Session()
+def get_dynamodb_clients():
+    """Get DynamoDB client and resource using boto3"""
+    current_config = get_config()
     
     # Use configuration from db_config
-    if config["environment"] == "aws":
-        # AWS environment - use Task Role (no credentials needed)
+    if current_config["environment"] == "aws":
+        # AWS environment - use ECS Task Role (no explicit credentials)
+        client = boto3.client('dynamodb', region_name=current_config["region"])
+        resource = boto3.resource('dynamodb', region_name=current_config["region"])
+    elif current_config["profile"]:
+        # LocalStack with AWS profile
+        session = boto3.Session(profile_name=current_config["profile"])
         client = session.client(
             'dynamodb',
-            region_name=config["region"]
+            endpoint_url=current_config["endpoint"],
+            region_name=current_config["region"]
         )
         resource = session.resource(
             'dynamodb',
-            region_name=config["region"]
+            endpoint_url=current_config["endpoint"],
+            region_name=current_config["region"]
         )
     else:
-        # LocalStack environment - use explicit credentials
-        client = session.client(
+        # LocalStack with explicit credentials
+        client = boto3.client(
             'dynamodb',
-            endpoint_url=config["endpoint"],
-            region_name=config["region"],
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test")
+            endpoint_url=current_config["endpoint"],
+            region_name=current_config["region"],
+            aws_access_key_id=current_config["aws_access_key_id"] or "test",
+            aws_secret_access_key=current_config["aws_secret_access_key"] or "test"
         )
-        resource = session.resource(
+        resource = boto3.resource(
             'dynamodb',
-            endpoint_url=config["endpoint"],
-            region_name=config["region"],
-            aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
-            aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test")
+            endpoint_url=current_config["endpoint"],
+            region_name=current_config["region"],
+            aws_access_key_id=current_config["aws_access_key_id"] or "test",
+            aws_secret_access_key=current_config["aws_secret_access_key"] or "test"
         )
-    return (client, resource)
+    return client, resource
 
-# ================================
-# CONFIGURATION MANAGEMENT
-# ================================
-security = HTTPBearer(auto_error=False)  # Don't auto-raise errors
+# ====================================
+# Error handlers and Custom Exceptions
+# ====================================
 
-app = FastAPI(
-    title="FRANK Application - Stage 3",
-    description="A minimal FastAPI application for testing AWS deployment infrastructure.",
-    version=frank.__version__,
-    docs_url="/docs",
-    redoc_url="/redoc"
+class UnauthenticatedError(HTTPException):
+    """Custom HTTPException extension for authentication errors"""
+    
+    def __init__(self, detail: str = "Custom unauthorized error"):
+        super().__init__(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=detail,
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+class InternalError(HTTPException):
+    """Custom HTTPException extension for internal server errors"""
+
+    def __init__(self, detail: str = "Custom internal server error"):
+        super().__init__(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=detail   
+        )
+
+# ====================================
+# Fastapi Application Factory
+# ====================================
+
+def create_app() -> FastAPI:
+    """
+    Create and configure FastAPI application
+    
+    Returns:
+        FastAPI: Configured FastAPI application instance
+    """
+
+    # Security scheme for Bearer token authentication
+    security = HTTPBearer()
+
+    def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+        """
+        Verify Bearer token authentication
+        
+        For testing purposes, accepts 'valid-token' as a valid token.
+        In production, this would validate against a real authentication system.
+        """
+        if credentials.credentials != "valid-token":
+            raise UnauthenticatedError(detail="Invalid authentication token")
+        return credentials.credentials
+
+    app = FastAPI(
+        title="FRANK FastAPI Testability Spike",
+        description="Spike for validating FastAPI testability patterns",
+        version="0.11.0"
+    )
+    
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # In production, specify actual origins
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
     )
 
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+    # Don't setup logging at module level - let main() handle it
+    logger = logging.getLogger("uvicorn")
 
-
-@app.get("/")
-async def root():
-    """Serve static JSON on root endpoint"""
-    container_info = get_container_info()
+    # Request logging middleware
+    @app.middleware("http")
+    async def log_requests(request: Request, call_next):
+        start_time = time.time()
+               
+        response = await call_next(request)
+        
+        process_time = time.time() - start_time
+        logger.info(
+            f"Time: {process_time:.4f}s"
+        )
+        
+        return response
     
-    return {
-        "application": "FRANK",
-        "version": frank.__version__,
-        "status": "running",
-        "message": "Welcome to FRANK application",
-        "served_by": {
-            "container_id": container_info["container_id"],
-            "hostname": container_info["hostname"],
-            "instance_type": container_info["instance_type"]
+    # 1. Public endpoint - no authentication required
+    @app.get("/")
+    def public_endpoint() -> Dict[str, Any]:
+        """
+        Public endpoint accessible without authentication
+        
+        Returns:
+            Dict containing success message and endpoint info
+        """
+        logger.info("Public endpoint accessed")
+        return {
+            "message": "Public endpoint accessed successfully",
+            "endpoint": "public",
+            "authenticated": False,
+            "timestamp": time.time()
         }
-    }
-
-@app.get("/env")
-async def env():
-    """Environment variables endpoint"""
-    config = get_client()  # Get cached configuration
-    container_info = get_container_info()  # Get container metadata
     
-    return {
-        "container": {
-            "id": container_info["container_id"],
-            "hostname": container_info["hostname"],
-            "process_id": container_info["process_id"],
-            "instance_type": container_info["instance_type"],
-            "platform": container_info["platform"]
-        },
-        "aws_environment": {
-            "AWS_PROFILE": os.environ.get("AWS_PROFILE", "<NOT SET>"),
-            "AWS_ACCESS_KEY_ID": "<NOT SET>" if not os.environ.get("AWS_ACCESS_KEY_ID") else "<SET>",
-            "AWS_SECRET_ACCESS_KEY": "<NOT SET>" if not os.environ.get("AWS_SECRET_ACCESS_KEY") else "<SET>",
-            "ENDPOINT": config.get("endpoint", "<NOT SET>"),
-            "DYNAMODB_TABLE": config.get("table_name"),
-            "DYNAMODB_AUDIT_TABLE": config.get("audit_table_name"),
-            "AWS_DEFAULT_REGION": config.get("region"),
-            "FRANK_ENVIRONMENT": config.get("environment"),
-            "using_task_role": config.get("environment") == "aws"
-        },
-        "ecs_metadata": container_info["ecs_metadata"] if container_info.get("ecs_metadata") else None
-    }
-
-
-
-@app.get("/database")
-async def database():
-    """Database connection endpoint - uses async aioboto3"""
-    config = get_client()  # Get cached configuration
-    container_info = get_container_info()  # Get container metadata
+    # 2. Protected endpoint - Bearer token authentication required
+    @app.get("/protected")
+    def protected_endpoint(token: str = Depends(verify_token)) -> Dict[str, Any]:
+        """
+        Protected endpoint requiring Bearer token authentication
+        
+        Args:
+            token: Validated Bearer token from verify_token dependency
+            
+        Returns:
+            Dict containing success message and user info
+        """
+        logger.info("Protected endpoint accessed with valid token")
+        return {
+            "message": "Protected endpoint accessed successfully",
+            "endpoint": "protected",
+            "authenticated": True,
+            "token": token,
+            "user_id": "test-user",
+            "timestamp": time.time()
+        }
     
-    # Get async DynamoDB client and resource
-    dynamodb_client, dynamodb_resource = await get_async_dynamodb_client()
-
-    # Use async context managers properly
-    async with dynamodb_client as client:
-        # List all tables
-        response = await client.list_tables()
-        table_names = response.get('TableNames', [])
+    # 3. Exception endpoint - raises standard exception leading to 500
+    @app.get("/error")
+    def exception_endpoint() -> Dict[str, Any]:
+        """
+        Exception endpoint that raises a controlled exception
         
-    async with dynamodb_resource as dynamodb:
-        # Get table references
-        main_table = await dynamodb.Table(config["table_name"])
-        audit_table = await dynamodb.Table(config["audit_table_name"])
-        
-        # Get item counts from both tables
-        main_response = await main_table.scan(Select='COUNT', Limit=1)
-        main_count = main_response.get('Count', 0)
-        main_status = "accessible"
-        
-        audit_response = await audit_table.scan(Select='COUNT', Limit=1)
-        audit_count = audit_response.get('Count', 0)
-        audit_status = "accessible"
+        Raises:
+            HTTPException: HTTP 500 exception for testing purposes
+        """
+        logger.error("Exception endpoint accessed - raising controlled exception")
+        # Use HTTPException instead of generic Exception for proper handling
+        raise InternalError(detail="This is a controlled exception for testing purposes")
     
-    return {
-        "status": "connected",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "async_implementation": "aioboto3",
-        "served_by": {
-            "container_id": container_info["container_id"],
-            "hostname": container_info["hostname"],
-            "instance_type": container_info["instance_type"]
-        },
-        "environment": {
-            "DYNAMODB_TABLE": config["table_name"],
-            "AUDIT_TABLE": config["audit_table_name"],
-            "AWS_DEFAULT_REGION": config["region"],
-            "ENDPOINT": config["endpoint"] or "AWS (no custom endpoint)",
-            "FRANK_ENVIRONMENT": config.get("environment", "default")
-        },
-        "tables": {
-            "available_tables": table_names,
-            "main": {
-                "name": config["table_name"],
-                "status": main_status,
-                "item_count": main_count
-            },
-            "audit": {
-                "name": config["audit_table_name"],
-                "status": audit_status,
-                "item_count": audit_count
+    # 3b. Python exception endpoint - raises Python exception that gets handled
+    @app.get("/python-error")
+    def python_exception_endpoint() -> Dict[str, Any]:
+        """
+        Python exception endpoint that raises a raw Python exception
+        
+        This demonstrates how the global exception handler converts Python
+        exceptions into proper HTTP 500 responses.
+        
+        Raises:
+            ValueError: Python exception that gets caught by global handler
+        """
+        logger.error("Python exception endpoint accessed - raising ValueError")
+        # This will be caught by the global exception handler
+        raise ValueError("This is a Python exception converted to HTTP 500")
+    
+    # 4. Custom error endpoint - raises custom HTTPException extension
+    @app.get("/unauthorized")
+    def custom_error_endpoint() -> Dict[str, Any]:
+        """
+        Custom error endpoint that raises UnauthenticatedError
+        
+        Raises:
+            UnauthenticatedError: Custom HTTPException extension
+        """
+        logger.warning("Custom error endpoint accessed - raising UnauthenticatedError")
+        raise UnauthenticatedError("Custom unauthorized error from endpoint")
+    
+    # 4. Custom error endpoint - raises custom HTTPException extension
+    @app.get("/database")
+    def database():
+        """Database connection endpoint - uses async aioboto3"""
+        current_config = get_config()
+        container_info = get_container_info()
+        
+        try:
+            # Get DynamoDB client and resource
+            client, resource = get_dynamodb_clients()
+            
+            # List all tables
+            response = client.list_tables()
+            table_names = response.get('TableNames', [])
+                
+            # Get table references
+            main_table = resource.Table(current_config["table_name"])
+            audit_table = resource.Table(current_config["audit_table_name"])
+
+            # Get item counts from both tables
+            main_response = main_table.scan(Select='COUNT', Limit=1)
+            main_count = main_response.get('Count', 0)
+            main_status = "accessible"
+            
+            audit_response = audit_table.scan(Select='COUNT', Limit=1)
+            audit_count = audit_response.get('Count', 0)
+            audit_status = "accessible"
+            
+            return {
+                "status": "connected",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "async_implementation": "aioboto3",
+                "container": container_info,
+                "environment": {
+                    "DYNAMODB_TABLE": current_config["table_name"],
+                    "AUDIT_TABLE": current_config["audit_table_name"],
+                    "AWS_DEFAULT_REGION": current_config["region"],
+                    "ENDPOINT": current_config["endpoint"] or "AWS (no custom endpoint)",
+                    "FRANK_ENVIRONMENT": current_config.get("environment", "default")
+                },
+                "tables": {
+                    "available_tables": table_names,
+                    "main": {
+                        "name": current_config["table_name"],
+                        "status": main_status,
+                        "item_count": main_count
+                    },
+                    "audit": {
+                        "name": current_config["audit_table_name"],
+                        "status": audit_status,
+                        "item_count": audit_count
+                    }
+                }
             }
-        },
-        "aws_credentials": {
-            "using_task_role": config["environment"] == "aws",
-            "using_profile": False,
-            "access_key_set": bool(os.environ.get("AWS_ACCESS_KEY_ID")),
-            "secret_key_set": bool(os.environ.get("AWS_SECRET_ACCESS_KEY"))
-        }
-    }
+        except Exception as e:
+            logger.error(f"Database connection error: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Database connection failed: {str(e)}"
+            )
+
+    # Global exception handler for unhandled exceptions
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """
+        Global exception handler for unhandled exceptions
         
-      
-
-@app.get("/v1/health")
-async def health():
-    """Health check endpoint for load balancer"""
-    container_info = get_container_info()
+        Args:
+            request: The request that caused the exception
+            exc: The exception that was raised
+            
+        Returns:
+            JSONResponse with error details
+        """
+        # Don't handle HTTPExceptions - let FastAPI handle those
+        if isinstance(exc, HTTPException):
+            raise exc
+            
+        logger.error(f"Unhandled exception: {str(exc)}")
+        return JSONResponse(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            content={
+                "error": "Internal server error",
+                "detail": str(exc),
+                "endpoint": str(request.url),
+                "method": request.method,
+                "timestamp": time.time()
+            }
+        )
     
-    return {
-        "status": "healthy",
-        "timestamp": datetime.now(timezone.utc).isoformat(),
-        "service": "FRANK",
-        "version": frank.__version__,
-        "container_id": container_info["container_id"],
-        "hostname": container_info["hostname"],
-        "instance_type": container_info["instance_type"]
-    }
-
-
-@app.get("/v1/health/deep")
-async def deep_health_check():
-    """Comprehensive health check for monitoring systems - NOT for load balancers"""
-    container_info = get_container_info()
-    config = get_client()
-    start_time = datetime.now(timezone.utc)
-    
-    health = {
-        "status": "healthy",
-        "timestamp": start_time.isoformat(),
-        "version": frank.__version__,
-        "service": "FRANK",
-        "container_id": container_info["container_id"],
-        "checks": {},
-        "performance": {}
-    }
-    
-    # Check 1: Database Connectivity
-    try:
-        check_start = datetime.now(timezone.utc)
+    # Health check endpoint for monitoring
+    @app.get("/v1/health")
+    def health_check() -> Dict[str, Any]:
+        """
+        Health check endpoint for monitoring and load balancing
         
-        # Check main table
-        main_client, _ = await get_async_dynamodb_client()
-        async with main_client as client:
-            main_response = await client.describe_table(TableName=config["table_name"])
-            
-        # Check audit table with separate client
-        audit_client, _ = await get_async_dynamodb_client()
-        async with audit_client as client:
-            audit_response = await client.describe_table(TableName=config["audit_table_name"])
-            
-        health["checks"]["dynamodb"] = {
+        Returns:
+            Dict containing health status information
+        """
+        current_config = get_config()
+
+        health = {
             "status": "healthy",
-            "main_table": {"name": config["table_name"], "status": main_response['Table']['TableStatus']},
-            "audit_table": {"name": config["audit_table_name"], "status": audit_response['Table']['TableStatus']}
+            "service": "frank-stage3",
+            "version": frank.__version__,
+            "timestamp": time.time(),
+            "profile": current_config.get("profile", "<not set>"),
+            "environment": current_config.get("environment", "<not set>"),
+            "region": current_config.get("region", "<not set>"),
+            "DYNAMODB_TABLE": current_config.get("table_name", "<not set>"),
+            "AUDIT_TABLE": current_config.get("audit_table_name", "<not set>"),
+            "ENDPOINT": current_config.get("endpoint", "<not set>"),
+            "CONTAINER_ID": os.getenv("CONTAINER_ID", "unknown"),
+            "filename": Path(__file__).name, # "frank_stage3.py"
         }
-        health["performance"]["dynamodb_check_duration"] = f"{(datetime.now(timezone.utc) - check_start).total_seconds():.3f}s"
-        
-    except Exception as e:
-        health["checks"]["dynamodb"] = {"status": "unhealthy", "error": str(e)}
-        health["status"] = "degraded"
-    
-    # Check 2: Application Components & Environment
-    try:
-        required_env_vars = ["DYNAMODB_TABLE", "DYNAMODB_AUDIT_TABLE", "AWS_DEFAULT_REGION"]
-        missing_vars = [var for var in required_env_vars if not os.environ.get(var)]
-        
-        health["checks"]["application"] = {
-            "status": "healthy" if not missing_vars else "unhealthy",
-            "frank_version": frank.__version__,
-            "missing_env_vars": missing_vars,
-            "environment": config["environment"]
-        }
-        
-        if missing_vars:
-            health["status"] = "unhealthy"
+
+        try:
+            # ECS provides this environment variable automatically
+            metadata_uri = os.environ.get('ECS_CONTAINER_METADATA_URI_V4')
             
-    except Exception as e:
-        health["checks"]["application"] = {"status": "unhealthy", "error": str(e)}
-        health["status"] = "unhealthy"
+            if metadata_uri:
+                # Get container metadata
+                container_response = requests.get(metadata_uri)
+                container_data = container_response.json()
+                
+                # Get task metadata  
+                task_response = requests.get(f"{metadata_uri}/task")
+                task_data = task_response.json()
+                
+                health['container_metadata'] = {
+                    "container_id": container_data.get('DockerId', 'unknown'),
+                    "container_name": container_data.get('Name'),
+                    "task_arn": task_data.get('TaskARN'), 
+                    "task_definition": task_data.get('Family'),
+                    "cluster": task_data.get('Cluster'),
+                    "availability_zone": task_data.get('AvailabilityZone')
+                }
+        except Exception as e:
+            print(f"Error getting metadata: {e}")
+
+        return health
     
-    # Performance summary
-    health["performance"]["total_duration"] = f"{(datetime.now(timezone.utc) - start_time).total_seconds():.3f}s"
-    health["performance"]["container_uptime"] = container_info.get("uptime", "unknown")
-    
-    # Set overall status based on checks
-    if any(check.get("status") == "unhealthy" for check in health["checks"].values()):
-        health["status"] = "unhealthy"
-    elif any(check.get("status") == "degraded" for check in health["checks"].values()):
-        health["status"] = "degraded"
-    
-    return health
+    return app
 
 
-@app.exception_handler(Exception)
-def generic_exception_handler(request: Request, exc: Exception):
-    """Dedicated exception handler for generic exceptions."""
-    return JSONResponse(
-        status_code=500,
-        content=create_error_response(
-            500,
-            "INTERNAL_ERROR",
-            str(exc),
-            details={"type": type(exc).__name__}
-        ),
+def main():
+    """
+    Main function with argparse for uvicorn configuration
+    """
+    # Get current filename dynamically
+    CURRENT_MODULE = Path(__file__).stem  # Filename without extension: "frank_stage3"
+
+    parser = argparse.ArgumentParser(description="FRANK Stage 3 Main Server")
+    parser.add_argument("--host", type=str, default=os.getenv("HOST", "0.0.0.0"), help="Host to bind the server to (default: HOST or 0.0.0.0)")
+    parser.add_argument("--port", type=int, default=int(os.getenv("PORT", "8000")), help="Port to run the Simple API on (default: PORT or 8000)")
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=os.getenv("RELOAD", "False").lower() in ("true", "1", "yes"),
+        help="Enable auto-reload for development (default: True or RELOAD)"
+    )
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=os.getenv("LOG_LEVEL", "debug"),
+        choices=["debug", "info", "warning", "error"],
+        help="Logging level (default: debug or LOG_LEVEL)",
+    )
+    parser.add_argument(
+        "-s", "--silent",
+        action="store_true",
+        default=os.getenv("SILENT", "False").lower() in ("true", "1", "yes"),
+        help="Enable silent mode (default: False or SILENT)"
     )
 
-if __name__ == "__main__":
-    import argparse
-    import uvicorn
+    ### Example configuration settings for the AppConfig
+    parser.add_argument("--environment", type=str, default=os.getenv("FRANK_ENVIRONMENT", "aws"), help="Configuration environment (default: ENVIRONMENT or 'aws')")
+    parser.add_argument("--profile", type=str, default=os.getenv("AWS_PROFILE", None), help="AWS profile (default: AWS_PROFILE or None)")
+    parser.add_argument("--aws-access-key-id", type=str, default=os.getenv("AWS_ACCESS_KEY_ID", "test"), help="AWS Access Key ID (default: AWS_ACCESS_KEY_ID or 'test')")
+    parser.add_argument("--aws-secret-access-key", type=str, default=os.getenv("AWS_SECRET_ACCESS_KEY", "test"), help="AWS Secret Access Key (default: AWS_SECRET_ACCESS_KEY or 'test')")
+    parser.add_argument("--endpoint", type=str, default=os.getenv("ENDPOINT", "http://localhost:4566"), help="DynamoDB Endpoint URL (default: ENDPOINT or LocalStack endpoint)")
+    parser.add_argument("--table_name", type=str, default=os.getenv("DYNAMODB_TABLE", "frank_table"), help="DynamoDB Table Name (default: TABLE_NAME or 'frank_table')")
+    parser.add_argument("--audit_table_name", type=str, default=os.getenv("DYNAMODB_AUDIT_TABLE", "frank_audit_table"), help="DynamoDB Audit Table Name (default: AUDIT_TABLE_NAME or 'frank_audit_table')")
+    parser.add_argument("--region", type=str, default=os.getenv("AWS_DEFAULT_REGION", "eu-west-1"), help="AWS Region (default: REGION or 'eu-west-1')")
 
-    parser = argparse.ArgumentParser(description="FRANK Platform - AWS - Stage 3 Server")
-    parser.add_argument(
-        "--environment", choices=["localstack", "aws"], default=os.environ.get("FRANK_ENVIRONMENT", "aws"), help="Environment to run in"
-    )    
-    parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Host to bind to")
-    parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="Port to bind to")
-    parser.add_argument("--debug", action="store_true", help="Enable debug mode")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload")
-    parser.add_argument("--profile", default=os.environ.get("AWS_PROFILE", None), help="AWS profile to use")
     args = parser.parse_args()
-
-    # Set environment variables before database setup
-    os.environ["FRANK_ENVIRONMENT"] = args.environment
+    
+    # Set environment variables with command-line overrides
+    # This way get_config() will pick them up when called
+    os.environ["FRANK_ENVIRONMENT"] = args.environment  # "aws" or "localstack"
     if args.profile:
-        os.environ["AWS_PROFILE"] = args.profile
+        os.environ["AWS_PROFILE"] = args.profile  # Use provided profile or None
+    os.environ["AWS_ACCESS_KEY_ID"] = args.aws_access_key_id  # Default to "test" if not set
+    os.environ["AWS_SECRET_ACCESS_KEY"] = args.aws_secret_access_key  # Default to "test" if not set
+    os.environ["ENDPOINT"] = args.endpoint  # Default to LocalStack endpoint if not set
+    os.environ["DYNAMODB_TABLE"] = args.table_name  # Default to "frank_table" if not set
+    os.environ["DYNAMODB_AUDIT_TABLE"] = args.audit_table_name  # Default to "frank_audit_table" if not set
+    os.environ["AWS_DEFAULT_REGION"] = args.region  # Default to "eu-west-1" if not set
 
-    if args.debug:
-        log_level = "debug"
+    # Setup logging based on silent flag
+    if args.silent:
+        logger = setup_logging(silent=True)
+        # Set uvicorn log level to critical+ to silence it completely
+        args.log_level = "critical"
+        # Also disable uvicorn's own logging       
     else:
-        log_level = os.environ.get("UVICORN_LOG_LEVEL", "info")
+        logger = setup_logging(silent=False)
+        logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
+        logger.info(f"Reload enabled: {args.reload}")
+        logger.info(f"Log level: {args.log_level}")
+        logger.info(f"Module: {CURRENT_MODULE}")
+        
+    logging.getLogger('uvicorn').setLevel(getattr(logging, args.log_level.upper()))
+    
+    # Run uvicorn server with dynamic module name
+    uvicorn.run(
+        f"{CURRENT_MODULE}:create_app",
+        host=args.host,
+        port=args.port,
+        reload=args.reload,
+        factory=True,  # Indicates create_app is a factory function
+        access_log=not args.silent,  # Disable access logging
+        log_level=args.log_level if not args.silent else 'critical'
+    )
 
-    logger.info(f"🚀 Starting FRANK - Stage 3 on {args.host}:{args.port} | Environment: {args.environment} | Profile: {args.profile or '<NOT SET>'}")
 
-    uvicorn.run("frank_stage3:app", host=args.host, port=args.port, reload=args.reload, log_level=log_level)
+if __name__ == "__main__":  # pragma: no cover
+    main()

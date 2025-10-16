@@ -1,3 +1,13 @@
+#
+# FRANK Platform - Docker Container Deployment Tasks
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Handles ECS task definition updates and container deployment
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 # ===================================
 # Update ECS Task Definition with New Image and Force Deployment
@@ -29,12 +39,23 @@
   register: new_task_def_result
   changed_when: true
 
+- name: Get latest task definition revision
+  command: >
+    aws ecs describe-task-definition
+    --task-definition {{ stack_name }}-task
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'taskDefinition.taskDefinitionArn'
+    --output text
+  register: latest_task_definition
+  changed_when: false
+
 - name: Update ECS service with new task definition
   command: >
     aws ecs update-service
     --cluster {{ stack_name }}-cluster
     --service {{ stack_name }}-service
-    --task-definition {{ stack_name }}-task
+    --task-definition {{ latest_task_definition.stdout }}
     --force-new-deployment
     --region {{ aws_region }}
     --profile {{ aws_profile }}

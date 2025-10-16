@@ -1,3 +1,13 @@
+#
+# FRANK Platform - CloudFormation Deployment Tasks
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Handles CloudFormation stack creation, updates, and parameter management
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
 ---
 # tasks/cloudformation.yml - Simplified create or update logic
 

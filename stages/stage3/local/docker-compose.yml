@@ -27,8 +27,8 @@ services:
     container_name: nginx-lb
     volumes:
       - ./nginx-lb.conf:/etc/nginx/nginx.conf
-      - ./ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
-      - ./ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
+      - ../ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
+      - ../ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
     depends_on:
       - frank-app-1
       - frank-app-2
@@ -48,6 +48,7 @@ services:
       - AWS_DEFAULT_REGION=eu-west-1
       - DYNAMODB_TABLE=frank-data
       - DYNAMODB_AUDIT_TABLE=frank-audit
+      - LOG_LEVEL=debug
       - CONTAINER_ID=api-1  # Override for container identification
 
   frank-app-2:
@@ -63,6 +64,7 @@ services:
       - AWS_DEFAULT_REGION=eu-west-1
       - DYNAMODB_TABLE=frank-data
       - DYNAMODB_AUDIT_TABLE=frank-audit
+      - LOG_LEVEL=debug
       - CONTAINER_ID=api-2  # Override for container identification
 
   localstack:
