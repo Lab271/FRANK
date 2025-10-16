@@ -28,6 +28,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import argparse
+from functools import lru_cache
 import logging
 import os
 from pathlib import Path
@@ -40,45 +41,21 @@ from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
-class AppConfig:
-    """Configuration class for Simple API settings"""
-    _instance: Optional['AppConfig'] = None
+# ===================================
+# Configuration
+# ===================================
+@lru_cache()
+def get_config():
+    """Get application configuration from environment"""
+    return {
+        "SETTING_A": os.environ["SETTING_A"],
+        "SETTING_N": os.environ["SETTING_N"],
+    }
+  
 
-    def __init__(self,
-        setting_a: str,
-        setting_n: str
-    ):
-        self.setting_a = setting_a
-        self.setting_n = setting_n
-    
-    @classmethod
-    def get_config(cls) -> "AppConfig":
-        """Get singleton AppConfig instance, creating it from environment if needed"""
-        if cls._instance is None:
-            cls._instance = cls(
-                setting_a=os.getenv("SETTING_A", "default_value_a"),
-                setting_n=os.getenv("SETTING_N", "default_value_n")
-            )
-        return cls._instance
-    
-    @classmethod
-    def reset(cls) -> None:
-        """Reset the singleton instance"""
-        cls._instance = None
-
-    @classmethod
-    def update(cls, **kwargs) -> None:
-        """Update configuration values"""
-        config = cls.get_config()
-        for key, value in kwargs.items():
-            if hasattr(config, key):
-                setattr(config, key, value)
-
-def get_config() -> AppConfig:
-    """Dependency to get AppConfig instance"""
-    return AppConfig.get_config()   
-
-# Configure logging to match Uvicorn's colored format
+# ===================================
+# Logging Setup
+# ===================================
 def setup_logging(silent=False):
     """Setup logging to match Uvicorn's colored output, a bit over the top but nice for dev"""
     
@@ -132,6 +109,9 @@ def setup_logging(silent=False):
 
 
 
+# ====================================
+# Error handlers and Custom Exceptions
+# ====================================
 
 class UnauthenticatedError(HTTPException):
     """Custom HTTPException extension for authentication errors"""
@@ -152,7 +132,9 @@ class InternalError(HTTPException):
             detail=detail   
         )
 
-
+# ====================================
+# Fastapi Application Factory
+# ====================================
 
 def create_app() -> FastAPI:
     """
@@ -179,7 +161,7 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="FRANK FastAPI Testability Spike",
         description="Spike for validating FastAPI testability patterns",
-        version="0.1.0"
+        version="0.11.0"
     )
     
     # CORS middleware
@@ -333,8 +315,8 @@ def create_app() -> FastAPI:
             "service": "fastapi-spike",
             "version": "0.1.0",
             "timestamp": time.time(),
-            "setting_a": current_config.setting_a,
-            "setting_n": current_config.setting_n,
+            "SETTING_A": current_config['SETTING_A'],
+            "SETTING_N": current_config['SETTING_N'],
             "filename": Path(__file__).name, # "simple_api_011.py"
         }
     
@@ -354,7 +336,7 @@ def main():
     parser.add_argument(
         "--reload",
         action="store_true",
-        default=os.getenv("RELOAD", "True").lower() in ("true", "1", "yes"),
+        default=os.getenv("RELOAD", "False").lower() in ("true", "1", "yes"),
         help="Enable auto-reload for development (default: True or RELOAD)"
     )
     parser.add_argument(
