@@ -148,6 +148,9 @@ logs-app1:  ## Show logs from FRANK app 1 only
 logs-app2:  ## Show logs from FRANK app 2 only
 	docker-compose --file docker-compose.yml logs -f simple-api-2
 
+test: ## Run all tests
+	@coverage run -m pytest
+	@coverage report -m 
 # ==============================================================================
 # Load Balancing and Horizontal Scaling Tests
 # ==============================================================================

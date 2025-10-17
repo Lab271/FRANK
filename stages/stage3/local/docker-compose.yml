@@ -1,7 +1,34 @@
-# Define reusable configurations using YAML anchors
+#
+# FRANK Platform - Stage 3 Local Development Docker Compose Configuration
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# This Docker Compose configuration sets up a complete local development
+# environment for the FRANK Platform Stage 3 with the following components:
+#
+# Services:
+# - nginx-lb: Load balancer with SSL termination (ports 80/443)
+# - frank-app-1: Primary API instance (port 8000)
+# - frank-app-2: Secondary API instance (port 8001)
+# - localstack: AWS services emulation (DynamoDB on port 4566)
+# - dynamodb-admin: Web UI for DynamoDB management (port 8100)
+#
+# Usage:
+#   docker-compose up -d              # Start all services
+#   docker-compose down               # Stop and remove containers
+#   docker-compose logs frank-app-1   # View logs for specific service
+#
+# Prerequisites:
+# - Docker and Docker Compose installed
+# - SSL certificates in ../ssl-certs/ directory
+# - nginx-lb.conf configuration file
+# - FRANK application built and ready for containerization
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+
 x-frank-app-common: &frank-app-common
   build: 
-    context: ../../..
+    context: ../../..  # we are in ./local
     dockerfile: stages/stage3/Dockerfile
     args:
       BUILD_CONTEXT: stages/stage3
@@ -17,6 +44,19 @@ x-frank-app-common: &frank-app-common
     start_period: 40s
   networks:
     - localstack-net
+
+x-aws-credentials: &aws-credentials
+  AWS_ACCESS_KEY_ID: test
+  AWS_SECRET_ACCESS_KEY: test
+  AWS_DEFAULT_REGION: eu-west-1
+
+x-frank-app-env: &frank-app-env
+  <<: *aws-credentials
+  FRANK_ENVIRONMENT: localstack
+  ENDPOINT: http://localstack:4566
+  DYNAMODB_TABLE: frank-data
+  DYNAMODB_AUDIT_TABLE: frank-audit
+  LOG_LEVEL: debug
 
 services:
   nginx-lb:
@@ -41,15 +81,8 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - FRANK_ENVIRONMENT=localstack
-      - ENDPOINT=http://localstack:4566
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - AWS_DEFAULT_REGION=eu-west-1
-      - DYNAMODB_TABLE=frank-data
-      - DYNAMODB_AUDIT_TABLE=frank-audit
-      - LOG_LEVEL=debug
-      - CONTAINER_ID=api-1  # Override for container identification
+      <<: *frank-app-env
+      CONTAINER_ID: api-1  # Override for container identification
 
   frank-app-2:
     <<: *frank-app-common
@@ -57,30 +90,19 @@ services:
     ports:
       - "8001:8000"
     environment:
-      - FRANK_ENVIRONMENT=localstack
-      - ENDPOINT=http://localstack:4566
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
-      - AWS_DEFAULT_REGION=eu-west-1
-      - DYNAMODB_TABLE=frank-data
-      - DYNAMODB_AUDIT_TABLE=frank-audit
-      - LOG_LEVEL=debug
-      - CONTAINER_ID=api-2  # Override for container identification
+      <<: *frank-app-env
+      CONTAINER_ID: api-2  # Override for container identification
 
   localstack:
     image: localstack/localstack:latest
-    # image: localstack/localstack:2.0
     container_name: localstack
     ports:
       - "4566:4566"  # LocalStack API
       - "4571:4571"  # LocalStack Dashboard (optional)
     environment:
-  #      - SERVICES=s3,secretsmanager,iam,sts,dynamodb
-      - SERVICES=dynamodb
-      - DEBUG=1
-      - AWS_DEFAULT_REGION=eu-west-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test 
+      <<: *aws-credentials
+      SERVICES: dynamodb
+      DEBUG: 1 
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
@@ -89,7 +111,6 @@ services:
       retries: 3
     volumes:
       - "/var/run/docker.sock:/var/run/docker.sock"
-    #   - "./localstack_init:/etc/localstack/init/ready.d"    
     networks:
       - localstack-net
 
@@ -99,10 +120,9 @@ services:
     ports:
       - "8100:8001"
     environment:
-      - DYNAMO_ENDPOINT=http://localstack:4566
-      - AWS_REGION=eu-west-1
-      - AWS_ACCESS_KEY_ID=test
-      - AWS_SECRET_ACCESS_KEY=test
+      <<: *aws-credentials
+      DYNAMO_ENDPOINT: http://localstack:4566
+      AWS_REGION: eu-west-1
     depends_on:
       - localstack
     networks:

@@ -13,7 +13,7 @@
 # Update ECS Task Definition with New Image and Force Deployment
 # ===================================
 
-- name: Get current task definition and update image with jq
+- name: Get current task definition and update image
   shell: |
     # Get current task definition
     aws ecs describe-task-definition \

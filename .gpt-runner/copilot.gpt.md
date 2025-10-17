@@ -35,3 +35,7 @@
 #14 Avoid wrapping the whole response in triple backticks.
 
 #15 You should reply in user's country language
+
+#16 When you test python code, always use the local virtualenv in `.frank`
+
+#17 after you create some unittests, validate with "make test", ready the coverage and suggest extensions after that to go towards 100%. Be sure to stop after a second attempt. It is not always possible to reach 100%

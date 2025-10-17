@@ -181,14 +181,24 @@ def get_container_info():
 def get_dynamodb_clients():
     """Get DynamoDB client and resource using boto3"""
     current_config = get_config()
+    logger = logging.getLogger("uvicorn")
     
     # Use configuration from db_config
     if current_config["environment"] == "aws":
-        # AWS environment - use ECS Task Role (no explicit credentials)
-        client = boto3.client('dynamodb', region_name=current_config["region"])
-        resource = boto3.resource('dynamodb', region_name=current_config["region"])
+        session = boto3.Session()
+        # Test credentials by calling STS to see what identity we're using
+        logger.info("Using AWS default credential chain")
+        sts_client = session.client('sts', region_name=current_config["region"])
+        identity = sts_client.get_caller_identity()
+        logger.info(f"Using AWS identity: {identity.get('Arn', 'unknown')}")           
+        # AWS environment - explicitly use default credential chain
+        # This ensures we use ECS Task Role when available
+        # Force using default credentials (ECS Task Role, EC2 Instance Profile, etc.)
+        client = session.client('dynamodb', region_name=current_config["region"])
+        resource = session.resource('dynamodb', region_name=current_config["region"])       
     elif current_config["profile"]:
         # LocalStack with AWS profile
+        logger.info(f"Using AWS profile: {current_config['profile']}")           
         session = boto3.Session(profile_name=current_config["profile"])
         client = session.client(
             'dynamodb',
@@ -202,6 +212,7 @@ def get_dynamodb_clients():
         )
     else:
         # LocalStack with explicit credentials
+        logger.info(f"Using AWS credentials: {current_config['aws_access_key_id']}")           
         client = boto3.client(
             'dynamodb',
             endpoint_url=current_config["endpoint"],
@@ -270,7 +281,8 @@ def create_app() -> FastAPI:
     app = FastAPI(
         title="FRANK FastAPI Testability Spike",
         description="Spike for validating FastAPI testability patterns",
-        version="0.11.0"
+        version=frank.__version__,
+        docs_url="/docs",
     )
     
     # CORS middleware
@@ -382,7 +394,7 @@ def create_app() -> FastAPI:
     # 4. Custom error endpoint - raises custom HTTPException extension
     @app.get("/database")
     def database():
-        """Database connection endpoint - uses async aioboto3"""
+        """Database connection endpoint"""
         current_config = get_config()
         container_info = get_container_info()
         
@@ -569,14 +581,16 @@ def main():
     # Set environment variables with command-line overrides
     # This way get_config() will pick them up when called
     os.environ["FRANK_ENVIRONMENT"] = args.environment  # "aws" or "localstack"
-    if args.profile:
-        os.environ["AWS_PROFILE"] = args.profile  # Use provided profile or None
-    os.environ["AWS_ACCESS_KEY_ID"] = args.aws_access_key_id  # Default to "test" if not set
-    os.environ["AWS_SECRET_ACCESS_KEY"] = args.aws_secret_access_key  # Default to "test" if not set
-    os.environ["ENDPOINT"] = args.endpoint  # Default to LocalStack endpoint if not set
+    os.environ["AWS_DEFAULT_REGION"] = args.region  # Default to "eu-west-1" if not set
+    if args.environment == "localstack":
+        os.environ["ENDPOINT"] = args.endpoint  # Default to LocalStack endpoint if not set
+        if args.profile:
+            os.environ["AWS_PROFILE"] = args.profile  # Use provided profile or None
+        else:
+            os.environ["AWS_ACCESS_KEY_ID"] = args.aws_access_key_id  # Default to "test" if not set
+            os.environ["AWS_SECRET_ACCESS_KEY"] = args.aws_secret_access_key  # Default to "test" if not set
     os.environ["DYNAMODB_TABLE"] = args.table_name  # Default to "frank_table" if not set
     os.environ["DYNAMODB_AUDIT_TABLE"] = args.audit_table_name  # Default to "frank_audit_table" if not set
-    os.environ["AWS_DEFAULT_REGION"] = args.region  # Default to "eu-west-1" if not set
 
     # Setup logging based on silent flag
     if args.silent:

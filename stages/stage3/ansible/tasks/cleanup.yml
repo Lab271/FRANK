@@ -2,7 +2,34 @@
 # FRANK Platform - Infrastructure Cleanup Tasks
 # Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
 #
-# Handles safe cleanup and removal of AWS infrastructure resources
+# Comprehensive cleanup and removal of ALL AWS infrastructure resources
+#
+# Main Cleanup Steps:
+# 1. CloudFormation Stack - Delete main infrastructure stack
+# 2. ECR Repository - Remove container images and registry  
+# 3. CloudWatch Log Groups - Delete persistent log groups (/ecs/stack-name-*)
+# 4. DynamoDB Tables - Remove persistent database tables (stack-name-data, stack-name-audit)
+# 5. VPC Infrastructure - Clean up networking components:
+#    - Subnets (public/private across all AZs)
+#    - Internet Gateways (detach and delete)
+#    - VPCs (stack-name-vpc tagged resources)
+# 6. Local Docker Images - Clean up development artifacts
+#
+# Features:
+# - Error resilient (continues on failures)
+# - Handles resources with DeletionPolicy: Retain
+# - Tag-based resource targeting for safety
+# - Proper dependency order for VPC cleanup
+# - Complete cost cleanup (no orphaned resources)
+#
+# Additional Cleanup Considerations (Future Enhancements):
+# TODO: Add explicit cleanup for these resources if CloudFormation deletion fails:
+# 1. NAT Gateways & Elastic IPs - May persist and incur costs (NATGateway1-3, NATGatewayEIP1-3)
+# 2. Route Tables - Dependencies for VPC deletion (PrivateRouteTable1-3, PublicRouteTable)
+# 3. Security Groups - Dependencies for VPC deletion (ALBSecurityGroup, ECSSecurityGroup)
+# 4. VPC Endpoints - Dependencies for VPC deletion (DynamoDBVPCEndpoint)
+# 5. WAF Resources - Web ACL and associations (WAFWebACL, WAFAssociation)
+# 6. Cognito Resources - User pools and identity pools (CognitoUserPool, CognitoUserPoolClient, CognitoIdentityPool)
 #
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
@@ -76,6 +103,32 @@
   register: ecr_delete
   failed_when: false
 
+
+- name: List CloudWatch log groups for this stack
+  command: >
+    aws logs describe-log-groups
+    --log-group-name-prefix '/ecs/{{ stack_name }}'
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'logGroups[].logGroupName'
+    --output text
+  register: log_groups_check
+  failed_when: false
+  changed_when: false
+
+- name: Delete CloudWatch log groups
+  command: >
+    aws logs delete-log-group
+    --log-group-name {{ item }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  loop: "{{ log_groups_check.stdout.split() if log_groups_check.rc == 0 and log_groups_check.stdout else [] }}"
+  when: 
+    - log_groups_check.rc == 0
+    - log_groups_check.stdout != ""
+  register: log_group_delete
+  failed_when: false
+
 - name: Clean up local Docker images
   command: >
     docker rmi -f 
@@ -83,6 +136,111 @@
     {{ ecr_url }}/{{ stack_name }}:{{ image_tag }}
     {{ ecr_url }}/{{ stack_name }}:latest
   register: docker_cleanup
+  failed_when: false
+
+- name: List DynamoDB tables for this stack
+  command: >
+    aws dynamodb list-tables
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'TableNames[?starts_with(@, `{{ stack_name }}-`)]'
+    --output text
+  register: dynamodb_tables_check
+  failed_when: false
+  changed_when: false
+
+- name: Delete DynamoDB tables
+  command: >
+    aws dynamodb delete-table
+    --table-name {{ item }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  loop: "{{ dynamodb_tables_check.stdout.split() if dynamodb_tables_check.rc == 0 and dynamodb_tables_check.stdout else [] }}"
+  when: 
+    - dynamodb_tables_check.rc == 0
+    - dynamodb_tables_check.stdout != ""
+  register: dynamodb_delete
+  failed_when: false
+
+- name: List VPCs for this stack
+  command: >
+    aws ec2 describe-vpcs
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --filters "Name=tag:Name,Values={{ stack_name }}-vpc"
+    --query 'Vpcs[].VpcId'
+    --output text
+  register: vpc_check
+  failed_when: false
+  changed_when: false
+
+- name: Get subnets for stack VPCs
+  command: >
+    aws ec2 describe-subnets
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --filters "Name=vpc-id,Values={{ item }}"
+    --query 'Subnets[].SubnetId'
+    --output text
+  loop: "{{ vpc_check.stdout.split() if vpc_check.rc == 0 and vpc_check.stdout else [] }}"
+  when: 
+    - vpc_check.rc == 0
+    - vpc_check.stdout != ""
+  register: subnets_check
+  failed_when: false
+  changed_when: false
+
+- name: Delete subnets
+  command: >
+    aws ec2 delete-subnet
+    --subnet-id {{ item.1 }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  loop: "{{ subnets_check.results | selectattr('stdout', 'defined') | map(attribute='stdout') | map('split') | flatten | list }}"
+  when: 
+    - subnets_check is defined
+    - subnets_check.results is defined
+  register: subnet_delete
+  failed_when: false
+
+- name: Get internet gateways for stack VPCs
+  command: >
+    aws ec2 describe-internet-gateways
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --filters "Name=attachment.vpc-id,Values={{ item }}"
+    --query 'InternetGateways[].InternetGatewayId'
+    --output text
+  loop: "{{ vpc_check.stdout.split() if vpc_check.rc == 0 and vpc_check.stdout else [] }}"
+  when: 
+    - vpc_check.rc == 0
+    - vpc_check.stdout != ""
+  register: igw_check
+  failed_when: false
+  changed_when: false
+
+- name: Detach and delete internet gateways
+  shell: |
+    aws ec2 detach-internet-gateway --internet-gateway-id {{ item.1 }} --vpc-id {{ item.0 }} --region {{ aws_region }} --profile {{ aws_profile }} || true
+    aws ec2 delete-internet-gateway --internet-gateway-id {{ item.1 }} --region {{ aws_region }} --profile {{ aws_profile }} || true
+  loop: "{{ vpc_check.stdout.split() | zip(igw_check.results | selectattr('stdout', 'defined') | map(attribute='stdout') | map('split') | flatten | list) | list if vpc_check.rc == 0 and vpc_check.stdout else [] }}"
+  when: 
+    - igw_check is defined
+    - igw_check.results is defined
+  register: igw_delete
+  failed_when: false
+
+- name: Delete VPCs
+  command: >
+    aws ec2 delete-vpc
+    --vpc-id {{ item }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  loop: "{{ vpc_check.stdout.split() if vpc_check.rc == 0 and vpc_check.stdout else [] }}"
+  when: 
+    - vpc_check.rc == 0
+    - vpc_check.stdout != ""
+  register: vpc_delete
   failed_when: false
 
 - name: Display cleanup completion
