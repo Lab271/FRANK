@@ -183,7 +183,6 @@ class TempClient:
             return {
                 "status": "connected",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "async_implementation": "aioboto3",
                 "container": container_info,
                 "environment": {
                     "DYNAMODB_TABLE": self.config["table_name"],
@@ -317,12 +316,12 @@ def create_app() -> FastAPI:
     
     # 2. Protected endpoint - Bearer token authentication required
     @app.get("/protected")
-    def protected_endpoint(token: str = Depends(validator.verify_token)) -> Dict[str, Any]:
+    def protected_endpoint(user: str = Depends(validator.get_current_user)) -> Dict[str, Any]:
         """
         Protected endpoint requiring Bearer token authentication
         
         Args:
-            token: Validated Bearer token from verify_token dependency
+            user: Validated user from get_current_user dependency
             
         Returns:
             Dict containing success message and user info
@@ -332,8 +331,7 @@ def create_app() -> FastAPI:
             "message": "Protected endpoint accessed successfully",
             "endpoint": "protected",
             "authenticated": True,
-            "token": token,
-            "user_id": "test-user",
+            "user": user,
             "timestamp": time.time()
         }
     

@@ -50,6 +50,12 @@ stop: cleanup ## Stop Colima and clean up
 # ================================
 up: ssl-certs/nginx.crt ## Build and start application containers
 	docker-compose -f local/docker-compose.yml up --build -d
+	@echo "🚀 Application containers are starting up..."
+	@echo "🌐 Following ports available:"
+	@echo " - 8000: frank-app-1"
+	@echo " - 8001: frank-app-2"
+	@echo " - 8100: mock-cognito"
+	@echo " - 8200: dynamodb-admin"
 
 ssl-certs/nginx.crt: # Create self-signed SSL certificates
 	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \

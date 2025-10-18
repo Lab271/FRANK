@@ -126,7 +126,7 @@ services:
     container_name: dynamodb-admin
     image: aaronshaf/dynamodb-admin:latest
     ports:
-      - "8100:8001"
+      - "8200:8001"
     environment:
       <<: *aws-credentials
       DYNAMO_ENDPOINT: http://localstack:4566
@@ -134,6 +134,36 @@ services:
       - localstack
     networks:
       - localstack-net
+
+  # Mock Cognito service using FastAPI
+  mock-cognito:
+    build:
+      context: ../../..
+      dockerfile: stages/stage3/local/Dockerfile.cognito
+      args:
+        BUILD_CONTEXT: stages/stage3/local
+        PACKAGE_CONTEXT: .      
+    container_name: mock-cognito
+    ports:
+      - "${MOCK_COGNITO_PORT:-8100}:8100" # Direct HTTP access to Mock Cognito (exposed to localhost)
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-debug}
+      - RELOAD=${RELOAD:-true}
+      - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
+      - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
+      - CLIENT_ID=${CLIENT_ID:-mock-client-id-123456}
+      - REGION=${REGION:-eu-west-1}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - localstack-net
+    volumes:
+      - ./mock_cognito.py:/app/mock_cognito.py:ro  # Mount source file for auto-reload
+      - ../../../src:/app/src:ro  # Mount source code for auto-reload
 
 networks:
   localstack-net:

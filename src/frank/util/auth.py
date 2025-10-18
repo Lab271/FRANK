@@ -83,7 +83,11 @@ class CognitoValidator:
         """
         if credentials.credentials != "valid-token":
             raise UnauthenticatedException(detail="Invalid authentication token")
-        return credentials.credentials
+        return {
+            "username": credentials.credentials,
+            "token_valid": True,
+            "validation_source": "mock"
+        }
 
     # Role mapping now uses AccessTier.from_string() method for flexible group handling
     # This maps Mock Cognito groups to FRANK AccessTier enum values
@@ -121,7 +125,7 @@ class CognitoValidator:
                 # If server validation fails, handle based on strategy
                 if self.config['validation_strategy'] == "server_only":
                     raise UnauthorizedException(detail="Token validation failed: Could not validate with Cognito server")
-            
+                return server_data
             # Local validation for local_only strategy or server_first fallback
             return await self.validate_token_locally(token)
         except httpx.ConnectError:
