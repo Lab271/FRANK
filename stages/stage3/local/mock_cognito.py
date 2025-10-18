@@ -760,14 +760,14 @@ def create_app() -> FastAPI:
         logger.info("Root endpoint accessed")
         return {
             "service": "Mock Cognito Service",
-            "version": "1.0.0",
+            "version": frank,
             "user_pool_id": current_config.user_pool_id,
             "client_id": current_config.client_id,
             "region": current_config.region,
             "endpoints": {
                 "aws_api": "/",
                 "login": "/auth/login", 
-                "jwks": "/{user_pool_id}/.well-known/jwks.json",
+                "jwks": f"/{current_config.user_pool_id}/.well-known/jwks.json",
                 "userinfo": "/auth/userinfo",
                 "users": "/auth/users",
                 "config": "/config",
@@ -802,7 +802,7 @@ def main():
     parser.add_argument(
         "--reload",
         action="store_true",
-        default=os.getenv("RELOAD", "False").lower() in ("true", "1", "yes"),
+        default=os.getenv("RELOAD", "True").lower() in ("true", "1", "yes"),
         help="Enable auto-reload for development (default: True or RELOAD)"
     )
     parser.add_argument(
@@ -867,6 +867,7 @@ def main():
     logger.info(f"Reload enabled: {args.reload}")
     logger.info(f"Log level: {args.log_level}")
     logger.info(f"Client ID: {config.client_id}")
+    logger.info(f"User Pool ID: {config.user_pool_id}")
     logger.info(f"Region: {config.region}")
     logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
     logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")

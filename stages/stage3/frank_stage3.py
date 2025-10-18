@@ -30,24 +30,30 @@ SPDX-License-Identifier: Apache-2.0
 import argparse
 from datetime import datetime, timezone, timedelta
 from functools import lru_cache
-import logging
 import os
 from pathlib import Path
 import time
-from typing import Dict, Any
+from typing import Dict, Any, List
 
 import boto3
-from fastapi import FastAPI, HTTPException, Depends, status, Request
+from botocore.exceptions import ClientError
+
+from fastapi import FastAPI, Body, HTTPException, Depends, status, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 import requests
 import uvicorn
 
 import frank
-from frank.util.http_exceptions import InternalError
+from frank.core.enum import AccessTier
+from frank.core.models import Submission
+from frank.storage.exceptions import FRANKStorageError
+from frank.util.requests import SubmissionRequest
+from frank.util.requests import SubmissionResponse
+from frank.util.http_exceptions import InternalError, UnauthorizedException
 from frank.util.auth import CognitoValidator
 from frank.util.aws import get_container_info
-from frank.util.logger import setup_logging
+from frank.util.logger import setup_logging, get_module_logger, configure_frank_logging
 
 # ===================================
 # Configuration
@@ -67,6 +73,12 @@ def get_config():
     aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
     table_name = os.environ.get("DYNAMODB_TABLE", "frank-data")
     audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit-table")
+    cognito_url = os.environ.get("COGNITO_URL", "http://localhost:8100/")
+
+    if environment == "aws":
+        cognito_url = f"https://cognito-idp.{region}.amazonaws.com/"
+    elif not cognito_url.endswith("/"):
+        cognito_url += "/"
 
     return {
         "endpoint": endpoint,  # None for AWS, set for LocalStack
@@ -76,7 +88,12 @@ def get_config():
         "aws_secret_access_key": aws_secret_access_key,
         "region": region,
         "table_name": table_name,
-        "audit_table_name": audit_table_name
+        "audit_table_name": audit_table_name,
+        "validation_strategy": os.environ.get("VALIDATION_STRATEGY", "local_only"),
+        "cognito_url": cognito_url,
+        "user_pool_id": os.environ.get("USER_POOL_ID", "eu-west-1_MOCKPOOL"),
+        "jwt_algorithm": os.environ.get("JWT_ALGORITHM", "RS256"),
+        "jwt_secret": os.environ.get("JWT_SECRET", "mock-cognito-secret-key")
     }
   
 @lru_cache()
@@ -95,7 +112,7 @@ class TempClient:
     """Client dependency for FastAPI"""
     def __init__(self):
         self.config = get_config()
-        self.logger = logging.getLogger("uvicorn")
+        self.logger = get_module_logger("frank.database")
         self.initialize()
 
     def initialize(self):
@@ -134,20 +151,126 @@ class TempClient:
         self.table = self.resource.Table(self.config["table_name"])
         self.audit_table = self.resource.Table(self.config["audit_table_name"])
 
-    def log_access(self, org_id: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
+    def submit_threat_intelligence(self, user: Dict[str, Any], submission: Submission) -> int:
+        """
+        Submit threat intelligence to the FRANK platform.
+        
+        Args:
+            user (Dict[str, Any]): User information including user ID.
+            submission: Threat intelligence submission dictionary
+            
+        Returns:
+            True if successful     
+        """
+        
+        timestamp = submission.timestamp or datetime.now(timezone.utc)
+        timestamp_str = timestamp.isoformat()
+        
+        # Create the main submission item
+        submission_item = {
+            'PK': f"SUB#{submission.submission_id}",
+            'SK': 'SUB',
+            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
+            'GSI1SK': timestamp_str,
+            'EntityType': 'submission',
+            # 'submission_id': submission.submission_id,
+            # 'submitter_id': submission.submitter.organisation_id,
+            # 'access_level': submission.submitter.access_level, # make sure this is explicitly stored
+            # 'submission_timestamp': timestamp_str,
+            # 'tlp_level': submission.tlp_level,
+            'msg_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
+            'timestamp': timestamp_str,
+            'request_id': user["request_id"],
+            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+        }    
+        items_to_write = [submission_item]
+
+        # Store submitter info for querying
+        org_item = {
+            'PK': f"ORG#{submission.submitter.organisation_id}",
+            'SK': 'ORG',
+            'GSI1PK': f"TIER#SUBMITTER",
+            'GSI1SK': timestamp_str,
+            'EntityType': 'organisation',
+            # 'organisation_id': submission.submitter.organisation_id,
+            # 'sector': submission.submitter.sector or 'cyber_partner',
+            # 'region': submission.submitter.region or 'unknown',
+            'msg_data': submission.submitter.model_dump(exclude_none=True, by_alias=True),
+            'last_active': timestamp_str,
+            'timestamp': timestamp_str,
+            'request_id': user["request_id"],
+            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+        }
+        items_to_write.append(org_item)
+
+        # Store hit_target as another ORG# item if present
+        hit_target = getattr(submission, 'hit_target', None)
+        if hit_target and hasattr(hit_target, 'organisation_id'):
+            ht_org_item = {
+                'PK': f"ORG#{hit_target.organisation_id}",
+                'SK': 'ORG',
+                'GSI1PK': f"TIER#TARGET",
+                'GSI1SK': timestamp_str,
+                'EntityType': 'organisation',
+                # 'organisation_id': hit_target.organisation_id,
+                # 'sector': getattr(hit_target, 'sector', 'unknown'),
+                # 'region': getattr(hit_target, 'region', 'unknown'),
+                'msg_data': hit_target.model_dump(exclude_none=True, by_alias=True),
+                'last_active': timestamp_str,
+                'timestamp': timestamp_str,
+                'request_id': user["request_id"],
+                'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+            }
+            items_to_write.append(ht_org_item)
+
+        # Store sighting info as a separate item
+        sighting = submission.sighting
+        sighting_item = {
+            'PK': f"SIGHT#{sighting.sighting_id}",
+            'SK': f"SUB#{submission.submission_id}",
+            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
+            'GSI1SK': timestamp_str,
+            'EntityType': 'sighting',
+            # 'sighting_id': sighting.sighting_id,
+            # 'submission_id': submission.submission_id,
+            # 'submitter_id': submission.submitter.organisation_id,
+            'msg_data': sighting.model_dump(exclude_none=True, by_alias=True),
+            'timestamp': timestamp_str,
+            'request_id': user["request_id"],
+            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+        }
+        items_to_write.append(sighting_item)
+
+        # # Create observable index items
+        # items_to_write.extend(self._extract_observables(submission))
+
+        self._batch_write_items(items_to_write)
+            
+        # Calculate contribution score impact (simplified)
+        # score_impact = calculate_contribution_score(submission)
+        score_impact = 1
+
+        self.log_access(user, submission.submission_id, 'SUBMIT', 'submission')
+
+        # Extract submission ID
+        return score_impact
+
+
+
+    def log_access(self, user: Dict[str, Any], pkey: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
         """Internal method to log access in DynamoDB single table design."""
         timestamp = datetime.now(timezone.utc).isoformat()
         log_item = {
-            'PK': f"LOG#{org_id}",
+            'PK': f"LOG#{pkey}",
             'SK': f"LOG#{timestamp}",
             'GSI1PK': f"ACTION#{action}",
             'GSI1SK': timestamp,
             'EntityType': 'AccessLog',
-            'organisation_id': org_id,
             'action': action,
             'resource_type': resource_type,
             'timestamp': timestamp,
-            'TTL': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
+            'user_id': user["user_id"],
+            'request_id': user["request_id"],
         }
         if details:
             log_item['details'] = details
@@ -158,8 +281,6 @@ class TempClient:
         """Perform a deep health check by querying DynamoDB tables"""
         container_info = get_container_info()
         
-        get_client().log_access("123", "database_check")
-
         try:
             # Get DynamoDB client and resource
             
@@ -251,6 +372,42 @@ class TempClient:
             raise InternalError(detail=f"Error getting metadata: {e}")
 
         return health
+
+    def _batch_write_items(self, items: List[Dict]) -> None:
+        """
+        Execute batch write operation with automatic retry for unprocessed items.
+
+        This method writes items to DynamoDB using the high-level batch_writer context manager
+        which automatically handles DynamoDB attribute formatting and retry logic for unprocessed items.
+
+        DynamoDB Limitations:
+            - Maximum 25 items per batch write operation.
+            - Each item must be under 400KB in size.
+
+        Practical Usage:
+            - Use for bulk ingestion of submissions, observables, and logs.
+            - Handles retry logic for unprocessed items, reducing risk of data loss during high-throughput operations.
+
+        Args:
+            items (List[Dict]): List of items to write to DynamoDB.
+
+        Raises:
+            FRANKStorageError: If the batch write operation fails and cannot be retried.
+        """
+        try:
+            # Use batch_writer for proper item formatting and retry handling
+            with self.table.batch_writer() as batch:
+                for item in items:
+                    batch.put_item(Item=item)
+                    
+            self.logger.debug(f"Successfully wrote {len(items)} items to DynamoDB")
+                    
+        except ClientError as e:
+            self.logger.error(f"Batch write failed: {e}")
+            raise FRANKStorageError(f"Batch write operation failed: {e}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in batch write: {e}")
+            raise FRANKStorageError(f"Batch write operation failed: {e}")        
 # ====================================
 # Fastapi Application Factory
 # ====================================
@@ -282,7 +439,7 @@ def create_app() -> FastAPI:
     )
 
     # Don't setup logging at module level - let main() handle it
-    logger = logging.getLogger("uvicorn")
+    logger = get_module_logger("frank.app")
 
     # Request logging middleware
     @app.middleware("http")
@@ -316,7 +473,7 @@ def create_app() -> FastAPI:
     
     # 2. Protected endpoint - Bearer token authentication required
     @app.get("/protected")
-    def protected_endpoint(user: str = Depends(validator.get_current_user)) -> Dict[str, Any]:
+    async def protected_endpoint(user: Dict[str, Any] = Depends(validator.get_current_user)) -> Dict[str, Any]:
         """
         Protected endpoint requiring Bearer token authentication
         
@@ -326,6 +483,12 @@ def create_app() -> FastAPI:
         Returns:
             Dict containing success message and user info
         """
+        required_tier = AccessTier.CORE_MEMBER
+        
+        if not user["access_tier"].check_access_level(required_tier):
+            raise UnauthorizedException(
+                detail=f"Insufficient access level. Required: {required_tier.value}, User has: {user['access_tier'].value}"
+            )
         logger.info("Protected endpoint accessed with valid token")
         return {
             "message": "Protected endpoint accessed successfully",
@@ -335,6 +498,35 @@ def create_app() -> FastAPI:
             "timestamp": time.time()
         }
     
+    # 3. Post Submission endpoint - submit threat intelligence
+    @app.post("/v1/submission", response_model=SubmissionResponse)
+    async def post_threat_intelligence(
+        request: Request,
+        submission_request: SubmissionRequest = Body(...),
+        user: Dict[str, Any] = Depends(validator.get_current_user)
+    ):
+        """
+        Submit threat intelligence sighting to the platform.
+        Requires Contributor, Partner, or Core Member access level.
+        """
+        submission = submission_request.submission
+
+        # Check permissions
+        if not AccessTier.can_submit(user["access_level"]):
+            raise UnauthorizedException(f"Insufficient access level {user['access_level']} for submission")
+
+        # Store in database
+        score_impact = get_client().submit_threat_intelligence(user, submission)
+
+        return SubmissionResponse(
+            status="accepted",
+            submission_id=submission.submission_id,
+            organization_id=submission.submitter.organisation_id if submission.submitter else None,
+            request_id=user["request_id"],
+            contribution_score_impact=score_impact,
+            processing_status="queued",
+            estimated_processing_time="1-2 minutes",
+        )
    
     # 4. Custom error endpoint - raises custom HTTPException extension
     @app.get("/v1/deep-health")
@@ -405,7 +597,7 @@ def main():
     parser.add_argument(
         "--reload",
         action="store_true",
-        default=os.getenv("RELOAD", "False").lower() in ("true", "1", "yes"),
+        default=os.getenv("RELOAD", "True").lower() in ("true", "1", "yes"),
         help="Enable auto-reload for development (default: True or RELOAD)"
     )
     parser.add_argument(
@@ -423,21 +615,41 @@ def main():
     )
 
     ### Example configuration settings for the AppConfig
-    parser.add_argument("--environment", type=str, default=os.getenv("FRANK_ENVIRONMENT", "aws"), help="Configuration environment (default: ENVIRONMENT or 'aws')")
+    parser.add_argument(
+        "--environment",
+        type=str,
+        default=os.getenv("FRANK_ENVIRONMENT", "localstack"),
+        choices=["localstack", "aws"],
+        help="Configuration environment (default: ENVIRONMENT or 'localstack')",
+    )
     parser.add_argument("--profile", type=str, default=os.getenv("AWS_PROFILE", None), help="AWS profile (default: AWS_PROFILE or None)")
     parser.add_argument("--aws-access-key-id", type=str, default=os.getenv("AWS_ACCESS_KEY_ID", "test"), help="AWS Access Key ID (default: AWS_ACCESS_KEY_ID or 'test')")
     parser.add_argument("--aws-secret-access-key", type=str, default=os.getenv("AWS_SECRET_ACCESS_KEY", "test"), help="AWS Secret Access Key (default: AWS_SECRET_ACCESS_KEY or 'test')")
     parser.add_argument("--endpoint", type=str, default=os.getenv("ENDPOINT", "http://localhost:4566"), help="DynamoDB Endpoint URL (default: ENDPOINT or LocalStack endpoint)")
-    parser.add_argument("--table_name", type=str, default=os.getenv("DYNAMODB_TABLE", "frank_table"), help="DynamoDB Table Name (default: TABLE_NAME or 'frank_table')")
-    parser.add_argument("--audit_table_name", type=str, default=os.getenv("DYNAMODB_AUDIT_TABLE", "frank_audit_table"), help="DynamoDB Audit Table Name (default: AUDIT_TABLE_NAME or 'frank_audit_table')")
+    parser.add_argument("--table_name", type=str, default=os.getenv("DYNAMODB_TABLE", "frank-data"), help="DynamoDB Table Name (default: TABLE_NAME or 'frank_table')")
+    parser.add_argument("--audit_table_name", type=str, default=os.getenv("DYNAMODB_AUDIT_TABLE", "frank-audit"), help="DynamoDB Audit Table Name (default: AUDIT_TABLE_NAME or 'frank_audit_table')")
     parser.add_argument("--region", type=str, default=os.getenv("AWS_DEFAULT_REGION", "eu-west-1"), help="AWS Region (default: REGION or 'eu-west-1')")
-    parser.add_argument("--validation-strategy", type=str, default=os.getenv("VALIDATION_STRATEGY", "local_only"), help="JWT validation strategy (default: VALIDATION_STRATEGY or 'local_only')")
-    parser.add_argument("--cognito-url", type=str, default=os.getenv("COGNITO_URL", "http://localhost:4566"), help="Cognito URL (default: COGNITO_URL or LocalStack endpoint)")
-    parser.add_argument("--user-pool-id", type=str, default=os.getenv("USER_POOL_ID", "localstack_user_pool"), help="Cognito User Pool ID (default: USER_POOL_ID or 'localstack_user_pool')")
-    parser.add_argument("--jwt-algorithm", type=str, default=os.getenv("JWT_ALGORITHM", "RS256"), help="JWT Algorithm (default: JWT_ALGORITHM or 'RS256')")     
+    parser.add_argument(
+        "--validation-strategy",
+        type=str,
+        default=os.getenv("VALIDATION_STRATEGY", "local_only"),
+        choices=["local_only", "server_first"],
+        help="JWT validation strategy (default: VALIDATION_STRATEGY or 'local_only')",
+    )
+    parser.add_argument("--cognito-url", type=str, default=os.getenv("COGNITO_URL", "http://localhost:8100/"), help="Cognito URL (default: COGNITO_URL or LocalStack endpoint)")
+    parser.add_argument("--user-pool-id", type=str, default=os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"), help="Cognito User Pool ID (default: USER_POOL_ID or 'eu-west-1_MOCKPOOL')")
+    parser.add_argument("--jwt-algorithm", type=str, default=os.getenv("JWT_ALGORITHM", "RS256"), help="JWT Algorithm (default: JWT_ALGORITHM or 'RS256')")
+    parser.add_argument(
+        "--jwt-secret",
+        type=str,
+        default=os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
+        help="JWT Secret (default: JWT_SECRET or 'mock-cognito-secret-key')",
+    )
 
     args = parser.parse_args()
-    
+    # Ensure cognito_url ends with a slash
+    args.cognito_url += '/' if not args.cognito_url.endswith("/") else ''
+
     # Set environment variables with command-line overrides
     # This way get_config() will pick them up when called
     os.environ["FRANK_ENVIRONMENT"] = args.environment  # "aws" or "localstack"
@@ -463,6 +675,7 @@ def main():
     os.environ["VALIDATION_STRATEGY"] = args.validation_strategy  # Default to "local_only" if not set
     os.environ["USER_POOL_ID"] = args.user_pool_id  # Default to "localstack_user_pool" if not set
     os.environ["JWT_ALGORITHM"] = args.jwt_algorithm  # Default to "RS256" if not set
+    os.environ["JWT_SECRET"] = args.jwt_secret  # Default to "mock-cognito-secret-key" if not set
 
     # Setup logging based on silent flag
     if args.silent:
@@ -483,11 +696,17 @@ def main():
         logger.info(f"Reload enabled: {args.reload}")
         logger.info(f"Log level: {args.log_level}")
         logger.info(f"Module: {CURRENT_MODULE}")
-        logger.info(f"Cognito User Pool ID: {args.user_pool_id}")
+        logger.info(f"User Pool ID: {args.user_pool_id}")
+        logger.info(f"Validation Strategy: {args.validation_strategy}")
         logger.info(f"JWT Algorithm: {args.jwt_algorithm}")
+        logger.info(f"JWT Secret: {args.jwt_secret[:4]}... (length: {len(args.jwt_secret)})")
         logger.info(f"Cognito URL: {args.cognito_url}")
+        logger.info(f"DynamoDB Table: {args.table_name}")
+        logger.info(f"DynamoDB Audit Table: {args.audit_table_name}")
 
-    logging.getLogger('uvicorn').setLevel(getattr(logging, args.log_level.upper()))
+    # Configure logging levels for all FRANK components
+    configure_frank_logging(args.log_level)
+    logger.info(f"Set logging level to {args.log_level.upper()} for all FRANK components")
     
     # Run uvicorn server with dynamic module name
     uvicorn.run(

@@ -799,7 +799,12 @@ def main():
     parser = argparse.ArgumentParser(description="Mock Cognito Service Server")
     parser.add_argument("--host", type=str, default="0.0.0.0", help="Host to bind the server to (default: 0.0.0.0)")
     parser.add_argument("--port", type=int, default=os.environ.get("PORT", 8100), help="Port to bind the server to (default: 8100)")
-    parser.add_argument("--reload", action="store_true", help="Enable auto-reload for development")
+    parser.add_argument(
+        "--reload",
+        action="store_true",
+        default=os.getenv("RELOAD", "True").lower() in ("true", "1", "yes"),
+        help="Enable auto-reload for development (default: True or RELOAD)"
+    )
     parser.add_argument(
         "--log-level",
         type=str,
@@ -862,6 +867,7 @@ def main():
     logger.info(f"Reload enabled: {args.reload}")
     logger.info(f"Log level: {args.log_level}")
     logger.info(f"Client ID: {config.client_id}")
+    logger.info(f"User Pool ID: {config.user_pool_id}")
     logger.info(f"Region: {config.region}")
     logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
     logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")

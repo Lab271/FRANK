@@ -492,17 +492,16 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
     def _batch_write_items(self, items: List[Dict]) -> None:
         """
-        Execute batch atomic write operation with automatic retry for unprocessed items.
+        Execute batch write operation with automatic retry for unprocessed items.
 
         This method writes items to DynamoDB in chunks of 25 (the maximum allowed by DynamoDB's batch API).
-        It uses transact_write_items for atomicity, ensuring that either all items in a chunk are written or none are.
-        If any items are unprocessed (due to throttling, capacity limits, or other transient errors),
-        it will automatically retry those items until all are processed or a fatal error occurs.
+        It uses the high-level batch_writer context manager which automatically handles DynamoDB 
+        attribute formatting and retry logic for unprocessed items.
 
         DynamoDB Limitations:
             - Maximum 25 items per batch write operation.
             - Each item must be under 400KB in size.
-            - Batch operations are not strictly transactional across chunks; atomicity is per chunk.
+            - Batch operations are not atomic across chunks.
 
         Practical Usage:
             - Use for bulk ingestion of submissions, observables, and logs.
@@ -514,35 +513,23 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         Raises:
             FRANKStorageError: If the batch write operation fails and cannot be retried.
         """
-        # DynamoDB batch write limit is 25 items
-        chunk_size = 25
-        
-        for i in range(0, len(items), chunk_size):
-            chunk = items[i:i + chunk_size]
+        try:
+            # Convert floats to Decimal for DynamoDB compatibility
+            items = [self._convert_floats_to_decimal(item) for item in items]
             
-            transact_items = [
-                {'Put': 
-                    {
-                        'TableName': self.table_name,
-                        'Item': item
-                    }
-                }
-                for item in chunk
-            ]
-            
-            try:
-                response = self.client.transact_write_items(TransactItems=transact_items)
-                
-                # Handle unprocessed items
-                unprocessed_items = response.get('UnprocessedItems', {})
-                while unprocessed_items:
-                    self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
-                    response = self.client.transact_write_items(TransactItems=unprocessed_items)
-                    unprocessed_items = response.get('UnprocessedItems', {})
+            # Use batch_writer for proper item formatting and retry handling
+            with self.table.batch_writer() as batch:
+                for item in items:
+                    batch.put_item(Item=item)
                     
-            except ClientError as e:
-                self.logger.error(f"Batch write failed: {e}")
-                raise FRANKStorageError(f"Batch write operation failed: {e}")
+            self.logger.debug(f"Successfully wrote {len(items)} items to DynamoDB")
+                    
+        except ClientError as e:
+            self.logger.error(f"Batch write failed: {e}")
+            raise FRANKStorageError(f"Batch write operation failed: {e}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in batch write: {e}")
+            raise FRANKStorageError(f"Batch write operation failed: {e}")
 
 
     def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:

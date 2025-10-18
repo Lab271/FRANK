@@ -13,13 +13,14 @@ LOCAL_DOMAIN = frank-stage3.local
 help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'	
 
-cleanup: ## Clean up docker
+clean: ## Clean up docker
 	@docker images | grep "localhost:" | awk '{print $$3}' | xargs docker rmi -f || true
 	@docker rm -f $$(docker ps -aq) || true
 	@docker rmi -f $$(docker images -aq) || true
 	@docker volume prune -f || true
 	@docker network prune -f || true
 	@docker system prune -a -f --volumes|| true
+	@rm -rf .ssl-certs || true
 
 # ================================
 # AWS setup
@@ -42,27 +43,27 @@ start: ## Start Colima if not already running
 	@colima start
 	@colima status
 
-stop: cleanup ## Stop Colima and clean up
+stop: clean ## Stop Colima and clean up
 	@colima stop
 
 # ================================
 # Local Development
 # ================================
-up: ssl-certs/nginx.crt ## Build and start application containers
+up: .ssl-certs/nginx.crt ## Build and start application containers
 	docker-compose -f local/docker-compose.yml up --build -d
 	@echo "🚀 Application containers are starting up..."
 	@echo "🌐 Following ports available:"
-	@echo " - 8000: frank-app-1"
-	@echo " - 8001: frank-app-2"
+	@echo " - 8080: frank-app-1"
+	@echo " - 8081: frank-app-2"
 	@echo " - 8100: mock-cognito"
 	@echo " - 8200: dynamodb-admin"
 
-ssl-certs/nginx.crt: # Create self-signed SSL certificates
+.ssl-certs/nginx.crt: # Create self-signed SSL certificates
 	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
 		echo "127.0.0.1 $(LOCAL_DOMAIN)" | sudo tee -a /etc/hosts; \
 	fi
-	@mkdir -p ssl-certs
-	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt \
+	@mkdir -p .ssl-certs
+	@mkcert -key-file .ssl-certs/nginx.key -cert-file .ssl-certs/nginx.crt \
 		$(LOCAL_DOMAIN) \
 		localhost \
 		127.0.0.1 \
@@ -86,3 +87,6 @@ health: ## Check health of all services
 
 logs: ## Show logs
 	docker-compose -f local/docker-compose.yml logs -f
+
+logs-app:  ## Show logs from FRANK app only
+	docker-compose --file local/docker-compose.yml logs -f frank-app-1 frank-app-2

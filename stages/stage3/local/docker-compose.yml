@@ -44,6 +44,9 @@ x-frank-app-common: &frank-app-common
     start_period: 40s
   networks:
     - localstack-net
+  volumes:
+    - ../frank_stage3.py:/app/frank_api.py:ro  # Mount source file for auto-reload
+    - ../../../src:/app/src:ro  # Mount source code for auto-reload
 
 x-aws-credentials: &aws-credentials
   AWS_ACCESS_KEY_ID: test
@@ -55,6 +58,9 @@ x-frank-app-env: &frank-app-env
   <<: *aws-credentials
   FRANK_ENVIRONMENT: localstack
   ENDPOINT: http://localstack:4566
+  COGNITO_URL: http://mock-cognito:8100
+  VALIDATION_STRATEGY: server_first
+  USER_POOL_ID: eu-west-1_MOCKPOOL
   DYNAMODB_TABLE: frank-data
   DYNAMODB_AUDIT_TABLE: frank-audit
   LOG_LEVEL: debug
@@ -69,8 +75,8 @@ services:
     container_name: nginx-lb
     volumes:
       - ./nginx-lb.conf:/etc/nginx/nginx.conf
-      - ../ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
-      - ../ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
+      - ../.ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
+      - ../.ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
     depends_on:
       - frank-app-1
       - frank-app-2
@@ -81,25 +87,20 @@ services:
     <<: *frank-app-common
     container_name: frank-api-1
     ports:
-      - "8000:8000"
+      - "8080:8000"
     environment:
       <<: *frank-app-env
       CONTAINER_ID: api-1  # Override for container identification
-    volumes:
-      - ../frank_stage3.py:/app/frank_stage3.py:ro  # Mount source file for auto-reload
-      - ../../../src:/app/src:ro  # Mount source code for auto-reload
+
 
   frank-app-2:
     <<: *frank-app-common
     container_name: frank-api-2
     ports:
-      - "8001:8000"
+      - "8081:8000"
     environment:
       <<: *frank-app-env
       CONTAINER_ID: api-2  # Override for container identification
-    volumes:
-      - ../frank_stage3.py:/app/frank_stage3.py:ro  # Mount source file for auto-reload
-      - ../../../src:/app/src:ro  # Mount source code for auto-reload
 
   localstack:
     image: localstack/localstack:latest
@@ -149,7 +150,6 @@ services:
     environment:
       - LOG_LEVEL=${LOG_LEVEL:-debug}
       - RELOAD=${RELOAD:-true}
-      - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
       - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
       - CLIENT_ID=${CLIENT_ID:-mock-client-id-123456}
       - REGION=${REGION:-eu-west-1}

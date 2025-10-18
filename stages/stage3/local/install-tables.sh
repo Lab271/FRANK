@@ -40,6 +40,13 @@ ENDPOINT_URL="http://localhost:4566"
 REGION="eu-west-1"
 PROFILE="localstack"
 
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
 echo "🚀 Installing FRANK Stage 3 DynamoDB tables for local development..."
 echo "📍 Target: LocalStack ($ENDPOINT_URL)"
 echo
@@ -87,8 +94,8 @@ aws dynamodb create-table \
 echo
 echo "✅ DynamoDB table installation completed!"
 echo "📊 Tables available:"
-echo "   - frank-data (main application data)"
-echo "   - frank-audit (audit trail data)"
+echo -e "   - ${GREEN}frank-data${NC} (main application data)"
+echo -e "   - ${GREEN}frank-audit${NC} (audit trail data)"
 echo
 echo "🔍 Verify tables with:"
-echo "   aws dynamodb list-tables --endpoint-url $ENDPOINT_URL --region $REGION --profile $PROFILE --no-cli-pager"
+echo -e "${YELLOW}   aws dynamodb list-tables --endpoint-url $ENDPOINT_URL --region $REGION --profile $PROFILE --no-cli-pager${NC}"

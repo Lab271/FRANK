@@ -41,21 +41,25 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import logging
 from typing import Any, Dict, Optional, List
+import uuid
 
 import httpx
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
 
+from frank.core import gen_id
+from frank.core.enum import AccessTier
 from frank.util.http_exceptions import ServiceUnavailableException, GatewayTimeoutException
 from frank.util.http_exceptions import UnauthorizedException, UnauthenticatedException
-from frank.core.enum import AccessTier
+from frank.util.logger import get_module_logger
 
 
 AWS_COGNITO_TIMEOUT = 10.0  # seconds
+
+
 
 # Security scheme for Bearer token authentication
 security = HTTPBearer()
@@ -68,10 +72,14 @@ class CognitoValidator:
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
         self.config = config
-        self.logger = logging.getLogger("uvicorn")
-        self.cognito_url = self.config.get("cognito_url", "http://localhost:4566/")
-        self.user_pool_id = self.config.get("user_pool_id", "eu-west-1")
+        
+        # Use the utility function to get a properly configured DEBUG logger
+        self.logger = get_module_logger("frank.auth")
+            
+        self.cognito_url = self.config.get("cognito_url", "http://localhost:8100/")
+        self.user_pool_id = self.config.get("user_pool_id", "eu-west-1_MOCKPOOL")
         self.jwks_url = f"{self.cognito_url}{self.user_pool_id}/.well-known/jwks.json"
+        self.logger.debug(f"Initialized CognitoValidator with JWKS URL: {self.jwks_url}")
 
 
     def verify_token(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
@@ -111,23 +119,20 @@ class CognitoValidator:
         token = credentials.credentials
 
         try:
+            local_data = await self.validate_token_locally(token)
             # Try server-side validation first (for server_first and server_only strategies)
             if self.config['validation_strategy'] != "local_only":
                 server_data = await self.validate_token_with_server(token)
                 if server_data:
+                    if server_data["username"] != local_data["username"]:
+                        raise UnauthorizedException(detail="Token validation failed: Username mismatch between local and server validation")    
                     # For server validation, we still need to get groups from JWT
                     # because GetUser API doesn't return group memberships
-                    local_data = await self.validate_token_locally(token)
                     local_data["validation_source"] = server_data["validation_source"]
                     # Combine server validation with local group extraction
-                    return local_data
-
-                # If server validation fails, handle based on strategy
-                if self.config['validation_strategy'] == "server_only":
+                else:
                     raise UnauthorizedException(detail="Token validation failed: Could not validate with Cognito server")
-                return server_data
-            # Local validation for local_only strategy or server_first fallback
-            return await self.validate_token_locally(token)
+            return local_data
         except httpx.ConnectError:
             raise ServiceUnavailableException(detail="Could not connect to Cognito service")
         except httpx.TimeoutException:
@@ -141,6 +146,7 @@ class CognitoValidator:
                 # Use JWKS for RS256 tokens (AWS Cognito style)
                 jwks_client = PyJWKClient(self.jwks_url)
                 signing_key = jwks_client.get_signing_key_from_jwt(token)
+                self.logger.debug(f"Using JWKS from {self.jwks_url} for local JWT validation")
                 
                 payload = jwt.decode(
                     token,
@@ -149,6 +155,7 @@ class CognitoValidator:
                     options={"verify_aud": False},  # Skip audience verification for mock
                     issuer=f"https://cognito-idp.{self.config['region']}.amazonaws.com/{self.config['user_pool_id']}"
                 )
+                self.logger.debug(f"JWT payload successfully decoded with RS256: {payload}")
             else:
                 # Fallback to HS256 for backwards compatibility
                 payload = jwt.decode(
@@ -175,10 +182,12 @@ class CognitoValidator:
         
         return {
             "username": username,
+            "user_id": gen_id("user", username),
             "groups": groups,
-            "access_tier": access_tier,
+            "access_level": access_tier,
             "organization": organization,
-            "organisation_id": organization or f"org-{username}",  # Use organization if available, fallback to username-based
+            "organisation_id": gen_id("org", organization),
+            "request_id": gen_id("req", str(uuid.uuid4())),
             "token_valid": True,
             "validation_source": "local_jwt"
         }
@@ -208,6 +217,7 @@ class CognitoValidator:
 
                     return {
                         "username": username,
+                        "user_id": gen_id("user", username),
                         "token_valid": True,
                         "validation_source": f"{self.config['environment']}-cognito-getuser"
                     }

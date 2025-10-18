@@ -3,6 +3,7 @@
 # virtualenv
 .frank
 ssl-certs
+.ssl-certs
 .gitconfig
 
 # Byte-compiled / optimized / DLL files
