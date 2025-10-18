@@ -256,6 +256,7 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "observer@example.com",
         "groups": ["observer"],
+        "organization": "acme-corp",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -264,6 +265,7 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "contributor@example.com",
         "groups": ["contributor"],
+        "organization": "cyber-security-inc",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -272,6 +274,7 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "partner@example.com",
         "groups": ["partner"],
+        "organization": "threat-intel-partners",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -280,6 +283,7 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "core_member@example.com",
         "groups": ["core_member"],
+        "organization": "frank-platform",
         "enabled": True,
         "user_status": "CONFIRMED"
     }
@@ -324,6 +328,7 @@ def create_jwt_token(username: str, groups: List[str], token_type: str = "access
         user = USERS_DB[username]
         payload["email"] = user["email"]
         payload["email_verified"] = True
+        payload["organization"] = user["organization"]
         payload["aud"] = current_config.client_id
     
     # Add kid (key ID) for RS256

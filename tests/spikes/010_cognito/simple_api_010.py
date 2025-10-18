@@ -210,6 +210,8 @@ async def validate_token_locally(token: str) -> Dict[str, Any]:
     
     username = payload.get("username")
     groups = payload.get("cognito:groups", [])
+    # Extract organization from custom attribute
+    organization = payload.get("custom:organization") or payload.get("organization")
     
     if not username:
         raise HTTPException(
@@ -224,7 +226,8 @@ async def validate_token_locally(token: str) -> Dict[str, Any]:
         "username": username,
         "groups": groups,
         "access_tier": access_tier,
-        "organisation_id": f"org-{username}",
+        "organization": organization,
+        "organisation_id": organization or f"org-{username}",  # Use organization if available, fallback to username-based
         "token_valid": True,
         "validation_source": "local_jwt"
     }
@@ -441,6 +444,7 @@ def create_app() -> FastAPI:
                 "username": current_user["username"],
                 "access_tier": current_user["access_tier"].value,
                 "groups": current_user["groups"],
+                "organization": current_user.get("organization"),
                 "organisation_id": current_user["organisation_id"]
             },
             "data": {
@@ -472,6 +476,7 @@ def create_app() -> FastAPI:
                 "username": current_user["username"],
                 "access_tier": current_user["access_tier"].value,
                 "groups": current_user["groups"],
+                "organization": current_user.get("organization"),
                 "organisation_id": current_user["organisation_id"]
             },
             "data": {
@@ -503,6 +508,7 @@ def create_app() -> FastAPI:
                 "username": current_user["username"],
                 "access_tier": current_user["access_tier"].value,
                 "groups": current_user["groups"],
+                "organization": current_user.get("organization"),
                 "organisation_id": current_user["organisation_id"]
             },
             "data": {
@@ -535,6 +541,7 @@ def create_app() -> FastAPI:
                 "username": current_user["username"],
                 "access_tier": current_user["access_tier"].value,
                 "groups": current_user["groups"],
+                "organization": current_user.get("organization"),
                 "organisation_id": current_user["organisation_id"]
             },
             "data": {
@@ -556,6 +563,7 @@ def create_app() -> FastAPI:
                 "username": current_user["username"],
                 "access_tier": current_user["access_tier"].value,
                 "groups": current_user["groups"],
+                "organization": current_user.get("organization"),
                 "organisation_id": current_user["organisation_id"],
                 "permissions": {
                     "can_access_public": True,

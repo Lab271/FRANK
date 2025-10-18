@@ -45,6 +45,10 @@ Resources:
           AttributeDataType: String
           Required: false
           Mutable: true
+        - Name: organization
+          AttributeDataType: String
+          Required: false
+          Mutable: true
       UserAttributeUpdateSettings:
         AttributesRequireVerificationBeforeUpdate:
           - email
@@ -135,6 +139,8 @@ Resources:
           Value: Observer
         - Name: family_name
           Value: User
+        - Name: organization
+          Value: acme-corp
         - Name: email_verified
           Value: 'true'
       MessageAction: SUPPRESS
@@ -151,6 +157,8 @@ Resources:
           Value: Contributor
         - Name: family_name
           Value: User
+        - Name: organization
+          Value: cyber-security-inc
         - Name: email_verified
           Value: 'true'
       MessageAction: SUPPRESS
@@ -167,6 +175,8 @@ Resources:
           Value: Partner
         - Name: family_name
           Value: User
+        - Name: organization
+          Value: threat-intel-partners
         - Name: email_verified
           Value: 'true'
       MessageAction: SUPPRESS
@@ -183,6 +193,8 @@ Resources:
           Value: Core Member
         - Name: family_name
           Value: User
+        - Name: organization
+          Value: frank-platform
         - Name: email_verified
           Value: 'true'
       MessageAction: SUPPRESS

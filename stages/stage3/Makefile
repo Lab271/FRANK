@@ -13,6 +13,14 @@ LOCAL_DOMAIN = frank-stage3.local
 help:  ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-15s\033[0m %s\n", $$1, $$2}'	
 
+cleanup: ## Clean up docker
+	@docker images | grep "localhost:" | awk '{print $$3}' | xargs docker rmi -f || true
+	@docker rm -f $$(docker ps -aq) || true
+	@docker rmi -f $$(docker images -aq) || true
+	@docker volume prune -f || true
+	@docker network prune -f || true
+	@docker system prune -a -f --volumes|| true
+
 # ================================
 # AWS setup
 # ================================
@@ -27,20 +35,12 @@ aws-deploy: ## Deploy AWS Docker with new build
 	@ansible-playbook ansible/playbook.yml --tags docker
 
 # ================================
-# SETUP
+# Local setup
 # ================================
 
 start: ## Start Colima if not already running
 	@colima start
 	@colima status
-
-cleanup: ## Clean up docker
-	@docker images | grep "localhost:" | awk '{print $$3}' | xargs docker rmi -f || true
-	@docker rm -f $$(docker ps -aq) || true
-	@docker rmi -f $$(docker images -aq) || true
-	@docker volume prune -f || true
-	@docker network prune -f || true
-	@docker system prune -a -f --volumes|| true
 
 stop: cleanup ## Stop Colima and clean up
 	@colima stop
@@ -50,25 +50,6 @@ stop: cleanup ## Stop Colima and clean up
 # ================================
 up: ssl-certs/nginx.crt ## Build and start application containers
 	docker-compose -f local/docker-compose.yml up --build -d
-
-down: ## Stop application containers
-	docker-compose -f local/docker-compose.yml down
-
-build: ## Build application container
-	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d
-
-rebuild: ## Rebuild application container
-	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d --force-recreate
-
-health: ## Check health of all services
-	@echo "🔍 Checking health of services..."
-	@curl -s "https://$(LOCAL_DOMAIN)/v1/health" > /dev/null 2>&1 && echo "✅ Simple API health check passed" || echo "❌ Simple API health check failed"	
-
-logs: ## Show logs
-	docker-compose -f local/docker-compose.yml logs -f
-
-create-tables: ## Create DynamoDB tables (matching CloudFormation)
-	./local/install-tables.sh
 
 ssl-certs/nginx.crt: # Create self-signed SSL certificates
 	@if ! grep -q "$(LOCAL_DOMAIN)" /etc/hosts; then \
@@ -80,3 +61,22 @@ ssl-certs/nginx.crt: # Create self-signed SSL certificates
 		localhost \
 		127.0.0.1 \
 		*.$(LOCAL_DOMAIN)
+
+create-tables: ## Create DynamoDB tables (matching CloudFormation)
+	./local/install-tables.sh
+
+build: ## Build application container
+	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d
+
+rebuild: ## Rebuild application container
+	docker-compose -f local/docker-compose.yml up frank-app-1 frank-app-2 --build -d --force-recreate
+
+down: ## Stop application containers
+	docker-compose -f local/docker-compose.yml down
+
+health: ## Check health of all services
+	@echo "🔍 Checking health of services..."
+	@curl -s "https://$(LOCAL_DOMAIN)/v1/health" > /dev/null 2>&1 && echo "✅ Simple API health check passed" || echo "❌ Simple API health check failed"	
+
+logs: ## Show logs
+	docker-compose -f local/docker-compose.yml logs -f

@@ -24,6 +24,8 @@ MOCK_COGNITO_ENDPOINT = http://localhost:8100
 
 .PHONY: help start ssl-certs clean stop up down destroy rebuild test integration logs logs-mock logs-api
 
+default: help
+
 start: ## Start Colima if not already running
 	@colima start
 	@colima status
@@ -75,10 +77,9 @@ integration: up ## Run integration tests simulating external calls to docker
 	@./test_simple_api_010_local.sh 8080 > /dev/null 2>&1 && echo "✅ Simple API tests completed" || (echo "❌ Simple API tests failed"; exit 1)
 	@echo "✅ Integration tests completed"
 
-health: ## Check health of all services
+health: ## Check health of all services in docker
 	@echo "🔍 Checking health of services..."
 	@curl -s "$(MOCK_COGNITO_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Mock Cognito health check passed" || echo "❌ Mock Cognito health check failed"
-	@curl -s "$(SIMPLE_API_LOCAL_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Simple API (8000) health check passed" || echo "❌ Simple API (http) health check failed"
 	@curl -s "$(SIMPLE_API_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Simple API (https) health check passed" || echo "❌ Simple API (https) health check failed"
 	@curl -s "$(SIMPLE_API_HTTP_ENDPOINT)/health" > /dev/null 2>&1 && echo "✅ Simple API (8080) health check passed" || echo "❌ Simple API (8080) health check failed"
 
