@@ -10,24 +10,29 @@
 
 ---
 # tasks/docker.yml
-# - name: Check if ECR repository exists
-#   community.and: >
-#     aws ecr describe-repositories 
-#     --repository-names {{ stack_name }}
-#     --region {{ aws_region }}
-#     --profile {{ aws_profile }}
-#   register: ecr_check
-#   failed_when: false
-#   changed_when: false
 
-# - name: Create ECR repository if it doesn't exist
-#   command: >
-#     aws ecr create-repository 
-#     --repository-name {{ stack_name }}
-#     --region {{ aws_region }}
-#     --profile {{ aws_profile }}
-#   register: ecr_create
-#   when: ecr_check.rc != 0
+- name: Build Docker image
+  # Replicate the docker-compose arguments
+  # --platform linux/amd64 is needed for Apple Silicon Macs to ensure compatibility with AWS
+  command: >
+    docker buildx build 
+    --platform linux/amd64 
+    --build-arg BUILD_CONTEXT={{ build_context }}
+    --build-arg PACKAGE_CONTEXT=.
+    -t {{ stack_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ stack_name }}:{{ image_tag }}
+    -t {{ ecr_url }}/{{ stack_name }}:latest
+    -f {{ build_context }}/Dockerfile
+    .
+  args:
+    chdir: "../../.." # one more because we're in ansible
+  register: docker_build
+  changed_when: true
+
+
+# ===================================
+# Validate and create ECR
+# ===================================
 
 - name: Ensure ECR repository exists
   community.aws.ecs_ecr:
@@ -55,24 +60,6 @@
   args:
     stdin: "{{ ecr_token.stdout }}"
   register: docker_login
-  changed_when: true
-
-- name: Build Docker image
-  # Replicate the docker-compose arguments
-  # --platform linux/amd64 is needed for Apple Silicon Macs to ensure compatibility with AWS
-  command: >
-    docker buildx build 
-    --platform linux/amd64 
-    --build-arg BUILD_CONTEXT={{ build_context }}
-    --build-arg PACKAGE_CONTEXT=.
-    -t {{ stack_name }}:{{ image_tag }}
-    -t {{ ecr_url }}/{{ stack_name }}:{{ image_tag }}
-    -t {{ ecr_url }}/{{ stack_name }}:latest
-    -f {{ build_context }}/Dockerfile
-    .
-  args:
-    chdir: "../../.." # one more because we're in ansible
-  register: docker_build
   changed_when: true
 
 # ===================================

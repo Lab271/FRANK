@@ -189,51 +189,51 @@
 # Step 3: Check/Create Spike Hosted Zone
 # ===================================
 
-- name: Check if spike hosted zone exists
+- name: Check if hosted zone exists
   command: >
     aws route53 list-hosted-zones-by-name
-    --dns-name {{ spike_subdomain }}
+    --dns-name {{ app_domain }}
     --profile {{ aws_profile }}
-    --query "HostedZones[?Name=='{{ spike_subdomain }}.'].Id"
+    --query "HostedZones[?Name=='{{ app_domain }}.'].Id"
     --output text
-  register: spike_hosted_zone_check
+  register: hosted_zone_check
   failed_when: false
   changed_when: false
 
-- name: Extract spike hosted zone ID
+- name: Extract hosted zone ID
   set_fact:
-    spike_hosted_zone_id: "{{ spike_hosted_zone_check.stdout.split('/')[-1] if spike_hosted_zone_check.stdout != '' else '' }}"
+    hosted_zone_id: "{{ hosted_zone_check.stdout.split('/')[-1] if hosted_zone_check.stdout != '' else '' }}"
 
-- name: Create spike hosted zone if not exists
+- name: Create hosted zone if not exists
   command: >
     aws route53 create-hosted-zone
-    --name {{ spike_subdomain }}
+    --name {{ app_domain }}
     --caller-reference "spike-test-{{ ansible_date_time.epoch }}"
     --profile {{ aws_profile }}
     --query 'HostedZone.Id'
     --output text
-  register: spike_hosted_zone_create
-  when: spike_hosted_zone_id == ""
+  register: hosted_zone_create
+  when: hosted_zone_id == ""
   changed_when: true
 
-- name: Set spike hosted zone ID from creation
+- name: Set hosted zone ID from creation
   set_fact:
-    spike_hosted_zone_id: "{{ spike_hosted_zone_create.stdout.split('/')[-1] }}"
-  when: spike_hosted_zone_create is not skipped
+    hosted_zone_id: "{{ hosted_zone_create.stdout.split('/')[-1] }}"
+  when: hosted_zone_create is not skipped
 
-- name: Get spike nameservers
+- name: Get nameservers
   command: >
     aws route53 get-hosted-zone
-    --id {{ spike_hosted_zone_id }}
+    --id {{ hosted_zone_id }}
     --profile {{ aws_profile }}
     --query 'DelegationSet.NameServers'
     --output json
-  register: spike_nameservers_result
+  register: nameservers_result
   changed_when: false
 
-- name: Parse spike nameservers
+- name: Parse nameservers
   set_fact:
-    spike_nameservers: "{{ spike_nameservers_result.stdout | from_json }}"
+    nameservers: "{{ nameservers_result.stdout | from_json }}"
 
 # ===================================
 # Step 4: Delegate subdomain from main to spike
@@ -247,46 +247,46 @@
       "Changes": [{
         "Action": "UPSERT",
         "ResourceRecordSet": {
-          "Name": "{{ spike_subdomain }}",
+          "Name": "{{ app_domain }}",
           "Type": "NS",
           "TTL": 300,
           "ResourceRecords": [
-            {"Value": "{{ spike_nameservers[0] }}"},
-            {"Value": "{{ spike_nameservers[1] }}"},
-            {"Value": "{{ spike_nameservers[2] }}"},
-            {"Value": "{{ spike_nameservers[3] }}"}
+            {"Value": "{{ nameservers[0] }}"},
+            {"Value": "{{ nameservers[1] }}"},
+            {"Value": "{{ nameservers[2] }}"},
+            {"Value": "{{ nameservers[3] }}"}
           ]
         }
       }]
     }'
     --profile {{ main_account_profile }}
-  when: spike_hosted_zone_create is not skipped
+  when: hosted_zone_create is not skipped
   changed_when: true
 
 # ===================================
 # Step 5: Request certificate in spike account
 # ===================================
 
-- name: Check if spike certificate exists
+- name: Check if certificate exists
   command: >
     aws acm list-certificates
     --region {{ aws_region }}
     --profile {{ aws_profile }}
-    --query "CertificateSummaryList[?DomainName=='{{ spike_subdomain }}'].CertificateArn"
+    --query "CertificateSummaryList[?DomainName=='{{ app_domain }}'].CertificateArn"
     --output text
-  register: spike_cert_check
+  register: cert_check
   failed_when: false
   changed_when: false
 
-- name: Set spike certificate ARN if exists
+- name: Set certificate ARN if exists
   set_fact:
-    ssl_certificate_arn: "{{ spike_cert_check.stdout.split('\n')[0] }}"
-  when: spike_cert_check.stdout != ""
+    ssl_certificate_arn: "{{ cert_check.stdout.split('\n')[0] }}"
+  when: cert_check.stdout != ""
 
-- name: Request spike certificate if not exists
+- name: Request certificate if not exists
   command: >
     aws acm request-certificate
-    --domain-name {{ spike_subdomain }}
+    --domain-name {{ app_domain }}
     --validation-method DNS
     --region {{ aws_region }}
     --profile {{ aws_profile }}
@@ -296,25 +296,25 @@
            'Key=Organisation,Value=Schuberg-Philis'
            'Key=OrganisationalUnit,Value=LAB271'
            'Key=Environment,Value=Spike-Testing'
-           'Key=Domain,Value={{ spike_subdomain }}'
-           'Key=CreatedBy,Value=ansible-ssl-setup'
+           'Key=Domain,Value={{ app_domain }}'
+           'Key=CreatedBy,Value=ansible'
            'Key=Purpose,Value=Spike-Testing-SSL-Certificate'
            'Key=ParentDomain,Value={{ main_domain }}'
-  register: spike_cert_create
-  when: spike_cert_check.stdout == ""
+  register: cert_create
+  when: cert_check.stdout == ""
   changed_when: true
 
-- name: Set spike certificate ARN from creation
+- name: Set certificate ARN from creation
   set_fact:
-    ssl_certificate_arn: "{{ spike_cert_create.stdout }}"
-  when: spike_cert_create is not skipped
+    ssl_certificate_arn: "{{ cert_create.stdout }}"
+  when: cert_create is not skipped
 
-- name: Wait for spike certificate details to be available
+- name: Wait for certificate details to be available
   pause:
     seconds: 5
-  when: spike_cert_create is not skipped
+  when: cert_create is not skipped
 
-- name: Get spike certificate validation details
+- name: Get certificate validation details
   command: >
     aws acm describe-certificate
     --certificate-arn {{ ssl_certificate_arn }}
@@ -322,42 +322,42 @@
     --profile {{ aws_profile }}
     --query 'Certificate.DomainValidationOptions[0].ResourceRecord'
     --output json
-  register: spike_cert_validation
-  when: spike_cert_create is not skipped
+  register: cert_validation
+  when: cert_create is not skipped
   changed_when: false
 
-- name: Parse spike certificate validation record
+- name: Parse certificate validation record
   set_fact:
-    spike_validation_name: "{{ (spike_cert_validation.stdout | from_json).Name }}"
-    spike_validation_value: "{{ (spike_cert_validation.stdout | from_json).Value }}"
-  when: spike_cert_create is not skipped
+    validation_name: "{{ (cert_validation.stdout | from_json).Name }}"
+    validation_value: "{{ (cert_validation.stdout | from_json).Value }}"
+  when: cert_create is not skipped
 
-- name: Create spike certificate validation DNS record
+- name: Create certificate validation DNS record
   command: >
     aws route53 change-resource-record-sets
-    --hosted-zone-id {{ spike_hosted_zone_id }}
+    --hosted-zone-id {{ hosted_zone_id }}
     --change-batch '{
       "Changes": [{
         "Action": "UPSERT",
         "ResourceRecordSet": {
-          "Name": "{{ spike_validation_name }}",
+          "Name": "{{ validation_name }}",
           "Type": "CNAME",
           "TTL": 300,
-          "ResourceRecords": [{"Value": "{{ spike_validation_value }}"}]
+          "ResourceRecords": [{"Value": "{{ validation_value }}"}]
         }
       }]
     }'
     --profile {{ aws_profile }}
-  when: spike_cert_create is not skipped
+  when: cert_create is not skipped
   changed_when: true
 
-- name: Wait for spike certificate validation
+- name: Wait for certificate validation
   command: >
     aws acm wait certificate-validated
     --certificate-arn {{ ssl_certificate_arn }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
-  when: spike_cert_create is not skipped
+  when: cert_create is not skipped
   async: 600
   poll: 30
 
@@ -373,12 +373,12 @@
       - "Main Hosted Zone ID: {{ main_hosted_zone_id }}"
       - "Main Certificate ARN: {{ main_cert_arn | default('Not created') }}"
       - ""
-      - "Spike Domain: {{ spike_subdomain }}"
-      - "Spike Hosted Zone ID: {{ spike_hosted_zone_id }}"
-      - "Spike Certificate ARN: {{ ssl_certificate_arn | default('Not found') }}"
+      - "Domain: {{ app_domain }}"
+      - "Hosted Zone ID: {{ hosted_zone_id }}"
+      - "Certificate ARN: {{ ssl_certificate_arn | default('Not found') }}"
 
 - name: Warning if no SSL certificate found
   debug:
-    msg: "Warning: No SSL certificate found for domain {{ spike_subdomain }}. Deployment will proceed without HTTPS."
+    msg: "Warning: No SSL certificate found for domain {{ app_domain }}. Deployment will proceed without HTTPS."
   when: 
     - (ssl_certificate_arn is not defined or ssl_certificate_arn == "")

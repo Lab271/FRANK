@@ -22,19 +22,19 @@
 - name: Look up hosted zone ID if not already set
   command: >
     aws route53 list-hosted-zones-by-name
-    --dns-name {{ spike_subdomain }}
+    --dns-name {{ app_domain }}
     --profile {{ aws_profile }}
-    --query "HostedZones[?Name=='{{ spike_subdomain }}.'].Id"
+    --query "HostedZones[?Name=='{{ app_domain }}.'].Id"
     --output text
   register: hosted_zone_lookup
-  when: spike_hosted_zone_id is not defined
+  when: hosted_zone_id is not defined
   changed_when: false
 
 - name: Set hosted zone ID from lookup
   set_fact:
-    spike_hosted_zone_id: "{{ hosted_zone_lookup.stdout.split('/')[-1] if hosted_zone_lookup.stdout != '' else '' }}"
+    hosted_zone_id: "{{ hosted_zone_lookup.stdout.split('/')[-1] if hosted_zone_lookup.stdout != '' else '' }}"
   when: 
-    - spike_hosted_zone_id is not defined
+    - hosted_zone_id is not defined
     - hosted_zone_lookup is defined
 
 - name: Look up SSL certificate ARN if not already set
@@ -42,7 +42,7 @@
     aws acm list-certificates
     --region {{ aws_region }}
     --profile {{ aws_profile }}
-    --query "CertificateSummaryList[?DomainName=='{{ spike_subdomain }}'].CertificateArn"
+    --query "CertificateSummaryList[?DomainName=='{{ app_domain }}'].CertificateArn"
     --output text
   register: cert_lookup
   when: ssl_certificate_arn is not defined
@@ -63,14 +63,14 @@
       - ParameterKey: "CertificateArn"
         ParameterValue: "{{ ssl_certificate_arn }}"
       - ParameterKey: "DomainName"
-        ParameterValue: "{{ spike_subdomain }}"
+        ParameterValue: "{{ app_domain }}"
       - ParameterKey: "HostedZoneId"
-        ParameterValue: "{{ spike_hosted_zone_id }}"
+        ParameterValue: "{{ hosted_zone_id }}"
   when: 
     - ssl_certificate_arn is defined
     - ssl_certificate_arn != ""
-    - spike_hosted_zone_id is defined
-    - spike_hosted_zone_id != ""
+    - hosted_zone_id is defined
+    - hosted_zone_id != ""
 
 - name: Check if CloudFormation stack exists
   command: >
@@ -81,6 +81,80 @@
   register: stack_exists
   failed_when: false
   changed_when: false
+
+- name: Get stack status if exists
+  set_fact:
+    stack_status: "{{ (stack_exists.stdout | from_json).Stacks[0].StackStatus if stack_exists.rc == 0 else 'DOES_NOT_EXIST' }}"
+  when: stack_exists.rc == 0
+
+- name: Display stack status
+  debug:
+    msg: "Stack {{ stack_name }} status: {{ stack_status | default('DOES_NOT_EXIST') }}"
+
+- name: List CloudWatch log groups for this stack
+  command: >
+    aws logs describe-log-groups
+    --log-group-name-prefix '/ecs/{{ stack_name }}'
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --query 'logGroups[].logGroupName'
+    --output text
+  register: log_groups_check
+  failed_when: false
+  changed_when: false
+  
+- name: Delete CloudWatch log groups
+  command: >
+    aws logs delete-log-group
+    --log-group-name {{ item }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  loop: "{{ log_groups_check.stdout.split() if log_groups_check.rc == 0 and log_groups_check.stdout else [] }}"
+  when: 
+    - stack_exists.rc == 0
+    - stack_status is defined
+    - stack_status in ['CREATE_FAILED', 'ROLLBACK_COMPLETE', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']
+  failed_when: false
+
+- name: Delete failed stack if it exists and is in a failed state
+  command: >
+    aws cloudformation delete-stack
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: stack_delete
+  when: 
+    - stack_exists.rc == 0
+    - stack_status is defined
+    - stack_status in ['CREATE_FAILED', 'ROLLBACK_COMPLETE', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_FAILED']
+
+- name: Wait for stack deletion to complete
+  command: >
+    aws cloudformation wait stack-delete-complete
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --cli-read-timeout 0
+  when: 
+    - stack_delete is defined
+    - not stack_delete.skipped | default(false)
+
+- name: Update stack_exists after deletion
+  set_fact:
+    stack_exists: "{{ {'rc': 1} }}"
+  when: 
+    - stack_delete is defined
+    - not stack_delete.skipped | default(false)
+
+- name: Validate CloudFormation template
+  command: >
+    aws cloudformation validate-template
+    --template-body file://templates/{{ cloudformation_template }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+  register: template_validation
+  changed_when: false
+  failed_when: template_validation.rc != 0
 
 - name: Deploy CloudFormation stack (create if not exists)
   command: >
@@ -101,7 +175,6 @@
     --template-body file://templates/{{ cloudformation_template }}
     --parameters '{{ cf_parameters | to_json }}'
     --capabilities CAPABILITY_IAM
-    --disable-rollback
     --region {{ aws_region }}
     --profile {{ aws_profile }}
   register: cf_update
@@ -111,28 +184,75 @@
     - "'ValidationError' not in cf_update.stderr"
   when: stack_exists.rc == 0
 
-- name: Wait for CloudFormation operation to complete
+- name: Wait for CloudFormation stack creation to complete
   command: >
-    aws cloudformation wait stack-{{ 'create' if stack_exists.rc != 0 else 'update' }}-complete
+    aws cloudformation wait stack-create-complete
     --stack-name {{ stack_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
+    --cli-read-timeout 0
+  register: cf_create_wait
   when: 
-    - (cf_create is defined and not cf_create.skipped | default(false) and cf_create.rc | default(1) == 0) or 
-      (cf_update is defined and not cf_update.skipped | default(false) and cf_update.rc | default(1) == 0)
+    - cf_create is defined
+    - not cf_create.skipped | default(false)
+    - cf_create.rc | default(1) == 0
 
-- name: Get stack outputs
+- name: Wait for CloudFormation stack update to complete
+  command: >
+    aws cloudformation wait stack-update-complete
+    --stack-name {{ stack_name }}
+    --region {{ aws_region }}
+    --profile {{ aws_profile }}
+    --cli-read-timeout 0
+  register: cf_update_wait
+  when: 
+    - cf_update is defined
+    - not cf_update.skipped | default(false)
+    - cf_update.rc | default(1) == 0
+
+- name: Get CloudFormationstack outputs
   command: >
     aws cloudformation describe-stacks
     --stack-name {{ stack_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
-    --query 'Stacks[0].Outputs'
+    --query 'Stacks[0]'
     --output json
-  register: stack_outputs
+  register: stack_status
+  retries: 60
+  delay: 15
   changed_when: false
 
-- name: Display stack outputs
+- name: Fail if CloudFormation stack is in a failed state
+  fail:
+    msg: |
+      CloudFormation stack {{ stack_name }} is in a failed state: {{ (stack_status.stdout | from_json).StackStatus }}
+      
+      Common failed states:
+      - CREATE_FAILED: Stack creation failed
+      - UPDATE_FAILED: Stack update failed  
+      - ROLLBACK_COMPLETE: Stack creation failed and rolled back
+      - ROLLBACK_FAILED: Stack creation failed and rollback failed
+      - UPDATE_ROLLBACK_COMPLETE: Stack update failed and rolled back
+      - UPDATE_ROLLBACK_FAILED: Stack update failed and rollback failed
+      
+      Check AWS CloudFormation console for detailed error information:
+      https://console.aws.amazon.com/cloudformation/home?region={{ aws_region }}#/stacks/stackinfo?stackId={{ stack_name }}
+      
+      Or use AWS CLI to get stack events:
+      aws cloudformation describe-stack-events --stack-name {{ stack_name }} --region {{ aws_region }} --profile {{ aws_profile }}
+  when: 
+    - stack_status.stdout is defined
+    - (stack_status.stdout | from_json).StackStatus is defined
+    - (stack_status.stdout | from_json).StackStatus in ['CREATE_FAILED', 'UPDATE_FAILED', 'ROLLBACK_COMPLETE', 'ROLLBACK_FAILED', 'UPDATE_ROLLBACK_COMPLETE', 'UPDATE_ROLLBACK_FAILED', 'DELETE_FAILED']
+
+- name: Display successful deployment status
   debug:
-    var: stack_outputs.stdout
-  when: stack_outputs.stdout != "null"
+    msg: |
+      ✅ CloudFormation stack {{ stack_name }} successfully deployed!
+      Status: {{ (stack_status.stdout | from_json).StackStatus }}
+      Region: {{ aws_region }}
+  when: 
+    - stack_status.stdout is defined
+    - (stack_status.stdout | from_json).StackStatus is defined
+    - (stack_status.stdout | from_json).StackStatus in ['CREATE_COMPLETE', 'UPDATE_COMPLETE']

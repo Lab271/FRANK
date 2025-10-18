@@ -64,6 +64,7 @@
     --stack-name {{ stack_name }}
     --region {{ aws_region }}
     --profile {{ aws_profile }}
+    --cli-read-timeout 0
   register: cf_delete_wait
   when: 
     - stack_status_check.rc == 0

@@ -33,11 +33,14 @@ clean: ## Clean all build files and virtualenv
 
 env: $(VIRTUALENV)/bin/python ## create the virtualenv
 	@$(PYTHON) -m pip install --upgrade pip
-	@$(PYTHON) -m pip install -e .
-	@$(PYTHON) -m pip install ruff
-	@$(PYTHON) -m pip install pytest
-	@$(PYTHON) -m pip install coverage
-	@$(PYTHON) -m pip install -r requirements.txt
+	@$(PYTHON) -m pip install -e . --require-virtualenv
+	@$(PYTHON) -m pip install ruff --require-virtualenv
+	@$(PYTHON) -m pip install pytest --require-virtualenv
+	@$(PYTHON) -m pip install coverage --require-virtualenv
+	@$(PYTHON) -m pip install -r requirements.txt --require-virtualenv
+
+dev: $(VIRTUALENV)/bin/python ## redeploy the package
+	@$(PYTHON) -m pip install -e . --require-virtualenv
 
 test: ## Run unit tests and coverage
 	@coverage run -m pytest

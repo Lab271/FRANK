@@ -49,6 +49,7 @@ x-aws-credentials: &aws-credentials
   AWS_ACCESS_KEY_ID: test
   AWS_SECRET_ACCESS_KEY: test
   AWS_DEFAULT_REGION: eu-west-1
+  AWS_REGION: eu-west-1
 
 x-frank-app-env: &frank-app-env
   <<: *aws-credentials
@@ -57,6 +58,7 @@ x-frank-app-env: &frank-app-env
   DYNAMODB_TABLE: frank-data
   DYNAMODB_AUDIT_TABLE: frank-audit
   LOG_LEVEL: debug
+  RELOAD: true  # Enable auto-reload for development
 
 services:
   nginx-lb:
@@ -83,6 +85,9 @@ services:
     environment:
       <<: *frank-app-env
       CONTAINER_ID: api-1  # Override for container identification
+    volumes:
+      - ../frank_stage3.py:/app/frank_stage3.py:ro  # Mount source file for auto-reload
+      - ../../../src:/app/src:ro  # Mount source code for auto-reload
 
   frank-app-2:
     <<: *frank-app-common
@@ -92,6 +97,9 @@ services:
     environment:
       <<: *frank-app-env
       CONTAINER_ID: api-2  # Override for container identification
+    volumes:
+      - ../frank_stage3.py:/app/frank_stage3.py:ro  # Mount source file for auto-reload
+      - ../../../src:/app/src:ro  # Mount source code for auto-reload
 
   localstack:
     image: localstack/localstack:latest
@@ -122,7 +130,6 @@ services:
     environment:
       <<: *aws-credentials
       DYNAMO_ENDPOINT: http://localstack:4566
-      AWS_REGION: eu-west-1
     depends_on:
       - localstack
     networks:

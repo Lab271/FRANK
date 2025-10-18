@@ -16,13 +16,14 @@
   
   vars:
     # Default variables (can be overridden with -e)
-    stack_name: frank-stage3
+    app_name: "frank"
+    main_domain: "lab271.io"
+    stack_name: "{{ app_name }}-stage3"
     aws_region: eu-central-1
     aws_profile: spike-account
     main_account_profile: main-account
     # image_tag is set dynamically from FRANK version, but can be overridden with -e image_tag_override=<version>
-    main_domain: "lab271.io"
-    spike_subdomain: "{{ stack_name }}.{{ main_domain }}"
+    app_domain: "{{ app_name }}.{{ main_domain }}"
     cloudformation_template: "{{ stack_name }}-infra.yaml"
     build_context: stages/stage3
     
@@ -63,11 +64,12 @@
             - "=== FRANK AWS Infrastructure Deployment ==="
             - "FRANK Version: {{ frank_version }}"
             - "Stack Name: {{ stack_name }}"
+            - "Image Tag: {{ image_tag }}"
             - "Region: {{ aws_region }}"
             - "Profile: {{ aws_profile }}"
             - "AWS Account ID: {{ aws_account_id }}"
             - "ECR URL: {{ ecr_url }}"
-            - "Spike Domain: {{ spike_subdomain }}"
+            - "Application Domain: {{ app_domain }}"
       tags: always
 
     

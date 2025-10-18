@@ -48,7 +48,6 @@ RUN pip install --no-cache-dir --user \
     fastapi==0.118.3 \
     uvicorn==0.37.0 \
     boto3==1.40.18 \
-    aioboto3==15.2.0 \
     requests==2.32.5 \
     pydantic==2.11.9 \
     PyJWT==2.10.1 \
@@ -89,7 +88,7 @@ COPY ${PACKAGE_CONTEXT}/setup.py .
 COPY ${PACKAGE_CONTEXT}/src/ ./src/
 RUN pip install --no-cache-dir .
 
-COPY ${BUILD_CONTEXT}/frank_stage3.py .
+COPY ${BUILD_CONTEXT}/frank_stage3.py frank_api.py
 
 
 
@@ -113,4 +112,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/v1/health || exit 1
 
 # Run the application
-CMD ["python", "frank_stage3.py"]
+CMD ["python", "frank_api.py"]

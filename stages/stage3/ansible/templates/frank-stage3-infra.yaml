@@ -96,12 +96,6 @@ Parameters:
     Default: 'true'
     AllowedValues: ['true', 'false']
 
-  EnableCognitoMFA:
-    Type: String
-    Description: Enable Multi-Factor Authentication for Cognito (requires SMS configuration if not OFF)
-    Default: 'OFF'
-    AllowedValues: ['OFF', 'ON', 'OPTIONAL']
-
   CognitoPasswordPolicy:
     Type: String
     Description: Password policy strength for Cognito users
@@ -114,7 +108,6 @@ Conditions:
   HasHostedZone: !Not [!Equals [!Ref HostedZoneId, '']]
   HasDNS: !And [!Condition HasDomain, !Condition HasHostedZone]
   AutoScalingEnabled: !Equals [!Ref EnableAutoScaling, 'true']
-  MFAEnabled: !Not [!Equals [!Ref EnableCognitoMFA, 'OFF']]
 
 Resources:
   # === 1. NETWORKING FOUNDATION ===
@@ -649,7 +642,7 @@ Resources:
                   - dynamodb:GetItem
                   - dynamodb:PutItem
                   - dynamodb:UpdateItem
-                  - dynamodb:DeleteItem
+                  - dynamodb:DeleteItem. ## Do WE want to allow deletes?
                   - dynamodb:Query
                   - dynamodb:Scan
                 Resource: 
@@ -673,7 +666,7 @@ Resources:
                   - cognito-idp:AdminGetUser
                   - cognito-idp:AdminListGroupsForUser
                   - cognito-idp:ListUsers
-                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminCreateUser ## Do WE want to allow user creation/password reset in the main app?
                   - cognito-idp:AdminUpdateUserAttributes
                   - cognito-idp:AdminSetUserPassword
                 Resource: !GetAtt CognitoUserPool.Arn
@@ -689,29 +682,28 @@ Resources:
   # === 7. AUTHENTICATION ===
   # Cognito User Pool for user management and JWT authentication
   
-  # IAM Role for Cognito SMS (only created when MFA is enabled)
-  CognitoSMSRole:
-    Type: AWS::IAM::Role
-    Condition: MFAEnabled
-    Properties:
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal:
-              Service: cognito-idp.amazonaws.com
-            Action: sts:AssumeRole
-      ManagedPolicyArns:
-        - arn:aws:iam::aws:policy/service-role/AmazonCognitoIdpSmsRole
-      Tags:
-        - Key: Name
-          Value: !Sub '${StackName}-cognito-sms-role'
+  # IAM Role for Cognito SMS (needed for MFA)
+  # CognitoSMSRole:
+  #   Type: AWS::IAM::Role
+  #   Properties:
+  #     AssumeRolePolicyDocument:
+  #       Version: '2012-10-17'
+  #       Statement:
+  #         - Effect: Allow
+  #           Principal:
+  #             Service: cognito-idp.amazonaws.com
+  #           Action: sts:AssumeRole
+  #     ManagedPolicyArns:
+  #       - arn:aws:iam::aws:policy/service-role/AmazonCognitoIdpSmsRole
+  #     Tags:
+  #       - Key: Name
+  #         Value: !Sub '${StackName}-cognito-sms-role'
 
-  # Cognito User Pool: Central user directory with configurable MFA
+  # Cognito User Pool: Central user directory for authentication
   CognitoUserPool:
     Type: AWS::Cognito::UserPool
     Properties:
-      UserPoolName: !Sub '${StackName}-user-pool'
+      UserPoolName: !Sub '${StackName}-user-pool'    
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -720,7 +712,6 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
           TemporaryPasswordValidityDays: 7
-      MfaConfiguration: !Ref EnableCognitoMFA
       AccountRecoverySetting:
         RecoveryMechanisms:
           - Name: verified_email
@@ -729,35 +720,33 @@ Resources:
         - email
       UsernameConfiguration:
         CaseSensitive: false
-      AutoVerifiedAttributes: !If
-        - MFAEnabled
-        - [email, phone_number]
-        - [email]
+      AutoVerifiedAttributes: 
+        - email
       UserAttributeUpdateSettings:
-        AttributesRequireVerificationBeforeUpdate: !If
-          - MFAEnabled
-          - [email, phone_number]
-          - [email]
-      Schema: !If
-        - MFAEnabled
-        - - Name: email
-            AttributeDataType: String
-            Required: true
-            Mutable: true
-          - Name: phone_number
-            AttributeDataType: String
-            Required: false
-            Mutable: true
-        - - Name: email
-            AttributeDataType: String
-            Required: true
-            Mutable: true
+        AttributesRequireVerificationBeforeUpdate:
+          - email
+      MfaConfiguration: 'OFF'
+      Schema: 
+        - Name: email
+          AttributeDataType: String
+          Required: true
+          Mutable: true
+        - Name: phone_number
+          AttributeDataType: String
+          Required: false
+          Mutable: true
+        - Name: organization
+          AttributeDataType: String
+          Required: false
+          Mutable: true            
       EmailConfiguration:
         EmailSendingAccount: COGNITO_DEFAULT
-      SmsConfiguration: !If
-        - MFAEnabled
-        - SnsCallerArn: !GetAtt CognitoSMSRole.Arn
-        - !Ref AWS::NoValue
+      # SmsConfiguration:  # Currently no MFA, so commented out
+      #   SnsCallerArn: !GetAtt CognitoSMSRole.Arn
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
       UserPoolTags:
         Name: !Sub '${StackName}-user-pool'
         Environment: !Sub '${StackName}'
@@ -781,14 +770,17 @@ Resources:
       AccessTokenValidity: 1    # 1 hour
       IdTokenValidity: 1        # 1 hour
       RefreshTokenValidity: 30  # 30 days
-      ReadAttributes: !If
-        - MFAEnabled
-        - [email, email_verified, given_name, family_name, phone_number, phone_number_verified]
-        - [email, email_verified, given_name, family_name]
-      WriteAttributes: !If
-        - MFAEnabled
-        - [email, given_name, family_name, phone_number]
-        - [email, given_name, family_name]
+      ReadAttributes: 
+        - email
+        - email_verified
+        - given_name
+        - family_name
+        - custom:organization
+      WriteAttributes:
+        - email
+        - given_name
+        - family_name
+        - custom:organization
 
   # Cognito Identity Pool: Provides AWS credentials for authenticated users
   CognitoIdentityPool:
