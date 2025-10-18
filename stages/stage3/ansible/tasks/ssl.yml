@@ -70,6 +70,9 @@
 # ===================================
 # Step 2: Check/Request Main Certificate
 # ===================================
+# AWS Certificate Manager (ACM) provides managed SSL certificates
+# Note: ACM certificates don't include traditional organizational fields
+# but we add comprehensive tags for identification and compliance
 
 - name: Check if main certificate exists
   command: >
@@ -81,6 +84,11 @@
   register: main_cert_check
   failed_when: false
   changed_when: false
+
+- name: Display existing certificate status
+  debug:
+    msg: "Found existing certificate for {{ main_domain }}: {{ main_cert_check.stdout }}"
+  when: main_cert_check.stdout != ""
 
 - name: Set main certificate ARN if exists
   set_fact:
@@ -97,9 +105,28 @@
     --profile {{ main_account_profile }}
     --query 'CertificateArn'
     --output text
+    --tags 'Key=Project,Value=FRANK-Platform'
+           'Key=Organisation,Value=Schuberg-Philis'
+           'Key=OrganisationalUnit,Value=LAB271'
+           'Key=Environment,Value=Production'
+           'Key=Domain,Value={{ main_domain }}'
+           'Key=CreatedBy,Value=ansible-ssl-setup'
+           'Key=Purpose,Value=Main-Domain-SSL-Certificate'
   register: main_cert_create
   when: main_cert_check.stdout == ""
   changed_when: true
+
+- name: Display new certificate creation status
+  debug:
+    msg: 
+      - "Created new SSL certificate for {{ main_domain }}"
+      - "Certificate ARN: {{ main_cert_create.stdout }}"
+      - "Tags applied with organizational details:"
+      - "  Organisation: Schuberg Philis"
+      - "  Organisational Unit: LAB271"
+      - "  Country: NL (implicit)"
+      - "  Environment: Production"
+  when: main_cert_create is not skipped
 
 - name: Set main certificate ARN from creation
   set_fact:
@@ -265,6 +292,14 @@
     --profile {{ aws_profile }}
     --query 'CertificateArn'
     --output text
+    --tags 'Key=Project,Value=FRANK-Platform'
+           'Key=Organisation,Value=Schuberg-Philis'
+           'Key=OrganisationalUnit,Value=LAB271'
+           'Key=Environment,Value=Spike-Testing'
+           'Key=Domain,Value={{ spike_subdomain }}'
+           'Key=CreatedBy,Value=ansible-ssl-setup'
+           'Key=Purpose,Value=Spike-Testing-SSL-Certificate'
+           'Key=ParentDomain,Value={{ main_domain }}'
   register: spike_cert_create
   when: spike_cert_check.stdout == ""
   changed_when: true

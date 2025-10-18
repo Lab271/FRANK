@@ -998,8 +998,8 @@ Resources:
               Value: !Ref DynamoDBAuditTable
             - Name: LOG_LEVEL  
               Value: info
-            - Name: ENDPOINT
-              Value: ''
+            # - Name: ENDPOINT
+            #   Value: ''
             - Name: AWS_DEFAULT_REGION
               Value: !Ref AWS::Region
             - Name: FRANK_ENVIRONMENT

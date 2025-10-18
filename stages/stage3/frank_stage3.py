@@ -28,7 +28,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import argparse
-from datetime import datetime, timezone 
+from datetime import datetime, timezone, timedelta
 from functools import lru_cache
 import logging
 from logging import config
@@ -57,16 +57,70 @@ def get_config():
     # Convert empty string to None for AWS
     if endpoint == "":
         endpoint = None
-    
+
+    environment = os.environ.get("FRANK_ENVIRONMENT", "aws")  # "aws" or "localstack"
+    profile = os.environ.get("AWS_PROFILE", None) 
+    region = os.environ.get("AWS_DEFAULT_REGION", "eu-central-1")
+    aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", None)
+    aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
+    table_name = os.environ.get("DYNAMODB_TABLE", "frank-stage3-data")
+    audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit-table")
+
+        # Use configuration from db_config
+    if environment == "aws":
+        session = boto3.Session()
+        # Test credentials by calling STS to see what identity we're using
+        # sts_client = session.client('sts', region_name=region)
+        # identity = sts_client.get_caller_identity()
+        # AWS environment - explicitly use default credential chain
+        # This ensures we use ECS Task Role when available
+        # Force using default credentials (ECS Task Role, EC2 Instance Profile, etc.)
+        client = session.client('dynamodb', region_name=region)
+        resource = session.resource('dynamodb', region_name=region)       
+    elif profile:
+        # LocalStack with AWS profile
+        session = boto3.Session(profile_name=profile)
+        client = session.client(
+            'dynamodb',
+            endpoint_url=endpoint,
+            region_name=region
+        )
+        resource = session.resource(
+            'dynamodb',
+            endpoint_url=endpoint,
+            region_name=region
+        )
+    else:
+        # LocalStack with explicit credentials
+        client = boto3.client(
+            'dynamodb',
+            endpoint_url=endpoint,
+            region_name=region,
+            aws_access_key_id=aws_access_key_id or "test",
+            aws_secret_access_key=aws_secret_access_key or "test"
+        )
+        resource = boto3.resource(
+            'dynamodb',
+            endpoint_url=endpoint,
+            region_name=region,
+            aws_access_key_id=aws_access_key_id or "test",
+            aws_secret_access_key=aws_secret_access_key or "test"
+        )
+
+
     return {
         "endpoint": endpoint,  # None for AWS, set for LocalStack
-        "environment": os.environ.get("FRANK_ENVIRONMENT", "aws"),  # "aws" or "localstack"
-        "profile": os.environ.get("AWS_PROFILE", None),  # AWS profile name for credentials
-        "aws_access_key_id": os.environ.get("AWS_ACCESS_KEY_ID", None), 
-        "aws_secret_access_key": os.environ.get("AWS_SECRET_ACCESS_KEY", None),
-        "region": os.environ.get("AWS_DEFAULT_REGION", "eu-central-1"),
-        "table_name": os.environ.get("DYNAMODB_TABLE", "frank-stage3-data"),
-        "audit_table_name": os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit-table")
+        "environment": environment,  
+        "profile": profile,
+        "aws_access_key_id": aws_access_key_id,
+        "aws_secret_access_key": aws_secret_access_key,
+        "region": region,
+        "table_name": table_name,
+        "audit_table_name": audit_table_name,
+        "client": client,
+        "resource": resource,
+        "table": resource.Table(table_name),
+        "audit_table": resource.Table(audit_table_name) 
     }
   
 
@@ -177,57 +231,28 @@ def get_container_info():
 # ====================================
 # Database handler
 # ====================================
+def log_access(org_id: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
+    """Internal method to log access in DynamoDB single table design."""
+    timestamp = datetime.now(timezone.utc).isoformat()
+    cfg = get_config()
+    log_item = {
+        'PK': f"LOG#{org_id}",
+        'SK': f"LOG#{timestamp}",
+        'GSI1PK': f"ACTION#{action}",
+        'GSI1SK': timestamp,
+        'EntityType': 'AccessLog',
+        'organisation_id': org_id,
+        'action': action,
+        'resource_type': resource_type,
+        'timestamp': timestamp,
+        'TTL': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
+    }
+    if details:
+        log_item['details'] = details
 
-def get_dynamodb_clients():
-    """Get DynamoDB client and resource using boto3"""
-    current_config = get_config()
-    logger = logging.getLogger("uvicorn")
-    
-    # Use configuration from db_config
-    if current_config["environment"] == "aws":
-        session = boto3.Session()
-        # Test credentials by calling STS to see what identity we're using
-        logger.info("Using AWS default credential chain")
-        sts_client = session.client('sts', region_name=current_config["region"])
-        identity = sts_client.get_caller_identity()
-        logger.info(f"Using AWS identity: {identity.get('Arn', 'unknown')}")           
-        # AWS environment - explicitly use default credential chain
-        # This ensures we use ECS Task Role when available
-        # Force using default credentials (ECS Task Role, EC2 Instance Profile, etc.)
-        client = session.client('dynamodb', region_name=current_config["region"])
-        resource = session.resource('dynamodb', region_name=current_config["region"])       
-    elif current_config["profile"]:
-        # LocalStack with AWS profile
-        logger.info(f"Using AWS profile: {current_config['profile']}")           
-        session = boto3.Session(profile_name=current_config["profile"])
-        client = session.client(
-            'dynamodb',
-            endpoint_url=current_config["endpoint"],
-            region_name=current_config["region"]
-        )
-        resource = session.resource(
-            'dynamodb',
-            endpoint_url=current_config["endpoint"],
-            region_name=current_config["region"]
-        )
-    else:
-        # LocalStack with explicit credentials
-        logger.info(f"Using AWS credentials: {current_config['aws_access_key_id']}")           
-        client = boto3.client(
-            'dynamodb',
-            endpoint_url=current_config["endpoint"],
-            region_name=current_config["region"],
-            aws_access_key_id=current_config["aws_access_key_id"] or "test",
-            aws_secret_access_key=current_config["aws_secret_access_key"] or "test"
-        )
-        resource = boto3.resource(
-            'dynamodb',
-            endpoint_url=current_config["endpoint"],
-            region_name=current_config["region"],
-            aws_access_key_id=current_config["aws_access_key_id"] or "test",
-            aws_secret_access_key=current_config["aws_secret_access_key"] or "test"
-        )
-    return client, resource
+    cfg["audit_table"].put_item(Item=log_item)
+
+
 
 # ====================================
 # Error handlers and Custom Exceptions
@@ -320,6 +345,8 @@ def create_app() -> FastAPI:
         Returns:
             Dict containing success message and endpoint info
         """
+        log_access("123", "root access")
+
         logger.info("Public endpoint accessed")
         return {
             "message": "Public endpoint accessed successfully",
@@ -395,27 +422,28 @@ def create_app() -> FastAPI:
     @app.get("/database")
     def database():
         """Database connection endpoint"""
-        current_config = get_config()
+        cfg = get_config()
         container_info = get_container_info()
         
+        log_access("123", "database_check")
+
         try:
             # Get DynamoDB client and resource
-            client, resource = get_dynamodb_clients()
             
             # List all tables
-            response = client.list_tables()
+            response = cfg["client"].list_tables()
             table_names = response.get('TableNames', [])
                 
             # Get table references
-            main_table = resource.Table(current_config["table_name"])
-            audit_table = resource.Table(current_config["audit_table_name"])
+            # main_table = cfg["resource"].Table(current_cfg["table_name"])
+            # audit_table = cfg["resource"].Table(current_cfg["audit_table_name"])
 
             # Get item counts from both tables
-            main_response = main_table.scan(Select='COUNT', Limit=1)
+            main_response = cfg["resource"].Table(cfg["table_name"]).scan(Select='COUNT', Limit=1)
             main_count = main_response.get('Count', 0)
             main_status = "accessible"
-            
-            audit_response = audit_table.scan(Select='COUNT', Limit=1)
+
+            audit_response = cfg["audit_table"].scan(Select='COUNT', Limit=1)
             audit_count = audit_response.get('Count', 0)
             audit_status = "accessible"
             
@@ -425,21 +453,21 @@ def create_app() -> FastAPI:
                 "async_implementation": "aioboto3",
                 "container": container_info,
                 "environment": {
-                    "DYNAMODB_TABLE": current_config["table_name"],
-                    "AUDIT_TABLE": current_config["audit_table_name"],
-                    "AWS_DEFAULT_REGION": current_config["region"],
-                    "ENDPOINT": current_config["endpoint"] or "AWS (no custom endpoint)",
-                    "FRANK_ENVIRONMENT": current_config.get("environment", "default")
+                    "DYNAMODB_TABLE": cfg["table_name"],
+                    "AUDIT_TABLE": cfg["audit_table_name"],
+                    "AWS_DEFAULT_REGION": cfg["region"],
+                    "ENDPOINT": cfg["endpoint"] or "AWS (no custom endpoint)",
+                    "FRANK_ENVIRONMENT": cfg.get("environment", "default")
                 },
                 "tables": {
                     "available_tables": table_names,
                     "main": {
-                        "name": current_config["table_name"],
+                        "name": cfg["table_name"],
                         "status": main_status,
                         "item_count": main_count
                     },
                     "audit": {
-                        "name": current_config["audit_table_name"],
+                        "name": cfg["audit_table_name"],
                         "status": audit_status,
                         "item_count": audit_count
                     }
