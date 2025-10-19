@@ -46,7 +46,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def initialize(self) -> None:
         """Initialize the SQLite database with FRANK schema."""
         self.name = 'sqlite'
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
@@ -252,7 +252,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             True if stored successfully, False otherwise
         """
         self.logger.info(f"Storing submission: {submission.model_dump_json(exclude_none=True, exclude_defaults=True,by_alias=True)}...")
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -526,7 +526,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Filtered Submission or None if not found
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -576,7 +576,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of filtered observable statistics
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -662,7 +662,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Statistics summary dictionary
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -755,7 +755,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             True if successful
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -798,7 +798,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             True if the log entry was successfully written, False otherwise
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -898,7 +898,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of matching observables
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -948,7 +948,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             organisation data or None if not found
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -991,7 +991,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of SIGMA rule dictionaries
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -1032,7 +1032,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of campaign dictionaries
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -1083,7 +1083,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             List of access log entries
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -1134,7 +1134,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         Returns:
             Health status dictionary
         """
-        db_path = self.connection_params['db_path']
+        db_path = self.config['db_path']
 
         try:
             with sqlite3.connect(db_path) as conn:
@@ -1193,7 +1193,7 @@ def create_sqlite_database(db_path: str = "/tmp/frank_local.db",
         Configured SQLiteFRANKDatabase instance
     """
 
-    connection_params = {
+    config = {
         "db_path": db_path
     }
 
@@ -1202,7 +1202,7 @@ def create_sqlite_database(db_path: str = "/tmp/frank_local.db",
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
         logger = logging.getLogger(__name__)
 
-    return SQLiteFRANKDatabase(connection_params, logger=logger)
+    return SQLiteFRANKDatabase(config, logger=logger)
 
 
     

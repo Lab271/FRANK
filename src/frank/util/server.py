@@ -9,20 +9,24 @@ with database operations for easy integration into applications.
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional
 
 from datetime import datetime, timezone
 import logging
+import os
+from pathlib import Path
 
-from frank.core.models import Submission, Submitter
+from frank.core.models import Submission, Sighting
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
 from frank.util.filter import FRANKFilter
+from frank.util.aws import get_container_info
 
 from .sample_builder import FRANKDatabaseSeeder
 from .logger import NullLogger
-from frank import __version__
-    
+from .http_exceptions import InternalError
+import frank
+
 class FRANKServer:
     """
     High-level FRANK server that combines submission handling with database operations.
@@ -39,184 +43,198 @@ class FRANKServer:
         - seed_database: Seed the database with initial data
     """
 
-    def __init__(self, database: BaseFRANKDatabase, logger: Optional[logging.Logger] = None):
-        self.logger = logger or NullLogger()
+    def __init__(self, database: BaseFRANKDatabase, config: Dict[str, Any], logger: logging.Logger = None):
+        self.logger = logger
         self.database = database
         self.database.logger = self.logger
         self.filter = FRANKFilter(self.logger)
+        self.config = config
 
-    def submit_threat_intelligence(self, user_id: str, submission: Submission) -> int:
+    def submit_threat_intelligence(self, user: Dict[str, Any], submission: Submission) -> None:
         """
         Submit threat intelligence to the FRANK platform.
         
         Args:
-            user_id (str): Identifier for the user submitting the threat intelligence.
+            user (Dict[str, Any]): User information including user ID.
             submission: Threat intelligence submission dictionary
-            
-        Returns:
-            True if successful     
+  
         """
         
         # Store in database
-        self.database.store_submission(submission)
-            
-        # Calculate contribution score impact (simplified)
-        score_impact = calculate_contribution_score(submission)
-                
-        self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
+        self.database.store_submission(user, submission)       
+      
+        self.database.log_access(user, submission.submitter.organisation_id, "SUBMIT", submission.submission_id, 'success')
 
-        # Extract submission ID
-        return score_impact
-
-
-    def query_threats(self, user_id: str, access_level: AccessTier, 
-        limit: int, offset: int, format: Optional[str], 
-        observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
+    def get_sightings_from_observations(self, user: Dict[str, Any], **query_params) -> List[Sighting]:
         """
-        Query threat intelligence records for a given user, applying access level filtering, pagination, and formatting.
+        Retrieve sightings based on query parameters and user access level.
 
-        This method retrieves threat intelligence data from the database, applying the specified tier for access control.
-        If an observable is provided, performs a targeted search; otherwise, executes a general query with additional filters.
-        Results are paginated and formatted according to the requested format and tier. Aggregations and threat context are
-        included for higher access levels.
+        This method queries the database for sightings matching the provided parameters,
+        applies access level filtering, and returns a list of formatted sighting records.
 
         Args:
-            user_id (str): Identifier for the user querying the threat intelligence.
-            access_level (AccessTier): Access tier for filtering and formatting results.
-            limit (int): Maximum number of results to return.
-            offset (int): Pagination offset.
-            format (Optional[str]): Response format type.
-            observable (Optional[str]): Specific observable value to search for.
-            **filters: Additional query parameters (e.g., observable_type, min_confidence, days_back).
-
+            user (Dict[str, Any]): Identifier for the user retrieving the sightings.
+            **query_params: Additional query parameters (e.g., observable, observable_type, start_date, end_date, limit).
         Returns:
-            Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]: A tuple containing:
-                - total_results (int): Total number of matching records.
-                - sightings (List[Dict]): List of formatted sighting records for the current page.
-                - aggregations (Dict[str, Any]): Statistical aggregations (for contributor and above).
-                - threat_context (Dict[str, Any]): Threat context information (for partner and above).
+            List[Dict[str, Any]]: A list of formatted sighting records.
         """
+        self.logger.debug(f"Querying sightings with parameters: {query_params} for user: {user}")
 
-        # Search by specific observable if provided
-        if observable:
-            results = self.database.search_observables_by_value(user_id, observable, access_level)
-        else:
-            # General query
-            results = self.database.query_observables(user_id=user_id,  access_level=access_level,
-                                            observable_type=filters.get("observable_type"), min_confidence=filters.get("min_confidence"),
-                                            limit=filters.get("limit", 100), days_back=filters.get("days_back"))
-
-        total_results = len(results)
-        paginated_results = results[offset : offset + limit]
-
-        # Build response based on access level and format
-        sightings = []
-        for result in paginated_results:
-            sighting = format_sighting_response(result, access_level, format)
-            sightings.append(sighting)
-
-        aggregations = {}
-        threat_context = {}
-        # Add aggregations for contributor and above
-
-        if access_level.check_access_level(AccessTier.CONTRIBUTOR):
-            aggregations = generate_aggregations(results, access_level)
-
-        # Add threat context for partner and above
-        if access_level.check_access_level(AccessTier.PARTNER):
-            threat_context = generate_threat_context(results)
+        sightings = self.database.list_sightings_from_observations(
+          observable_value=query_params.get("observable"), observable_type=query_params.get("observable_type"),
+          start_date=query_params.get("start_date"), end_date=query_params.get("end_date"),
+          limit=query_params.get("limit", 100))
 
 
-        self.database.log_access(user_id, 'SEARCH', 'observables', details={'search_results': total_results})
+        return sightings
 
-        return (total_results, sightings, aggregations, threat_context)
+    # def query_threats(self, user_id: str, access_level: AccessTier, 
+    #     limit: int, offset: int, format: Optional[str], 
+    #     observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
+    #     """
+    #     Query threat intelligence records for a given user, applying access level filtering, pagination, and formatting.
 
-    def upsert_organisation(self, submitter: Submitter) -> None:
-        """
-        Create or update an organisation in the database.
+    #     This method retrieves threat intelligence data from the database, applying the specified tier for access control.
+    #     If an observable is provided, performs a targeted search; otherwise, executes a general query with additional filters.
+    #     Results are paginated and formatted according to the requested format and tier. Aggregations and threat context are
+    #     included for higher access levels.
 
-        This method validates and upserts a Submitter (organisation) record into the database,
-        logs the access event, and returns True if successful, False otherwise.
+    #     Args:
+    #         user_id (str): Identifier for the user querying the threat intelligence.
+    #         access_level (AccessTier): Access tier for filtering and formatting results.
+    #         limit (int): Maximum number of results to return.
+    #         offset (int): Pagination offset.
+    #         format (Optional[str]): Response format type.
+    #         observable (Optional[str]): Specific observable value to search for.
+    #         **filters: Additional query parameters (e.g., observable_type, min_confidence, days_back).
 
-        Args:
-            submitter (Submitter): The organisation Submitter object to upsert.
+    #     Returns:
+    #         Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]: A tuple containing:
+    #             - total_results (int): Total number of matching records.
+    #             - sightings (List[Dict]): List of formatted sighting records for the current page.
+    #             - aggregations (Dict[str, Any]): Statistical aggregations (for contributor and above).
+    #             - threat_context (Dict[str, Any]): Threat context information (for partner and above).
+    #     """
 
-        Returns:
-            bool: True if upsert was successful, False otherwise.
-        """
-        # Upsert organisation in the database
-        self.database.upsert_organisation(submitter.model_dump(exclude_unset=True, by_alias=True))
-        self.logger.info(f"Upserted organisation: {submitter.organisation_id}")
+    #     # Search by specific observable if provided
+    #     if observable:
+    #         results = self.database.search_observables_by_value(user_id, observable, access_level)
+    #     else:
+    #         # General query
+    #         results = self.database.query_observables(user_id=user_id,  access_level=access_level,
+    #                                         observable_type=filters.get("observable_type"), min_confidence=filters.get("min_confidence"),
+    #                                         limit=filters.get("limit", 100), days_back=filters.get("days_back"))
 
-        # Log access
-        self.database.log_access(submitter.organisation_id, 'UPSERT', 'organisation', submitter.organisation_id)
+    #     total_results = len(results)
+    #     paginated_results = results[offset : offset + limit]
+
+    #     # Build response based on access level and format
+    #     sightings = []
+    #     for result in paginated_results:
+    #         sighting = format_sighting_response(result, access_level, format)
+    #         sightings.append(sighting)
+
+    #     aggregations = {}
+    #     threat_context = {}
+    #     # Add aggregations for contributor and above
+
+    #     if access_level.check_access_level(AccessTier.CONTRIBUTOR):
+    #         aggregations = generate_aggregations(results, access_level)
+
+    #     # Add threat context for partner and above
+    #     if access_level.check_access_level(AccessTier.PARTNER):
+    #         threat_context = generate_threat_context(results)
 
 
-    def get_observations(self, user_id: str, days: int, observable_type: str, limit: int) -> "Tuple[List[Dict], Dict[str, Any]]":
-        """
-        Retrieve observable statistics and details for a given user (organisation) and time window.
+    #     self.database.log_access(user_id, 'SEARCH', 'observables', details={'search_results': total_results})
 
-        This method queries the database for observable statistics for the specified user and number of days.
-        It returns a list of observation summaries (filtered by observable type if provided) and the full statistics dictionary.
+    #     return (total_results, sightings, aggregations, threat_context)
 
-        Args:
-            user_id (str): Identifier for the user retrieving the observations.
-            days (int): Number of days to include in the statistics summary.
-            observable_type (str): Filter to include only observations of this type (if provided).
-            limit (int): Maximum number of observation summaries to return.
+    # def upsert_organisation(self, submitter: Submitter) -> None:
+    #     """
+    #     Create or update an organisation in the database.
 
-        Returns:
-            Tuple[List[Dict], Dict[str, Any]]: A tuple containing:
-                - List of observation summaries (each with 'observable_type' and 'count').
-                - Full statistics dictionary as returned by the database.
-        """
-        stats = self.database.get_statistics_summary(user_id, days=days)
+    #     This method validates and upserts a Submitter (organisation) record into the database,
+    #     logs the access event, and returns True if successful, False otherwise.
 
-        observations = []
-        for obs_type, count in stats.get('observable_totals', {}).items():
-            if observable_type and obs_type != observable_type:
-                continue
-            observations.append({
-                'observable_type': obs_type,
-                'count': count
-            })
-        return observations[:limit], stats
+    #     Args:
+    #         submitter (Submitter): The organisation Submitter object to upsert.
+
+    #     Returns:
+    #         bool: True if upsert was successful, False otherwise.
+    #     """
+    #     # Upsert organisation in the database
+    #     self.database.upsert_organisation(submitter.model_dump(exclude_unset=True, by_alias=True))
+    #     self.logger.info(f"Upserted organisation: {submitter.organisation_id}")
+
+    #     # Log access
+    #     self.database.log_access(submitter.organisation_id, 'UPSERT', 'organisation', submitter.organisation_id)
+
+
+    # def get_observations(self, user: Dict[str, Any], **query_params) -> "Tuple[List[Dict], Dict[str, Any]]":
+    #     """
+    #     Retrieve observable statistics and details for a given user (organisation) and time window.
+
+    #     This method queries the database for observable statistics for the specified user and number of days.
+    #     It returns a list of observation summaries (filtered by observable type if provided) and the full statistics dictionary.
+
+    #     Args:
+    #         user_id (str): Identifier for the user retrieving the observations.
+    #         days (int): Number of days to include in the statistics summary.
+    #         observable_type (str): Filter to include only observations of this type (if provided).
+    #         limit (int): Maximum number of observation summaries to return.
+
+    #     Returns:
+    #         Tuple[List[Dict], Dict[str, Any]]: A tuple containing:
+    #             - List of observation summaries (each with 'observable_type' and 'count').
+    #             - Full statistics dictionary as returned by the database.
+    #     """
+
+    #     observations = []
+    #     for obs_type, count in stats.get('observable_totals', {}).items():
+    #         if observable_type and obs_type != observable_type:
+    #             continue
+    #         observations.append({
+    #             'observable_type': obs_type,
+    #             'count': count
+    #         })
+    #     return observations[:limit], stats
         
 
-    def get_platform_statistics(self, user_id: str, access_level: AccessTier, days: int) -> Dict[str, Any]:
-        """
-        Retrieve platform statistics for a given user and time window.
+    # def get_platform_statistics(self, user_id: str, access_level: AccessTier, days: int) -> Dict[str, Any]:
+    #     """
+    #     Retrieve platform statistics for a given user and time window.
 
-        This method queries the database for summary statistics related to submissions, observables,
-        and activity for the specified user and number of days. The returned statistics are
-        filtered based on the user's access access_level:
-        - Observers receive only non-sensitive, aggregate statistics.
-        - Higher tiers receive full statistics as provided by the database.
+    #     This method queries the database for summary statistics related to submissions, observables,
+    #     and activity for the specified user and number of days. The returned statistics are
+    #     filtered based on the user's access access_level:
+    #     - Observers receive only non-sensitive, aggregate statistics.
+    #     - Higher tiers receive full statistics as provided by the database.
 
-        Args:
-            user_id (str): Identifier for the user submitting the threat intelligence.
-            days (int): Number of days to include in the statistics summary.
-            access_level (AccessTier): The user's access tier, used to filter sensitive data.
+    #     Args:
+    #         user_id (str): Identifier for the user submitting the threat intelligence.
+    #         days (int): Number of days to include in the statistics summary.
+    #         access_level (AccessTier): The user's access tier, used to filter sensitive data.
 
-        Returns:
-            Dict[str, Any]: Dictionary containing platform statistics, filtered by access level.
-                For observers, only aggregate stats are included.
-        """
-        stats = self.database.get_statistics_summary(user_id, days=days)
+    #     Returns:
+    #         Dict[str, Any]: Dictionary containing platform statistics, filtered by access level.
+    #             For observers, only aggregate stats are included.
+    #     """
+    #     stats = self.database.get_statistics_summary(user_id, days=days)
 
-        # Filter stats based on access level
-        if access_level == AccessTier.OBSERVER:
-            # Remove sensitive information for observers
-            filtered_stats = {
-                "total_submissions": stats.get("total_submissions", 0),
-                "observable_types": stats.get("observable_types", {}),
-                "daily_activity": stats.get("daily_activity", {}),
-            }
-            return filtered_stats
+    #     # Filter stats based on access level
+    #     if access_level == AccessTier.OBSERVER:
+    #         # Remove sensitive information for observers
+    #         filtered_stats = {
+    #             "total_submissions": stats.get("total_submissions", 0),
+    #             "observable_types": stats.get("observable_types", {}),
+    #             "daily_activity": stats.get("daily_activity", {}),
+    #         }
+    #         return filtered_stats
 
-        return stats
+    #     return stats
 
-    def get_submission_by_id(self, user_id: str, access_level: AccessTier, submission_id: str) -> Optional[Submission]:
+    def get_submission_by_id(self, user: Dict[str, Any], submission_id: str) -> Optional[Submission]:
         """
         Retrieve a submission by its ID, applying access level filtering.
 
@@ -224,8 +242,7 @@ class FRANKServer:
         logs the access event, and returns a Submission object if accessible, or None if not found or not permitted.
 
         Args:
-            user_id (str): Identifier for the user requesting the submission.
-            access_level (AccessTier): The user's access tier for filtering sensitive data.
+            user (Dict[str, Any]): Identifier for the user requesting the submission.
             submission_id (str): The unique identifier of the submission to retrieve.
 
         Returns:
@@ -234,13 +251,16 @@ class FRANKServer:
         submission_dict = self.database.get_submission_by_id(submission_id)
         if not submission_dict:
             return None
-        filtered_submission = self.filter.submission_by_access_level(submission_dict, access_level)
-        self.logger.debug(f"Filtered submission for access level {access_level}: {filtered_submission}")
+        filtered_submission = self.filter.submission_by_access_level(submission_dict, user["access_level"])
+        self.logger.debug(f"Filtered submission for access level {user['access_level']}: {filtered_submission}")
 
-        # Log access
-        self.database.log_access(user_id, 'READ', 'submission', submission_id)
+        submission = Submission(**filtered_submission["submission"]) if filtered_submission else None
 
-        return Submission(**filtered_submission["submission"]) if filtered_submission else None
+        if submission:
+            # Log access
+            self.database.log_access(user, user["organisation_id"], "READ", submission.submission_id, 'success')
+       
+        return submission
 
 
     def health_check(self) -> Dict[str, Any]:
@@ -258,14 +278,55 @@ class FRANKServer:
                 - '<database_name>': Database-specific health details
                 - 'version': FRANK library version
         """
-        health_status = self.database.health_check()
+        container_info = get_container_info()
 
-        return {
-            "status": health_status["status"],
+        health = {
+            "status": "healthy",
+            "service": "frank-stage3",
+            "version": frank.__version__,
             "timestamp": datetime.now(timezone.utc).isoformat(),
-            "database": health_status,
-            "version": __version__  # Present the proper library version
+            "container_info": container_info,
+            "environement": {
+                "profile": self.config.get("profile", "<not set>"),
+                "environment": self.config.get("environment", "<not set>"),
+                "region": self.config.get("region", "<not set>"),
+                "ENDPOINT": self.config.get("endpoint", "<not set>"),
+            },
+            "CONTAINER_ID": os.getenv("CONTAINER_ID", "unknown"),
+            "filename": Path(__file__).name, # "frank_stage3.py"
         }
+
+        return health
+
+    def deep_health_check(self) -> Dict[str, Any]:
+        """
+        Perform a deep health check on the FRANK platform database backend.
+
+        This method performs an in-depth health check of the underlying database,
+        returning detailed status information including connectivity, read/write tests,
+        and other diagnostics. Useful for comprehensive monitoring and troubleshooting.
+
+        Returns:
+            Dict[str, Any]: A dictionary containing detailed health status information
+            from the database backend.
+        """
+        health = self.health_check()
+
+        try:
+            status = self.database.health_check()
+            health.update(status)
+            health.update({
+                "status": "connected",
+                "timestamp": datetime.now(timezone.utc).isoformat(),
+                "table_cfg": {
+                    "DYNAMODB_TABLE": self.config["table_name"],
+                    "AUDIT_TABLE": self.config["audit_table_name"],
+                }
+            })
+        except Exception as e:
+            self.logger.error(f"Database connection error: {str(e)}")
+            raise InternalError(detail=f"Database connection failed: {str(e)}")
+        return health
 
     def seed_database(self, seeder: FRANKDatabaseSeeder) -> bool:
         """
@@ -416,12 +477,14 @@ def calculate_contribution_score(submission: Submission) -> int:
 # Factory function
 # ===============================
 
-def create_server(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANKServer:
+def create_server(db: BaseFRANKDatabase, config: Dict[str, Any], logger: logging.Logger = None) -> FRANKServer:
     """
     Factory function to create a complete FRANK server with database backend.
     
     Args:
+        db: Instance of BaseFRANKDatabase for data storage and retrieval
         config: Configuration dictionary (uses defaults if None)
+        logger: Optional logger instance for logging (uses NullLogger if None)
         
     Returns:
         Configured FRANK server instance
@@ -431,6 +494,7 @@ def create_server(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANK
         >>> server = frank.create_server(db, logger)
         >>> health = server.health_check()
     """
+    logger = logger or NullLogger()
 
     # Return a server that combines both
-    return FRANKServer(db, logger)
+    return FRANKServer(db, config, logger)

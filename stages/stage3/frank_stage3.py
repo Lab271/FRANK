@@ -28,32 +28,27 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import argparse
-from datetime import datetime, timezone, timedelta
 from functools import lru_cache
-import hashlib
 import os
 from pathlib import Path
 import time
-from typing import Dict, Any, List
+from typing import Dict, Any
 
-import boto3
-from botocore.exceptions import ClientError
 
 from fastapi import FastAPI, Body, HTTPException, Depends, status, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
-import requests
 import uvicorn
 
 import frank
-from frank.core.enum import AccessTier
+from frank.core.enum import AccessTier, TLPLevel
 from frank.core.models import Submission
-from frank.storage.exceptions import FRANKStorageError
-from frank.util.requests import SubmissionRequest
-from frank.util.requests import SubmissionResponse
-from frank.util.http_exceptions import InternalError, UnauthorizedException
+from frank.storage import create_dynamodb_database
+from frank.util import create_server
+from frank.util.requests import SubmissionRequest, ObservationsSearchQuery
+from frank.util.requests import SubmissionResponse, SightingSearchResponse
+from frank.util.http_exceptions import UnauthorizedException, NotFoundException
 from frank.util.auth import CognitoValidator
-from frank.util.aws import get_container_info
 from frank.util.logger import setup_logging, get_module_logger, configure_frank_logging
 
 # ===================================
@@ -98,474 +93,14 @@ def get_config():
     }
   
 @lru_cache()
-def get_client():
-    """Return client"""
-    client = TempClient()
-    return client
+def get_server():
+    """Return server"""
+    config = get_config()
+    logger = get_module_logger("frank.server")
+    db = create_dynamodb_database(config=config, logger=logger)
+    server = create_server(db=db, config=config, logger=logger)
+    return server
 
-
-
-# ====================================
-# Database handler
-# ====================================
-
-class TempClient:
-    """Client dependency for FastAPI"""
-    def __init__(self):
-        self.config = get_config()
-        self.logger = get_module_logger("frank.database")
-        self.initialize()
-
-    def initialize(self):
-        if self.config["environment"] == "aws":
-            session = boto3.Session()
-            # Test credentials by calling STS to see what identity we're using
-            # sts_client = session.client('sts', region_name=region)
-            # identity = sts_client.get_caller_identity()
-            # AWS environment - explicitly use default credential chain
-            # This ensures we use ECS Task Role when available
-            # Force using default credentials (ECS Task Role, EC2 Instance Profile, etc.)
-            self.client = session.client('dynamodb', region_name=self.config["region"])
-            self.resource = session.resource('dynamodb', region_name=self.config["region"])
-        elif self.config["profile"]:
-            # LocalStack with AWS profile
-            session = boto3.Session(profile_name=self.config["profile"])
-            self.client = session.client("dynamodb", endpoint_url=self.config["endpoint"], region_name=self.config["region"])
-            self.resource = session.resource("dynamodb", endpoint_url=self.config["endpoint"], region_name=self.config["region"])
-        else:
-            # LocalStack with explicit credentials
-            self.client = boto3.client(
-                'dynamodb',
-                endpoint_url=self.config["endpoint"],
-                region_name=self.config["region"],
-                aws_access_key_id=self.config["aws_access_key_id"] or "test",
-                aws_secret_access_key=self.config["aws_secret_access_key"] or "test"
-            )
-            self.resource = boto3.resource(
-                'dynamodb',
-                endpoint_url=self.config["endpoint"],
-                region_name=self.config["region"],
-                aws_access_key_id=self.config["aws_access_key_id"] or "test",
-                aws_secret_access_key=self.config["aws_secret_access_key"] or "test"
-            )
-
-        self.table = self.resource.Table(self.config["table_name"])
-        self.audit_table = self.resource.Table(self.config["audit_table_name"])
-
-    def submit_threat_intelligence(self, user: Dict[str, Any], submission: Submission) -> int:
-        """
-        Submit threat intelligence to the FRANK platform.
-        
-        Args:
-            user (Dict[str, Any]): User information including user ID.
-            submission: Threat intelligence submission dictionary
-            
-        Returns:
-            True if successful     
-        """
-        
-        timestamp = submission.timestamp or datetime.now(timezone.utc)
-        timestamp_str = timestamp.isoformat()
-        
-        # Create the main submission item
-        submission_item = {
-            'PK': f"SUB#{submission.submission_id}",
-            'SK': 'SUB',
-            'GSI1PK': f"SUBMITTER#{submission.submitter.organisation_id}",
-            'GSI1SK': f"TS#{timestamp_str}",
-            'entity_type': 'submission',
-            # 'submission_id': submission.submission_id,
-            # 'submitter_id': submission.submitter.organisation_id,
-            # 'access_level': submission.submitter.access_level, # make sure this is explicitly stored
-            # 'submission_timestamp': timestamp_str,
-            # 'tlp_level': submission.tlp_level,
-            'msg': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
-            'request_id': user["request_id"],
-            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-        }    
-        items_to_write = [submission_item]
-
-        # Store submitter info for querying
-        org_item = {
-            'PK': f"ORG#{submission.submitter.organisation_id}",
-            'SK': 'ORG',
-            'GSI1PK': "OT#SUBMITTER",
-            'GSI1SK': f"TS#{timestamp_str}",
-            'entity_type': 'organisation',
-            # 'organisation_id': submission.submitter.organisation_id,
-            # 'sector': submission.submitter.sector or 'cyber_partner',
-            # 'region': submission.submitter.region or 'unknown',
-            'msg': submission.submitter.model_dump(exclude_none=True, by_alias=True),
-            'last_active': timestamp_str,
-            'request_id': user["request_id"],
-            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-        }
-        items_to_write.append(org_item)
-
-        # Store hit_target as another ORG# item if present
-        hit_target = getattr(submission, 'hit_target', None)
-        if hit_target and hasattr(hit_target, 'organisation_id'):
-            ht_org_item = {
-                'PK': f"ORG#{hit_target.organisation_id}",
-                'SK': 'ORG',
-                'GSI1PK': "OT#TARGET",
-                'GSI1SK': f"TS#{timestamp_str}",
-                'entity_type': 'organisation',
-                # 'organisation_id': hit_target.organisation_id,
-                # 'sector': getattr(hit_target, 'sector', 'unknown'),
-                # 'region': getattr(hit_target, 'region', 'unknown'),
-                'msg': hit_target.model_dump(exclude_none=True, by_alias=True),
-                'last_active': timestamp_str,
-                'request_id': user["request_id"],
-                'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-            }
-            items_to_write.append(ht_org_item)
-
-        # Store sighting info as a separate item
-        sighting = submission.sighting
-        sighting_item = {
-            'PK': f"SIGHT#{sighting.sighting_id}",
-            'SK': f"SUB#{submission.submission_id}",
-            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
-            'GSI1SK': f"TS#{timestamp_str}",
-            'entity_type': 'sighting',
-            # 'sighting_id': sighting.sighting_id,
-            # 'submission_id': submission.submission_id,
-            # 'submitter_id': submission.submitter.organisation_id,
-            'msg': sighting.model_dump(exclude_none=True, by_alias=True),
-            'request_id': user["request_id"],
-            'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-        }
-        items_to_write.append(sighting_item)
-
-        # Create observable index items
-        items_to_write.extend(self._extract_observables(user, submission))
-
-        self._batch_write_items(items_to_write)
-            
-        # Calculate contribution score impact (simplified)
-        # score_impact = calculate_contribution_score(submission)
-        score_impact = 1
-
-        self.log_access(user, submission.submitter.organisation_id, "SUBMIT", submission.submission_id, 'success')
-
-        # Extract submission ID
-        return score_impact
-
-
-    def _extract_observables(self, user: Dict[str, Any], submission: Submission) -> List[Dict]:
-        """
-        Extract observables from a submission for DynamoDB indexing.
-
-        This method processes the observables contained within a submission's sighting object and generates
-        DynamoDB items for each observable, following the single table design pattern. Each observable is
-        indexed for efficient cross-referencing and querying by type, value, and submission context.
-
-        Indexing Logic:
-            - Each observable is hashed and stored as a separate item with PK 'OBS#{obs_hash}' and SK 'SUB#{submission_id}'.
-            - GSI1PK is set to 'TYPE#{obs_type}' for type-based queries (all observables).
-            - GSI1SK is set to 'TS#{timestamp}' for time-range queries.
-            - GSI2PK is set to 'SECTOR#{sector}' for sector-based analyst queries (SPARSE - only if hit_target exists).
-            - GSI2SK is set to 'REGION#{region}#ORG#{org_id}#TS#{timestamp}' for hierarchical filtering.
-            - Additional metadata (confidence, severity, sector, region) is flattened for efficient filtering.
-            - TTL is set for long-term retention (default: ~7 years).
-
-        Args:
-            user (Dict[str, Any]): User information including request_id.
-            submission (Submission): The submission object containing sighting and observables.
-
-        Returns:
-            List[Dict]: List of DynamoDB items representing indexed observables.
-
-        Edge Cases & Notes:
-            - Observables missing 'type' or 'value' are skipped.
-            - GSI2 is only populated if hit_target exists (sparse index pattern).
-            - If hit_target lacks sector/region, defaults to 'UNKNOWN'.
-            - Handles empty or malformed observables gracefully.
-            - Uses submission timestamp for time-based fields if not explicitly provided.
-            - Designed for bulk ingestion and supports downstream analytics and deduplication.
-
-        Example:
-            >>> items = self._extract_observables(user, submission)
-            >>> self._batch_write_items(items)
-        """
-        timestamp = submission.timestamp or datetime.now(timezone.utc)
-        timestamp_str = timestamp.isoformat()
-
-        observables_list = []
-        sighting = submission.sighting.model_dump(exclude_none=True, by_alias=True)
-        observables = sighting.get("observables", {})
-        hit_target = getattr(submission, 'hit_target', None)
-
-        # Extract hit_target metadata for GSI2 (sector/region analysis)
-        hit_target_org_id = getattr(hit_target, 'organisation_id', None) if hit_target else None
-        hit_target_sector = getattr(hit_target, 'sector', 'UNKNOWN') if hit_target else 'UNKNOWN'
-        hit_target_region = getattr(hit_target, 'region', 'UNKNOWN') if hit_target else 'UNKNOWN'
-
-        for obs_category, obs_list in observables.items():
-            if isinstance(obs_list, list):
-                for obs in obs_list:
-                    if 'type' not in obs or 'value' not in obs:
-                        continue
-
-                    obs_hash = self.hash_observable(obs['type'], obs['value'])
-
-                    # Create observable index item with analyst-focused GSI2
-                    observable_index_item = {
-                        "PK": f"OBS#{obs_hash}",
-                        "SK": f"SUB#{submission.submission_id}",
-                        # GSI1: Type-based queries with time sorting
-                        "GSI1PK": f"TYPE#{obs['type']}",
-                        "GSI1SK": f"TS#{timestamp_str}",
-                        # Entity metadata
-                        "entity_type": "observable",
-                        "observable_value": obs["value"],
-                        # Flattened fields for filtering
-                        # Full observable details
-                        # GSI2: Submitter analysis
-                        "submitter_id": f"SUBMITTER#{submission.submitter.organisation_id}",
-                        "msg": sighting,
-                        "request_id": user["request_id"],
-                        "TTL": int((timestamp + timedelta(days=2555)).timestamp()),
-                    }
-
-                    # GSI2: Sector/region analysis (SPARSE - only if hit_target exists)
-                    if hit_target and hit_target_org_id:
-                        observable_index_item['GSI2PK'] = f"SECTOR#{hit_target_sector}"
-                        observable_index_item['GSI2SK'] = f"REGION#{hit_target_region}#ORG#{hit_target_org_id}#TS#{timestamp_str}"
-
-                        # Flatten hit_target metadata for filtering
-                        observable_index_item['hit_target_org_id'] = hit_target_org_id
-                        observable_index_item['hit_target_region'] = hit_target_region
-
-                    observables_list.append(observable_index_item)
-
-                    # Update statistics item for this observable
-                    # 1. Read current count
-                    response = self.table.get_item(Key={'PK': f'OBS#{obs_hash}', 'SK': 'STATS'})
-                    stats = response.get('Item', {})
-
-                    if stats:
-                        current_count = stats.get('count', 0)
-
-                        # 2. Update with new count-based GSI1SK
-                        new_count = current_count + 1
-                        self.table.update_item(
-                            Key={'PK': f'OBS#{obs_hash}', 'SK': 'STATS'},
-                            UpdateExpression='SET #count = :new_count, last_seen = :now, GSI1SK = :gsi1sk',
-                            ExpressionAttributeNames={
-                                '#count': 'count'
-                            },
-                            ExpressionAttributeValues={
-                                ':new_count': new_count,
-                                ':now': timestamp_str,
-                                ':gsi1sk': f'COUNT#{int(new_count):010d}#TS#{timestamp_str}'
-                            }
-                        )
-                    else:
-                        stat_item = {
-                            'PK': f'OBS#{obs_hash}',
-                            'SK': 'STATS',
-                            'GSI1PK': f'TYPE#{obs["type"]}',
-                            'GSI1SK': f'COUNT#0000000001#TS#{timestamp_str}',
-                            'entity_type': 'stats',
-                            'observable_value': obs["value"],
-                            'first_seen': timestamp_str,
-                            'last_seen': timestamp_str,
-                            'count': 1,
-                            'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
-                        }
-                        self.table.put_item(Item=stat_item)
-                    # stats_item = self._upsert_observable_statistics(
-                    #     obs_hash=obs_hash,
-                    #     obs_type=obs['type'],
-                    #     obs_value=obs['value'],
-                    #     hit_target_id=getattr(submission.hit_target, 'organisation_id', None),  # Safe access to hit_target
-                    #     sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
-                    #     timestamp_str=timestamp_str
-                    # )
-                    # # if stats_item:
-                    # #     observables_list.append(stats_item)
-        return observables_list
-
-
-    def log_access(self, user: Dict[str, Any], org_id: str, action: str, msg_key: str, status: str="success", details: Dict[str, Any] = None) -> None:
-        """Internal method to log access in DynamoDB single table design.
-        Args:
-            user (Dict[str, Any]): User information including user_id and request_id.
-            org_id (str): Organization ID (for PK - org-centric partitioning).
-            action (str): Action performed (e.g., 'SUBMIT', 'QUERY', 'DELETE').
-            msg_key (str): Message key for logging.
-            details (Dict[str, Any], optional): Additional audit details.
-
-        Table Design:
-            PK: ACTION#{action}#TS#{timestamp} - Partition by action
-            SK: ID#{msg_key} - Unique identifier for the log entry
-            GSI1: USER-based queries (user activity across orgs)
-            GSI2: ORGANISATION-based queries (action monitoring across orgs)
-        """
-
-        timestamp = datetime.now(timezone.utc).isoformat()
-        log_item = {
-            'PK': f"ACTION#{action}#TS#{timestamp}",
-            'SK': f"TS#{timestamp}#ID#{msg_key}",
-            'GSI1PK': f"USER#{user['user_id']}",
-            'GSI1SK': f"TS#{timestamp}",
-            'GSI2PK': f"ORG#{org_id}",
-            'GSI2SK': f"TS#{timestamp}",
-            'request_id': user["request_id"],
-            'status': status
-        }
-        if details:
-            log_item['details'] = details
-
-        self.audit_table.put_item(Item=log_item)
-
-    def deep_health_check(self) -> Dict[str, Any]:
-        """Perform a deep health check by querying DynamoDB tables"""
-        container_info = get_container_info()
-        
-        try:
-            # Get DynamoDB client and resource
-            
-            # List all tables
-            response = self.client.list_tables()
-            table_names = response.get('TableNames', [])
-                
-            # Get table references
-            # main_table = cfg["resource"].Table(current_cfg["table_name"])
-            # audit_table = cfg["resource"].Table(current_cfg["audit_table_name"])
-
-            # Get item counts from both tables
-            main_response = self.resource.Table(self.config["table_name"]).scan(Select='COUNT')
-            main_count = main_response.get('Count', 0)
-            main_status = "accessible"
-
-            audit_response = self.resource.Table(self.config["audit_table_name"]).scan(Select='COUNT')
-            audit_count = audit_response.get('Count', 0)
-            audit_status = "accessible"
-            
-            return {
-                "status": "connected",
-                "timestamp": datetime.now(timezone.utc).isoformat(),
-                "container": container_info,
-                "environment": {
-                    "DYNAMODB_TABLE": self.config["table_name"],
-                    "AUDIT_TABLE": self.config["audit_table_name"],
-                    "AWS_DEFAULT_REGION": self.config["region"],
-                    "ENDPOINT": self.config["endpoint"] or "AWS (no custom endpoint)",
-                    "FRANK_ENVIRONMENT": self.config.get("environment", "default")
-                },
-                "tables": {
-                    "available_tables": table_names,
-                    "main": {
-                        "name": self.config["table_name"],
-                        "status": main_status,
-                        "item_count": main_count
-                    },
-                    "audit": {
-                        "name": self.config["audit_table_name"],
-                        "status": audit_status,
-                        "item_count": audit_count
-                    }
-                }
-            }
-        except Exception as e:
-            self.logger.error(f"Database connection error: {str(e)}")
-            raise InternalError(detail=f"Database connection failed: {str(e)}")
-
-    def health_check(self) -> Dict[str, Any]:
-        """Perform a simple health check by listing tables"""
-        health = {
-            "status": "healthy",
-            "service": "frank-stage3",
-            "version": frank.__version__,
-            "timestamp": time.time(),
-            "profile": self.config.get("profile", "<not set>"),
-            "environment": self.config.get("environment", "<not set>"),
-            "region": self.config.get("region", "<not set>"),
-            "DYNAMODB_TABLE": self.config.get("table_name", "<not set>"),
-            "AUDIT_TABLE": self.config.get("audit_table_name", "<not set>"),
-            "ENDPOINT": self.config.get("endpoint", "<not set>"),
-            "CONTAINER_ID": os.getenv("CONTAINER_ID", "unknown"),
-            "filename": Path(__file__).name, # "frank_stage3.py"
-        }
-
-        try:
-            # ECS provides this environment variable automatically
-            metadata_uri = os.environ.get('ECS_CONTAINER_METADATA_URI_V4')
-            
-            if metadata_uri:
-                # Get container metadata
-                container_response = requests.get(metadata_uri)
-                container_data = container_response.json()
-                
-                # Get task metadata  
-                task_response = requests.get(f"{metadata_uri}/task")
-                task_data = task_response.json()
-                
-                health['container_metadata'] = {
-                    "container_id": container_data.get('DockerId', 'unknown'),
-                    "container_name": container_data.get('Name'),
-                    "task_arn": task_data.get('TaskARN'), 
-                    "task_definition": task_data.get('Family'),
-                    "cluster": task_data.get('Cluster'),
-                    "availability_zone": task_data.get('AvailabilityZone')
-                }
-        except Exception as e:
-            raise InternalError(detail=f"Error getting metadata: {e}")
-
-        return health
-
-    def _batch_write_items(self, items: List[Dict]) -> None:
-        """
-        Execute batch write operation with automatic retry for unprocessed items.
-
-        This method writes items to DynamoDB using the high-level batch_writer context manager
-        which automatically handles DynamoDB attribute formatting and retry logic for unprocessed items.
-
-        DynamoDB Limitations:
-            - Maximum 25 items per batch write operation.
-            - Each item must be under 400KB in size.
-
-        Practical Usage:
-            - Use for bulk ingestion of submissions, observables, and logs.
-            - Handles retry logic for unprocessed items, reducing risk of data loss during high-throughput operations.
-
-        Args:
-            items (List[Dict]): List of items to write to DynamoDB.
-
-        Raises:
-            FRANKStorageError: If the batch write operation fails and cannot be retried.
-        """
-        try:
-            # Use batch_writer for proper item formatting and retry handling
-            with self.table.batch_writer() as batch:
-                for item in items:
-                    batch.put_item(Item=item)
-                    
-            self.logger.debug(f"Successfully wrote {len(items)} items to DynamoDB")
-                    
-        except ClientError as e:
-            self.logger.error(f"Batch write failed: {e}")
-            raise FRANKStorageError(f"Batch write operation failed: {e}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error in batch write: {e}")
-            raise FRANKStorageError(f"Batch write operation failed: {e}")        
-
-    def hash_observable(self, observable_type: str, observable_value: str) -> str:
-        """
-        Create a SHA-256 hash for observable deduplication and quick lookups.
-
-        Args:
-            observable_type (str): The type/category of the observable (e.g., 'ip', 'domain').
-            observable_value (str): The value of the observable (e.g., '1.2.3.4', 'example.com').
-
-        Returns:
-            str: A SHA-256 hexadecimal hash string uniquely representing the observable.
-        """
-        combined = f"{observable_type}:{observable_value}".lower()
-        return hashlib.sha256(combined.encode()).hexdigest()
 
 # ====================================
 # Fastapi Application Factory
@@ -644,9 +179,9 @@ def create_app() -> FastAPI:
         """
         required_tier = AccessTier.CORE_MEMBER
         
-        if not user["access_tier"].check_access_level(required_tier):
+        if not user["access_level"].check_access_level(required_tier):
             raise UnauthorizedException(
-                detail=f"Insufficient access level. Required: {required_tier.value}, User has: {user['access_tier'].value}"
+                detail=f"Insufficient access level. Required: {required_tier.value}, User has: {user['access_level'].value}"
             )
         logger.info("Protected endpoint accessed with valid token")
         return {
@@ -656,13 +191,66 @@ def create_app() -> FastAPI:
             "user": user,
             "timestamp": time.time()
         }
-    
+
+    @app.get('/v1/submission/{submission_id}', response_model=Submission, response_model_exclude_none=True)
+    async def get_submission(
+        submission_id: str,
+        user: Dict[str, Any] = Depends(validator.get_current_user),
+    ):
+        """
+        Retrieve a specific submission by its ID.
+        Only Submitters can access the submission.
+        """
+        # Check permissions
+        required_tier = AccessTier.CORE_MEMBER
+        
+        if not user["access_level"].check_access_level(required_tier):
+            raise UnauthorizedException(
+                detail=f"Insufficient access level. Required: {required_tier.value}, User has: {user['access_level'].value}"
+            )
+
+        submission = get_server().get_submission_by_id(user, submission_id)
+
+        if not submission:
+            raise NotFoundException(f"Submission {submission_id} not found")
+
+        return submission
+
+    @app.get("/v1/sightings", response_model=SightingSearchResponse, response_model_exclude_none=True)
+    def get_sightings(
+        user: Dict[str, Any] = Depends(validator.get_current_user),
+        query: ObservationsSearchQuery = Depends()
+    ):
+        """
+        Get observable statistics and details for the platform.
+        """
+        # Check permissions
+        required_tier = AccessTier.CORE_MEMBER
+        
+        if not user["access_level"].check_access_level(required_tier):
+            raise UnauthorizedException(
+                detail=f"Insufficient access level. Required: {required_tier.value}, User has: {user['access_level'].value}"
+            )
+
+        # Build query parameters from model_dict
+        query_params = query.to_dict()
+
+        sightings = get_server().get_sightings_from_observations(
+                user=user, **query_params
+        )
+
+        return SightingSearchResponse(
+            total_results=len(sightings),
+            sightings=sightings
+        )
+
+
     # 3. Post Submission endpoint - submit threat intelligence
     @app.post("/v1/submission", response_model=SubmissionResponse)
     async def post_threat_submission(
         request: Request,
         submission_request: SubmissionRequest = Body(...),
-        user: Dict[str, Any] = Depends(validator.get_current_user)
+        user: Dict[str, Any] = Depends(validator.get_current_user),
     ):
         """
         Submit threat intelligence sighting to the platform.
@@ -674,29 +262,33 @@ def create_app() -> FastAPI:
         if not AccessTier.can_submit(user["access_level"]):
             raise UnauthorizedException(f"Insufficient access level {user['access_level']} for submission")
 
-        # Store in database
-        score_impact = get_client().submit_threat_intelligence(user, submission)
+        if submission.tlp_level == TLPLevel.RED:
+            raise UnauthorizedException("TLP RED submissions are not (yet) allowed via this endpoint")
+
+        # Submit submission
+        get_server().submit_threat_intelligence(user, submission)
 
         return SubmissionResponse(
             status="accepted",
             submission_id=submission.submission_id,
-            organization_id=submission.submitter.organisation_id if submission.submitter else None,
+            submitter_id=submission.submitter.organisation_id if submission.submitter else None,
             request_id=user["request_id"],
-            contribution_score_impact=score_impact,
-            processing_status="queued",
-            estimated_processing_time="1-2 minutes",
+            tlp_level=submission.tlp_level,
+            submission_level=submission.calc_submission_level(),
+            processing_status="processed",
+            estimated_processing_time="0 minutes",
         )
    
     # 4. Custom error endpoint - raises custom HTTPException extension
     @app.get("/v1/deep-health")
-    def database() -> Dict[str, Any]:
+    def database_health() -> Dict[str, Any]:
         """
         Database connection endpoint
 
         Returns:
             Dict containing deep health check information
         """
-        return get_client().deep_health_check()         
+        return get_server().deep_health_check()
 
     # Health check endpoint for monitoring
     @app.get("/v1/health")
@@ -707,7 +299,7 @@ def create_app() -> FastAPI:
         Returns:
             Dict containing health status information
         """
-        return get_client().health_check()   
+        return get_server().health_check()
 
     # Global exception handler for unhandled exceptions
     @app.exception_handler(Exception)
@@ -737,8 +329,6 @@ def create_app() -> FastAPI:
                 "timestamp": time.time()
             }
         )
-    
- 
     
     return app
 

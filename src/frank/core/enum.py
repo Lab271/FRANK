@@ -11,15 +11,16 @@ from enum import Enum
 
 class AccessTier(str, Enum):
     """Access tier enumeration with validation"""
+
     PUBLIC = "public"
-    OBSERVER = "observer" 
+    OBSERVER = "observer"
     CONTRIBUTOR = "contributor"
     PARTNER = "partner"
     CORE_MEMBER = "core_member"
 
     def can_submit(self) -> bool:
         """Check if this tier level can submit data."""
-        return self in {AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER}    
+        return self in {AccessTier.CONTRIBUTOR, AccessTier.PARTNER, AccessTier.CORE_MEMBER}
 
     def check_access_level(self, required_level) -> bool:
         """Check if user tier meets required access level using enum order."""
@@ -27,19 +28,19 @@ class AccessTier(str, Enum):
         return members.index(self) >= members.index(required_level)
 
     @classmethod
-    def from_string(cls, value: str, default: bool = False) -> 'AccessTier':
+    def from_string(cls, value: str, default: bool = False) -> "AccessTier":
         """Convert string (case-insensitive) to AccessTier enum value.
-        
+
         Args:
             value: String representation of access tier (case-insensitive)
             default: If True, return PUBLIC for invalid values instead of raising ValueError
-            
+
         Returns:
             AccessTier enum value
-            
+
         Raises:
             ValueError: If the string doesn't match any AccessTier value and default=False
-            
+
         Examples:
             >>> AccessTier.from_string("contributor")
             <AccessTier.CONTRIBUTOR: 'contributor'>
@@ -54,31 +55,32 @@ class AccessTier(str, Enum):
             if default:
                 return cls.PUBLIC
             raise ValueError(f"Expected string, got {type(value).__name__}")
-        
+
         # Normalize the input string: strip whitespace, lowercase, and replace spaces with underscores
         normalized = value.strip().lower().replace(" ", "_")
-        
+
         # Try to find matching enum value
         for member in cls:
             if member.value == normalized:
                 return member
-        
+
         # If no direct match, either return default or raise error
         if default:
             return cls.PUBLIC
-        
+
         valid_values = [member.value for member in cls]
         raise ValueError(f"'{value}' is not a valid AccessTier. Valid values are: {valid_values}")
 
 
 class ObservableType(str, Enum):
     """Network observable types"""
+
     IPV4 = "ipv4"
     IPV6 = "ipv6"
     DOMAIN = "domain"
     URL = "url"
     EMAIL = "email"
-    FILE_HASH = 'file_hash'
+    FILE_HASH = "file_hash"
     REGISTRY_KEY = "registry_key"
     MUTEX = "mutex"
     CERTIFICATE = "certificate"
@@ -86,16 +88,52 @@ class ObservableType(str, Enum):
 
 class SeverityLevel(str, Enum):
     """Threat severity levels"""
+
     LOW = "low"
-    MEDIUM = "medium"  
+    MEDIUM = "medium"
     HIGH = "high"
     CRITICAL = "critical"
 
 
 class TLPLevel(str, Enum):
     """Traffic Light Protocol (TLP) classification levels."""
+
     RED = "RED"
-    AMBER_PLUS = "AMBER+"
+    AMBER_PLUS = "AMBER+"  # DEFAULT
     AMBER = "AMBER"
     GREEN = "GREEN"
     CLEAR = "CLEAR"
+
+    @classmethod
+    def from_string(cls, value: str) -> "TLPLevel":
+        """Normalize TLP input to enum value (case-insensitive, forgiving on input)"""
+        if isinstance(value, cls):
+            return value
+        if value is None:
+            return None
+        normalized = str(value).strip().upper().replace(" ", "_").replace("-", "_")
+        # Accept common variants
+        tlp_map = {
+            "RED": cls.RED,
+            "AMBER": cls.AMBER,
+            "AMBER_PLUS": cls.AMBER_PLUS,
+            "AMBER+": cls.AMBER_PLUS,
+            "AMBERPLUS": cls.AMBER_PLUS,
+            "GREEN": cls.GREEN,
+            "WHITE": cls.CLEAR,
+            "CLEAR": cls.CLEAR,
+        }
+        if normalized in tlp_map:
+            return tlp_map[normalized]
+        raise ValueError(f"Unrecognized TLP level: {value}")
+
+
+class SubmissionLevel(str, Enum):
+    """Threat Submission complexity levels"""
+
+    MINIMAL = "Level 1 - minimal"  # Absolute Minimal – Bare Essentials Submission
+    STANDARD = "Level 2 - standard"  # Hit Target Region/Sector without organisational context
+    SPECIFIC = "Level 3 - specific"  # Detailed submission with organisational context
+    ENHANCED = "Level 4 - enhanced"  # Enhanced submission with additional metadata
+    SIGMA = "Level 5 - sigma"  # Sigma submission with advanced analytics
+    TTP = "Level 6 - ttp"  # TTP submission with tactical information

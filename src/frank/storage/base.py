@@ -25,8 +25,8 @@ class BaseFRANKDatabase(ABC):
     Supports both SQLite and DynamoDB implementations with consistent API.
     """
     
-    def __init__(self, connection_params: Dict[str, Any], logger: Optional[logging.Logger] = None):
-        self.connection_params = connection_params
+    def __init__(self, config: Dict[str, Any], logger: Optional[logging.Logger] = None):
+        self.config = config
         self.logger = logger
         self.initialize()
     
@@ -44,28 +44,16 @@ class BaseFRANKDatabase(ABC):
         pass
     
     @abstractmethod
-    def store_submission(self, submission: Submission) -> None:
+    def store_submission(self, user: Dict[str, Any], submission: Submission) -> None:
         """
         Store a complete submission in the database.
 
         Args:
+            user (Dict[str, Any]): User information including user ID.
             submission (Submission): The submission object to store.
 
         Returns:
             None
-        """
-        pass
-
-    @abstractmethod
-    def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
-        """
-        Insert or update organisation information in the database.
-
-        Args:
-            org_data (Dict[str, Any]): Dictionary containing organisation details.
-
-        Returns:
-            bool: True if the operation was successful, False otherwise.
         """
         pass
     
@@ -84,67 +72,91 @@ class BaseFRANKDatabase(ABC):
         """
         pass
     
-    @abstractmethod
-    def query_observables(self, org_id: str, observable_type: ObservableType = None,
-                         limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
-                         min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
-        """
-        Query observables with access level filtering and additional filters.
 
-        Args:
-            org_id (str): The organisation ID making the request.
-            observable_type (ObservableType, optional): Type of observable to filter (default: None).
-            limit (int, optional): Maximum number of results to return (default: 100).
-            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
-            min_confidence (float, optional): Minimum confidence value to include.
-            sectors (List[str], optional): List of allowed sectors to include.
-            days_back (int, optional): Only include observables seen in the last N days.
+    # @abstractmethod
+    # def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
+    #     """
+    #     Insert or update organisation information in the database.
 
-        Returns:
-            List[Observable]: List of filtered Observable objects matching the filters.
-        """
-        pass
+    #     Args:
+    #         org_data (Dict[str, Any]): Dictionary containing organisation details.
+
+    #     Returns:
+    #         bool: True if the operation was successful, False otherwise.
+    #     """
+    #     pass
+    # 
+
+    # @abstractmethod
+    # def query_observables(self, org_id: str, observable_type: ObservableType = None,
+    #                      limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
+    #                      min_confidence: float = None, sectors: List[str] = None, days_back: int = None) -> List[Observable]:
+    #     """
+    #     Query observables with access level filtering and additional filters.
+
+    #     Args:
+    #         org_id (str): The organisation ID making the request.
+    #         observable_type (ObservableType, optional): Type of observable to filter (default: None).
+    #         limit (int, optional): Maximum number of results to return (default: 100).
+    #         access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
+    #         min_confidence (float, optional): Minimum confidence value to include.
+    #         sectors (List[str], optional): List of allowed sectors to include.
+    #         days_back (int, optional): Only include observables seen in the last N days.
+
+    #     Returns:
+    #         List[Observable]: List of filtered Observable objects matching the filters.
+    #     """
+    #     pass
     
+    # @abstractmethod
+    # def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
+    #     """
+    #     Get platform statistics summary for an organisation.
+
+    #     Args:
+    #         org_id (str): The organisation ID to get statistics for.
+    #         days (int, optional): Number of days to include in the summary (default: 30).
+
+    #     Returns:
+    #         Dict[str, Any]: Dictionary containing summary statistics.
+    #     """
+    #     pass
+
+    # @abstractmethod
+    # def search_observables_by_value(self, org_id: str, search_value: str,
+    #                                access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
+    #     """
+    #     Search for observables by partial value match.
+
+    #     Args:
+    #         org_id (str): organisation performing the search
+    #         search_value (str): Value to search for (substring match)
+    #         access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR)
+
+    #     Returns:
+    #         List[Dict[str, Any]]: List of matching observables, filtered by access level
+    #     """
+    #     pass
+
     @abstractmethod
-    def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
-        """
-        Get platform statistics summary for an organisation.
-
-        Args:
-            org_id (str): The organisation ID to get statistics for.
-            days (int, optional): Number of days to include in the summary (default: 30).
-
-        Returns:
-            Dict[str, Any]: Dictionary containing summary statistics.
-        """
-        pass
-
-    @abstractmethod
-    def search_observables_by_value(self, org_id: str, search_value: str,
-                                   access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
-        """
-        Search for observables by partial value match.
-
-        Args:
-            org_id (str): organisation performing the search
-            search_value (str): Value to search for (substring match)
-            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR)
-
-        Returns:
-            List[Dict[str, Any]]: List of matching observables, filtered by access level
-        """
-        pass
-
-    @abstractmethod
-    def log_access(self, org_id: str, action: str, 
-                   resource_type: str = None, details: Dict[str, Any] = None) -> None:
+    def log_access(
+        self,
+        user: Dict[str, Any],
+        org_id: str,
+        action: str,
+        msg_key: str = None,
+        status: str = "success",
+        details: Dict[str, Any] = None,
+    ) -> None:
         """
         Log an access event for auditing purposes.
 
         Args:
+            user (Dict[str, Any]): User information including user ID.
             org_id (str): The organisation ID performing the action.
             action (str): The action performed (e.g., 'READ', 'WRITE').
-            resource_type (str, optional): Type of resource accessed (e.g., 'submission').
+            msg_key (str, optional): Message key for logging.
+            status (str, optional): Status of the action ('success' or 'failure').
             details (Dict[str, Any], optional): Additional details about the access event.
 
         Returns:
@@ -161,7 +173,7 @@ class BaseFRANKDatabase(ABC):
             Dict[str, Any]: Dictionary containing health status and metadata.
         """
         pass
-     
+
     def hash_observable(self, observable_type: str, observable_value: str) -> str:
         """
         Create a SHA-256 hash for observable deduplication and quick lookups.

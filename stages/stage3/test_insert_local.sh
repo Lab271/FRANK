@@ -50,26 +50,18 @@ if [ "$CORE_MEMBER_TOKEN" = "ERROR" ]; then
     exit 1
 fi
 
-
-echo "📋 Inserting submissions at $SIMPLE_API_URL"
-SUB_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
-SIGHT_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
+echo "📋 Inserting smallest submissions at $SIMPLE_API_URL"
+ORG_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
 # Test inserting a submission
 response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$SIMPLE_API_URL/v1/submission" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $CORE_MEMBER_TOKEN" \
     -d '{ 
         "submission": { 
-            "submission_id": "submission-'$SUB_UUID'", 
             "submitter": { 
-                "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", 
-                "access_level": "partner",
-                "organisation_type": "cyber_partner" 
+                "organisation_id": "identity--'$ORG_UUID'" 
             }, 
             "sighting": { 
-                "sighting_id": "sighting-'$SIGHT_UUID'", 
-                "timestamp": "2025-01-20T14:30:22Z", 
-                "confidence": 87, 
                 "observables": { 
                     "network": [ 
                         { 
@@ -94,3 +86,64 @@ else
     echo "❌ Error: Received HTTP status $http_code"
     cat /tmp/submission_response.json
 fi
+
+
+
+echo "📋 Inserting submissions at $SIMPLE_API_URL"
+SUB_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
+SIGHT_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
+# Test inserting a submission
+response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$SIMPLE_API_URL/v1/submission" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $CORE_MEMBER_TOKEN" \
+    -d '{ 
+        "submission": { 
+            "submission_id": "submission--'$SUB_UUID'", 
+            "submitter": { 
+                "organisation_id": "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff", 
+                "access_level": "partner",
+                "organisation_type": "cyber_partner" 
+            }, 
+            "sighting": { 
+                "hit_target": { 
+                    "region": "EU",
+                    "sector": "financial"
+                },
+                "sighting_id": "sighting--'$SIGHT_UUID'", 
+                "timestamp": "2025-01-20T14:30:22Z", 
+                "confidence": 87, 
+                "observables": { 
+                    "network": [ 
+                        { 
+                            "type": "ipv4", 
+                            "value": "185.220.102.45" 
+                        }, 
+                        { 
+                            "type": "domain", 
+                            "value": "secure-bank-verify.nl" 
+                        } 
+                    ] 
+                } 
+            } 
+        } 
+    }')
+http_code="${response: -3}"
+if [ "$http_code" -eq 200 ]; then
+    python -m json.tool < /tmp/submission_response.json
+
+    submission_id=$(jq -r '.submission_id' /tmp/submission_response.json)
+    rm -f /tmp/submission_response.json
+    echo "✅ Submission insert test PASSED"
+else
+    echo "❌ Error: Received HTTP status $http_code"
+    cat /tmp/submission_response.json
+fi
+
+curl -s -X GET "$SIMPLE_API_URL/v1/submission/$submission_id" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $CORE_MEMBER_TOKEN" | python -m json.tool 
+
+
+curl -s -X GET "$SIMPLE_API_URL/v1/sightings?observable=185.220.102.45" \
+    -H "Content-Type: application/json" \
+    -H "Authorization: Bearer $CORE_MEMBER_TOKEN" | python -m json.tool 

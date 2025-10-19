@@ -18,9 +18,9 @@ from typing import Dict, Any, List, Optional
 import boto3
 from botocore.exceptions import ClientError
 
-from frank.core.models import Submission, Observable
+from frank.core.models import Submission, Observable, Sighting
 from frank.core.enum import ObservableType, AccessTier
-from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from .exceptions import FRANKQueryError, FRANKStorageError
 from .base import BaseFRANKDatabase
 
 
@@ -83,57 +83,40 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             region: AWS region
             logger: Optional logger instance for logging
         """
-        self.name = 'dynamodb'
-        aws_access_key_id=self.connection_params.get("AWS_ACCESS_KEY_ID", "test")
-        aws_secret_access_key=self.connection_params.get("AWS_SECRET_ACCESS_KEY", "test")
+        if self.config["environment"] == "aws":
+            session = boto3.Session()
+            # Test credentials by calling STS to see what identity we're using
+            # sts_client = session.client('sts', region_name=region)
+            # identity = sts_client.get_caller_identity()
+            # AWS environment - explicitly use default credential chain
+            # This ensures we use ECS Task Role when available
+            # Force using default credentials (ECS Task Role, EC2 Instance Profile, etc.)
+            self.client = session.client('dynamodb', region_name=self.config["region"])
+            self.resource = session.resource('dynamodb', region_name=self.config["region"])
+        elif self.config["profile"]:
+            # LocalStack with AWS profile
+            session = boto3.Session(profile_name=self.config["profile"])
+            self.client = session.client("dynamodb", endpoint_url=self.config["endpoint"], region_name=self.config["region"])
+            self.resource = session.resource("dynamodb", endpoint_url=self.config["endpoint"], region_name=self.config["region"])
+        else:
+            # LocalStack with explicit credentials
+            self.client = boto3.client(
+                'dynamodb',
+                endpoint_url=self.config["endpoint"],
+                region_name=self.config["region"],
+                aws_access_key_id=self.config["aws_access_key_id"] or "test",
+                aws_secret_access_key=self.config["aws_secret_access_key"] or "test"
+            )
+            self.resource = boto3.resource(
+                'dynamodb',
+                endpoint_url=self.config["endpoint"],
+                region_name=self.config["region"],
+                aws_access_key_id=self.config["aws_access_key_id"] or "test",
+                aws_secret_access_key=self.config["aws_secret_access_key"] or "test"
+            )
 
-        self.table_name = self.connection_params.get("DYNAMODB_TABLE", "frank_table")
-        self.audit_table_name = self.connection_params.get("DYNAMODB_AUDIT_TABLE", "frank_audit")
-        self.region = self.connection_params.get("AWS_DEFAULT_REGION", "eu-west-1")
-        self.endpoint = self.connection_params.get("ENDPOINT", None)
-
-        self.logger.info(f"Connection to DynamoDB database")
-        self.logger.info(f"config {self.connection_params.items()}")
-
-        # Initialize AWS DynamoDB client
-        try:
-            if self.endpoint:
-                # LocalStack configuration with dummy credentials
-                self.dynamodb = boto3.resource(
-                    "dynamodb",
-                    endpoint_url=self.endpoint,
-                    region_name=self.region,
-                    aws_access_key_id=aws_access_key_id,
-                    aws_secret_access_key=aws_secret_access_key
-                )
-            else:
-                # Production AWS environment - use default credential chain (IAM roles, env vars, etc.)
-                # This automatically uses ECS Task Role when running on ECS
-                if aws_access_key_id and aws_access_key_id != "test":
-                    # Explicit credentials provided
-                    self.dynamodb = boto3.resource(
-                        "dynamodb",
-                        region_name=self.region,
-                        aws_access_key_id=aws_access_key_id,
-                        aws_secret_access_key=aws_secret_access_key
-                    )
-                else:
-                    # Use default AWS credential chain (ECS Task Role, EC2 Instance Profile, env vars)
-                    self.dynamodb = boto3.resource(
-                        "dynamodb",
-                        region_name=self.region
-                    )
-            
-        except Exception as e:
-            self.logger.error(f"Failed to initialize DynamoDB: {e}")
-            raise FRANKConnectionError(f"DynamoDB connection failed: {e}")
-
-        # Get a direct handle to the low-level client
-        self.client = self.dynamodb.meta.client
-
-        # Verify connection and create table if needed (LocalStack only)
-        self.table = self._ensure_table_exists(self.table_name)
-        self.audit_table = self._ensure_table_exists(self.audit_table_name)
+        self.table = self.resource.Table(self.config["table_name"])
+        self.audit_table = self.resource.Table(self.config["audit_table_name"])
 
 
     def _convert_floats_to_decimal(self, obj: Any) -> Any:
@@ -231,22 +214,21 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             except Exception as e:
                 self.logger.warning(f"Could not enable TTL for '{table_name}': {e}")
         return table
-   
-    def store_submission(self, submission: Submission) -> None:
+
+    def store_submission(self, user: Dict[str, Any], submission: Submission) -> None:
         """
         Store a complete submission in the DynamoDB database.
 
         Args:
+            user (Dict[str, Any]): User information performing the operation
             submission (Submission): Submission object containing all required fields and nested data.
 
         Returns:
-            bool: True if the operation succeeded, False if there was a FRANKStorageError.
+            None
 
         Raises:
             Logs error and returns False if batch write fails.
         """
-
-        # TODO: consider the TTL strategy for different entities
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
         
@@ -254,16 +236,11 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         submission_item = {
             'PK': f"SUB#{submission.submission_id}",
             'SK': 'SUB',
-            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
-            'GSI1SK': timestamp_str,
-            'EntityType': 'Submission',
-            'submission_id': submission.submission_id,
-            'submitter_id': submission.submitter.organisation_id,
-            'access_level': submission.submitter.access_level, # make sure this is explicitly stored
-            'submission_timestamp': timestamp_str,
-            'tlp_level': submission.tlp_level,
-            'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
-            'processed_at': timestamp_str,
+            'GSI1PK': f"SUBMITTER#{submission.submitter.organisation_id}",
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'submission',
+            'msg': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
+            'request_id': user["request_id"],
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }    
         items_to_write = [submission_item]
@@ -272,33 +249,15 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         org_item = {
             'PK': f"ORG#{submission.submitter.organisation_id}",
             'SK': 'ORG',
-            'GSI1PK': f"TIER#SUBMITTER",
-            'GSI1SK': timestamp_str,
-            'EntityType': 'organisation',
-            'organisation_id': submission.submitter.organisation_id,
-            'sector': submission.submitter.sector or 'cyber_partner',
-            'region': submission.submitter.region or 'unknown',
+            'GSI1PK': "OT#SUBMITTER",
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'organisation',
+            'msg': submission.submitter.model_dump(exclude_none=True, by_alias=True),
             'last_active': timestamp_str,
+            'request_id': user["request_id"],
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
         items_to_write.append(org_item)
-
-        # Store hit_target as another ORG# item if present
-        hit_target = getattr(submission, 'hit_target', None)
-        if hit_target and hasattr(hit_target, 'organisation_id'):
-            ht_org_item = {
-                'PK': f"ORG#{hit_target.organisation_id}",
-                'SK': 'ORG',
-                'GSI1PK': f"TIER#TARGET",
-                'GSI1SK': timestamp_str,
-                'EntityType': 'organisation',
-                'organisation_id': hit_target.organisation_id,
-                'sector': getattr(hit_target, 'sector', 'unknown'),
-                'region': getattr(hit_target, 'region', 'unknown'),
-                'last_active': timestamp_str,
-                'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-            }
-            items_to_write.append(ht_org_item)
 
         # Store sighting info as a separate item
         sighting = submission.sighting
@@ -306,21 +265,32 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'PK': f"SIGHT#{sighting.sighting_id}",
             'SK': f"SUB#{submission.submission_id}",
             'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
-            'GSI1SK': timestamp_str,
-            'EntityType': 'Sighting',
-            'sighting_id': sighting.sighting_id,
-            'submission_id': submission.submission_id,
-            'submitter_id': submission.submitter.organisation_id,
-            'confidence': sighting.confidence,
-            'severity': sighting.severity,
-            'timestamp': timestamp_str,
-            'sighting': sighting.model_dump(exclude_none=True, by_alias=True),
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'sighting',
+            'msg': sighting.model_dump(exclude_none=True, by_alias=True),
+            'request_id': user["request_id"],
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
         items_to_write.append(sighting_item)
 
+        # Store hit_target as another ORG# item if present
+        hit_target = getattr(sighting, 'hit_target', None)
+        if hit_target and getattr(hit_target, 'organisation_id', None) is not None:
+            ht_org_item = {
+                'PK': f"ORG#{hit_target.organisation_id}",
+                'SK': 'ORG',
+                'GSI1PK': "OT#TARGET",
+                'GSI1SK': f"TS#{timestamp_str}",
+                'entity_type': 'organisation',
+                'msg': hit_target.model_dump(exclude_none=True, by_alias=True),
+                'last_active': timestamp_str,
+                'request_id': user["request_id"],
+                'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+            }
+            items_to_write.append(ht_org_item)
+
         # Create observable index items
-        items_to_write.extend(self._extract_observables(submission))
+        items_to_write.extend(self._extract_observables(user, submission))
 
         self._batch_write_items(items_to_write)
 
@@ -360,7 +330,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error upserting organisation: {e}")
             return False
 
-    def _extract_observables(self, submission: Submission) -> List[Dict]:
+    def _extract_observables(self, user: Dict[str, Any], submission: Submission) -> List[Dict]:
         """
         Extract observables from a submission for DynamoDB indexing.
 
@@ -370,11 +340,15 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         Indexing Logic:
             - Each observable is hashed and stored as a separate item with PK 'OBS#{obs_hash}' and SK 'SUB#{submission_id}'.
-            - GSI1PK is set to 'TYPE#{obs_type}' for type-based queries.
-            - Additional metadata (confidence, severity, role, port, first_seen, etc.) is included for analytics.
+            - GSI1PK is set to 'TYPE#{obs_type}' for type-based queries (all observables).
+            - GSI1SK is set to 'TS#{timestamp}' for time-range queries.
+            - GSI2PK is set to 'SECTOR#{sector}' for sector-based analyst queries (SPARSE - only if hit_target exists).
+            - GSI2SK is set to 'REGION#{region}#ORG#{org_id}#TS#{timestamp}' for hierarchical filtering.
+            - Additional metadata (confidence, severity, sector, region) is flattened for efficient filtering.
             - TTL is set for long-term retention (default: ~7 years).
 
         Args:
+            user (Dict[str, Any]): User information including request_id.
             submission (Submission): The submission object containing sighting and observables.
 
         Returns:
@@ -382,60 +356,112 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
         Edge Cases & Notes:
             - Observables missing 'type' or 'value' are skipped.
+            - GSI2 is only populated if hit_target exists (sparse index pattern).
+            - If hit_target lacks sector/region, defaults to 'UNKNOWN'.
             - Handles empty or malformed observables gracefully.
             - Uses submission timestamp for time-based fields if not explicitly provided.
             - Designed for bulk ingestion and supports downstream analytics and deduplication.
 
         Example:
-            >>> items = self._extract_observables(submission)
+            >>> items = self._extract_observables(user, submission)
             >>> self._batch_write_items(items)
         """
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
-        
+
         observables_list = []
-        observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
-        
+        sighting = submission.sighting.model_dump(exclude_none=True, by_alias=True)
+        observables = sighting.get("observables", {})
+        hit_target = getattr(submission.sighting, 'hit_target', None)
+
+        # Extract hit_target metadata for GSI2 (sector/region analysis)
+        hit_target_org_id = getattr(hit_target, 'organisation_id', None) if hit_target else None
+        hit_target_sector = getattr(hit_target, 'sector', 'UNKNOWN') if hit_target else 'UNKNOWN'
+        hit_target_region = getattr(hit_target, 'region', 'UNKNOWN') if hit_target else 'UNKNOWN'
+
         for obs_category, obs_list in observables.items():
             if isinstance(obs_list, list):
                 for obs in obs_list:
                     if 'type' not in obs or 'value' not in obs:
                         continue
-                    
+
                     obs_hash = self.hash_observable(obs['type'], obs['value'])
-                    
-                    # Create observable index item
+
+                    # Create observable index item with analyst-focused GSI2
                     observable_index_item = {
-                        'PK': f"OBS#{obs_hash}",
-                        'SK': f"SUB#{submission.submission_id}",
-                        'GSI1PK': f"TYPE#{obs['type']}",
-                        'GSI1SK': timestamp_str,
-                        'EntityType': 'ObservableIndex',
-                        'observable_hash': obs_hash,
-                        'observable_type': obs['type'],
-                        'observable_value': obs['value'],
-                        'submission_id': submission.submission_id,
-                        'submitter_id': submission.submitter.organisation_id,
-                        'sighting_id': submission.sighting.sighting_id,
-                        'confidence': submission.sighting.confidence,
-                        'severity': submission.sighting.severity,
-                        'role': obs.get('role'),
-                        'port': obs.get('port'),
-                        'first_seen': obs.get('first_seen', timestamp).isoformat(),
-                        'timestamp': timestamp_str,
-                        'TTL': int((timestamp + timedelta(days=2555)).timestamp())
+                        "PK": f"OBS#{obs_hash}",
+                        "SK": f"SUB#{submission.submission_id}",
+                        # GSI1: Type-based queries with time sorting
+                        "GSI1PK": f"TYPE#{obs['type']}",
+                        "GSI1SK": f"TS#{timestamp_str}",
+                        # Entity metadata
+                        "entity_type": "observable",
+                        "observable_value": obs["value"],
+                        "submitter_id": f"SUBMITTER#{submission.submitter.organisation_id}",
+                        "msg": sighting,
+                        "request_id": user["request_id"],
+                        "TTL": int((timestamp + timedelta(days=2555)).timestamp()),
                     }
+
+                    # GSI2: Sector/region analysis (SPARSE - only if hit_target exists)
+                    if hit_target and hit_target_org_id:
+                        observable_index_item['GSI2PK'] = f"SECTOR#{hit_target_sector}"
+                        observable_index_item['GSI2SK'] = f"REGION#{hit_target_region}#ORG#{hit_target_org_id}#TS#{timestamp_str}"
+
+                        # Flatten hit_target metadata for filtering
+                        observable_index_item['hit_target_org_id'] = hit_target_org_id
+                        observable_index_item['hit_target_region'] = hit_target_region
+
                     observables_list.append(observable_index_item)
-                    stats_item = self._upsert_observable_statistics(
-                        obs_hash=obs_hash,
-                        obs_type=obs['type'],
-                        obs_value=obs['value'],
-                        hit_target_id=getattr(submission.hit_target, 'organisation_id', None),  # Safe access to hit_target
-                        sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
-                        timestamp_str=timestamp_str
-                    )
-                    # if stats_item:
-                    #     observables_list.append(stats_item)
+
+                    # Update statistics item for this observable
+                    # 1. Read current count
+                    response = self.table.get_item(Key={'PK': f'OBS#{obs_hash}', 'SK': 'STATS'})
+                    stats = response.get('Item', {})
+
+                    if stats:
+                        current_count = stats.get('count', 0)
+
+                        # 2. Update with new count-based GSI1SK
+                        new_count = current_count + 1
+                        self.table.update_item(
+                            Key={'PK': f'OBS#{obs_hash}', 'SK': 'STATS'},
+                            UpdateExpression='SET #count = :new_count, last_seen = :now, GSI1SK = :gsi1sk',
+                            ExpressionAttributeNames={
+                                '#count': 'count'
+                            },
+                            ExpressionAttributeValues={
+                                ':new_count': new_count,
+                                ':now': timestamp_str,
+                                ':gsi1sk': f'COUNT#{int(new_count):010d}#TS#{timestamp_str}'
+                            }
+                        )
+                    else:
+                        stats_item = {
+                            'PK': f'OBS#{obs_hash}',
+                            'SK': 'STATS',
+                            'GSI1PK': f'TYPE#{obs["type"]}',
+                            'GSI1SK': f'COUNT#0000000001#TS#{timestamp_str}',
+                            'entity_type': 'stats',
+                            'observable_value': obs["value"],
+                            'first_seen': timestamp_str,
+                            'last_seen': timestamp_str,
+                            'count': 1,
+                            'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
+                        }
+                        if stats_item:
+                          observables_list.append(stats_item)
+                        # self.table.put_item(Item=stats_item)
+                    # stats_item = self._upsert_observable_statistics(
+                    #     obs_hash=obs_hash,
+                    #     obs_type=obs['type'],
+                    #     obs_value=obs['value'],
+                    #     hit_target_id=getattr(submission.hit_target, 'organisation_id', None),  # Safe access to hit_target
+                    #     sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
+                    #     timestamp_str=timestamp_str
+                    # )
+                    # # if stats_item:
+                    # #     observables_list.append(stats_item)
         return observables_list
 
     def _upsert_observable_statistics(
@@ -468,7 +494,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         try:
             response = self.table.get_item(
-                Key={'PK': f'STAT#{obs_hash}', f'SK': 'STAT#{obs_type}'}
+                Key={'PK': f'STAT#{obs_hash}', 'SK': f'STAT#{obs_type}'}
             )
             item = response.get('Item')
         except ClientError as e:
@@ -527,17 +553,14 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
     def _batch_write_items(self, items: List[Dict]) -> None:
         """
-        Execute batch atomic write operation with automatic retry for unprocessed items.
+        Execute batch write operation with automatic retry for unprocessed items.
 
-        This method writes items to DynamoDB in chunks of 25 (the maximum allowed by DynamoDB's batch API).
-        It uses transact_write_items for atomicity, ensuring that either all items in a chunk are written or none are.
-        If any items are unprocessed (due to throttling, capacity limits, or other transient errors),
-        it will automatically retry those items until all are processed or a fatal error occurs.
+        This method writes items to DynamoDB using the high-level batch_writer context manager
+        which automatically handles DynamoDB attribute formatting and retry logic for unprocessed items.
 
         DynamoDB Limitations:
             - Maximum 25 items per batch write operation.
             - Each item must be under 400KB in size.
-            - Batch operations are not strictly transactional across chunks; atomicity is per chunk.
 
         Practical Usage:
             - Use for bulk ingestion of submissions, observables, and logs.
@@ -549,35 +572,21 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         Raises:
             FRANKStorageError: If the batch write operation fails and cannot be retried.
         """
-        # DynamoDB batch write limit is 25 items
-        chunk_size = 25
-        
-        for i in range(0, len(items), chunk_size):
-            chunk = items[i:i + chunk_size]
-            
-            transact_items = [
-                {'Put': 
-                    {
-                        'TableName': self.table_name,
-                        'Item': item
-                    }
-                }
-                for item in chunk
-            ]
-            
-            try:
-                response = self.client.transact_write_items(TransactItems=transact_items)
-                
-                # Handle unprocessed items
-                unprocessed_items = response.get('UnprocessedItems', {})
-                while unprocessed_items:
-                    self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
-                    response = self.client.transact_write_items(TransactItems=unprocessed_items)
-                    unprocessed_items = response.get('UnprocessedItems', {})
+        try:
+            # Use batch_writer for proper item formatting and retry handling
+            with self.table.batch_writer() as batch:
+                for item in items:
+                    batch.put_item(Item=item)
                     
-            except ClientError as e:
-                self.logger.error(f"Batch write failed: {e}")
-                raise FRANKStorageError(f"Batch write operation failed: {e}")
+            self.logger.debug(f"Successfully wrote {len(items)} items to DynamoDB")
+                    
+        except ClientError as e:
+            self.logger.error(f"Batch write failed: {e}")
+            raise FRANKStorageError(f"Batch write operation failed: {e}")
+        except Exception as e:
+            self.logger.error(f"Unexpected error in batch write: {e}")
+            raise FRANKStorageError(f"Batch write operation failed: {e}")        
+
 
 
     def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:
@@ -603,7 +612,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 return None
 
             # TODO: Transform to Submission directly
-            submission_dict = response['Item'].get('submission_data', None)
+            submission_dict = response['Item'].get('msg', None)
             return submission_dict
 
 
@@ -612,135 +621,215 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
 
 
-    def query_observables(self, user_id: str,  access_level: AccessTier = AccessTier.CONTRIBUTOR,
-                         observable_type: ObservableType = None, sectors: List[str] = None,
-                         min_confidence: float = None, 
-                         limit: int = 100, days_back: int = None) -> List[Observable]:
+    def list_sightings_from_observations(
+        self,
+        observable_value: Optional[str],
+        observable_type: Optional[ObservableType],
+        start_date: Optional[datetime],
+        end_date: Optional[datetime],
+        limit: int
+    ) -> List[Observable]:
         """
-        Query observables with access level filtering and additional filters.
-
-        This method retrieves observables from DynamoDB, supporting the following filters:
-        - observable_type: Only return observables of the specified type (uses GSI for efficient query).
-        - min_confidence: Only include observables with confidence >= min_confidence.
-        - sectors: Only include observables where the 'sector' field matches one of the provided sectors.
-        - days_back: Only include observables seen in the last N days (based on 'timestamp' field).
-        - limit: Maximum number of results to return.
-        - access_level: Apply access level filtering to each observable (see FRANK access tier model).
-
+        List observables by value and type within a date range.
         Args:
-            user_id (str): User ID making the request (used for access logging).
-            access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
-            observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
-            min_confidence (float, optional): Minimum confidence value to include.
-            limit (int, optional): Maximum number of results to return (default: 100).
-            sectors (List[str], optional): List of allowed sectors to include.
-            days_back (int, optional): Only include observables seen in the last N days.
-
+            observable_value (str): Observable value to search for (exact match).
+            observable_type (ObservableType): Type of the observable (e.g., ipv4, domain).
+            start_date (datetime): Start date for the search range.
+            end_date (datetime): End date for the search range.
+            limit (int): Maximum number of results to return.
         Returns:
-            List[Observable]: List of observables matching the filters, deduplicated by observable_hash.
-
-        Access events are logged for auditing, including all filter parameters.
+            List[Observable]: List of observables matching the criteria.
         """
+        from boto3.dynamodb.conditions import Key, Attr
         try:
-            # Query by observable_type using GSI1 if provided, else scan all ObservableIndex
+            key_expr = None
+            filter_expr = Attr('entity_type').eq('observable')
+
+            # Build KeyConditionExpression for GSI1
             if observable_type:
-                response = self.table.query(
+                gsi1pk = f"TYPE#{observable_type.value if hasattr(observable_type, 'value') else str(observable_type)}"
+                key_expr = Key('GSI1PK').eq(gsi1pk)
+                if start_date or end_date:
+                    # GSI1SK is TS#YYYY-MM-DDTHH:MM
+                    if start_date and end_date:
+                        key_expr = key_expr & Key('GSI1SK').between(
+                            f"TS#{start_date.isoformat()}", f"TS#{end_date.isoformat()}"
+                        )
+                    elif start_date:
+                        key_expr = key_expr & Key('GSI1SK').gte(f"TS#{start_date.isoformat()}")
+                    elif end_date:
+                        key_expr = key_expr & Key('GSI1SK').lte(f"TS#{end_date.isoformat()}")
+
+            # Add observable_value filter if set
+            if observable_value:
+                filter_expr = filter_expr & Attr('observable_value').eq(observable_value)
+
+            # Build ExpressionAttributeValues only for used values
+            expr_attr_vals = {}
+            filter_expr_str = str(filter_expr)
+            if 'entity_type' in filter_expr_str:
+                expr_attr_vals[':entity_type'] = 'observable'
+            if observable_value and ':observable_value' in filter_expr_str:
+                expr_attr_vals[':observable_value'] = observable_value
+
+            # Query if we have a key_expr (GSI1), else scan
+            if key_expr:
+                query_args = dict(
                     IndexName='GSI1',
-                    KeyConditionExpression='GSI1PK = :type_key',
-                    FilterExpression='EntityType = :entity_type',
-                    ExpressionAttributeValues={
-                        ':type_key': f"TYPE#{observable_type.value if hasattr(observable_type, 'value') else str(observable_type)}",
-                        ':entity_type': 'ObservableIndex'
-                    },
+                    KeyConditionExpression=key_expr,
+                    FilterExpression=filter_expr,
                     Limit=limit,
                     ScanIndexForward=False
                 )
+                if expr_attr_vals:
+                    query_args['ExpressionAttributeValues'] = expr_attr_vals
+                response = self.table.query(**query_args)
             else:
-                response = self.table.scan(
-                    FilterExpression='EntityType = :entity_type',
-                    ExpressionAttributeValues={':entity_type': 'ObservableIndex'},
+                # Fallback: scan with filters (less efficient)
+                scan_args = dict(
+                    FilterExpression=filter_expr,
                     Limit=limit
                 )
-
-            # Aggregate and deduplicate by observable_hash
-            observables_map = {}
-            cutoff = None
-            if days_back:
-                cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
-
-            for item in response.get('Items', []):
-                item = self._convert_decimals_to_float(item)
-
-                # Filter by min_confidence
-                if min_confidence is not None and item.get('confidence', 0) < min_confidence:
-                    continue
-
-                # Filter by sector
-                if sectors:
-                    sector = item.get('sector')
-                    if sector not in sectors:
-                        continue
-
-                # Filter by days_back
-                if cutoff:
-                    ts = item.get('timestamp')
-                    try:
-                        item_time = datetime.fromisoformat(ts)
-                    except Exception:
-                        item_time = None
-                    if not item_time or item_time < cutoff:
-                        continue
-
-                obs_hash = item.get('observable_hash')
-                if not obs_hash:
-                    continue
-
-                # Initialize aggregation entry
-                if obs_hash not in observables_map:
-                    observables_map[obs_hash] = {
-                        'observable_hash': obs_hash,
-                        'observable_type': item.get('observable_type'),
-                        'observable_value': item.get('observable_value'),
-                        'total_sightings': 0,
-                        'first_seen': item.get('timestamp'),
-                        'last_seen': item.get('timestamp'),
-                        'unique_organisations': set(),
-                        'confidence_values': []
-                    }
-
-                obs_entry = observables_map[obs_hash]
-                obs_entry['total_sightings'] += 1
-                org_id_val = item.get('submitter_org_id')
-                if org_id_val:
-                    obs_entry['unique_organisations'].add(org_id_val)
-                obs_entry['confidence_values'].append(item.get('confidence', 0))
-
-                # Update time bounds
-                ts = item.get('timestamp')
-                if ts:
-                    if obs_entry['first_seen'] is None or ts < obs_entry['first_seen']:
-                        obs_entry['first_seen'] = ts
-                    if obs_entry['last_seen'] is None or ts > obs_entry['last_seen']:
-                        obs_entry['last_seen'] = ts
-
-            # Convert to final format
-            results = []
-            for obs_hash, obs_data in observables_map.items():
-                obs_data['unique_organisations'] = len(obs_data['unique_organisations'])
-                obs_data['avg_confidence'] = (
-                    sum(obs_data['confidence_values']) / len(obs_data['confidence_values'])
-                    if obs_data['confidence_values'] else 0
-                )
-                del obs_data['confidence_values']
-
-                # Apply access level filtering if needed
-                filtered_obs = self._filter_observable_by_access_level(obs_data, access_level)
-                results.append(filtered_obs)
-
-            return results[:limit]
+                if expr_attr_vals:
+                    scan_args['ExpressionAttributeValues'] = expr_attr_vals
+                response = self.table.scan(**scan_args)
         except ClientError as e:
             self.logger.error(f"Error querying observables: {e}")
             raise FRANKQueryError(f"Failed to query observables: {e}")
+        sightings = []
+        for item in response.get('Items', []):
+            sightings.append(Sighting(**item.get('msg', {})))
+        return sightings
+
+    # def query_observables(self, user_id: str,  access_level: AccessTier = AccessTier.CONTRIBUTOR,
+    #                      observable_type: ObservableType = None, sectors: List[str] = None,
+    #                      min_confidence: float = None, 
+    #                      limit: int = 100, days_back: int = None) -> List[Observable]:
+    #     """
+    #     Query observables with access level filtering and additional filters.
+
+    #     This method retrieves observables from DynamoDB, supporting the following filters:
+    #     - observable_type: Only return observables of the specified type (uses GSI for efficient query).
+    #     - min_confidence: Only include observables with confidence >= min_confidence.
+    #     - sectors: Only include observables where the 'sector' field matches one of the provided sectors.
+    #     - days_back: Only include observables seen in the last N days (based on 'timestamp' field).
+    #     - limit: Maximum number of results to return.
+    #     - access_level: Apply access level filtering to each observable (see FRANK access tier model).
+
+    #     Args:
+    #         user_id (str): User ID making the request (used for access logging).
+    #         access_level (AccessTier, optional): Access level for filtering (default: CONTRIBUTOR).
+    #         observable_type (ObservableType, optional): Filter by observable type (ipv4, domain, etc.).
+    #         min_confidence (float, optional): Minimum confidence value to include.
+    #         limit (int, optional): Maximum number of results to return (default: 100).
+    #         sectors (List[str], optional): List of allowed sectors to include.
+    #         days_back (int, optional): Only include observables seen in the last N days.
+
+    #     Returns:
+    #         List[Observable]: List of observables matching the filters, deduplicated by observable_hash.
+
+    #     Access events are logged for auditing, including all filter parameters.
+    #     """
+    #     try:
+    #         # Query by observable_type using GSI1 if provided, else scan all ObservableIndex
+    #         if observable_type:
+    #             response = self.table.query(
+    #                 IndexName='GSI1',
+    #                 KeyConditionExpression='GSI1PK = :type_key',
+    #                 FilterExpression='EntityType = :entity_type',
+    #                 ExpressionAttributeValues={
+    #                     ':type_key': f"TYPE#{observable_type.value if hasattr(observable_type, 'value') else str(observable_type)}",
+    #                     ':entity_type': 'ObservableIndex'
+    #                 },
+    #                 Limit=limit,
+    #                 ScanIndexForward=False
+    #             )
+    #         else:
+    #             response = self.table.scan(
+    #                 FilterExpression='EntityType = :entity_type',
+    #                 ExpressionAttributeValues={':entity_type': 'ObservableIndex'},
+    #                 Limit=limit
+    #             )
+
+    #         # Aggregate and deduplicate by observable_hash
+    #         observables_map = {}
+    #         cutoff = None
+    #         if days_back:
+    #             cutoff = datetime.now(timezone.utc) - timedelta(days=days_back)
+
+    #         for item in response.get('Items', []):
+    #             item = self._convert_decimals_to_float(item)
+
+    #             # Filter by min_confidence
+    #             if min_confidence is not None and item.get('confidence', 0) < min_confidence:
+    #                 continue
+
+    #             # Filter by sector
+    #             if sectors:
+    #                 sector = item.get('sector')
+    #                 if sector not in sectors:
+    #                     continue
+
+    #             # Filter by days_back
+    #             if cutoff:
+    #                 ts = item.get('timestamp')
+    #                 try:
+    #                     item_time = datetime.fromisoformat(ts)
+    #                 except Exception:
+    #                     item_time = None
+    #                 if not item_time or item_time < cutoff:
+    #                     continue
+
+    #             obs_hash = item.get('observable_hash')
+    #             if not obs_hash:
+    #                 continue
+
+    #             # Initialize aggregation entry
+    #             if obs_hash not in observables_map:
+    #                 observables_map[obs_hash] = {
+    #                     'observable_hash': obs_hash,
+    #                     'observable_type': item.get('observable_type'),
+    #                     'observable_value': item.get('observable_value'),
+    #                     'total_sightings': 0,
+    #                     'first_seen': item.get('timestamp'),
+    #                     'last_seen': item.get('timestamp'),
+    #                     'unique_organisations': set(),
+    #                     'confidence_values': []
+    #                 }
+
+    #             obs_entry = observables_map[obs_hash]
+    #             obs_entry['total_sightings'] += 1
+    #             org_id_val = item.get('submitter_org_id')
+    #             if org_id_val:
+    #                 obs_entry['unique_organisations'].add(org_id_val)
+    #             obs_entry['confidence_values'].append(item.get('confidence', 0))
+
+    #             # Update time bounds
+    #             ts = item.get('timestamp')
+    #             if ts:
+    #                 if obs_entry['first_seen'] is None or ts < obs_entry['first_seen']:
+    #                     obs_entry['first_seen'] = ts
+    #                 if obs_entry['last_seen'] is None or ts > obs_entry['last_seen']:
+    #                     obs_entry['last_seen'] = ts
+
+    #         # Convert to final format
+    #         results = []
+    #         for obs_hash, obs_data in observables_map.items():
+    #             obs_data['unique_organisations'] = len(obs_data['unique_organisations'])
+    #             obs_data['avg_confidence'] = (
+    #                 sum(obs_data['confidence_values']) / len(obs_data['confidence_values'])
+    #                 if obs_data['confidence_values'] else 0
+    #             )
+    #             del obs_data['confidence_values']
+
+    #             # Apply access level filtering if needed
+    #             filtered_obs = self._filter_observable_by_access_level(obs_data, access_level)
+    #             results.append(filtered_obs)
+
+    #         return results[:limit]
+    #     except ClientError as e:
+    #         self.logger.error(f"Error querying observables: {e}")
+    #         raise FRANKQueryError(f"Failed to query observables: {e}")
 
 
     def search_observables_by_value(self, org_id: str, search_value: str,
@@ -892,107 +981,91 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             }
 
     def health_check(self) -> Dict[str, Any]:
-        """Perform a health check on the database."""
-        return {
-            'status': 'healthy',
-            'type': 'dynamodb',
-            'database_table': self.table_name,
-            'database_region': self.region,
-        }
+        """Perform health check on DynamoDB tables"""
 
-    def log_access(self, org_id: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
-        """Internal method to log access in DynamoDB single table design."""
+        # List all tables
+        response = self.client.list_tables()
+        table_names = response.get('TableNames', [])
+                
+
+        # Get item counts from both tables
+        main_response = self.resource.Table(self.config["table_name"]).scan(Select='COUNT')
+        main_count = main_response.get('Count', 0)
+        main_status = "accessible"
+
+        audit_response = self.resource.Table(self.config["audit_table_name"]).scan(Select='COUNT')
+        audit_count = audit_response.get('Count', 0)
+        audit_status = "accessible"
+            
+        status = {
+            "status": "ok" if main_status == "accessible" and audit_status == "accessible" else "degraded", 
+            "database_type": "dynamodb",
+            "tables": {
+                "available_tables": table_names,
+                "main": {
+                    "name": self.config["table_name"],
+                    "status": main_status,
+                    "item_count": main_count
+                },
+                "audit": {
+                    "name": self.config["audit_table_name"],
+                    "status": audit_status,
+                    "item_count": audit_count
+                }
+            },
+            "database_cfg":{                
+                "DYNAMODB_TABLE": self.config["table_name"],
+                "AUDIT_TABLE": self.config["audit_table_name"],
+                "AWS_REGION": self.config.get("aws_region")
+            }
+        }
+        if self.config.get("environment") != 'aws':
+            status["database_cfg"]["endpoint"] = self.config.get("endpoint")
+            if self.config.get("profile"):
+                status["database_cfg"]["profile"] = self.config.get("profile")
+        return status
+
+    def log_access(
+        self,
+        user: Dict[str, Any],
+        org_id: str,
+        action: str,
+        msg_key: str,
+        status: str = "success",
+        details: Dict[str, Any] = None,
+    ) -> None:
+        """
+        Internal method to log access in DynamoDB single table design.
+        Args:
+            user (Dict[str, Any]): User information including user_id and request_id.
+            org_id (str): Organization ID (for PK - org-centric partitioning).
+            action (str): Action performed (e.g., 'SUBMIT', 'QUERY', 'DELETE').
+            msg_key (str): Message key for logging.
+            status (str): Status of the action ('success' or 'failure').
+            details (Dict[str, Any], optional): Additional audit details.
+
+        Table Design:
+            PK: ACTION#{action}#TS#{timestamp} - Partition by action
+            SK: ID#{msg_key} - Unique identifier for the log entry
+            GSI1: USER-based queries (user activity across orgs)
+            GSI2: ORGANISATION-based queries (action monitoring across orgs)
+        """
+
         timestamp = datetime.now(timezone.utc).isoformat()
         log_item = {
-            'PK': f"LOG#{org_id}",
-            'SK': f"LOG#{timestamp}",
-            'GSI1PK': f"ACTION#{action}",
-            'GSI1SK': timestamp,
-            'EntityType': 'AccessLog',
-            'organisation_id': org_id,
-            'action': action,
-            'resource_type': resource_type,
-            'timestamp': timestamp,
-            'TTL': int((datetime.now(timezone.utc) + timedelta(days=90)).timestamp())
+            "PK": f"ACTION#{action}#TS#{timestamp}",
+            "SK": f"TS#{timestamp}#ID#{msg_key}",
+            "GSI1PK": f"USER#{user['user_id']}",
+            "GSI1SK": f"TS#{timestamp}",
+            "GSI2PK": f"ORG#{org_id}",
+            "GSI2SK": f"TS#{timestamp}",
+            "request_id": user["request_id"],
+            "status": status,
         }
         if details:
-            log_item['details'] = details
-        try:
-            self.audit_table.put_item(Item=log_item)
-        except ClientError as e:
-            self.logger.error(f"Error logging access: {e}")
-            raise FRANKQueryError(f"Failed to log access: {e}")
+            log_item["details"] = details
 
-#     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
-#         """
-#         Get organisation information using DynamoDB query.
-        
-#         Args:
-#             org_id: organisation ID to look up
-            
-#         Returns:
-#             organisation data or None if not found
-#         """
-#         try:
-#             response = self.table.get_item(
-#                 Key={
-#                     'PK': f"ORG#{org_id}",
-#                     'SK': 'ORG'
-#                 }
-#             )
-            
-#             if 'Item' not in response:
-#                 return None
-            
-#             item = self._convert_decimals_to_float(response['Item'])
-            
-#             # Remove DynamoDB-specific fields
-#             org_data = {k: v for k, v in item.items() 
-#                        if k not in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'EntityType', 'TTL']}
-            
-#             return org_data
-            
-#         except ClientError as e:
-#             self.logger.error(f"Error getting organisation info: {e}")
-#             return None
-
-#     def cleanup_old_data(self, days: int = 90) -> int:
-#         """
-#         Clean up old data using TTL (Time To Live) feature.
-#         DynamoDB automatically handles cleanup based on TTL values.
-        
-#         Args:
-#             days: This parameter is maintained for API compatibility but 
-#                   actual cleanup is handled by DynamoDB TTL
-            
-#         Returns:
-#             Number of records that would be eligible for cleanup
-#         """
-#         try:
-#             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            
-#             # Count items that would be eligible for cleanup
-#             # In production, DynamoDB TTL handles actual deletion
-#             response = self.table.scan(
-#                 FilterExpression='EntityType IN (:sub, :log) AND #ts < :cutoff',
-#                 ExpressionAttributeNames={
-#                     '#ts': 'timestamp'
-#                 },
-#                 ExpressionAttributeValues={
-#                     ':sub': 'Submission',
-#                     ':log': 'AccessLog',
-#                     ':cutoff': cutoff_date.isoformat()
-#                 },
-#                 Select='COUNT'
-#             )
-            
-#             count = response.get('Count', 0)
-#             self.logger.info(f"Found {count} items eligible for cleanup (handled by DynamoDB TTL)")
-#             return count
-            
-#         except ClientError as e:
-#             self.logger.error(f"Error during cleanup check: {e}")
-#             return 0
+        self.audit_table.put_item(Item=log_item)
 
 
 #     def update_observable_statistics(self, obs_hash: str, increment_count: int = 1) -> None:
@@ -1019,19 +1092,13 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #             self.logger.warning(f"Failed to update observable statistics: {e}")
 
 # Factory function for easy instantiation
-def create_dynamodb_database(table_name: str = "frank_table", 
-                             audit_table_name: str = "frank_audit",
-                            region: str = "eu-west-1",
-                            endpoint: str = "http://localstack:4566",
-                            aws_access_key_id = "test",
-                            aws_secret_access_key = "test",
+def create_dynamodb_database(config: Dict[str, Any] = None,
                             logger: Optional[logging.Logger] = None) -> DynamoDBFRANKDatabase:
     """
     Factory function to create a DynamoDBFRANKDatabase instance.
     
     Args:
-        table_name: DynamoDB table name
-        region: AWS region
+        config: Configuration dictionary with keys
         logger: provide external logger
     Returns:
         Configured DynamoDBFRANKDatabase instance
@@ -1041,12 +1108,4 @@ def create_dynamodb_database(table_name: str = "frank_table",
         logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
         logger = logging.getLogger(__name__)
 
-    config = {
-        "DYNAMODB_TABLE": table_name,
-        "AUDIT_TABLE": audit_table_name,
-        "ENDPOINT": endpoint,
-        "AWS_ACCESS_KEY_ID": aws_access_key_id, 
-        "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
-        "AWS_DEFAULT_REGION": region
-    }
-    return DynamoDBFRANKDatabase(connection_params=config, logger=logger)
+    return DynamoDBFRANKDatabase(config=config, logger=logger)

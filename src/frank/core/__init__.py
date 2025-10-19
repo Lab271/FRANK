@@ -19,5 +19,5 @@ IDENTIFIER_NAMESPACE = uuid.NAMESPACE_OID     # OID namespace UUID
 def gen_id(type_prefix: str, value: str) -> str:
     """Generate a unique identifier for FRANK entities."""
     namespace = IDENTIFIER_NAMESPACE
-    name = f"{type_prefix}-{value}"  
-    return f"{type_prefix}-{str(uuid.uuid5(namespace, name))}"
+    name = f"{type_prefix}--{value}"  
+    return f"{type_prefix}--{str(uuid.uuid5(namespace, name))}"

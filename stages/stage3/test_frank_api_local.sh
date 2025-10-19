@@ -104,3 +104,5 @@ test_endpoint_access "/protected" "observer" "$OBSERVER_TOKEN" "403"
 test_endpoint_access "/protected" "contributor" "$CONTRIBUTOR_TOKEN" "403"
 test_endpoint_access "/protected" "partner" "$PARTNER_TOKEN" "403"
 test_endpoint_access "/protected" "core_member" "$CORE_MEMBER_TOKEN" "200"
+
+echo "✅ Stage 3 API Service Local Test Completed"

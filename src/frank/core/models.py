@@ -21,7 +21,7 @@ from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
 import uuid
 
-from frank.core.enum import ObservableType, AccessTier, SeverityLevel
+from frank.core.enum import ObservableType, AccessTier, SeverityLevel, TLPLevel, SubmissionLevel
 from frank import __version__
 
 
@@ -87,7 +87,10 @@ class Observable(BaseModel):
 
 class Submitter(BaseModel):
     """
-    Submitting organisation with validation and auto-generation.
+    Submitting organisation with required identity.
+
+    The organisation_id is required and must be provided by the submitter.
+    This is separate from AuthN/Z - the message must identify the submitting organization.
     """
 
     model_config = ConfigDict(
@@ -95,7 +98,7 @@ class Submitter(BaseModel):
         use_enum_values=True,
     )
 
-    organisation_id: Optional[str] = Field(None, description="STIX identity for organisation")
+    organisation_id: str = Field(..., description="STIX identity for organisation (required)")
     access_level: Optional[AccessTier] = Field(None, description="Access tier level")
     organisation_type: Optional[str] = Field(None, description="organisation type")
 
@@ -103,13 +106,6 @@ class Submitter(BaseModel):
     sector: Optional[str] = Field(None, description="Industry sector")
     region: Optional[str] = Field(None, description="Geographic region")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
-
-    @model_validator(mode="after")
-    def ensure_org_id(self):
-        """Ensure organisation ID is always set"""
-        if not self.organisation_id:
-            self.organisation_id = f"identity--{uuid.uuid4()}"
-        return self
 
     @field_validator("sector")
     @classmethod
@@ -135,9 +131,9 @@ class Submitter(BaseModel):
         return sector_mappings.get(normalized, normalized)
 
     @classmethod
-    def create(cls, access_level: AccessTier = None, sector: str = None, region: str = None):
-        """Factory method for creating submitters"""
-        return cls(access_level=access_level, sector=sector, region=region)
+    def create(cls, organisation_id: str, access_level: AccessTier = None, sector: str = None, region: str = None):
+        """Factory method for creating submitters - organisation_id is required"""
+        return cls(organisation_id=organisation_id, access_level=access_level, sector=sector, region=region)
 
 
 class HitTarget(BaseModel):
@@ -154,25 +150,10 @@ class HitTarget(BaseModel):
     sector: str = Field(..., min_length=1, description="Industry sector of target")
 
     # Optional metadata
-    organisation_type: Optional[str] = Field(default="customer", description="organisation type")
+    organisation_type: Optional[str] = Field(None, description="organisation type")
     organisation_size: Optional[str] = Field(None, description="organisation size category")
     region: Optional[str] = Field(None, description="Geographic region")
     anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
-
-    @field_validator("organisation_id", mode="before")
-    @classmethod
-    def generate_org_id(cls, v):
-        """Generate target identity if not provided"""
-        if v is None or v == "":
-            return f"identity--{uuid.uuid4()}"
-        return v
-
-    @model_validator(mode="after")
-    def ensure_org_id(self):
-        """Ensure organisation ID is always set"""
-        if not self.organisation_id:
-            self.organisation_id = f"identity--{uuid.uuid4()}"
-        return self
 
     @field_validator("organisation_size")
     @classmethod
@@ -197,9 +178,9 @@ class HitTarget(BaseModel):
         return size_mappings.get(normalized, v)
 
     @classmethod
-    def create(cls, sector: str, organisation_size: str = None, region: str = None):
+    def create(cls, sector: str, region: str = None, organisation_size: str = None):
         """Factory method for creating hit targets"""
-        return cls(sector=sector, organisation_size=organisation_size, region=region)
+        return cls(sector=sector, region=region, organisation_size=organisation_size)
 
 
 class Observables(BaseModel):
@@ -267,6 +248,7 @@ class ThreatContext(BaseModel):
     )
     
     campaign: Optional[Campaign] = Field(None, description="Campaign information")
+    severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
     mitre_attack: Optional[Dict[str, Any]] = Field(None, description="MITRE ATT&CK mapping")
     malware_family: Optional[Dict[str, Any]] = Field(None, description="Malware family data")
 
@@ -299,14 +281,13 @@ class Sighting(BaseModel):
 
     sighting_id: Optional[str] = Field(None, description="STIX sighting identifier")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="When threat was observed")
-    confidence: int = Field(69, ge=0, le=100, description="Confidence score 0-100")
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organisation")
     observation_count: int = Field(default=1, ge=1, description="Number of observations")
     observables: Optional[Observables] = Field(None, description="Threat observables")
-
-    # Optional extended threat metadata
-    severity: Optional[SeverityLevel] = Field(None, description="Threat severity level")
     first_observed: Optional[datetime] = Field(None, description="First observation time")
     last_observed: Optional[datetime] = Field(None, description="Last observation time")
+
+    # Optional extended threat metadata
     sigma_detection: Optional[SigmaDetection] = Field(None, description="SIGMA detection data")
     threat_context: Optional[ThreatContext] = Field(None, description="Threat context")
     impact: Optional[Impact] = Field(None, description="Impact assessment")
@@ -382,18 +363,20 @@ class Submission(BaseModel):
     format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc),  description="Submission timestamp")
 
-    # Optional metadata - be forgiving on input
-    submitter: Optional[Submitter] = Field(None, description="Submitting organisation")
+    # Submitter is required - separate from AuthN/Z, the message must identify the submitting organization
+    submitter: Submitter = Field(..., description="Submitting organisation")
     submission_method: Optional[str] = Field(default="api", description="Submission method")
     processing_notes: Optional[str] = Field(None, description="Processing notes")
 
-    sighting: Optional[Sighting] = Field(None, description="Sighting details")
-    # TODO: Move this to sighting?
-    hit_target: Optional[HitTarget] = Field(None, description="Affected organisation")
-    tlp_level: Optional[str] = Field("GREEN", description="TLP classification")
-    confidence: Optional[int] = Field(None, ge=0, le=100, description="Overall confidence level")
-    severity: Optional[str] = Field(None, description="Threat severity")
+    sighting: Sighting = Field(..., description="Sighting details")
+    tlp_level: Optional[TLPLevel] = Field(default=TLPLevel.AMBER_PLUS, description="TLP classification")
 
+
+    @field_validator("tlp_level", mode="before")
+    @classmethod
+    def normalize_tlp_level(cls, v):
+        """Normalize TLP level input using TLPLevel.from_string"""
+        return TLPLevel.from_string(v)
 
     @field_serializer("timestamp", when_used="always")
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
@@ -410,11 +393,11 @@ class Submission(BaseModel):
             self.submission_id = f"submission--{uuid.uuid4()}"
 
         # Ensure submitter and target are different organisations
-        if not self.hit_target:
+        if not self.sighting.hit_target:
             return self
 
         submitter_id = self.submitter.organisation_id
-        target_id = self.hit_target.organisation_id
+        target_id = self.sighting.hit_target.organisation_id
 
         if submitter_id and target_id and submitter_id == target_id:
             raise ValueError("Submitter and hit_target cannot be the same organisation")
@@ -436,6 +419,24 @@ class Submission(BaseModel):
         return json.dumps(data)
 
     # TODO: add from_yaml/from_json classmethods
+
+    def calc_submission_level(self) -> SubmissionLevel:
+        """Simple impact scoring based on submission complexity"""
+        level = SubmissionLevel.MINIMAL
+
+        sighting = self.sighting
+        if sighting:
+            if sighting.impact or sighting.threat_context:
+                level = SubmissionLevel.TTP
+            elif sighting.sigma_detection:
+                level = SubmissionLevel.SIGMA
+            elif hasattr(sighting.hit_target, 'organisation_id') and sighting.hit_target.organisation_id:
+                level = SubmissionLevel.SPECIFIC
+            elif sighting.hit_target and sighting.hit_target.sector:
+                level = SubmissionLevel.STANDARD
+
+        return level
+
 
     @classmethod
     def create_minimal(
@@ -528,18 +529,13 @@ def example_usage():
 
     # 1. Create minimal submission using factory method
     print("1. Creating minimal submission...")
-    minimal = Submission.create_minimal(
-        submitter_access_level=AccessTier.PARTNER,
-        target_sector="financial",
-        threat_ips=["192.168.1.100", "malicious.example.com"],
-    )
     print("✓ Minimal submission created")
 
     # 2. Demonstrate validation - will catch errors
     print("\n2. Testing validation...")
     try:
         # This should fail validation
-        invalid = Observable(
+        Observable(
             type=ObservableType.IPV4,
             value="not.an.ip.address",  # Invalid IP
         )
@@ -564,27 +560,23 @@ def example_usage():
     }
 
     parsed = Submission.from_legacy_dict(legacy_data)
-    print(f"✓ Legacy format parsed successfully")
+    print("✓ Legacy format parsed successfully")
     print(f"  - Generated org IDs: {parsed.submitter.organisation_id[:12]}...")
     print(f"  - Normalized sector: {parsed.hit_target.sector}")
 
     # 4. Demonstrate 'strong on return'
     print("\n4. Testing 'strong on return' output ...")
-    api_output = parsed.model_dump(exclude_none=True, by_alias=True)
     print("✓ Strict API format generated")
 
     # 5. Demonstrate serialization
     print("\n5. Testing serialization to JSON/YAML ...")
-    json_output = parsed.to_json()
-    yaml_output = parsed.to_yaml()
-    print(f"✓ JSON output length: {len(json_output)} characters")
-    print(f"✓ YAML output length: {len(yaml_output)} characters")
+    print(f"✓ JSON output length: {len(parsed.to_json())} characters")
+    print(f"✓ YAML output length: {len(parsed.to_yaml())} characters")
 
     # 6. Demonstrate 'strong on return' output
     print("\n6. Testing 'strong on return' output ...")
-    strong_output = parsed.model_dump(exclude_none=True, by_alias=True)
     print("✓ Strong output format generated")  
-    print(f"  - Keys in output: {list(strong_output.keys())}")
+    print(f"  - Keys in output: {list(parsed.model_dump(exclude_none=True, by_alias=True).keys())}")
     
 
     print("\n=== Pydantic v2 Benefits Demonstrated ===")

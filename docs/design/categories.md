@@ -139,7 +139,7 @@ Experimental submissions flagged for research rather than operational use. Valua
 ```yaml
 disclosure_levels:
   tlp_red: "no_external_disclosure"
-  tlp_amber_plus: "organisational_networks"
+  tlp_amber_plus: "organisational_networks".  # default
   tlp_amber: "community_attribution"
   tlp_green: "acknowledged_sharing"
   tlp_clear: "unrestricted_public"
@@ -156,7 +156,7 @@ FRANK implements Traffic Light Protocol classifications controlling information 
 | TLP Level | Disclosure Scope | Usage Permissions | Access Level Required |
 |-----------|------------------|-------------------|----------------------|
 | TLP:RED | Named recipients only | Internal analysis only | Core Member |
-| TLP:AMBER+ | organisational networks | Authorized partners | Partner+ |
+| TLP:AMBER+ | Default: organisational networks | Authorized partners | Partner+ |
 | TLP:AMBER | Community sharing | Platform participants | Contributor+ |
 | TLP:GREEN | Extended community | Public advisories | Observer+ |
 | TLP:CLEAR | Unrestricted public | Commercial use | Public+ |
