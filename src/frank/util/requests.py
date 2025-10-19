@@ -86,6 +86,7 @@ class SubmissionResponse(BaseModel):
     submission_id: str = Field(..., description="Unique submission identifier")
     submitter_id: Optional[str] = Field(None, description="Unique submitter identifier")
     request_id: Optional[str] = Field(None, description="Unique request identifier")
+    timestamp: datetime = Field(..., description="Timestamp of submission acceptance")
     tlp_level: Optional[TLPLevel] = Field(None, description="TLP classification level")
     submission_level: Optional[SubmissionLevel] = Field(None, description="Depth of the submission")
     processing_status: str = Field(..., description="Current processing state")

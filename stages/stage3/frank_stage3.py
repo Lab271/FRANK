@@ -241,7 +241,7 @@ def create_app() -> FastAPI:
             user=user, **query_params
         )
 
-        # If STIX requested, return a list of bundles (one per sighting)
+        # If STIX requested, return a single bundle with translated sightings
         accept = request.headers.get("accept", "")
         if "application/stix+json" in accept:
             bundles = [sighting_to_stix_bundle(s) for s in sightings]
@@ -284,6 +284,7 @@ def create_app() -> FastAPI:
 
         return SubmissionResponse(
             status="accepted",
+            timestamp=submission.timestamp,
             submission_id=submission.submission_id,
             submitter_id=submission.submitter.organisation_id if submission.submitter else None,
             request_id=user["request_id"],

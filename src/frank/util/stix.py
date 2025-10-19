@@ -1,3 +1,15 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - STIX Translation Utilities
+Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+
+This module provides utilities for translating FRANK models (e.g., Sighting) into STIX 2.1-compliant objects and bundles.
+Intended for standards-based threat intelligence exchange and API integration.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
+
 from typing import Dict, Any
 import uuid
 
@@ -12,6 +24,7 @@ def sighting_to_stix_bundle(sighting: Sighting) -> Dict[str, Any]:
     # Observed Data object for all observables
     observed_objects = {}
     obj_idx = 0
+    # Network observables
     for obs in sighting.observables.network:
         if obs.observable_type == "ipv4":
             observed_objects[str(obj_idx)] = {
@@ -26,7 +39,37 @@ def sighting_to_stix_bundle(sighting: Sighting) -> Dict[str, Any]:
                 "value": obs.value
             }
         obj_idx += 1
-    # Add other observable types (file, process) as needed
+
+    # File observables
+    for obs in getattr(sighting.observables, "file", []):
+        if obs.observable_type == "file":
+            file_obj = {
+                "type": "file",
+                "id": obs.id,
+                "name": getattr(obs, "name", None),
+                "hashes": getattr(obs, "hashes", None),
+                "value": obs.value
+            }
+            # Remove None values
+            file_obj = {k: v for k, v in file_obj.items() if v is not None}
+            observed_objects[str(obj_idx)] = file_obj
+            obj_idx += 1
+
+    # Process observables
+    for obs in getattr(sighting.observables, "process", []):
+        if obs.observable_type == "process":
+            process_obj = {
+                "type": "process",
+                "id": obs.id,
+                "pid": getattr(obs, "pid", None),
+                "name": getattr(obs, "name", None),
+                "command_line": getattr(obs, "command_line", None),
+                "value": obs.value
+            }
+            # Remove None values
+            process_obj = {k: v for k, v in process_obj.items() if v is not None}
+            observed_objects[str(obj_idx)] = process_obj
+            obj_idx += 1
 
     # Extract the UUID from the model.id (e.g., 'sighting--<uuid>')
     sighting_uuid = str(sighting.sighting_id).split("--", 1)[-1]
