@@ -145,5 +145,5 @@ curl -s -X GET "$SIMPLE_API_URL/v1/submission/$submission_id" \
 
 
 curl -s -X GET "$SIMPLE_API_URL/v1/sightings?observable=185.220.102.45" \
-    -H "Content-Type: application/json" \
+    -H "Accept: application/stix+json" \
     -H "Authorization: Bearer $CORE_MEMBER_TOKEN" | python -m json.tool 

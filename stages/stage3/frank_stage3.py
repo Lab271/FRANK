@@ -32,6 +32,7 @@ from functools import lru_cache
 import os
 from pathlib import Path
 import time
+import uuid
 from typing import Dict, Any
 
 
@@ -47,6 +48,7 @@ from frank.storage import create_dynamodb_database
 from frank.util import create_server
 from frank.util.requests import SubmissionRequest, ObservationsSearchQuery
 from frank.util.requests import SubmissionResponse, SightingSearchResponse
+from frank.util.stix import sighting_to_stix_bundle
 from frank.util.http_exceptions import UnauthorizedException, NotFoundException
 from frank.util.auth import CognitoValidator
 from frank.util.logger import setup_logging, get_module_logger, configure_frank_logging
@@ -216,8 +218,10 @@ def create_app() -> FastAPI:
 
         return submission
 
+
     @app.get("/v1/sightings", response_model=SightingSearchResponse, response_model_exclude_none=True)
-    def get_sightings(
+    async def get_sightings(
+        request: Request,
         user: Dict[str, Any] = Depends(validator.get_current_user),
         query: ObservationsSearchQuery = Depends()
     ):
@@ -226,7 +230,6 @@ def create_app() -> FastAPI:
         """
         # Check permissions
         required_tier = AccessTier.CORE_MEMBER
-        
         if not user["access_level"].check_access_level(required_tier):
             raise UnauthorizedException(
                 detail=f"Insufficient access level. Required: {required_tier.value}, User has: {user['access_level'].value}"
@@ -234,10 +237,21 @@ def create_app() -> FastAPI:
 
         # Build query parameters from model_dict
         query_params = query.to_dict()
-
         sightings = get_server().get_sightings_from_observations(
-                user=user, **query_params
+            user=user, **query_params
         )
+
+        # If STIX requested, return a list of bundles (one per sighting)
+        accept = request.headers.get("accept", "")
+        if "application/stix+json" in accept:
+            bundles = [sighting_to_stix_bundle(s) for s in sightings]
+            # transpose a list of bundles into a single bundle
+            combined_bundle = {
+                "type": "bundle",
+                "id": f"bundle--{uuid.uuid4()}",
+                "objects": [obj for bundle in bundles for obj in bundle["objects"]]
+            }
+            return JSONResponse(content=combined_bundle, media_type="application/stix+json")
 
         return SightingSearchResponse(
             total_results=len(sightings),
