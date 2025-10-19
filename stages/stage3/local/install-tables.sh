@@ -48,6 +48,17 @@ BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 echo "🚀 Installing FRANK Stage 3 DynamoDB tables for local development..."
+echo "🔄 Restarting LocalStack..."
+# Restart LocalStack to ensure a clean state
+docker restart localstack   
+
+echo "⏳ Waiting for LocalStack to be healthy..."
+until curl -sf http://localhost:4566/_localstack/health | grep '"dynamodb": "available"' > /dev/null; do
+    sleep 2
+    echo " ...still waiting for LocalStack DynamoDB service"
+done
+echo "✅ LocalStack DynamoDB is running!"
+
 echo "📍 Target: LocalStack ($ENDPOINT_URL)"
 echo
 
@@ -59,11 +70,14 @@ aws dynamodb create-table \
         AttributeName=SK,AttributeType=S \
         AttributeName=GSI1PK,AttributeType=S \
         AttributeName=GSI1SK,AttributeType=S \
+        AttributeName=GSI2PK,AttributeType=S \
+        AttributeName=GSI2SK,AttributeType=S \
     --key-schema \
         AttributeName=PK,KeyType=HASH \
         AttributeName=SK,KeyType=RANGE \
     --global-secondary-indexes \
         IndexName=GSI1,KeySchema='[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
+        IndexName=GSI2,KeySchema='[{AttributeName=GSI2PK,KeyType=HASH},{AttributeName=GSI2SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
     --billing-mode PAY_PER_REQUEST \
     --stream-specification StreamEnabled=true,StreamViewType=NEW_AND_OLD_IMAGES \
     --endpoint-url $ENDPOINT_URL \
@@ -80,11 +94,14 @@ aws dynamodb create-table \
         AttributeName=SK,AttributeType=S \
         AttributeName=GSI1PK,AttributeType=S \
         AttributeName=GSI1SK,AttributeType=S \
+        AttributeName=GSI2PK,AttributeType=S \
+        AttributeName=GSI2SK,AttributeType=S \
     --key-schema \
         AttributeName=PK,KeyType=HASH \
         AttributeName=SK,KeyType=RANGE \
     --global-secondary-indexes \
         IndexName=GSI1,KeySchema='[{AttributeName=GSI1PK,KeyType=HASH},{AttributeName=GSI1SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
+        IndexName=GSI2,KeySchema='[{AttributeName=GSI2PK,KeyType=HASH},{AttributeName=GSI2SK,KeyType=RANGE}]',Projection='{ProjectionType=ALL}' \
     --billing-mode PAY_PER_REQUEST \
     --endpoint-url $ENDPOINT_URL \
     --region $REGION \

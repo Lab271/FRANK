@@ -52,18 +52,22 @@ fi
 
 
 echo "📋 Inserting submissions at $SIMPLE_API_URL"
+SUB_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
+SIGHT_UUID="$(python -c 'import uuid; print(uuid.uuid4())')"
 # Test inserting a submission
 response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$SIMPLE_API_URL/v1/submission" \
     -H "Content-Type: application/json" \
     -H "Authorization: Bearer $CORE_MEMBER_TOKEN" \
     -d '{ 
         "submission": { 
+            "submission_id": "submission-'$SUB_UUID'", 
             "submitter": { 
                 "organisation_id": "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", 
-                "access_level": "partner" 
+                "access_level": "partner",
+                "organisation_type": "cyber_partner" 
             }, 
             "sighting": { 
-                "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75", 
+                "sighting_id": "sighting-'$SIGHT_UUID'", 
                 "timestamp": "2025-01-20T14:30:22Z", 
                 "confidence": 87, 
                 "observables": { 

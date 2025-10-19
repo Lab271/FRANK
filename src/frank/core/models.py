@@ -96,8 +96,8 @@ class Submitter(BaseModel):
     )
 
     organisation_id: Optional[str] = Field(None, description="STIX identity for organisation")
-    access_level: AccessTier = Field(..., description="Access tier level")
-    organisation_type: str = Field(default="cyber_partner", description="organisation type")
+    access_level: Optional[AccessTier] = Field(None, description="Access tier level")
+    organisation_type: Optional[str] = Field(None, description="organisation type")
 
     # Optional metadata
     sector: Optional[str] = Field(None, description="Industry sector")
@@ -135,7 +135,7 @@ class Submitter(BaseModel):
         return sector_mappings.get(normalized, normalized)
 
     @classmethod
-    def create(cls, access_level: AccessTier, sector: str = None, region: str = None):
+    def create(cls, access_level: AccessTier = None, sector: str = None, region: str = None):
         """Factory method for creating submitters"""
         return cls(access_level=access_level, sector=sector, region=region)
 

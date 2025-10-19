@@ -26,21 +26,52 @@ from .base import BaseFRANKDatabase
 
 class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     """
-    DynamoDB implementation of FRANK database using single table design.
-    Provides full functionality with NoSQL scalability and supports
-    the complete FRANK access tier model.
-    
-    Single Table Design Pattern - General table:
-    PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
-    ORG#{org_id}        | ORG             | TIER#{access_level}     | #{timestamp} | organisation    | organisation metadata
-    SUB#{sub_id}        | SUB             | ORG#{org_id}    | #{timestamp} | Submission      | Complete submission with nested data
-    OBS#{obs_hash}      | SUB#{sub_id}    | TYPE#{obs_type} | #{timestamp} | ObservableIndex | Observable cross-reference
-    SIGHT#{sighting_id} | SUB#{sub_id}    | ORG#{org_id}    | #{timestamp} | Sighting        | Sighting details (confidence, severity, observables)
+    DynamoDB implementation of FRANK database using single table design in NoSQL.
+    We have two tables to separate main data and audit concerns. Details can be found in the messages.
+    The design is optimized for analyst-focused threat intelligence queries across sectors and regions.
 
-    Log table (separate entity for access logs):
-    PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
-    LOG#{org_id}        | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
+    Single Table Design Pattern - Main data table (frank-data):
+    PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK                          | GSI2PK          | GSI2SK                               | Entity Type  | Description
+    SUB#{sub_id}        | SUB             | ORG#{org_id}    | TS#{timestamp}                  | -               | -                                    | submission   | Complete submission with nested data
+    ORG#{org_id}        | ORG             | OT#{type}       | TS#{timestamp}                  | -               | -                                    | organisation | Organisation metadata
+    SIGHT#{sighting_id} | SUB#{sub_id}    | ORG#{org_id}    | TS#{timestamp}                  | -               | -                                    | sighting     | Sighting details (confidence, severity, observables)
+    OBS#{obs_hash}      | SUB#{sub_id}    | TYPE#{obs_type} | TS#{timestamp}                  | SECTOR#{sector} | REGION#{region}#ORG#{org_id}#TS#{ts} | observable   | Observable occurrence (using GSI2)
+    OBS#{obs_hash}      | STATS           | TYPE#{obs_type} | COUNT#{padded_count}#TS#{last}  | -               | -                                    | stats        | Observable statistics 
 
+    Key Design Decisions:
+    - GSI1: Type-based queries (observables by type, trending stats sorted by count)
+    - GSI2: Sector/region analysis (SPARSE - only observables, optimized for cross-org threat intelligence)
+    - Stats use GSI1SK with COUNT prefix for trending queries (top N observables)
+    - Observables use GSI1SK with TS prefix for time-based queries (recent activity)
+
+    GSI1SK Format Examples:
+    - Observable: TS#2025-10-19T10:30:00Z (for time range queries)
+    - Stats: COUNT#0000000042#TS#2025-10-19T10:30:00Z (padded for lexicographic sort)
+
+    GSI2SK Format (Observables only - Sparse Index):
+    - REGION#{region}#ORG#{org_id}#TS#{timestamp} (enables sector + region queries)
+
+    Primary Access Patterns (Main Table):
+    ✅ Get submission: PK = SUB#{sub_id}, SK = META
+    ✅ Get observable stats: PK = OBS#{hash}, SK = STATS
+    ✅ Get all submissions with observable: PK = OBS#{hash}, begins_with(SK, 'SUB#')
+    ✅ Get observables by type: GSI1PK = TYPE#{type}
+    ✅ Get trending observables: GSI1PK = TYPE#{type}, sorted by COUNT (descending)
+    ✅ Get recent observables: GSI1PK = TYPE#{type}, GSI1SK > TS#{cutoff}
+    ✅ Get observables by sector: GSI2PK = SECTOR#{sector}
+    ✅ Get observables by sector+region: GSI2PK = SECTOR#{sector}, begins_with(GSI2SK, 'REGION#{region}')
+    ⚠️  Get observables by org: FilterExpression on hit_target_org_id (less frequent, acceptable)
+
+    Audit Log Table (frank-audit-logs) - Org-centric with user/action GSIs:
+    PK (Partition Key)  | SK (Sort Key)                   | GSI1PK       | GSI1SK         | GSI2PK          | GSI2SK         | Entity Type
+    LOG#{org_id}        | TS#{timestamp}#USER#{user_id}   | USER#{user}  | TS#{timestamp} | ACTION#{action} | TS#{timestamp} | audit_log
+
+    Access Patterns (Audit Logs):
+    ✅ Org's logs: PK = LOG#{org_id}, time filter on SK
+    ✅ User's logs: GSI1PK = USER#{user_id}, time filter on GSI1SK
+    ✅ Action logs: GSI2PK = ACTION#{action}, time filter on GSI2SK
+    ✅ Last N days (specific org): PK = LOG#{org_id}, SK > TS#{7_days_ago}
+    ✅ User + action: GSI1PK = USER#{user_id}, FilterExpression='action = :action'
     """
     
     def initialize(self) -> None:
@@ -146,12 +177,16 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 {'AttributeName': 'PK', 'AttributeType': 'S'},
                 {'AttributeName': 'SK', 'AttributeType': 'S'},
                 {'AttributeName': 'GSI1PK', 'AttributeType': 'S'},
+                {'AttributeName': 'GSI1SK', 'AttributeType': 'S'},
+                {'AttributeName': 'GSI1PK', 'AttributeType': 'S'},
                 {'AttributeName': 'GSI1SK', 'AttributeType': 'S'}
             ],
             'GlobalSecondaryIndexes': [
                 {
                     'IndexName': 'GSI1',
                     'KeySchema': [
+                        {'AttributeName': 'GSI1PK', 'KeyType': 'HASH'},
+                        {'AttributeName': 'GSI1SK', 'KeyType': 'RANGE'},
                         {'AttributeName': 'GSI1PK', 'KeyType': 'HASH'},
                         {'AttributeName': 'GSI1SK', 'KeyType': 'RANGE'}
                     ],
@@ -492,16 +527,17 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
     def _batch_write_items(self, items: List[Dict]) -> None:
         """
-        Execute batch write operation with automatic retry for unprocessed items.
+        Execute batch atomic write operation with automatic retry for unprocessed items.
 
         This method writes items to DynamoDB in chunks of 25 (the maximum allowed by DynamoDB's batch API).
-        It uses the high-level batch_writer context manager which automatically handles DynamoDB 
-        attribute formatting and retry logic for unprocessed items.
+        It uses transact_write_items for atomicity, ensuring that either all items in a chunk are written or none are.
+        If any items are unprocessed (due to throttling, capacity limits, or other transient errors),
+        it will automatically retry those items until all are processed or a fatal error occurs.
 
         DynamoDB Limitations:
             - Maximum 25 items per batch write operation.
             - Each item must be under 400KB in size.
-            - Batch operations are not atomic across chunks.
+            - Batch operations are not strictly transactional across chunks; atomicity is per chunk.
 
         Practical Usage:
             - Use for bulk ingestion of submissions, observables, and logs.
@@ -513,23 +549,35 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         Raises:
             FRANKStorageError: If the batch write operation fails and cannot be retried.
         """
-        try:
-            # Convert floats to Decimal for DynamoDB compatibility
-            items = [self._convert_floats_to_decimal(item) for item in items]
+        # DynamoDB batch write limit is 25 items
+        chunk_size = 25
+        
+        for i in range(0, len(items), chunk_size):
+            chunk = items[i:i + chunk_size]
             
-            # Use batch_writer for proper item formatting and retry handling
-            with self.table.batch_writer() as batch:
-                for item in items:
-                    batch.put_item(Item=item)
+            transact_items = [
+                {'Put': 
+                    {
+                        'TableName': self.table_name,
+                        'Item': item
+                    }
+                }
+                for item in chunk
+            ]
+            
+            try:
+                response = self.client.transact_write_items(TransactItems=transact_items)
+                
+                # Handle unprocessed items
+                unprocessed_items = response.get('UnprocessedItems', {})
+                while unprocessed_items:
+                    self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
+                    response = self.client.transact_write_items(TransactItems=unprocessed_items)
+                    unprocessed_items = response.get('UnprocessedItems', {})
                     
-            self.logger.debug(f"Successfully wrote {len(items)} items to DynamoDB")
-                    
-        except ClientError as e:
-            self.logger.error(f"Batch write failed: {e}")
-            raise FRANKStorageError(f"Batch write operation failed: {e}")
-        except Exception as e:
-            self.logger.error(f"Unexpected error in batch write: {e}")
-            raise FRANKStorageError(f"Batch write operation failed: {e}")
+            except ClientError as e:
+                self.logger.error(f"Batch write failed: {e}")
+                raise FRANKStorageError(f"Batch write operation failed: {e}")
 
 
     def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:

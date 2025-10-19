@@ -30,6 +30,7 @@ SPDX-License-Identifier: Apache-2.0
 import argparse
 from datetime import datetime, timezone, timedelta
 from functools import lru_cache
+import hashlib
 import os
 from pathlib import Path
 import time
@@ -170,16 +171,15 @@ class TempClient:
         submission_item = {
             'PK': f"SUB#{submission.submission_id}",
             'SK': 'SUB',
-            'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
-            'GSI1SK': timestamp_str,
-            'EntityType': 'submission',
+            'GSI1PK': f"SUBMITTER#{submission.submitter.organisation_id}",
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'submission',
             # 'submission_id': submission.submission_id,
             # 'submitter_id': submission.submitter.organisation_id,
             # 'access_level': submission.submitter.access_level, # make sure this is explicitly stored
             # 'submission_timestamp': timestamp_str,
             # 'tlp_level': submission.tlp_level,
-            'msg_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
-            'timestamp': timestamp_str,
+            'msg': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
             'request_id': user["request_id"],
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }    
@@ -189,15 +189,14 @@ class TempClient:
         org_item = {
             'PK': f"ORG#{submission.submitter.organisation_id}",
             'SK': 'ORG',
-            'GSI1PK': f"TIER#SUBMITTER",
-            'GSI1SK': timestamp_str,
-            'EntityType': 'organisation',
+            'GSI1PK': "OT#SUBMITTER",
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'organisation',
             # 'organisation_id': submission.submitter.organisation_id,
             # 'sector': submission.submitter.sector or 'cyber_partner',
             # 'region': submission.submitter.region or 'unknown',
-            'msg_data': submission.submitter.model_dump(exclude_none=True, by_alias=True),
+            'msg': submission.submitter.model_dump(exclude_none=True, by_alias=True),
             'last_active': timestamp_str,
-            'timestamp': timestamp_str,
             'request_id': user["request_id"],
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
@@ -209,15 +208,14 @@ class TempClient:
             ht_org_item = {
                 'PK': f"ORG#{hit_target.organisation_id}",
                 'SK': 'ORG',
-                'GSI1PK': f"TIER#TARGET",
-                'GSI1SK': timestamp_str,
-                'EntityType': 'organisation',
+                'GSI1PK': "OT#TARGET",
+                'GSI1SK': f"TS#{timestamp_str}",
+                'entity_type': 'organisation',
                 # 'organisation_id': hit_target.organisation_id,
                 # 'sector': getattr(hit_target, 'sector', 'unknown'),
                 # 'region': getattr(hit_target, 'region', 'unknown'),
-                'msg_data': hit_target.model_dump(exclude_none=True, by_alias=True),
+                'msg': hit_target.model_dump(exclude_none=True, by_alias=True),
                 'last_active': timestamp_str,
-                'timestamp': timestamp_str,
                 'request_id': user["request_id"],
                 'TTL': int((timestamp + timedelta(days=2555)).timestamp())
             }
@@ -229,20 +227,19 @@ class TempClient:
             'PK': f"SIGHT#{sighting.sighting_id}",
             'SK': f"SUB#{submission.submission_id}",
             'GSI1PK': f"ORG#{submission.submitter.organisation_id}",
-            'GSI1SK': timestamp_str,
-            'EntityType': 'sighting',
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'sighting',
             # 'sighting_id': sighting.sighting_id,
             # 'submission_id': submission.submission_id,
             # 'submitter_id': submission.submitter.organisation_id,
-            'msg_data': sighting.model_dump(exclude_none=True, by_alias=True),
-            'timestamp': timestamp_str,
+            'msg': sighting.model_dump(exclude_none=True, by_alias=True),
             'request_id': user["request_id"],
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
         }
         items_to_write.append(sighting_item)
 
-        # # Create observable index items
-        # items_to_write.extend(self._extract_observables(submission))
+        # Create observable index items
+        items_to_write.extend(self._extract_observables(user, submission))
 
         self._batch_write_items(items_to_write)
             
@@ -250,27 +247,174 @@ class TempClient:
         # score_impact = calculate_contribution_score(submission)
         score_impact = 1
 
-        self.log_access(user, submission.submission_id, 'SUBMIT', 'submission')
+        self.log_access(user, submission.submitter.organisation_id, "SUBMIT", submission.submission_id, 'success')
 
         # Extract submission ID
         return score_impact
 
 
+    def _extract_observables(self, user: Dict[str, Any], submission: Submission) -> List[Dict]:
+        """
+        Extract observables from a submission for DynamoDB indexing.
 
-    def log_access(self, user: Dict[str, Any], pkey: str, action: str, resource_type: str = None, details: Dict[str, Any] = None) -> None:
-        """Internal method to log access in DynamoDB single table design."""
+        This method processes the observables contained within a submission's sighting object and generates
+        DynamoDB items for each observable, following the single table design pattern. Each observable is
+        indexed for efficient cross-referencing and querying by type, value, and submission context.
+
+        Indexing Logic:
+            - Each observable is hashed and stored as a separate item with PK 'OBS#{obs_hash}' and SK 'SUB#{submission_id}'.
+            - GSI1PK is set to 'TYPE#{obs_type}' for type-based queries (all observables).
+            - GSI1SK is set to 'TS#{timestamp}' for time-range queries.
+            - GSI2PK is set to 'SECTOR#{sector}' for sector-based analyst queries (SPARSE - only if hit_target exists).
+            - GSI2SK is set to 'REGION#{region}#ORG#{org_id}#TS#{timestamp}' for hierarchical filtering.
+            - Additional metadata (confidence, severity, sector, region) is flattened for efficient filtering.
+            - TTL is set for long-term retention (default: ~7 years).
+
+        Args:
+            user (Dict[str, Any]): User information including request_id.
+            submission (Submission): The submission object containing sighting and observables.
+
+        Returns:
+            List[Dict]: List of DynamoDB items representing indexed observables.
+
+        Edge Cases & Notes:
+            - Observables missing 'type' or 'value' are skipped.
+            - GSI2 is only populated if hit_target exists (sparse index pattern).
+            - If hit_target lacks sector/region, defaults to 'UNKNOWN'.
+            - Handles empty or malformed observables gracefully.
+            - Uses submission timestamp for time-based fields if not explicitly provided.
+            - Designed for bulk ingestion and supports downstream analytics and deduplication.
+
+        Example:
+            >>> items = self._extract_observables(user, submission)
+            >>> self._batch_write_items(items)
+        """
+        timestamp = submission.timestamp or datetime.now(timezone.utc)
+        timestamp_str = timestamp.isoformat()
+
+        observables_list = []
+        sighting = submission.sighting.model_dump(exclude_none=True, by_alias=True)
+        observables = sighting.get("observables", {})
+        hit_target = getattr(submission, 'hit_target', None)
+
+        # Extract hit_target metadata for GSI2 (sector/region analysis)
+        hit_target_org_id = getattr(hit_target, 'organisation_id', None) if hit_target else None
+        hit_target_sector = getattr(hit_target, 'sector', 'UNKNOWN') if hit_target else 'UNKNOWN'
+        hit_target_region = getattr(hit_target, 'region', 'UNKNOWN') if hit_target else 'UNKNOWN'
+
+        for obs_category, obs_list in observables.items():
+            if isinstance(obs_list, list):
+                for obs in obs_list:
+                    if 'type' not in obs or 'value' not in obs:
+                        continue
+
+                    obs_hash = self.hash_observable(obs['type'], obs['value'])
+
+                    # Create observable index item with analyst-focused GSI2
+                    observable_index_item = {
+                        "PK": f"OBS#{obs_hash}",
+                        "SK": f"SUB#{submission.submission_id}",
+                        # GSI1: Type-based queries with time sorting
+                        "GSI1PK": f"TYPE#{obs['type']}",
+                        "GSI1SK": f"TS#{timestamp_str}",
+                        # Entity metadata
+                        "entity_type": "observable",
+                        "observable_value": obs["value"],
+                        # Flattened fields for filtering
+                        # Full observable details
+                        # GSI2: Submitter analysis
+                        "submitter_id": f"SUBMITTER#{submission.submitter.organisation_id}",
+                        "msg": sighting,
+                        "request_id": user["request_id"],
+                        "TTL": int((timestamp + timedelta(days=2555)).timestamp()),
+                    }
+
+                    # GSI2: Sector/region analysis (SPARSE - only if hit_target exists)
+                    if hit_target and hit_target_org_id:
+                        observable_index_item['GSI2PK'] = f"SECTOR#{hit_target_sector}"
+                        observable_index_item['GSI2SK'] = f"REGION#{hit_target_region}#ORG#{hit_target_org_id}#TS#{timestamp_str}"
+
+                        # Flatten hit_target metadata for filtering
+                        observable_index_item['hit_target_org_id'] = hit_target_org_id
+                        observable_index_item['hit_target_region'] = hit_target_region
+
+                    observables_list.append(observable_index_item)
+
+                    # Update statistics item for this observable
+                    # 1. Read current count
+                    response = self.table.get_item(Key={'PK': f'OBS#{obs_hash}', 'SK': 'STATS'})
+                    stats = response.get('Item', {})
+
+                    if stats:
+                        current_count = stats.get('count', 0)
+
+                        # 2. Update with new count-based GSI1SK
+                        new_count = current_count + 1
+                        self.table.update_item(
+                            Key={'PK': f'OBS#{obs_hash}', 'SK': 'STATS'},
+                            UpdateExpression='SET #count = :new_count, last_seen = :now, GSI1SK = :gsi1sk',
+                            ExpressionAttributeNames={
+                                '#count': 'count'
+                            },
+                            ExpressionAttributeValues={
+                                ':new_count': new_count,
+                                ':now': timestamp_str,
+                                ':gsi1sk': f'COUNT#{int(new_count):010d}#TS#{timestamp_str}'
+                            }
+                        )
+                    else:
+                        stat_item = {
+                            'PK': f'OBS#{obs_hash}',
+                            'SK': 'STATS',
+                            'GSI1PK': f'TYPE#{obs["type"]}',
+                            'GSI1SK': f'COUNT#0000000001#TS#{timestamp_str}',
+                            'entity_type': 'stats',
+                            'observable_value': obs["value"],
+                            'first_seen': timestamp_str,
+                            'last_seen': timestamp_str,
+                            'count': 1,
+                            'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
+                        }
+                        self.table.put_item(Item=stat_item)
+                    # stats_item = self._upsert_observable_statistics(
+                    #     obs_hash=obs_hash,
+                    #     obs_type=obs['type'],
+                    #     obs_value=obs['value'],
+                    #     hit_target_id=getattr(submission.hit_target, 'organisation_id', None),  # Safe access to hit_target
+                    #     sector=getattr(submission.hit_target, 'sector', None),  # Safe access to hit_target
+                    #     timestamp_str=timestamp_str
+                    # )
+                    # # if stats_item:
+                    # #     observables_list.append(stats_item)
+        return observables_list
+
+
+    def log_access(self, user: Dict[str, Any], org_id: str, action: str, msg_key: str, status: str="success", details: Dict[str, Any] = None) -> None:
+        """Internal method to log access in DynamoDB single table design.
+        Args:
+            user (Dict[str, Any]): User information including user_id and request_id.
+            org_id (str): Organization ID (for PK - org-centric partitioning).
+            action (str): Action performed (e.g., 'SUBMIT', 'QUERY', 'DELETE').
+            msg_key (str): Message key for logging.
+            details (Dict[str, Any], optional): Additional audit details.
+
+        Table Design:
+            PK: ACTION#{action}#TS#{timestamp} - Partition by action
+            SK: ID#{msg_key} - Unique identifier for the log entry
+            GSI1: USER-based queries (user activity across orgs)
+            GSI2: ORGANISATION-based queries (action monitoring across orgs)
+        """
+
         timestamp = datetime.now(timezone.utc).isoformat()
         log_item = {
-            'PK': f"LOG#{pkey}",
-            'SK': f"LOG#{timestamp}",
-            'GSI1PK': f"ACTION#{action}",
-            'GSI1SK': timestamp,
-            'EntityType': 'AccessLog',
-            'action': action,
-            'resource_type': resource_type,
-            'timestamp': timestamp,
-            'user_id': user["user_id"],
+            'PK': f"ACTION#{action}#TS#{timestamp}",
+            'SK': f"TS#{timestamp}#ID#{msg_key}",
+            'GSI1PK': f"USER#{user['user_id']}",
+            'GSI1SK': f"TS#{timestamp}",
+            'GSI2PK': f"ORG#{org_id}",
+            'GSI2SK': f"TS#{timestamp}",
             'request_id': user["request_id"],
+            'status': status
         }
         if details:
             log_item['details'] = details
@@ -408,6 +552,21 @@ class TempClient:
         except Exception as e:
             self.logger.error(f"Unexpected error in batch write: {e}")
             raise FRANKStorageError(f"Batch write operation failed: {e}")        
+
+    def hash_observable(self, observable_type: str, observable_value: str) -> str:
+        """
+        Create a SHA-256 hash for observable deduplication and quick lookups.
+
+        Args:
+            observable_type (str): The type/category of the observable (e.g., 'ip', 'domain').
+            observable_value (str): The value of the observable (e.g., '1.2.3.4', 'example.com').
+
+        Returns:
+            str: A SHA-256 hexadecimal hash string uniquely representing the observable.
+        """
+        combined = f"{observable_type}:{observable_value}".lower()
+        return hashlib.sha256(combined.encode()).hexdigest()
+
 # ====================================
 # Fastapi Application Factory
 # ====================================
@@ -500,7 +659,7 @@ def create_app() -> FastAPI:
     
     # 3. Post Submission endpoint - submit threat intelligence
     @app.post("/v1/submission", response_model=SubmissionResponse)
-    async def post_threat_intelligence(
+    async def post_threat_submission(
         request: Request,
         submission_request: SubmissionRequest = Body(...),
         user: Dict[str, Any] = Depends(validator.get_current_user)
