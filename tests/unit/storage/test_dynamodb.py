@@ -10,12 +10,14 @@ SPDX-License-Identifier: Apache-2.0
 import unittest
 from unittest.mock import patch, MagicMock
 
-from datetime import datetime
+from datetime import datetime, timezone
+from decimal import Decimal
 import uuid
 
 from botocore.exceptions import ClientError
 
 from frank.storage.dynamodb import DynamoDBFRANKDatabase
+from frank.core.enum import AccessTier
 from frank.util import NullLogger
 from frank.storage.exceptions import FRANKStorageError, FRANKQueryError
 
@@ -308,7 +310,6 @@ class TestBaseMethods(unittest.TestCase):
         self.db.store_submission(self.valid_user, submission)
         self.db._batch_write_items.assert_called_once()
 
-
     def test_store_submission_failure(self):
         submission = MagicMock()
         submission.timestamp = None
@@ -362,7 +363,6 @@ class TestBaseMethods(unittest.TestCase):
                 "tlp_level": "TLP:AMBER",
             # }
         }
-        import json
         self.db.table.get_item.return_value = {'Item': {'msg': minimal_submission}}
         result = self.db.get_submission_by_id('sub1')
         self.assertIsNotNone(result)
@@ -380,45 +380,152 @@ class TestBaseMethods(unittest.TestCase):
             self.db.get_submission_by_id('sub1')
 
 
-# class TestDynamoDBFRANKDatabaseUpsertOrganisation(unittest.TestCase):
-#     """Unit tests for DynamoDBFRANKDatabase.upsert_organisation method."""
-#     def setUp(self):
-#         patcher_resource = patch('boto3.resource')
-#         self.mock_resource = patcher_resource.start()
-#         self.addCleanup(patcher_resource.stop)
-#         self.logger = MagicMock()
-#         self.db = DynamoDBFRANKDatabase(config={}, logger=self.logger)
-#         self.db.table = MagicMock()
-#         self.db.client = MagicMock()
-#         self.db.logger = MagicMock()
+class TestDataConversion(unittest.TestCase):
+    """Test data type conversion for DynamoDB compatibility"""
+    
+    @patch('frank.storage.dynamodb.DynamoDBFRANKDatabase.initialize')
+    def setUp(self, mock_init):
+        self.db = DynamoDBFRANKDatabase(config={
+            'environment': 'aws',
+            'region': 'eu-west-1',
+            'table_name': 'test_table',
+            'audit_table_name': 'test_audit'
+        })
+    
+    def test_convert_floats_to_decimal_simple(self):
+        """Test float to Decimal conversion for simple values"""
+        result = self.db._convert_floats_to_decimal(3.14)
+        self.assertEqual(result, Decimal('3.14'))
+    
+    def test_convert_floats_to_decimal_dict(self):
+        """Test float to Decimal conversion in nested dict"""
+        data = {'confidence': 85.5, 'nested': {'score': 92.3}}
+        result = self.db._convert_floats_to_decimal(data)
+        self.assertIsInstance(result['confidence'], Decimal)
+        self.assertIsInstance(result['nested']['score'], Decimal)
+    
+    def test_convert_floats_to_decimal_list(self):
+        """Test float to Decimal conversion in list"""
+        data = [1.1, 2.2, {'value': 3.3}]
+        result = self.db._convert_floats_to_decimal(data)
+        self.assertIsInstance(result[0], Decimal)
+        self.assertIsInstance(result[2]['value'], Decimal)
+    
+    def test_convert_decimals_to_float_simple(self):
+        """Test Decimal to float conversion"""
+        result = self.db._convert_decimals_to_float(Decimal('3.14'))
+        self.assertEqual(result, 3.14)
+    
+    def test_convert_decimals_to_float_dict(self):
+        """Test Decimal to float conversion in nested dict"""
+        data = {'confidence': Decimal('85.5'), 'nested': {'score': Decimal('92.3')}}
+        result = self.db._convert_decimals_to_float(data)
+        self.assertIsInstance(result['confidence'], float)
+        self.assertIsInstance(result['nested']['score'], float)
 
-#     def test_upsert_organisation_success(self):
-#         org_data = {
-#             'organisation_id': 'org123',
-#             'access_level': 'partner',
-#             'sector': 'finance',
-#             'region': 'eu-west-1',
-#             'last_active': '2025-09-20T12:00:00Z'
-#         }
-#         self.db.table.put_item.return_value = {'ResponseMetadata': {'HTTPStatusCode': 200}}
-#         result = self.db.upsert_organisation(org_data)
-#         self.db.table.put_item.assert_called_once()
-#         self.assertTrue(result is None or result)
-
-#     def test_upsert_organisation_client_error(self):
-#         org_data = {
-#             'organisation_id': 'org123',
-#             'access_level': 'partner',
-#             'sector': 'finance',
-#             'region': 'eu-west-1',
-#             'last_active': '2025-09-20T12:00:00Z'
-#         }
-#         from botocore.exceptions import ClientError
-#         self.db.table.put_item.side_effect = ClientError({'Error': {}}, 'put_item')
-#         result = self.db.upsert_organisation(org_data)
-#         self.db.logger.error.assert_called()
-#         self.assertTrue(result is None or result is False)
-
+class TestObservableExtraction(unittest.TestCase):
+    """Test observable extraction and indexing logic"""
+    
+    @patch('frank.storage.dynamodb.DynamoDBFRANKDatabase.initialize')
+    def setUp(self, mock_init):
+        self.db = DynamoDBFRANKDatabase(config={
+            'environment': 'aws',
+            'region': 'eu-west-1',
+            'table_name': 'test_table',
+            'audit_table_name': 'test_audit'
+        })
+        self.db.table = MagicMock()
+        self.db.hash_observable = MagicMock(return_value='abc123hash')
+        
+    def test_extract_observables_with_hit_target(self):
+        """Test observable extraction with hit_target (GSI2 populated)"""
+        from frank.core.models import Submission, Sighting, Observables, Observable, Submitter, HitTarget
+        
+        submission = Submission.create_minimal(
+            submitter_access_level=AccessTier.PARTNER,
+            target_sector='finance',
+            threat_ips=['192.168.1.1']
+        )
+        submission.sighting.hit_target = HitTarget.create(sector='finance', region='eu-west')
+        submission.sighting.hit_target.organisation_id = 'org123'
+        
+        user = {'user_id': 'user1', 'request_id': 'req123'}
+        
+        # Mock stats query to return empty (new observable)
+        self.db.table.get_item.return_value = {}
+        
+        items = self.db._extract_observables(user, submission)
+        
+        # Should have observable items + stats items
+        self.assertGreater(len(items), 0)
+        
+        # Check GSI2 is populated for hit_target
+        obs_items = [i for i in items if i.get('entity_type') == 'observable']
+        self.assertTrue(any('GSI2PK' in item for item in obs_items))
+        
+    def test_extract_observables_without_hit_target(self):
+        """Test observable extraction without hit_target (GSI2 sparse)"""
+        from frank.core.models import Submission
+        
+        submission = Submission.create_minimal(
+            submitter_access_level=AccessTier.PARTNER,
+            threat_ips=['192.168.1.1']
+        )
+        submission.sighting.hit_target = None
+        
+        user = {'user_id': 'user1', 'request_id': 'req123'}
+        self.db.table.get_item.return_value = {}
+        
+        items = self.db._extract_observables(user, submission)
+        
+        # GSI2 should NOT be populated
+        obs_items = [i for i in items if i.get('entity_type') == 'observable']
+        self.assertFalse(any('GSI2PK' in item for item in obs_items))
+        
+    def test_extract_observables_updates_stats(self):
+        """Test observable extraction updates existing stats"""
+        from frank.core.models import Submission
+        
+        submission = Submission.create_minimal(threat_ips=['192.168.1.1'])
+        user = {'user_id': 'user1', 'request_id': 'req123'}
+        
+        # Mock existing stats
+        self.db.table.get_item.return_value = {
+            'Item': {'count': 5, 'last_seen': '2025-01-01T00:00:00Z'}
+        }
+        
+        items = self.db._extract_observables(user, submission)
+        
+        # Should call update_item for existing stats
+        self.db.table.update_item.assert_called()
+        
+    def test_extract_observables_skips_invalid(self):
+        """Test observable extraction skips malformed observables"""
+        from frank.core.models import Submission
+        
+        submission = MagicMock()
+        submission.timestamp = datetime.now(timezone.utc)
+        submission.submission_id = 'sub123'
+        submission.submitter.organisation_id = 'org123'
+        submission.sighting.model_dump.return_value = {
+            'observables': {
+                'network': [
+                    {'type': 'ipv4', 'value': '1.2.3.4'},  # valid
+                    {'type': 'ipv4'},  # missing value
+                    {'value': '5.6.7.8'},  # missing type
+                ]
+            }
+        }
+        submission.sighting.hit_target = None
+        
+        user = {'user_id': 'user1', 'request_id': 'req123'}
+        self.db.table.get_item.return_value = {}
+        
+        items = self.db._extract_observables(user, submission)
+        
+        # Should only extract the valid observable
+        obs_items = [i for i in items if i.get('entity_type') == 'observable']
+        self.assertEqual(len(obs_items), 1)
 
 # class TestDynamoDBFRANKDatabaseStatisticsAndHealth(unittest.TestCase):
 #     """Unit tests for DynamoDBFRANKDatabase.get_statistics_summary and health_check methods."""

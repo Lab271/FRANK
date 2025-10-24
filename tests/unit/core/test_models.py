@@ -16,11 +16,8 @@ class TestExampleUsage(unittest.TestCase):
     
     def test_example_usage(self):
         """Test minimal submission creation via factory method."""
-        try:
-            example_usage()
-        except Exception as e:
-            self.fail(f"Example usage failed: {e}")
-
+        example_usage()
+        self.assertTrue(True, "example_usage")  # If no exceptions, test passes
 
 if __name__ == "__main__":
 	unittest.main()

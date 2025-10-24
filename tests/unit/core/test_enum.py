@@ -926,6 +926,98 @@ class TestEnumCompatibility(unittest.TestCase):
         self.assertIn("ObservableType", repr(ObservableType.IPV4))
         self.assertIn("SeverityLevel", repr(SeverityLevel.HIGH))
 
+class TestYAMLSerialization(unittest.TestCase):
+    """Test YAML serialization and deserialization of enums"""
+    
+    def test_enum_representer(self):
+        """Test YAML representer converts enum to string value"""
+        import yaml
+        from frank.core.enum import enum_representer
+        
+        dumper = yaml.Dumper(None)
+        result = enum_representer(dumper, AccessTier.PARTNER)
+        
+        # Should create a scalar node with the enum value
+        self.assertEqual(result.value, 'partner')
+        self.assertEqual(result.tag, 'tag:yaml.org,2002:str')
+    
+    def test_enum_constructor_valid_value(self):
+        """Test YAML constructor with valid enum value"""
+        from frank.core.enum import enum_constructor
+        import yaml
+        
+        constructor_func = enum_constructor(AccessTier)
+        
+        # Mock a YAML node with a valid value
+        loader = yaml.Loader('')
+        node = yaml.ScalarNode(tag='!AccessTier', value='partner')
+        
+        result = constructor_func(loader, node)
+        self.assertEqual(result, AccessTier.PARTNER)
+    
+    def test_enum_constructor_valid_name(self):
+        """Test YAML constructor with valid enum name"""
+        from frank.core.enum import enum_constructor
+        import yaml
+        
+        constructor_func = enum_constructor(AccessTier)
+        loader = yaml.Loader('')
+        node = yaml.ScalarNode(tag='!AccessTier', value='PARTNER')
+        
+        result = constructor_func(loader, node)
+        self.assertEqual(result, AccessTier.PARTNER)
+    
+    def test_enum_constructor_invalid_value(self):
+        """Test YAML constructor raises ValueError for invalid value"""
+        from frank.core.enum import enum_constructor
+        import yaml
+        
+        constructor_func = enum_constructor(AccessTier)
+        loader = yaml.Loader('')
+        node = yaml.ScalarNode(tag='!AccessTier', value='invalid_tier')
+        
+        with self.assertRaises(ValueError) as context:
+            constructor_func(loader, node)
+        self.assertIn('invalid_tier', str(context.exception))
+        self.assertIn('AccessTier', str(context.exception))
+    
+    def test_register_enum_yaml(self):
+        """Test registering enum for YAML serialization"""
+        from frank.core.enum import register_enum_yaml
+        import yaml
+        
+        # This should not raise
+        register_enum_yaml(AccessTier)
+        
+        # Test round-trip serialization
+        data = {'tier': AccessTier.CONTRIBUTOR}
+        yaml_str = yaml.dump(data)
+        self.assertIn('contributor', yaml_str)
+    
+    def test_yaml_roundtrip_serialization(self):
+        """Test complete YAML round-trip with enum"""
+        import yaml
+        from frank.core.enum import register_enum_yaml
+        
+        # Ensure enum is registered
+        register_enum_yaml(AccessTier)
+        
+        # Create data with enum
+        original_data = {
+            'access_level': AccessTier.PARTNER,
+            'name': 'Test Org'
+        }
+        
+        # Serialize to YAML
+        yaml_str = yaml.dump(original_data)
+        
+        # Deserialize from YAML
+        loaded_data = yaml.safe_load(yaml_str)
+        
+        # Should preserve the enum value as string
+        self.assertEqual(loaded_data['access_level'], 'partner')
+        self.assertEqual(loaded_data['name'], 'Test Org')
+
 
 if __name__ == "__main__":
     # Configure test runner
