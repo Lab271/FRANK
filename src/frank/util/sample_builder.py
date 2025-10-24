@@ -17,7 +17,7 @@ import uuid
 from datetime import datetime, timezone
 
 from frank import __version__
-from frank.core.enum import AccessTier, ObservableType
+from frank.core.enum import AccessTier, ObservableType, TLPLevel
 from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
 from frank.storage.base import BaseFRANKDatabase
@@ -281,7 +281,7 @@ def generate_comprehensive_submission(
 
     }
     if hit_target_org:
-        submission["hit_target"] = {
+        submission["sighting"]["hit_target"] = {
             "organisation_id": hit_target_org, 
             "sector": sector or "finance",
             "region": "europe",
@@ -360,8 +360,7 @@ def example_usage():
     sample = generate_sample_submission(
         org_id=f"identity--{uuid.uuid4()}",
         sample_type="malware",
-        access_level="partner",
-        confidence=80
+        access_level="partner"
     )
     print("✓ Sample submission created")
 
@@ -372,12 +371,10 @@ def example_usage():
         access_level="partner",
         hit_target_org=f"identity--{uuid.uuid4()}",
         observables=get_default_observables(),
-        severity="high",
-        confidence=95,
         campaign_context={"name": "test_campaign", "actor": "test_actor"},
         sigma_detection={"rule_id": "test-rule-123", "rule_name": "sigma_rule-12", "confidence": 0.95},
         impact_data={"severity": "high", "affected_systems": 5},
-        tlp_level="TLP:AMBER"
+        tlp_level=TLPLevel.AMBER_PLUS
     )
     print("✓ Comprehensive submission created")
 

@@ -16,6 +16,7 @@ import uuid
 from pydantic import ValidationError
 
 from frank.core.models import Submission
+from frank.core.enum import TLPLevel
 from frank.core.exceptions import FRANKValidationError
 from frank.util.sample_builder import generate_minimal_submission
 from frank.util import sample_builder
@@ -60,7 +61,6 @@ class TestSubmission(unittest.TestCase):
         sighting = submission['sighting']
         self.assertIn('sighting_id', sighting)
         self.assertIn('timestamp', sighting)
-        self.assertEqual(sighting['confidence'], 69)  # default
         self.assertIn('observables', sighting)
         
         # Check observables structure
@@ -83,7 +83,6 @@ class TestSubmission(unittest.TestCase):
         self.assertEqual(submitter['access_level'], self.valid_access_level)
         
         sighting = submission['sighting']
-        self.assertEqual(sighting['confidence'], 85)
         self.assertEqual(len(sighting['observables']['network']), 2)
     
     def test_generate_minimal_submission_invalid_access_level(self):
@@ -136,7 +135,7 @@ class TestSubmission(unittest.TestCase):
         campaign_context = {"name": "test_campaign", "actor": "test_actor"}
         sigma_detection = {"rule_id": "test-rule-123", "rule_name": "sigma_rule", "confidence": 0.95}
         impact_data = {"severity": "high", "affected_systems": 5}
-        tlp_level = "TLP:AMBER"
+        tlp_level = TLPLevel.AMBER_PLUS
         submission_dict = generate_minimal_submission_dict(
             org_id=org_id,
             access_level=access_level,
@@ -159,7 +158,6 @@ class TestSubmission(unittest.TestCase):
         submission = Submission(**submission_dict['submission'])
 
         # Check enhanced sighting using Pydantic model properties
-        self.assertEqual(submission.sighting.severity, 'high')
         self.assertEqual(submission.sighting.first_observed, datetime(2025, 9, 11, 0, 0, 0, tzinfo=timezone.utc))
         self.assertEqual(submission.sighting.last_observed, datetime(2025, 9, 11, 12, 0, 0, tzinfo=timezone.utc))
         self.assertIsNotNone(submission.sighting.sigma_detection)
@@ -194,9 +192,7 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
             org_id=org_id,
             access_level="partner",
             hit_target_org=hit_target_org,
-            observables=observables,
-            severity="medium",
-            confidence=80
+            observables=observables
         )
         self.assertIsInstance(submission, Submission)
         submitter = getattr(submission, "submitter", None)
@@ -204,8 +200,6 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         self.assertEqual(getattr(submitter, "organisation_id", None), org_id)
         sighting = getattr(submission, "sighting", None)
         self.assertIsNotNone(sighting)
-        self.assertEqual(getattr(sighting, "severity", None), "medium")
-        self.assertEqual(getattr(sighting, "confidence", None), 80)
 
     def test_generate_comprehensive_submission_missing_optional(self):
         """Test generate_comprehensive_submission with missing optional fields."""
@@ -214,15 +208,11 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
             access_level="partner",
-            observables=observables,
-            severity="low",
-            confidence=50
+            observables=observables
         )
         self.assertIsInstance(submission, Submission)
         sighting = getattr(submission, "sighting", None)
         self.assertIsNotNone(sighting)
-        self.assertEqual(getattr(sighting, "severity", None), "low")
-        self.assertEqual(getattr(sighting, "confidence", None), 50)
         # Optional fields should be None or default
         tc = getattr(sighting, "threat_context", None)
         self.assertTrue(tc is None or hasattr(tc, "campaign"))
@@ -235,17 +225,6 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         self.assertIsNotNone(submission.submitter.organisation_id)
         self.assertTrue(submission.submitter.organisation_id.startswith("identity--"))
         self.assertIsInstance(uuid.UUID(submission.submitter.organisation_id.split("--")[1]), uuid.UUID)
-
-    def test_generate_comprehensive_submission_invalid_confidence(self):
-        """Test generate_comprehensive_submission with invalid confidence raises exception."""
-        org_id = stix_uuid("identity")
-        with self.assertRaises(ValidationError):
-            sample_builder.generate_comprehensive_submission(
-                org_id=org_id,
-                access_level="partner",
-                severity="medium",
-                confidence=150  # Invalid confidence
-            )
 
     def test_example_usage_runs_without_error(self):
         """Test that example_usage runs"""
@@ -263,14 +242,12 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         campaign_context = {"name": "test_campaign", "actor": "test_actor"}
         sigma_detection = {"rule_id": "test-rule-123", "rule_name": "sigma_rule-12", "confidence": 0.95}
         impact_data = {"financial_impact_eur": 10000000, "affected_systems": 5}
-        tlp_level = "TLP:AMBER"
+        tlp_level = TLPLevel.AMBER_PLUS
         submission = generate_comprehensive_submission(
             org_id=org_id,
             access_level="partner",
             hit_target_org=hit_target_org,
             observables=observables,
-            severity="high",
-            confidence=95,
             campaign_context=campaign_context,
             sigma_detection=sigma_detection,
             impact_data=impact_data,
@@ -278,8 +255,6 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         )
         # Check model properties
         self.assertEqual(submission.submitter.organisation_id, org_id)
-        self.assertEqual(submission.sighting.severity, "high")
-        self.assertEqual(submission.sighting.confidence, 95)
         self.assertIsNotNone(submission.sighting.sigma_detection)
         self.assertIsNotNone(submission.sighting.threat_context)
         self.assertIsNotNone(submission.sighting.impact)
@@ -288,10 +263,10 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         self.assertEqual(submission.sighting.impact.financial_impact_eur, impact_data['financial_impact_eur'])        
         self.assertEqual(submission.tlp_level, tlp_level)
         # Robust check for hit_target
-        self.assertIsNotNone(submission.hit_target)
-        if submission.hit_target:
-            self.assertEqual(submission.hit_target.organisation_id, hit_target_org)
-    
+        self.assertIsNotNone(submission.sighting.hit_target)
+        if submission.sighting.hit_target:
+            self.assertEqual(submission.sighting.hit_target.organisation_id, hit_target_org)
+
 class TestSampleBuilderAdditional(unittest.TestCase):
 
     def test_generate_sample_submission(self):
@@ -354,14 +329,10 @@ class TestSampleBuilderAdditional(unittest.TestCase):
             org_id=org_id,
             access_level="partner",
             hit_target_org=hit_target_org,
-            observables=observables,
-            severity="medium",
-            confidence=80
+            observables=observables
         )
         self.assertIsInstance(submission, Submission)
         self.assertEqual(submission.submitter.organisation_id, org_id)
-        self.assertEqual(submission.sighting.severity, "medium")
-        self.assertEqual(submission.sighting.confidence, 80)
 
     def test_generate_comprehensive_submission_missing_optional(self):
         """Test generate_comprehensive_submission with missing optional fields."""
@@ -370,13 +341,9 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         submission = sample_builder.generate_comprehensive_submission(
             org_id=org_id,
             access_level="partner",
-            observables=observables,
-            severity="low",
-            confidence=50
+            observables=observables
         )
         self.assertIsInstance(submission, Submission)
-        self.assertEqual(submission.sighting.severity, "low")
-        self.assertEqual(submission.sighting.confidence, 50)
         # Optional fields should be None or default
         self.assertTrue(submission.sighting.threat_context is None or hasattr(submission.sighting.threat_context, "campaign"))
 

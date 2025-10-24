@@ -16,7 +16,7 @@ import logging
 import os
 from pathlib import Path
 
-from frank.core.models import Submission, Sighting
+from frank.core.models import Submission, Sighting, Submitter
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
 from frank.util.filter import FRANKFilter
@@ -150,25 +150,26 @@ class FRANKServer:
 
     #     return (total_results, sightings, aggregations, threat_context)
 
-    # def upsert_organisation(self, submitter: Submitter) -> None:
-    #     """
-    #     Create or update an organisation in the database.
+    def upsert_organisation(self, user: Dict[str, Any], submitter: Submitter) -> None:
+        """
+        Create or update an organisation in the database.
 
-    #     This method validates and upserts a Submitter (organisation) record into the database,
-    #     logs the access event, and returns True if successful, False otherwise.
+        This method validates and upserts a Submitter (organisation) record into the database,
+        logs the access event, and returns True if successful, False otherwise.
 
-    #     Args:
-    #         submitter (Submitter): The organisation Submitter object to upsert.
+        Args:
+            user (Dict[str, Any]): Identifier for the user performing the upsert.
+            submitter (Submitter): The organisation Submitter object to upsert.
 
-    #     Returns:
-    #         bool: True if upsert was successful, False otherwise.
-    #     """
-    #     # Upsert organisation in the database
-    #     self.database.upsert_organisation(submitter.model_dump(exclude_unset=True, by_alias=True))
-    #     self.logger.info(f"Upserted organisation: {submitter.organisation_id}")
+        Returns:
+            bool: True if upsert was successful, False otherwise.
+        """
+        # Upsert organisation in the database
+        self.database.upsert_organisation(submitter.model_dump(exclude_unset=True, by_alias=True))
+        self.logger.info(f"Upserted organisation: {submitter.organisation_id}")
 
-    #     # Log access
-    #     self.database.log_access(submitter.organisation_id, 'UPSERT', 'organisation', submitter.organisation_id)
+        # Log access
+        self.database.log_access(user, submitter.organisation_id, 'UPSERT', submitter.organisation_id, 'success')
 
 
     # def get_observations(self, user: Dict[str, Any], **query_params) -> "Tuple[List[Dict], Dict[str, Any]]":

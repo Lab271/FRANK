@@ -313,7 +313,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         org_item = {
             'PK': f"ORG#{org_data['organisation_id']}",
             'SK': 'ORG',
-            'GSI1PK': f"OT#TARGET",
+            'GSI1PK': f"OT#SUBMITTER",
             'GSI1SK': f"TS#{timestamp_str}",
             'entity_type': 'organisation',
             'msg': {k: v for k, v in org_data.items() if v is not None},

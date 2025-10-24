@@ -10,12 +10,14 @@ SPDX-License-Identifier: Apache-2.0
 import unittest
 from unittest.mock import patch, MagicMock
 
+from datetime import datetime
 import uuid
 
 from botocore.exceptions import ClientError
 
 from frank.storage.dynamodb import DynamoDBFRANKDatabase
-from frank.storage.exceptions import FRANKStorageError
+from frank.util import NullLogger
+from frank.storage.exceptions import FRANKStorageError, FRANKQueryError
 
 class TestConfiguration(unittest.TestCase):
     """Unit tests for DynamoDBFRANKDatabase configuration and initialization."""
@@ -240,67 +242,10 @@ class TestBaseMethods(unittest.TestCase):
         }
         self.mock_initialize = mock_initialize
         self.mock_initialize.return_value = None
-        self.db = DynamoDBFRANKDatabase(config=self.valid_config)
+        self.db = DynamoDBFRANKDatabase(config=self.valid_config, logger=NullLogger())
         self.db._batch_write_items = MagicMock()
         self.db.table = MagicMock()
         self.db.audit_table = MagicMock()
-
-    # def test_batch_write_items_success(self):
-    #     # Mock the batch_writer context manager
-    #     mock_batch = MagicMock()
-    #     mock_table = MagicMock()
-    #     mock_table.batch_writer.return_value.__enter__.return_value = mock_batch
-    #     self.db.table = mock_table
-    #     items = [
-    #         {"PK": "SUB#1", "SK": "SUB"},
-    #         {"PK": "ORG#1", "SK": "ORG"}
-    #     ]
-    #     # Should not raise
-    #     self.db._batch_write_items(items)
-    #     # Ensure put_item called for each item
-    #     self.assertEqual(mock_batch.put_item.call_count, len(items))
-
-    # def test_batch_write_items_client_error(self):
-    #     mock_table = MagicMock()
-    #     # Simulate ClientError on put_item
-    #     mock_batch = MagicMock()
-    #     mock_batch.put_item.side_effect = ClientError({'Error': {'Code': 'ProvisionedThroughputExceededException'}}, 'PutItem')
-    #     mock_table.batch_writer.return_value.__enter__.return_value = mock_batch
-    #     self.db.table = mock_table
-    #     items = [{"PK": "SUB#1", "SK": "SUB"}]
-    #     with self.assertRaises(FRANKStorageError):
-    #         self.db._batch_write_items(items)
-
-    # def test_batch_write_items_generic_exception(self):
-    #     mock_table = MagicMock()
-    #     # Simulate generic Exception on put_item
-    #     mock_batch = MagicMock()
-    #     mock_batch.put_item.side_effect = Exception("Unexpected error")
-    #     mock_table.batch_writer.return_value.__enter__.return_value = mock_batch
-    #     self.db.table = mock_table
-    #     items = [{"PK": "SUB#1", "SK": "SUB"}]
-    #     with self.assertRaises(FRANKStorageError):
-    #         self.db._batch_write_items(items)
-
-    # def test_batch_write_success(self):
-    #     # Simulate successful batch write (no unprocessed items)
-    #     items = [
-    #         {"PK": "SUB#1", "SK": "SUB", "GSI1PK": "ORG#1", "GSI1SK": "2025-09-11T00:00:00Z"},
-    #         {"PK": "ORG#1", "SK": "ORG", "GSI1PK": "TIER#partner", "GSI1SK": "2025-09-11T00:00:00Z"}
-    #     ]
-    #     # Should not raise
-    #     self.db._batch_write_items(items)
-
-    # def test_batch_write_retry(self):
-    #     # Simulate unprocessed items requiring retry
-    #     first_response = {"UnprocessedItems": {"frank_table": [{"PutRequest": {"Item": {"PK": "SUB#1"}}}]}}
-    #     second_response = {"UnprocessedItems": {}}
-    #     self.db.client.batch_write_item.side_effect = [first_response, second_response]
-    #     items = [
-    #         {"PK": "SUB#1", "SK": "SUB", "GSI1PK": "ORG#1", "GSI1SK": "2025-09-11T00:00:00Z"}
-    #     ]
-    #     # Should not raise, should call batch_write_item twice
-    #     self.db._batch_write_items(items)
 
 
     def test_health_check(self):
@@ -381,106 +326,58 @@ class TestBaseMethods(unittest.TestCase):
         with self.assertRaises(FRANKStorageError):
             self.db.store_submission(self.valid_user, submission)
 
+    def test_upsert_organisation_success(self):
+        org_data = {
+            'organisation_id': 'org123',
+            'access_level': 'partner',
+            'sector': 'finance',
+            'region': 'eu-west-1',
+            'last_active': datetime.fromisoformat('2025-09-20T12:00:00+00:00')
+        }
+        self.db.table.put_item.return_value = {'ResponseMetadata': {'HTTPStatusCode': 200}}
+        result = self.db.upsert_organisation(self.valid_user, org_data)
+        self.db.table.put_item.assert_called_once()
+        self.assertTrue(result is None or result)
 
-# class TestDynamoDBBatchWrite(unittest.TestCase):
-#     def setUp(self):
-#         # Patch boto3.resource
-#         patcher_resource = patch('boto3.resource')
-#         self.mock_resource = patcher_resource.start()
-#         self.addCleanup(patcher_resource.stop)
+    def test_upsert_organisation_client_error(self):
+        org_data = {
+            'organisation_id': 'org123',
+            'access_level': 'partner',
+            'sector': 'finance',
+            'region': 'eu-west-1',
+            'last_active': datetime.fromisoformat('2025-09-20T12:00:00+00:00')
+        }
+        self.db.table.put_item.side_effect = ClientError({'Error': {}}, 'put_item')
+        with self.assertRaises(ClientError):
+            self.db.upsert_organisation(self.valid_user, org_data)
 
-#         # Patch Table and its methods
-#         mock_table = MagicMock()
-#         self.mock_resource.return_value.Table.return_value = mock_table
-#         mock_table.load.return_value = None
+    def test_get_submission_by_id_found(self):
+        # Minimal submission message for FRANK Submission model
+        minimal_submission = {
+            # "submission": {
+                "submission_id": "sub1",
+                "timestamp": "2025-09-12T00:00:00Z",
+                "submitter": {"organisation_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
+                "sighting": {"confidence": 80, "severity": "high"},
+                "tlp_level": "TLP:AMBER",
+            # }
+        }
+        import json
+        self.db.table.get_item.return_value = {'Item': {'msg': minimal_submission}}
+        result = self.db.get_submission_by_id('sub1')
+        self.assertIsNotNone(result)
+        self.assertEqual(result['submission_id'], "sub1")
+        self.assertEqual(result['submitter']['organisation_id'], "org1")
 
-#         # Patch meta.client and its methods
-#         mock_client = MagicMock()
-#         self.mock_resource.return_value.meta.client = mock_client
-#         mock_client.exceptions.ResourceNotFoundException = Exception  # or a custom Exception
-#         mock_client.update_time_to_live.return_value = {}
+    def test_get_submission_by_id_not_found(self):
+        self.db.table.get_item.return_value = {}
+        result = self.db.get_submission_by_id('sub1')
+        self.assertIsNone(result)
 
-#         # Patch create_table
-#         self.mock_resource.return_value.create_table.return_value = {}
-
-#         # Patch get_waiter and waiter.wait
-#         mock_waiter = MagicMock()
-#         mock_client.get_waiter.return_value = mock_waiter
-#         mock_waiter.wait.return_value = None
-
-#         # Patch logger if needed
-#         self.logger = MagicMock()
-
-#         # Mock table and client methods as needed
-#         mock_table = MagicMock()
-#         self.mock_resource.return_value.Table.return_value = mock_table
-#         mock_table.put_item.return_value = {'ResponseMetadata': {'HTTPStatusCode': 200}}
-
-#         self.default_config = {''
-#             'environment': 'aws',
-#             'region': 'us-west-1',
-#             'table_name': 'frank_table',
-#             'audit_table_name': 'frank_audit_table'
-#         }
-
-#         # Create a dummy instance with a mock table
-#         self.db = DynamoDBFRANKDatabase(config=self.default_config, logger=self.logger)
-#         self.db.client = MagicMock()
-#         self.db.client.transact_write_items.return_value = {"UnprocessedItems": {}}  # Fast success
-#         self.db.table = MagicMock()
-
-
-
-# class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
-#     def setUp(self):
-#         patcher_resource = patch('boto3.resource')
-#         self.mock_resource = patcher_resource.start()
-#         self.addCleanup(patcher_resource.stop)
-
-#         # Patch logger if needed
-#         self.logger = MagicMock()
-
-#         self.db = DynamoDBFRANKDatabase(config={}, logger=self.logger)
-#         self.db.table = MagicMock()
-#         self.db.client = MagicMock()
-#         self.db.logger = MagicMock()
-#         self.db._filter_submission_by_access_level = MagicMock(return_value={'submission_id': 'sub1'})
-#         self.db._convert_decimals_to_float = MagicMock()
-#         self.db._log_access = MagicMock()
-
-#     def test_get_submission_by_id_found(self):
-#         # Minimal submission message for FRANK Submission model
-#         minimal_submission = {
-#             # "submission": {
-#                 "submission_id": "sub1",
-#                 "timestamp": "2025-09-12T00:00:00Z",
-#                 "submitter": {"organisation_id": "org1", "access_level": "partner", "sector": "finance", "region": "eu-west-1"},
-#                 "sighting": {"confidence": 80, "severity": "high"},
-#                 "tlp_level": "TLP:AMBER",
-#             # }
-#         }
-#         import json
-#         self.db.table.get_item.return_value = {'Item': {'submission_data': minimal_submission}}
-#         result = self.db.get_submission_by_id('sub1')
-#         self.assertIsNotNone(result)
-#         self.assertEqual(result['submission_id'], "sub1")
-#         self.assertEqual(result['submitter']['organisation_id'], "org1")
-
-#     def test_get_submission_by_id_not_found(self):
-#         self.db.table.get_item.return_value = {}
-#         result = self.db.get_submission_by_id('sub1')
-#         self.assertIsNone(result)
-
-#     def test_get_submission_by_id_no_submission_data(self):
-#         self.db.table.get_item.return_value = {'Item': {}}
-#         self.db._convert_decimals_to_float.return_value = {}
-#         result = self.db.get_submission_by_id('sub1')
-#         self.assertIsNone(result)
-
-#     def test_get_submission_by_id_client_error(self):
-#         self.db.table.get_item.side_effect = ClientError({'Error': {}}, 'get_item')
-#         with self.assertRaises(FRANKQueryError):
-#             self.db.get_submission_by_id('sub1')
+    def test_get_submission_by_id_client_error(self):
+        self.db.table.get_item.side_effect = ClientError({'Error': {}}, 'get_item')
+        with self.assertRaises(FRANKQueryError):
+            self.db.get_submission_by_id('sub1')
 
 
 # class TestDynamoDBFRANKDatabaseUpsertOrganisation(unittest.TestCase):
