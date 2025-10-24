@@ -9,7 +9,7 @@ aiosignal==1.4.0
 annotated-doc==0.0.3
 annotated-types==0.7.0
 ansible==12.1.0
-ansible-core==2.19.3
+ansible-core==2.19.2
 anyio==4.10.0
 appnope==0.1.4
 arrow==1.4.0
