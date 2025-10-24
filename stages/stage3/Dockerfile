@@ -50,10 +50,12 @@ RUN pip install --no-cache-dir --user \
     boto3==1.40.18 \
     requests==2.32.5 \
     pydantic==2.11.9 \
-    PyJWT==2.10.1 \
+    PyYAML==6.0.2 \
     httpx==0.28.1 \
     python-multipart==0.0.20 \
-    cryptography==46.0.2
+    cryptography==46.0.2 \
+    PyJWT==2.10.1 \
+    PyJWT[crypto]==2.10.1 
 
 # ===================================
 # Production Stage

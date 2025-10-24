@@ -40,10 +40,11 @@ RUN apt-get update && apt-get install -y \
 RUN pip install --no-cache-dir --user \
     fastapi==0.118.3 \
     uvicorn==0.37.0 \
-    PyJWT==2.10.1 \
+    "PyJWT[crypto]==2.10.1" \
     httpx==0.28.1 \
     python-multipart==0.0.20 \
-    cryptography==46.0.2
+    cryptography==46.0.2 \
+    PyYAML==6.0.2
 
 # ===================================
 # Production Stage
