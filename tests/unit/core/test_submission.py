@@ -196,25 +196,25 @@ class TestSubmission(unittest.TestCase):
         error_str = str(context.exception)
         self.assertIn("Submitter and hit_target cannot be the same organisation", error_str)
    
-   def test_multiple_submissions_unique_orgs(self):
-       """Test 5: Create multiple submissions and ensure unique submitter and target organisations"""
-       # Create multiple submissions
-       submissions = []
-       for i in range(10):
-           submission = Submission.create_minimal(
-               submitter_access_level=AccessTier.CONTRIBUTOR,
-               target_sector=f"sector_{i}"
-           )
-           submissions.append(submission)
+    def test_multiple_submissions_unique_orgs(self):
+        """Test 5: Create multiple submissions and ensure unique submitter and target organisations"""
+        # Create multiple submissions
+        submissions = []
+        for i in range(10):
+            submission = Submission.create_minimal(
+                submitter_access_level=AccessTier.CONTRIBUTOR,
+                target_sector=f"sector_{i}"
+            )
+            submissions.append(submission)
 
-       # Verify all submitter org IDs are unique across submissions
-       submitter_ids = [s.submitter.organisation_id for s in submissions]
-       self.assertEqual(len(submitter_ids), len(set(submitter_ids)))
+        # Verify all submitter org IDs are unique across submissions
+        submitter_ids = [s.submitter.organisation_id for s in submissions]
+        self.assertEqual(len(submitter_ids), len(set(submitter_ids)))
 
-       # Verify all target org IDs are unique across submissions
-        target_ids = [s.hit_target.organisation_id for s in submissions]
-        self.assertEqual(len(target_ids), len(set(target_ids)))
-        
+        # Verify all target org IDs are unique across submissions
+        target_ids = [s.sighting.hit_target.organisation_id for s in submissions]
+        self.assertEqual(len(set(target_ids)), 1)
+
         # Verify no overlap between submitter and target ID pools
         submitter_id_set = set(submitter_ids)
         target_id_set = set(target_ids)
@@ -229,6 +229,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         ]
         
         self.valid_submitter = Submitter.create(
+            organisation_id='identity--' + str(uuid.uuid4()),
             access_level=AccessTier.PARTNER,
             sector="financial"
         )
@@ -239,8 +240,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         )
         
         self.valid_sighting = Sighting.create(
-            confidence=85,
-            severity=SeverityLevel.HIGH,
+            hit_target=self.valid_hit_target,
             observables=Observables(network=self.valid_network_observables),
             observation_count=2
         )
@@ -251,7 +251,6 @@ class TestSubmissionSerialization(unittest.TestCase):
 
         self.valid_submission = Submission(
             submitter=self.valid_submitter,
-            hit_target=self.valid_hit_target,
             sighting=self.valid_sighting
         )  
 

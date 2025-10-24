@@ -50,10 +50,10 @@ class DummyDatabase(BaseFRANKDatabase):
         return {"status": "ok"}
 
 
-    # def upsert_organisation(self, org_data):
-    #     # Not recommended: calling super() abstract method for coverage only
-    #     super().upsert_organisation(org_data)
-    #     return True
+    def upsert_organisation(self, user, org_data):
+        # Not recommended: calling super() abstract method for coverage only
+        super().upsert_organisation(user, org_data)
+        return True
 
     # def query_observables(self, org_id, observable_type=None, limit=100, access_level=None,
     #                      min_confidence=None, sectors=None, days_back=None):
@@ -103,9 +103,9 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
         self.db.config['test_param'] = 'value'
         self.assertIn('test_param', self.db.config)
 
-    # def test_upsert_organisation(self):
-    #     """Test upsert_organisation method."""
-    #     self.assertTrue(self.db.upsert_organisation({"name": "TestOrg"}))
+    def test_upsert_organisation(self):
+        """Test upsert_organisation method."""
+        self.assertTrue(self.db.upsert_organisation(user={"user_id": "test_user"}, org_data={"organisation_id": "TestOrg"}))
 
     def test_store_submission(self):
         """Test store_submission method."""

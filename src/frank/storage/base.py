@@ -73,19 +73,20 @@ class BaseFRANKDatabase(ABC):
         pass
     
 
-    # @abstractmethod
-    # def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
-    #     """
-    #     Insert or update organisation information in the database.
+    @abstractmethod
+    def upsert_organisation(self, user: Dict[str, Any], org_data: Dict[str, Any]) -> None:
+        """
+        Insert or update organisation information in the database.
 
-    #     Args:
-    #         org_data (Dict[str, Any]): Dictionary containing organisation details.
+        Args:
+            user (Dict[str, Any]): User information performing the operation
+            org_data (Dict[str, Any]): Dictionary containing organisation details.
 
-    #     Returns:
-    #         bool: True if the operation was successful, False otherwise.
-    #     """
-    #     pass
-    # 
+        Returns:
+            Nonne
+        """
+        pass
+    
 
     # @abstractmethod
     # def query_observables(self, org_id: str, observable_type: ObservableType = None,

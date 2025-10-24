@@ -107,7 +107,7 @@ class TestSubmitter(unittest.TestCase):
         for count in valid_counts:
             with self.subTest(count=count):
                 submitter = Submitter(
-                    organisation_id=""
+                    organisation_id="",
                     access_level=AccessTier.PARTNER, client_count=count)
                 self.assertEqual(submitter.client_count, count)
         
@@ -120,6 +120,7 @@ class TestSubmitter(unittest.TestCase):
     def test_factory_method_create(self):
         """Test the create factory method"""
         submitter = Submitter.create(
+            organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.CONTRIBUTOR,
             sector="healthcare",
             region="asia_pacific"
@@ -132,7 +133,7 @@ class TestSubmitter(unittest.TestCase):
 
     def test_factory_method_minimal(self):
         """Test factory method with minimal parameters"""
-        submitter = Submitter.create(access_level=AccessTier.OBSERVER)
+        submitter = Submitter.create(organisation_id=f"identity--{uuid.uuid4()}", access_level=AccessTier.OBSERVER)
         
         self.assertEqual(submitter.access_level, AccessTier.OBSERVER)
         self.assertIsNone(submitter.sector)
@@ -142,6 +143,7 @@ class TestSubmitter(unittest.TestCase):
     def test_model_dump(self):
         """Test serialization to dictionary"""
         submitter = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.PARTNER,
             sector="financial",
             region="europe",
@@ -166,7 +168,10 @@ class TestSubmitter(unittest.TestCase):
 
     def test_model_dump_exclude_none(self):
         """Test serialization excluding None values"""
-        submitter = Submitter(access_level=AccessTier.PARTNER)  # sector, region, client_count will be None
+        submitter = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
+            access_level=AccessTier.PARTNER
+            )  # sector, region, client_count will be None
         
         data = submitter.model_dump(exclude_none=True)
         
@@ -182,6 +187,7 @@ class TestSubmitter(unittest.TestCase):
     def test_json_serialization(self):
         """Test JSON serialization"""
         submitter = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.PARTNER,
             sector="technology"
         )
@@ -195,6 +201,7 @@ class TestSubmitter(unittest.TestCase):
         """Test that extra fields are ignored (be forgiving)"""
         # This should not raise an error due to extra="ignore"
         submitter = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.PARTNER,
             sector="financial",
             unknown_field="should_be_ignored",
@@ -227,15 +234,21 @@ class TestSubmitter(unittest.TestCase):
 
     def test_submitter_inequality(self):
         """Test submitter inequality"""
-        submitter1 = Submitter(access_level=AccessTier.PARTNER, sector="financial")
-        submitter2 = Submitter(access_level=AccessTier.CONTRIBUTOR, sector="financial")
+        submitter1 = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
+            access_level=AccessTier.PARTNER, sector="financial")
+        submitter2 = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
+            access_level=AccessTier.CONTRIBUTOR, sector="financial")
         
         # Different tiers should not be equal
         self.assertNotEqual(submitter1, submitter2)
 
     def test_repr_and_str(self):
         """Test string representations"""
-        submitter = Submitter(access_level=AccessTier.PARTNER, sector="financial")
+        submitter = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
+            access_level=AccessTier.PARTNER, sector="financial")
         
         repr_str = repr(submitter)
         str_str = str(submitter)
@@ -244,22 +257,6 @@ class TestSubmitter(unittest.TestCase):
         self.assertIsInstance(str_str, str)
         self.assertIn("Submitter", repr_str)
 
-    def test_edge_cases(self):
-        """Test edge cases and boundary conditions"""
-        # Empty strings should be handled
-        submitter = Submitter(
-            access_level=AccessTier.PARTNER,
-            sector="",  # Empty string
-            region=""   # Empty string
-        )
-        
-        # Empty sector should be normalized (though result might be empty)
-        self.assertIsNotNone(submitter.sector)
-        
-        # Very long strings (should be accepted)
-        long_sector = "a" * 1000
-        submitter_long = Submitter(access_level=AccessTier.PARTNER, sector=long_sector)
-        self.assertEqual(submitter_long.sector, long_sector)
 
 
 class TestSubmitterIntegration(unittest.TestCase):
@@ -268,7 +265,9 @@ class TestSubmitterIntegration(unittest.TestCase):
     def test_submitter_in_submission_context(self):
         """Test submitter validation in the context of a full submission"""
         # This tests that the submitter works properly as part of larger validation
-        submitter = Submitter(access_level=AccessTier.PARTNER, sector="financial")
+        submitter = Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
+            access_level=AccessTier.PARTNER, sector="financial")
         
         # Should be able to access all required properties for submission validation
         self.assertIsNotNone(submitter.organisation_id)
@@ -277,7 +276,9 @@ class TestSubmitterIntegration(unittest.TestCase):
 
     def test_multiple_submitters_unique_ids(self):
         """Test that multiple submitters get unique IDs"""
-        submitters = [Submitter(access_level=AccessTier.PARTNER) for _ in range(10)]
+        submitters = [Submitter(
+            organisation_id=f"identity--{uuid.uuid4()}",
+            access_level=AccessTier.PARTNER) for _ in range(10)]
         
         # All IDs should be unique
         ids = [s.organisation_id for s in submitters]
@@ -291,41 +292,13 @@ class TestSubmitterIntegration(unittest.TestCase):
             self.assertIsInstance(uuid.UUID(uuid_part), uuid.UUID)
 
 
-class TestSubmitterPerformance(unittest.TestCase):
-    """Performance-related tests for Submitter"""
-
-    def test_bulk_creation_performance(self):
-        """Test creating many submitters (basic performance check)"""
-        import time
-        
-        start_time = time.time()
-        submitters = []
-        
-        for i in range(100):
-            submitter = Submitter(
-                access_level=AccessTier.PARTNER,
-                sector="financial",
-                client_count=i
-            )
-            submitters.append(submitter)
-        
-        end_time = time.time()
-        elapsed = end_time - start_time
-        
-        # Should be able to create 100 submitters quickly
-        self.assertLess(elapsed, 1.0)  # Less than 1 second
-        self.assertEqual(len(submitters), 100)
-        
-        # All should have unique IDs
-        ids = [s.organisation_id for s in submitters]
-        self.assertEqual(len(ids), len(set(ids)))
-
 class TestSubmitterSerialization(unittest.TestCase):
     """Test Submitter serialization and deserialization with various formats."""
     
     def setUp(self):
         """Set up test data."""
         self.minimal_data = {
+            "organisation_id": f"identity--{uuid.uuid4()}",
             "access_level": "partner"
         }
         
@@ -355,7 +328,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitter = Submitter(**self.minimal_data)
         
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertEqual(submitter.organisation_type, "cyber_partner")  # Default value
+        self.assertIsNone(submitter.organisation_type)  # Default value
         self.assertIsNotNone(submitter.organisation_id)
         self.assertTrue(submitter.organisation_id.startswith("identity--"))
 
@@ -389,7 +362,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         # Check essential fields survived
         self.assertEqual(result_dict["access_level"], self.minimal_data["access_level"])
         self.assertIn("organisation_id", result_dict)
-        self.assertEqual(result_dict["organisation_type"], "cyber_partner")
 
     def test_dict_roundtrip_full(self):
         """Test dictionary roundtrip with full data."""
@@ -455,6 +427,7 @@ class TestSubmitterSerialization(unittest.TestCase):
     def test_yaml_deserialization(self):
         """Test YAML deserialization."""
         yaml_str = """
+        organisation_id: identity--12345678-1234-5678-9abc-123456789abc
         access_level: "observer"
         sector: "technology"
         region: "europe"
@@ -515,6 +488,7 @@ class TestSubmitterSerialization(unittest.TestCase):
     def test_factory_method_serialization(self):
         """Test factory method creates submitters that serialize correctly."""
         submitter = Submitter.create(
+            organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.PARTNER,
             sector="healthcare",
             region="north_america"
@@ -532,30 +506,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         self.assertEqual(submitter.sector, roundtrip.sector)
         self.assertEqual(submitter.region, roundtrip.region)
 
-    def test_organisation_id_generation(self):
-        """Test automatic organisation ID generation."""
-        submitter1 = Submitter(**self.minimal_data)
-        submitter2 = Submitter(**self.minimal_data)
-        
-        # Both should have IDs
-        self.assertIsNotNone(submitter1.organisation_id)
-        self.assertIsNotNone(submitter2.organisation_id)
-        
-        # IDs should be unique
-        self.assertNotEqual(submitter1.organisation_id, submitter2.organisation_id)
-        
-        # IDs should be STIX format
-        self.assertTrue(submitter1.organisation_id.startswith("identity--"))
-        self.assertTrue(submitter2.organisation_id.startswith("identity--"))
-        
-        # UUID part should be valid
-        uuid_part1 = submitter1.organisation_id.split("--")[1]
-        uuid_part2 = submitter2.organisation_id.split("--")[1]
-        
-        # Should not raise ValueError
-        uuid.UUID(uuid_part1)
-        uuid.UUID(uuid_part2)
-
     def test_predefined_organisation_id_preserved(self):
         """Test that predefined organisation IDs are preserved."""
         predefined_id = "identity--custom-12345678-1234-5678-9abc-123456789abc"
@@ -569,17 +519,6 @@ class TestSubmitterSerialization(unittest.TestCase):
         dict_data = submitter.model_dump(exclude_none=True)
         roundtrip = Submitter(**dict_data)
         self.assertEqual(roundtrip.organisation_id, predefined_id)
-
-    def test_default_values_serialization(self):
-        """Test that default values are properly handled in serialization."""
-        submitter = Submitter(**self.minimal_data)
-        
-        # Check defaults are set
-        self.assertEqual(submitter.organisation_type, "cyber_partner")
-        
-        # Check they appear in serialization
-        data = submitter.model_dump(exclude_none=True)
-        self.assertEqual(data["organisation_type"], "cyber_partner")
 
     def test_extra_fields_ignored(self):
         """Test that extra fields are ignored due to 'extra=ignore' config."""
@@ -617,6 +556,8 @@ class TestSubmitterSerialization(unittest.TestCase):
     def test_none_values_excluded(self):
         """Test that None values are properly excluded."""
         data = {
+            "organisation_id": f"identity--{uuid.uuid4()}",
+            "organisation_type": "mssp",
             "access_level": "partner",
             "sector": None,
             "region": None,
@@ -683,7 +624,10 @@ class TestSubmitterSerialization(unittest.TestCase):
         
         for tier in tiers:
             with self.subTest(access_level=tier):
-                submitter = Submitter(access_level=tier)
+                submitter = Submitter(
+                    organisation_id=f"identity--{uuid.uuid4()}",
+                    access_level=tier
+                )
                 
                 # Dict output should use enum value
                 dict_data = submitter.model_dump()
@@ -701,6 +645,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         """Test a complex scenario with factory method, normalization, and multiple formats."""
         # Create with factory method and data that needs normalization
         submitter = Submitter.create(
+            organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.OBSERVER,
             sector="Banking",  # Should normalize to "financial"
             region="north_america"

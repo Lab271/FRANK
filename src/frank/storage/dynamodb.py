@@ -295,40 +295,34 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         self._batch_write_items(items_to_write)
 
 
-    def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
+    def upsert_organisation(self, user: Dict[str, Any], org_data: Dict[str, Any]) -> None:
         """
         Insert or update organisation information in DynamoDB.
 
         Args:
-            org_data (Dict[str, Any]): Dictionary containing organisation fields. Must include 'organisation_id'.
-                Expected keys: organisation_id, access_level, sector, region, last_active (optional).
-
+            user (Dict[str, Any]): User information performing the operation
+            org_data (Dict[str, Any]): Dictionary containing organisation fields. 
         Returns:
-            bool: True if the operation succeeded, False if there was a ClientError.
+            None
 
         Raises:
-            Logs error and returns False if DynamoDB put_item fails.
+            ClientError: If DynamoDB put_item fails.
         """
-        try:
-            timestamp = org_data.get('last_active', None) or datetime.now(timezone.utc).isoformat()
-            org_item = {
-                'PK': f"ORG#{org_data['organisation_id']}",
-                'SK': 'ORG',
-                'GSI1PK': f"TIER#{org_data.get('access_level', 'unknown')}",
-                'GSI1SK': timestamp,
-                'EntityType': 'organisation',
-                'organisation_id': org_data.get('organisation_id', ''),
-                'access_level': org_data.get('access_level', ''),
-                'sector': org_data.get('sector', ''),
-                'region': org_data.get('region', ''),
-                'last_active': timestamp,
-                'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
-            }
-            self.table.put_item(Item=org_item)
-            return True
-        except ClientError as e:
-            self.logger.error(f"Error upserting organisation: {e}")
-            return False
+        timestamp = org_data.get('last_active', None) or datetime.now(timezone.utc)
+        timestamp_str = timestamp.isoformat()
+        org_item = {
+            'PK': f"ORG#{org_data['organisation_id']}",
+            'SK': 'ORG',
+            'GSI1PK': f"OT#TARGET",
+            'GSI1SK': f"TS#{timestamp_str}",
+            'entity_type': 'organisation',
+            'msg': {k: v for k, v in org_data.items() if v is not None},
+            'last_active': timestamp_str,
+            'request_id': user["request_id"],
+            'TTL': int((datetime.now(timezone.utc) + timedelta(days=2555)).timestamp())
+        }
+        self.table.put_item(Item=org_item)
+        
 
     def _extract_observables(self, user: Dict[str, Any], submission: Submission) -> List[Dict]:
         """
