@@ -98,7 +98,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Verify sighting
         self.assertEqual(submission.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
-        self.assertEqual(submission.sighting.confidence, 87)
         
         # Verify observables
         self.assertEqual(len(submission.sighting.observables.network), 2)
@@ -144,7 +143,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Verify key data survived
         self.assertEqual(submission.submitter.organisation_id, roundtrip_submission.submitter.organisation_id)
-        self.assertEqual(submission.sighting.confidence, roundtrip_submission.sighting.confidence)
         self.assertEqual(len(submission.sighting.observables.network), 
                         len(roundtrip_submission.sighting.observables.network))
 
@@ -158,7 +156,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         self.assertIn("submitter", parsed)
         self.assertIn("sighting", parsed)
         self.assertEqual(parsed["submitter"]["access_level"], "partner")
-        self.assertEqual(parsed["sighting"]["confidence"], 87)
 
     def test_json_roundtrip_minimal(self):
         """Test complete JSON roundtrip with minimal data."""
@@ -172,7 +169,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         # Verify critical data integrity
         self.assertEqual(original.submitter.organisation_id, roundtrip.submitter.organisation_id)
         self.assertEqual(original.sighting.sighting_id, roundtrip.sighting.sighting_id)
-        self.assertEqual(original.sighting.confidence, roundtrip.sighting.confidence)
         self.assertEqual(len(original.sighting.observables.network), 
                         len(roundtrip.sighting.observables.network))
 
@@ -191,7 +187,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         self.assertIn("submission:", yaml_str)
         self.assertIn("submitter:", yaml_str)
         self.assertIn("access_level: partner", yaml_str)
-        self.assertIn("confidence: 87", yaml_str)
         self.assertIn("type: ipv4", yaml_str)
         self.assertIn("type: domain", yaml_str)
 
@@ -222,7 +217,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         # Verify parsing worked correctly
         self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)
-        self.assertEqual(submission.sighting.confidence, 87)
+        self.assertEqual(submission.sighting.timestamp, datetime(2025, 1, 20, 14, 30, 22, tzinfo=timezone.utc))
         self.assertEqual(len(submission.sighting.observables.network), 2)
 
     def test_yaml_roundtrip_complete(self):
@@ -245,8 +240,8 @@ class TestSubmissionSerialization(unittest.TestCase):
                         roundtrip_submission.submitter.organisation_id)
         self.assertEqual(submission.sighting.sighting_id, 
                         roundtrip_submission.sighting.sighting_id)
-        self.assertEqual(submission.sighting.confidence, 
-                        roundtrip_submission.sighting.confidence)
+        self.assertEqual(submission.sighting.timestamp, 
+                        roundtrip_submission.sighting.timestamp)
         
         # Check observables
         orig_network = submission.sighting.observables.network
@@ -278,7 +273,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         """Test handling of optional fields like hit_target and processing_notes."""
         # Test with minimal data (no optional fields)
         minimal_sub = Submission(**self.minimal_yaml_data["submission"])
-        self.assertIsNone(minimal_sub.hit_target)
+        self.assertIsNone(minimal_sub.sighting.hit_target)
         self.assertIsNone(minimal_sub.processing_notes)
         
         # Test with optional fields
@@ -292,7 +287,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         })
         
         full_sub = Submission(**data_with_optional)
-        self.assertIsNotNone(full_sub.hit_target)
+        self.assertIsNone(full_sub.sighting.hit_target)
         self.assertEqual(full_sub.processing_notes, "Automated submission via API")
         
         # Test serialization excludes None values
@@ -301,7 +296,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         self.assertNotIn("processing_notes", minimal_dict)
         
         full_dict = full_sub.model_dump(exclude_none=True)
-        self.assertIn("hit_target", full_dict)
+        self.assertNotIn("hit_target", full_dict)
         self.assertIn("processing_notes", full_dict)
 
     def test_enum_values_consistency(self):
@@ -367,7 +362,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         sighting_data = result["sighting"]
         self.assertIn("sighting_id", sighting_data)
-        self.assertIn("confidence", sighting_data)
         self.assertIn("observables", sighting_data)
 
     def test_format_version_default(self):
@@ -407,7 +401,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         for sub in submissions:
             self.assertEqual(sub.submitter.organisation_id, original.submitter.organisation_id)
             self.assertEqual(sub.sighting.sighting_id, original.sighting.sighting_id)
-            self.assertEqual(sub.sighting.confidence, original.sighting.confidence)
             self.assertEqual(len(sub.sighting.observables.network), 
                            len(original.sighting.observables.network))
 
@@ -424,7 +417,6 @@ class TestSubmissionSerialization(unittest.TestCase):
         roundtrip_submission = Submission(**export_wrapped["submission"])
         
         self.assertEqual(submission.submitter.access_level, roundtrip_submission.submitter.access_level)
-        self.assertEqual(submission.sighting.confidence, roundtrip_submission.sighting.confidence)
 
     def test_complex_roundtrip_scenario(self):
         """Test a complex roundtrip scenario through all formats."""
@@ -455,7 +447,6 @@ class TestSubmissionSerialization(unittest.TestCase):
             self.assertEqual(sub.submitter.organisation_id, "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff")
             self.assertEqual(sub.submitter.access_level, AccessTier.PARTNER)
             self.assertEqual(sub.sighting.sighting_id, "sighting-ee20065d-2555-424f-ad9e-0f8428623c75")
-            self.assertEqual(sub.sighting.confidence, 87)
             self.assertEqual(len(sub.sighting.observables.network), 2)
             self.assertEqual(sub.format_version, __version__)
             self.assertEqual(sub.submission_method, "api")
@@ -483,9 +474,12 @@ class TestLegacySubmissionParsing(unittest.TestCase):
     def test_from_legacy_dict_missing_submission_key(self):
         """Test parsing when 'submission' key is missing."""
         legacy_data = {
-            "submitter": {"access_level": "partner"},
-            "hit_target": {"sector": "finance"},
+            "submitter": {
+                "organisation_id": "identity--1234abcd-12ab-34cd-56ef-1234567890ab",
+                "access_level": "partner"
+            },
             "sighting": {
+                "hit_target": {"sector": "finance"},
                 "confidence": 85,
                 "observables": {
                     "network": [
@@ -496,16 +490,22 @@ class TestLegacySubmissionParsing(unittest.TestCase):
         }
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
-        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertEqual(parsed.sighting.hit_target.sector, "finance")
+        self.assertEqual(parsed.submitter.organisation_id, "identity--1234abcd-12ab-34cd-56ef-1234567890ab")
         self.assertTrue(parsed.sighting.observables.network)
 
     def test_from_legacy_dict_regular(self):
         """Test parsing when hit_target sector is missing (should default to 'unknown')."""
         legacy_data = {
             "submission": {
-                "submitter": {"access_level": "partner"},
-                "hit_target": {"sector": "finance"},
-                "sighting": {"confidence": 85},
+                "submitter": {
+                    "organisation_id": "identity--1234abcd-12ab-34cd-56ef-1234567890ab",
+                    "access_level": "partner"
+                },
+                "sighting": {
+                    "hit_target": {"sector": "finance"},
+                    "confidence": 85
+                },
                 "observables": {
                     "network": [
                         {"type": "ipv4", "value": "203.0.113.1"}
@@ -515,15 +515,21 @@ class TestLegacySubmissionParsing(unittest.TestCase):
         }
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
-        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertEqual(parsed.submitter.organisation_id, "identity--1234abcd-12ab-34cd-56ef-1234567890ab")
+        self.assertEqual(parsed.sighting.hit_target.sector, "finance")
 
     def test_from_legacy_dict_invalid_observable(self):
         """Test parsing with an invalid observable (should skip it)."""
         legacy_data = {
             "submission": {
-                "submitter": {"access_level": "partner"},
-                "hit_target": {"sector": "finance"},
-                "sighting": {"confidence": 85},
+                "submitter": {
+                    "organisation_id": "identity--1234abcd-12ab-34cd-56ef-1234567890ab",
+                    "access_level": "partner"
+                },
+                "sighting": {
+                    "hit_target": {"sector": "finance"},
+                    "confidence": 85
+                },
                 "observables": {
                     "network": [
                         {"type": "ipv4", "value": "203.0.113.1"},
@@ -534,7 +540,7 @@ class TestLegacySubmissionParsing(unittest.TestCase):
         }
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
-        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertEqual(parsed.sighting.hit_target.sector, "finance")
         self.assertEqual(len(parsed.sighting.observables.network), 1)
 
     def test_from_legacy_dict_error(self):

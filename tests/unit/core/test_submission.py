@@ -30,6 +30,7 @@ class TestSubmission(unittest.TestCase):
         ]
         
         self.valid_submitter = Submitter.create(
+            organisation_id='identity--' + str(uuid.uuid4()),
             access_level=AccessTier.PARTNER,
             sector="financial"
         )
@@ -40,12 +41,15 @@ class TestSubmission(unittest.TestCase):
         )
         
         self.valid_sighting = Sighting.create(
-            confidence=85,
-            severity=SeverityLevel.HIGH,
             observables=Observables(network=self.valid_network_observables),
             observation_count=2
         )
         
+        self.valid_sighting_hit_target = Sighting.create(
+            observables=Observables(network=self.valid_network_observables),
+            observation_count=2,
+            hit_target=self.valid_hit_target
+        )
         self.valid_observables = Observables(
             network=self.valid_network_observables
         )
@@ -69,8 +73,6 @@ class TestSubmission(unittest.TestCase):
         self.assertTrue(submission.submitter.organisation_id.startswith("identity--"))
               
         # Verify sighting properties
-        self.assertEqual(submission.sighting.confidence, 85)
-        self.assertEqual(submission.sighting.severity, SeverityLevel.HIGH)
         self.assertEqual(submission.sighting.observation_count, 2)
         self.assertIsNotNone(submission.sighting.sighting_id)
         self.assertTrue(submission.sighting.sighting_id.startswith("sighting--"))
@@ -93,22 +95,20 @@ class TestSubmission(unittest.TestCase):
         """Test 2: Create a minimal valid Submission with hit_target"""
         submission = Submission(
             submitter=self.valid_submitter,
-            hit_target=self.valid_hit_target,
-            sighting=self.valid_sighting
+            sighting=self.valid_sighting_hit_target
         )
         
         # Verify all required components are present
         self.assertIsInstance(submission.submitter, Submitter)
-        self.assertIsInstance(submission.hit_target, HitTarget)
         self.assertIsInstance(submission.sighting, Sighting)
         self.assertIsInstance(submission.sighting.observables, Observables)
+        self.assertIsInstance(submission.sighting.hit_target, HitTarget)
         
         
         # # Verify hit_target properties
-        self.assertEqual(submission.hit_target.sector, "healthcare")
-        self.assertEqual(submission.hit_target.organisation_size, "large")
-        self.assertIsNotNone(submission.hit_target.organisation_id)
-        self.assertTrue(submission.hit_target.organisation_id.startswith("identity--"))
+        self.assertEqual(submission.sighting.hit_target.sector, "healthcare")
+        self.assertEqual(submission.sighting.hit_target.organisation_size, "large")
+        self.assertIsNone(submission.sighting.hit_target.organisation_id)
 
     def test_factory_method_create_minimal(self):
         """Test 3: Test the create_minimal factory method functionality"""
@@ -120,11 +120,10 @@ class TestSubmission(unittest.TestCase):
         self.assertIsInstance(submission.submitter, Submitter)
         self.assertIsInstance(submission.sighting, Sighting)
         self.assertIsInstance(submission.sighting.observables, Observables)
-        self.assertIsNone(submission.hit_target)
+        self.assertIsNone(submission.sighting.hit_target)
         
         # Verify default values from factory method
         self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)  # Default from factory
-        self.assertEqual(submission.sighting.confidence, 69)            # Default from Sighting
         self.assertEqual(len(submission.sighting.observables.network), 2)        # Default IPs from factory
         
         # Verify default threat IPs are created
@@ -157,14 +156,13 @@ class TestSubmission(unittest.TestCase):
         # Create submitter and target with different org IDs (should pass)
         valid_submission = Submission(
             submitter=self.valid_submitter,
-            hit_target=self.valid_hit_target,
-            sighting=self.valid_sighting
+            sighting=self.valid_sighting_hit_target
         )
         
         # Should be valid - different organisations
         self.assertNotEqual(
             valid_submission.submitter.organisation_id,
-            valid_submission.hit_target.organisation_id
+            valid_submission.sighting.hit_target.organisation_id
         )
         
         # Create submitter and target with the same org ID (should fail)
@@ -175,45 +173,45 @@ class TestSubmission(unittest.TestCase):
             access_level=AccessTier.PARTNER,
             sector="financial"
         )
-        
+
+
         same_org_target = HitTarget(
             organisation_id=same_org_id,  # Same as submitter - should cause error
             sector="healthcare"
         )
-        
-        # This should raise a ValidationError due to model validator
-        with self.assertRaises(ValidationError) as context:
+
+        same_org_sighting = Sighting(
+            observables=self.valid_observables,
+            hit_target=same_org_target
+        )
+
+        # This should raise a ValueError due to model validator
+        with self.assertRaises(ValueError) as context:
             Submission(
                 submitter=same_org_submitter,
-                hit_target=same_org_target,
-                sighting=self.valid_sighting
+                sighting=same_org_sighting
             )
         
         # Verify the error message mentions the validation rule
         error_str = str(context.exception)
         self.assertIn("Submitter and hit_target cannot be the same organisation", error_str)
-        
-        # Test edge case: ensure auto-generated IDs are always different
-        # Create multiple submissions and verify they never have same org IDs
-        submissions = []
-        for i in range(10):
-            submission = Submission.create_minimal(
-                submitter_access_level=AccessTier.CONTRIBUTOR,
-                target_sector=f"sector_{i}"
-            )
-            submissions.append(submission)
-            
-            # Each submission should have different org IDs
-            self.assertNotEqual(
-                submission.submitter.organisation_id,
-                submission.hit_target.organisation_id
-            )
-        
-        # Verify all submitter org IDs are unique across submissions
-        submitter_ids = [s.submitter.organisation_id for s in submissions]
-        self.assertEqual(len(submitter_ids), len(set(submitter_ids)))
-        
-        # Verify all target org IDs are unique across submissions  
+   
+   def test_multiple_submissions_unique_orgs(self):
+       """Test 5: Create multiple submissions and ensure unique submitter and target organisations"""
+       # Create multiple submissions
+       submissions = []
+       for i in range(10):
+           submission = Submission.create_minimal(
+               submitter_access_level=AccessTier.CONTRIBUTOR,
+               target_sector=f"sector_{i}"
+           )
+           submissions.append(submission)
+
+       # Verify all submitter org IDs are unique across submissions
+       submitter_ids = [s.submitter.organisation_id for s in submissions]
+       self.assertEqual(len(submitter_ids), len(set(submitter_ids)))
+
+       # Verify all target org IDs are unique across submissions
         target_ids = [s.hit_target.organisation_id for s in submissions]
         self.assertEqual(len(target_ids), len(set(target_ids)))
         

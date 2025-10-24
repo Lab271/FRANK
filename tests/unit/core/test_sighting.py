@@ -44,8 +44,6 @@ class TestSighting(unittest.TestCase):
         sighting = Sighting(**self.valid_sighting_data)
 
         self.assertIsInstance(sighting, Sighting)
-        self.assertEqual(sighting.confidence, 85)
-        self.assertEqual(sighting.severity, SeverityLevel.HIGH)
         self.assertEqual(sighting.observation_count, 3)
         self.assertIsNone(sighting.observables)
 
@@ -55,10 +53,6 @@ class TestSighting(unittest.TestCase):
 
         # Check the set values
         self.assertIsInstance(sighting.observables, Observables)
-
-        # Check that default values are set
-        self.assertEqual(sighting.confidence, 69)  # Default confidence
-        self.assertEqual(sighting.observation_count, 1)  # Default count
         
         # Check that auto-generated fields are populated
         self.assertIsNotNone(sighting.sighting_id)
@@ -70,7 +64,6 @@ class TestSighting(unittest.TestCase):
         # Optional fields should be None
         self.assertIsNone(sighting.first_observed)
         self.assertIsNone(sighting.last_observed)
-        self.assertIsNone(sighting.severity)
         self.assertIsNone(sighting.sigma_detection)
         self.assertIsNone(sighting.threat_context)
         self.assertIsNone(sighting.impact)
@@ -85,7 +78,6 @@ class TestSighting(unittest.TestCase):
         sighting = Sighting(
             sighting_id=sighting_id,
             timestamp=timestamp,
-            confidence=95,
             first_observed=first_observed,
             last_observed=last_observed,
             observation_count=5,
@@ -96,11 +88,9 @@ class TestSighting(unittest.TestCase):
         self.assertIsInstance(sighting.observables, Observables)
         self.assertEqual(sighting.sighting_id, sighting_id)
         self.assertEqual(sighting.timestamp, timestamp)
-        self.assertEqual(sighting.confidence, 95)
         self.assertEqual(sighting.first_observed, first_observed)
         self.assertEqual(sighting.last_observed, last_observed)
         self.assertEqual(sighting.observation_count, 5)
-        self.assertEqual(sighting.severity, SeverityLevel.CRITICAL)
 
     def test_sighting_id_auto_generation(self):
         """Test that sighting_id is auto-generated when not set"""
@@ -269,23 +259,6 @@ class TestSighting(unittest.TestCase):
             self.assertIn("first_observed cannot be after main timestamp", str(exc.value))
 
 
-    def test_confidence_validation(self):
-        """Test confidence score validation"""
-        # Valid confidence scores
-        valid_scores = [0, 50, 69, 85, 100]
-        for score in valid_scores:
-            with self.subTest(score=score):
-                sighting = Sighting(confidence=score,
-                                    observables=Observables(network=self.valid_network_observables))
-                self.assertEqual(sighting.confidence, score)
-        
-        # Invalid confidence scores (out of range)
-        invalid_scores = [-1, 101, 150, -50]
-        for score in invalid_scores:
-            with self.subTest(score=score):
-                with self.assertRaises(ValidationError):
-                    Sighting(confidence=score)
-
     def test_observation_count_validation(self):
         """Test observation count validation"""
         # Valid observation counts
@@ -303,39 +276,6 @@ class TestSighting(unittest.TestCase):
                 with self.assertRaises(ValidationError):
                     Sighting(observation_count=count,
                               observables=Observables(network=self.valid_network_observables))
-
-    def test_severity_level_validation(self):
-        """Test severity level validation"""
-        # Valid severity levels
-        valid_severities = [
-            SeverityLevel.LOW,
-            SeverityLevel.MEDIUM,
-            SeverityLevel.HIGH,
-            SeverityLevel.CRITICAL
-        ]
-        
-        for severity in valid_severities:
-            with self.subTest(severity=severity):
-                sighting = Sighting(severity=severity,
-                                    observables=Observables(network=self.valid_network_observables))
-                self.assertEqual(sighting.severity, severity)
-        
-        # Test with string values (should work with enum)
-        sighting = Sighting(severity="high",
-                            observables=Observables(network=self.valid_network_observables))
-        self.assertEqual(sighting.severity, SeverityLevel.HIGH)
-        
-        # Test None (should be allowed)
-        sighting = Sighting(severity=None,
-                            observables=Observables(network=self.valid_network_observables))
-        self.assertIsNone(sighting.severity)
-
-    def test_invalid_severity_raises_error(self):
-        """Test that invalid severity raises validation error"""
-        with self.assertRaises(ValidationError) as context:
-            Sighting(severity="invalid_severity")
-        
-        self.assertIn("severity", str(context.exception))
 
     def test_observation_times_validation(self):
         """Test validation of first_observed and last_observed times"""
@@ -397,14 +337,10 @@ class TestSighting(unittest.TestCase):
     def test_factory_method_create(self):
         """Test the create factory method"""
         sighting = Sighting.create(
-            confidence=90,
             observables=Observables(network=self.valid_network_observables),
-            severity=SeverityLevel.HIGH,
             observation_count=3,
         )
         
-        self.assertEqual(sighting.confidence, 90)
-        self.assertEqual(sighting.severity, SeverityLevel.HIGH)
         self.assertEqual(sighting.observation_count, 3)
         self.assertIsNotNone(sighting.sighting_id)
         self.assertIsNotNone(sighting.timestamp)
@@ -415,8 +351,6 @@ class TestSighting(unittest.TestCase):
             observables=Observables(network=self.valid_network_observables)
         )
 
-        self.assertEqual(sighting.confidence, 69)  # Default
-        self.assertIsNone(sighting.severity)
         self.assertEqual(sighting.observation_count, 1)  # Default
         self.assertIsNotNone(sighting.sighting_id)
         self.assertIsNotNone(sighting.timestamp)
@@ -426,8 +360,6 @@ class TestSighting(unittest.TestCase):
         timestamp = datetime(2024, 1, 15, 14, 30, 0, tzinfo=timezone.utc)
         sighting = Sighting(
             timestamp=timestamp,
-            confidence=85,
-            severity=SeverityLevel.HIGH,
             observation_count=2,
             observables=Observables(network=self.valid_network_observables)
         )
@@ -436,35 +368,31 @@ class TestSighting(unittest.TestCase):
         
         # Check that all fields are present
         expected_fields = [
-            "sighting_id", "timestamp", "confidence", "first_observed",
-            "last_observed", "observation_count", "severity"
+            "sighting_id", "timestamp", "first_observed",
+            "last_observed", "observation_count", 
         ]
         
         for field in expected_fields:
             self.assertIn(field, data)
         
         # Check values
-        self.assertEqual(data["confidence"], 85)
-        self.assertEqual(data["severity"], "high")  # Enum value
         self.assertEqual(data["observation_count"], 2)
         self.assertIsInstance(data["timestamp"], str)
 
     def test_model_dump_exclude_none(self):
         """Test serialization excluding None values"""
-        sighting = Sighting(confidence=75,
-                            observables=Observables(network=self.valid_network_observables))  # Other optional fields will be None
+        sighting = Sighting(
+            observables=Observables(network=self.valid_network_observables))  # Other optional fields will be None
 
         data = sighting.model_dump(exclude_none=True)
         
         # Check that None fields are excluded
         self.assertNotIn("first_observed", data)
         self.assertNotIn("last_observed", data)
-        self.assertNotIn("severity", data)
         
         # Check that non-None fields are present
         self.assertIn("sighting_id", data)
         self.assertIn("timestamp", data)
-        self.assertIn("confidence", data)
         self.assertIn("observation_count", data)
 
     def test_json_serialization_with_datetime(self):
@@ -485,13 +413,11 @@ class TestSighting(unittest.TestCase):
         """Test that extra fields are ignored (be forgiving)"""
         # This should not raise an error due to extra="ignore"
         sighting = Sighting(
-            confidence=80,
             unknown_field="should_be_ignored",
             another_extra_field=456,
             observables=Observables(network=self.valid_network_observables)
         )
         
-        self.assertEqual(sighting.confidence, 80)
         # Extra fields should not be accessible
         self.assertFalse(hasattr(sighting, 'unknown_field'))
 
@@ -542,18 +468,15 @@ class TestSighting(unittest.TestCase):
     def test_edge_cases(self):
         """Test edge cases and boundary conditions"""
         # Boundary confidence values
-        sighting_min = Sighting(confidence=0,
-                                 observables=Observables(network=self.valid_network_observables))
-        sighting_max = Sighting(confidence=100,
-                                 observables=Observables(network=self.valid_network_observables))
-        self.assertEqual(sighting_min.confidence, 0)
-        self.assertEqual(sighting_max.confidence, 100)
-        
+        sighting_min = Sighting(observables=Observables(network=self.valid_network_observables))
+        sighting_max = Sighting(observables=Observables(network=self.valid_network_observables))
+
         # Large observation count
-        sighting_large = Sighting(observation_count=999999,
-                                   observables=Observables(network=self.valid_network_observables))
+        sighting_large = Sighting(
+            observation_count=999999, observables=Observables(network=self.valid_network_observables)
+        )
         self.assertEqual(sighting_large.observation_count, 999999)
-        
+
         # Very close timestamps (microsecond difference)
         base_time = datetime(2024, 1, 15, 10, 0, 0, 0, tzinfo=timezone.utc)
         close_time = datetime(2024, 1, 15, 10, 0, 0, 1, tzinfo=timezone.utc)  # 1 microsecond later
@@ -561,7 +484,7 @@ class TestSighting(unittest.TestCase):
         sighting = Sighting(
             first_observed=base_time,
             last_observed=close_time,
-            observables=Observables(network=self.valid_network_observables)
+            observables=Observables(network=self.valid_network_observables),
         )
         self.assertEqual(sighting.first_observed, base_time)
         self.assertEqual(sighting.last_observed, close_time)
@@ -580,8 +503,6 @@ class TestSightingIntegration(unittest.TestCase):
     def test_sighting_in_submission_context(self):
         """Test sighting validation in the context of a full submission"""
         sighting = Sighting(
-            confidence=85,
-            severity=SeverityLevel.HIGH,
             observation_count=3,
             observables=Observables(network=self.valid_network_observables) 
         )
@@ -589,8 +510,6 @@ class TestSightingIntegration(unittest.TestCase):
         # Should be able to access all required properties for submission validation
         self.assertIsNotNone(sighting.sighting_id)
         self.assertIsNotNone(sighting.timestamp)
-        self.assertIsInstance(sighting.confidence, int)
-        self.assertEqual(sighting.severity, SeverityLevel.HIGH)
 
     def test_multiple_sightings_unique_ids(self):
         """Test that multiple sightings get unique IDs"""

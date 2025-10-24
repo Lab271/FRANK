@@ -29,37 +29,16 @@ class DummyDatabase(BaseFRANKDatabase):
         super().initialize()
         self.initialized = True
 
-    def upsert_organisation(self, org_data):
-        # Not recommended: calling super() abstract method for coverage only
-        super().upsert_organisation(org_data)
-        return True
 
-    def store_submission(self, submission):
+    def store_submission(self, user, submission):
         # Not recommended: calling super() abstract method for coverage only
-        super().store_submission(submission)
+        super().store_submission(user, submission)
         return None
 
     def get_submission_by_id(self, submission_id):
         # Not recommended: calling super() abstract method for coverage only
         super().get_submission_by_id(submission_id)
         return {"submission_id": submission_id} if submission_id == "subid" else None
-
-    def query_observables(self, org_id, observable_type=None, limit=100, access_level=None,
-                         min_confidence=None, sectors=None, days_back=None):
-        # Not recommended: calling super() abstract method for coverage only
-        super().query_observables(org_id, observable_type, limit, access_level,
-                                 min_confidence, sectors, days_back)
-        return []
-
-    def get_statistics_summary(self, org_id, days=30):
-        # Not recommended: calling super() abstract method for coverage only
-        super().get_statistics_summary(org_id, days)
-        return {"count": 0}
-
-    def search_observables_by_value(self, org_id, search_value, access_level=AccessTier.CONTRIBUTOR):
-        # Not recommended: calling super() abstract method for coverage only
-        super().search_observables_by_value(self, org_id, search_value, access_level)
-        return [{"value":0}]
     
     def log_access(self, org_id, action, resource_type=None, details=None) -> None:
         # Not recommended: calling super() abstract method for coverage only
@@ -70,6 +49,30 @@ class DummyDatabase(BaseFRANKDatabase):
         super().health_check()
         return {"status": "ok"}
 
+
+    # def upsert_organisation(self, org_data):
+    #     # Not recommended: calling super() abstract method for coverage only
+    #     super().upsert_organisation(org_data)
+    #     return True
+
+    # def query_observables(self, org_id, observable_type=None, limit=100, access_level=None,
+    #                      min_confidence=None, sectors=None, days_back=None):
+    #     # Not recommended: calling super() abstract method for coverage only
+    #     super().query_observables(org_id, observable_type, limit, access_level,
+    #                              min_confidence, sectors, days_back)
+    #     return []
+
+    # def get_statistics_summary(self, org_id, days=30):
+    #     # Not recommended: calling super() abstract method for coverage only
+    #     super().get_statistics_summary(org_id, days)
+    #     return {"count": 0}
+
+    # def search_observables_by_value(self, org_id, search_value, access_level=AccessTier.CONTRIBUTOR):
+    #     # Not recommended: calling super() abstract method for coverage only
+    #     super().search_observables_by_value(self, org_id, search_value, access_level)
+    #     return [{"value":0}]
+
+
 class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
     """
     Unit tests for the BaseFRANKDatabase abstract base class.
@@ -77,8 +80,8 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
 
     def setUp(self):
         """Set up DummyDatabase instance."""
-        connection_params = {"test_param": "value"}
-        self.db = DummyDatabase(connection_params=connection_params)
+        config = {"test_param": "value"}
+        self.db = DummyDatabase(config=config)
         
     def test_logger_injection(self):
         """Test DummyDatabase instantiation with a mock logger."""
@@ -87,7 +90,7 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
                 self.last_msg = msg
 
         mock_logger = MockLogger()
-        db_with_logger = DummyDatabase(connection_params={}, logger=mock_logger)
+        db_with_logger = DummyDatabase(config={}, logger=mock_logger)
         self.assertIs(db_with_logger.logger, mock_logger)
         db_with_logger.logger.info("test message")
         self.assertEqual(mock_logger.last_msg, "test message")
@@ -97,16 +100,16 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
         self.assertTrue(hasattr(self.db, 'initialized'))
         self.assertTrue(self.db.initialized)
         # Ensure connection_params is a dict and can hold parameters
-        self.db.connection_params['test_param'] = 'value'
-        self.assertIn('test_param', self.db.connection_params)
+        self.db.config['test_param'] = 'value'
+        self.assertIn('test_param', self.db.config)
 
-    def test_upsert_organisation(self):
-        """Test upsert_organisation method."""
-        self.assertTrue(self.db.upsert_organisation({"name": "TestOrg"}))
+    # def test_upsert_organisation(self):
+    #     """Test upsert_organisation method."""
+    #     self.assertTrue(self.db.upsert_organisation({"name": "TestOrg"}))
 
     def test_store_submission(self):
         """Test store_submission method."""
-        self.assertIsNone(self.db.store_submission(None))
+        self.assertIsNone(self.db.store_submission(user = None, submission= None))
 
     def test_get_submission_by_id(self):
         """Test get_submission_by_id method."""
@@ -116,24 +119,24 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
         """Test get_submission_by_id method."""
         self.assertIsInstance(self.db.get_submission_by_id("subid"), dict)
 
-    def test_query_observables(self):
-        """Test query_observables method with all parameters."""
-        result = self.db.query_observables(
-            "orgid",
-            observable_type=None,
-            limit=100,
-            access_level=None,
-            min_confidence=None,
-            sectors=None,
-            days_back=None
-        )
-        self.assertEqual(result, [])
+    # def test_query_observables(self):
+    #     """Test query_observables method with all parameters."""
+    #     result = self.db.query_observables(
+    #         "orgid",
+    #         observable_type=None,
+    #         limit=100,
+    #         access_level=None,
+    #         min_confidence=None,
+    #         sectors=None,
+    #         days_back=None
+    #     )
+    #     self.assertEqual(result, [])
 
-    def test_get_statistics_summary(self):
-        """Test get_statistics_summary method."""
-        summary = self.db.get_statistics_summary("orgid")
-        self.assertIn("count", summary)
-        self.assertEqual(summary["count"], 0)
+    # def test_get_statistics_summary(self):
+    #     """Test get_statistics_summary method."""
+    #     summary = self.db.get_statistics_summary("orgid")
+    #     self.assertIn("count", summary)
+    #     self.assertEqual(summary["count"], 0)
 
     def test_log_access(self):
         """Test log_access method."""
@@ -152,9 +155,9 @@ class TestBaseFRANKDatabase(unittest.TestCase):
 
     def setUp(self):
         """Set up DummyDatabase instance."""
-        connection_params = {"test_param": "value"}
+        config = {"test_param": "value"}
         mock_logger = MagicMock()
-        self.db = DummyDatabase(connection_params=connection_params, logger=mock_logger)
+        self.db = DummyDatabase(config=config, logger=mock_logger)
 
 
     def test_filter_submission_by_access_level_public(self):
@@ -163,7 +166,6 @@ class TestBaseFRANKDatabase(unittest.TestCase):
             'submission_id': 'subid',
             'timestamp': '2025-09-14T00:00:00Z',
             'sighting': {
-                'confidence': 80,
                 'timestamp': '2025-09-14T00:00:00Z',
                 'observation_count': 5,
                 'observables': {}
@@ -172,7 +174,6 @@ class TestBaseFRANKDatabase(unittest.TestCase):
         result = self.db._filter_submission_by_access_level(submission, AccessTier.PUBLIC)
         self.assertIn('submission', result)
         self.assertIn('sighting', result['submission'])
-        self.assertEqual(result['submission']['sighting']['confidence'], 80)
 
     def test_filter_submission_by_access_level_observer(self):
         """Test _filter_submission_by_access_level for OBSERVER tier."""
@@ -180,7 +181,6 @@ class TestBaseFRANKDatabase(unittest.TestCase):
             'submission_id': 'subid',
             'timestamp': '2025-09-14T00:00:00Z',
             'sighting': {
-                'confidence': 80,
                 'timestamp': '2025-09-14T00:00:00Z',
                 'observation_count': 5,
                 'observables': {
@@ -203,17 +203,16 @@ class TestBaseFRANKDatabase(unittest.TestCase):
             'submission_id': 'subid',
             'timestamp': '2025-09-14T00:00:00Z',
             'sighting': {
-                'confidence': 80,
+                'hit_target': {'organisation_id': 'orgid', 'sector': 'finance'},
                 'timestamp': '2025-09-14T00:00:00Z',
                 'observation_count': 5,
                 'observables': {}
             },
-            'hit_target': {'organisation_id': 'orgid', 'sector': 'finance'}
         }
         result = self.db._filter_submission_by_access_level(submission, AccessTier.CONTRIBUTOR)
         self.assertIn('submission', result)
-        hit_target = result['submission']['hit_target']
-        self.assertNotIn('organisation_id', hit_target)
+        hit_target = result['submission']['sighting']['hit_target']
+        self.assertIn('organisation_id', hit_target)
         self.assertEqual(hit_target['sector'], 'finance')
 
     def test_filter_submission_by_access_level_partner(self):

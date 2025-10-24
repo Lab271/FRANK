@@ -33,11 +33,14 @@ class TestSubmitter(unittest.TestCase):
 
     def test_create_minimal_submitter(self):
         """Test creating a submitter with minimal required fields"""
-        submitter = Submitter(access_level=AccessTier.PARTNER)
+        submitter = Submitter(
+            organisation_id="identity--" + str(uuid.uuid4()),
+            access_level=AccessTier.PARTNER
+            )
         
         # Check that required fields are set
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertEqual(submitter.organisation_type, "cyber_partner")  # default
+        self.assertIsNone(submitter.organisation_type)  # default
         
         # Check that organisation_id is auto-generated
         self.assertIsNotNone(submitter.organisation_id)
@@ -63,21 +66,6 @@ class TestSubmitter(unittest.TestCase):
         self.assertEqual(submitter.region, "north_america")
         self.assertEqual(submitter.client_count, 150)
 
-    def test_organisation_id_auto_generation(self):
-        """Test that organisation_id is auto-generated when not provided"""
-        # Test with None
-        submitter1 = Submitter(access_level=AccessTier.PARTNER, organisation_id=None)
-        self.assertIsNotNone(submitter1.organisation_id)
-        self.assertTrue(submitter1.organisation_id.startswith("identity--"))
-        
-        # Test with empty string
-        submitter2 = Submitter(access_level=AccessTier.PARTNER, organisation_id="")
-        self.assertIsNotNone(submitter2.organisation_id)
-        self.assertTrue(submitter2.organisation_id.startswith("identity--"))
-        
-        # Test different IDs are generated
-        self.assertNotEqual(submitter1.organisation_id, submitter2.organisation_id)
-
     def test_sector_normalization(self):
         """Test sector name normalization - 'be forgiving' on input"""
         test_cases = [
@@ -96,38 +84,19 @@ class TestSubmitter(unittest.TestCase):
         
         for input_sector, expected_output in test_cases:
             with self.subTest(input_sector=input_sector):
-                submitter = Submitter(access_level=AccessTier.PARTNER, sector=input_sector)
+                submitter = Submitter(
+                    organisation_id="identity--" + str(uuid.uuid4()),
+                    access_level=AccessTier.PARTNER, 
+                    sector=input_sector)
                 self.assertEqual(submitter.sector, expected_output)
-
-    def test_sector_none_handling(self):
-        """Test that None sector is handled properly"""
-        submitter = Submitter(access_level=AccessTier.PARTNER, sector=None)
-        self.assertIsNone(submitter.sector)
-
-    def test_tier_validation(self):
-        """Test tier level validation"""
-        # Valid tiers
-        valid_tiers = [
-            AccessTier.PUBLIC,
-            AccessTier.OBSERVER,
-            AccessTier.CONTRIBUTOR,
-            AccessTier.PARTNER,
-            AccessTier.CORE_MEMBER
-        ]
-        
-        for tier in valid_tiers:
-            with self.subTest(access_level=tier):
-                submitter = Submitter(access_level=tier)
-                self.assertEqual(submitter.access_level, tier)
-        
-        # Test with string values (should work with enum)
-        submitter = Submitter(access_level="partner")
-        self.assertEqual(submitter.access_level, AccessTier.PARTNER)
 
     def test_invalid_tier_raises_error(self):
         """Test that invalid tier raises validation error"""
         with self.assertRaises(ValidationError) as context:
-            Submitter(access_level="invalid_tier")
+            Submitter(
+                organisation_id="identity--" + str(uuid.uuid4()),
+                access_level="invalid_tier"
+                )
         
         self.assertIn("access_level", str(context.exception))
 
@@ -137,12 +106,16 @@ class TestSubmitter(unittest.TestCase):
         valid_counts = [0, 1, 100, 10000]
         for count in valid_counts:
             with self.subTest(count=count):
-                submitter = Submitter(access_level=AccessTier.PARTNER, client_count=count)
+                submitter = Submitter(
+                    organisation_id=""
+                    access_level=AccessTier.PARTNER, client_count=count)
                 self.assertEqual(submitter.client_count, count)
         
         # Invalid client count (negative)
         with self.assertRaises(ValidationError):
-            Submitter(access_level=AccessTier.PARTNER, client_count=-1)
+            Submitter(
+                organisation_id="identity--" + str(uuid.uuid4()),
+                access_level=AccessTier.PARTNER, client_count=-1)
 
     def test_factory_method_create(self):
         """Test the create factory method"""

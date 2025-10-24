@@ -33,7 +33,7 @@ import logging
 import os
 from pathlib import Path
 import time
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 
 from fastapi import FastAPI, HTTPException, Depends, status, Request
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -106,7 +106,6 @@ def setup_logging(silent=False):
             handlers=[logging.StreamHandler()]
         )
         return logging.getLogger("uvicorn")
-
 
 
 # ====================================
@@ -337,7 +336,7 @@ def main():
     parser.add_argument(
         "--reload",
         action="store_true",
-        default=os.getenv("RELOAD", "False").lower() in ("true", "1", "yes"),
+        default=os.getenv("RELOAD", "True").lower() in ("true", "1", "yes"),
         help="Enable auto-reload for development (default: True or RELOAD)"
     )
     parser.add_argument(

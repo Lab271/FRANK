@@ -14,7 +14,6 @@ from .server import create_server
 from .logger import NullLogger
 from .http_exceptions import create_error_response
 
-
 __all__ = [
     'NullLogger',
     'create_server',

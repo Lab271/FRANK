@@ -8,6 +8,24 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 from enum import Enum
+import yaml
+
+def enum_representer(dumper, data):
+    return dumper.represent_scalar('tag:yaml.org,2002:str', str(data.value))
+
+def enum_constructor(enum_cls):
+    def constructor(loader, node):
+        value = loader.construct_scalar(node)
+        # Try to match by value, fallback to name
+        for member in enum_cls:
+            if value == member.value or value == member.name:
+                return member
+        raise ValueError(f"{value} is not a valid {enum_cls.__name__}")
+    return constructor
+
+def register_enum_yaml(enum_cls):
+    yaml.add_representer(enum_cls, enum_representer)
+    yaml.add_constructor(f'!{enum_cls.__name__}', enum_constructor(enum_cls))
 
 class AccessTier(str, Enum):
     """Access tier enumeration with validation"""
@@ -137,3 +155,10 @@ class SubmissionLevel(str, Enum):
     ENHANCED = "Level 4 - enhanced"  # Enhanced submission with additional metadata
     SIGMA = "Level 5 - sigma"  # Sigma submission with advanced analytics
     TTP = "Level 6 - ttp"  # TTP submission with tactical information
+
+# Register enums for YAML serialization/deserialization
+register_enum_yaml(AccessTier)
+register_enum_yaml(ObservableType)
+register_enum_yaml(SeverityLevel)
+register_enum_yaml(TLPLevel)    
+register_enum_yaml(SubmissionLevel) 

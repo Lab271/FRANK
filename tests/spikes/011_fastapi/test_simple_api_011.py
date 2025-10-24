@@ -221,7 +221,7 @@ class TestSimpleAPI:
         - Proper health status information
         - Service identification
         """
-        response = client.get("/health")
+        response = client.get("/v1/health")
         
         assert response.status_code == status.HTTP_200_OK
         
@@ -307,7 +307,7 @@ class TestAPIBehavior:
     
     def test_json_response_format(self, client):
         """Test that all endpoints return valid JSON"""
-        endpoints = ["/", "/health"]
+        endpoints = ["/", "/v1/health"]
         
         for endpoint in endpoints:
             response = client.get(endpoint)

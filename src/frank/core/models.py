@@ -336,15 +336,13 @@ class Sighting(BaseModel):
     def create(
         cls,
         observables: Observables = None,
-        confidence: int = 69,
-        severity: SeverityLevel = None,
+        hit_target: HitTarget = None,
         observation_count: int = 1,
     ):
         """Factory method for creating sightings"""
         return cls(
-            confidence=confidence,
             observables=observables,
-            severity=severity,
+            hit_target=hit_target,
             observation_count=observation_count,
         )
 
@@ -458,7 +456,10 @@ class Submission(BaseModel):
         hit_target = HitTarget.create(sector=target_sector) if target_sector else None
 
         return cls(
-            submitter=Submitter.create(access_level=submitter_access_level),
+            submitter=Submitter.create(
+                organisation_id=f"identity--{uuid.uuid4()}",
+                access_level=submitter_access_level
+            ),
             hit_target=hit_target,
             sighting=Sighting.create(observables=network_obs),
         )
@@ -546,10 +547,12 @@ def example_usage():
     print("\n3. Testing 'be forgiving' legacy format parsing...")
     legacy_data = {
         "submission": {
-            "submitter": {"access_level": "partner"},  # Missing org_id - will be generated
-            "hit_target": {"sector": "finance"},  # Will be normalized to "financial"
+            "submitter": {
+                "organisation_id": "identity--1234abcd-12ab-34cd-56ef-1234567890ab",
+                "access_level": "partner"
+            },  
             "sighting": {
-                "confidence": 85
+                "hit_target": {"sector": "finance"}  # Will be normalized to "financial"
             },
             "observables": {  # Old format in Submission
                 "network": [
@@ -562,7 +565,7 @@ def example_usage():
     parsed = Submission.from_legacy_dict(legacy_data)
     print("✓ Legacy format parsed successfully")
     print(f"  - Generated org IDs: {parsed.submitter.organisation_id[:12]}...")
-    print(f"  - Normalized sector: {parsed.hit_target.sector}")
+    print(f"  - Normalized sector: {parsed.sighting.hit_target.sector}")
 
     # 4. Demonstrate 'strong on return'
     print("\n4. Testing 'strong on return' output ...")

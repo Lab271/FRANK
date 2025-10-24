@@ -82,12 +82,10 @@ class TestSampleDataSeeder(unittest.TestCase):
         seeder.seed(db_client)
         # Check that all submissions have correct org_id and access_level
         for i in range(5):
-            expected_confidence = 70 + i * 5
             args, _ = db_client.store_submission.call_args_list[i]
             submission = args[0]
             self.assertEqual(submission.submitter.organisation_id, "demo-partner-org")
             self.assertEqual(submission.submitter.access_level, "partner")
-            self.assertEqual(submission.sighting.confidence, expected_confidence)
 
 if __name__ == "__main__":
     unittest.main()
