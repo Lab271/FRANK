@@ -42,7 +42,6 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from typing import Any, Dict, Optional, List
-import uuid
 
 import httpx
 from fastapi import Depends
@@ -50,7 +49,7 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 import jwt
 from jwt import PyJWKClient
 
-from frank.core import gen_id
+from frank.core import gen_stix_id
 from frank.core.enum import AccessTier
 from frank.util.http_exceptions import ServiceUnavailableException, GatewayTimeoutException
 from frank.util.http_exceptions import UnauthorizedException, UnauthenticatedException
@@ -182,12 +181,12 @@ class CognitoValidator:
         
         return {
             "username": username,
-            "user_id": gen_id("user", username),
+            "user_id": gen_stix_id("user", username),
             "groups": groups,
             "access_level": access_tier,
             "organization": organization,
-            "organisation_id": gen_id("org", organization),
-            "request_id": gen_id("req", str(uuid.uuid4())),
+            "organisation_id": gen_stix_id("org", organization),
+            "request_id": gen_stix_id("req"),
             "token_valid": True,
             "validation_source": "local_jwt"
         }
@@ -217,7 +216,7 @@ class CognitoValidator:
 
                     return {
                         "username": username,
-                        "user_id": gen_id("user", username),
+                        "user_id": gen_stix_id("user", username),
                         "token_valid": True,
                         "validation_source": f"{self.config['environment']}-cognito-getuser"
                     }

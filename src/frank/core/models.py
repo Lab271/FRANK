@@ -19,10 +19,10 @@ from pydantic import (
 )
 from typing import Dict, List, Optional, Any
 from datetime import datetime, timezone
-import uuid
 
-from frank.core.enum import ObservableType, AccessTier, SeverityLevel, TLPLevel, SubmissionLevel
 from frank import __version__
+from frank.core import gen_stix_id
+from frank.core.enum import ObservableType, AccessTier, SeverityLevel, TLPLevel, SubmissionLevel
 
 
 class Observable(BaseModel):
@@ -58,7 +58,7 @@ class Observable(BaseModel):
         """Ensure ID is always generated after all fields are set"""
         if not self.id:
             type_val = self.observable_type if isinstance(self.observable_type, str) else self.observable_type.value
-            self.id = f"{type_val}--{uuid.uuid4()}"
+            self.id = gen_stix_id(type_val)
         return self
 
     @model_validator(mode="after")
@@ -260,7 +260,7 @@ class SigmaDetection(BaseModel):
         use_enum_values=True,
     )
 
-    rule_id: str = Field(default_factory=lambda: f"sigma--{uuid.uuid4()}", description="SIGMA rule identifier")
+    rule_id: str = Field(default_factory=lambda: gen_stix_id("sigma"), description="SIGMA rule identifier")
     rule_name: str = Field(..., min_length=1, description="SIGMA rule name")
     rule_version: Optional[str] = Field(None, description="Rule version")
     rule_status: Optional[str] = Field(None, description="Rule status")
@@ -278,8 +278,8 @@ class Campaign(BaseModel):
         extra="ignore",  # Be forgiving on input
         use_enum_values=True,
     )
-    
-    id: str = Field(default_factory=lambda: f"campaign--{uuid.uuid4()}", description="Campaign identifier")
+
+    id: str = Field(default_factory=lambda: gen_stix_id("campaign"), description="Campaign identifier")
     name: Optional[str] = Field(None, description="Campaign name")
     attribution: Optional[str] = Field(None, description="Attributed threat actor")
     target_sectors: Optional[List[str]] = Field(None, description="Targeted sectors")
@@ -365,7 +365,7 @@ class Sighting(BaseModel):
     def validate_observation_times_and_ensure_ids(self):
         """Ensure observation times are logical and IDs are set"""
         if not self.sighting_id:
-            self.sighting_id = f"sighting--{uuid.uuid4()}"
+            self.sighting_id = gen_stix_id("sighting")
 
         if self.timestamp.tzinfo is None:
             self.timestamp = self.timestamp.replace(tzinfo=timezone.utc)
@@ -440,7 +440,7 @@ class Submission(BaseModel):
         """Cross-field validation for submission integrity"""
         # Ensure organisation ID is always set
         if not self.submission_id:
-            self.submission_id = f"submission--{uuid.uuid4()}"
+            self.submission_id = gen_stix_id("submission")
 
         # Ensure submitter and target are different organisations
         if not self.sighting.hit_target:
@@ -509,7 +509,7 @@ class Submission(BaseModel):
 
         return cls(
             submitter=Submitter.create(
-                organisation_id=f"identity--{uuid.uuid4()}",
+                organisation_id=gen_stix_id("identity"),
                 access_level=submitter_access_level
             ),
             sighting=Sighting.create(

@@ -32,7 +32,6 @@ from functools import lru_cache
 import os
 from pathlib import Path
 import time
-import uuid
 from typing import Dict, Any
 
 
@@ -42,6 +41,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 import frank
+from frank.core import gen_stix_id
 from frank.core.enum import AccessTier, TLPLevel
 from frank.core.models import Submission
 from frank.storage import create_dynamodb_database
@@ -248,7 +248,7 @@ def create_app() -> FastAPI:
             # transpose a list of bundles into a single bundle
             combined_bundle = {
                 "type": "bundle",
-                "id": f"bundle--{uuid.uuid4()}",
+                "id": gen_stix_id("bundle"),
                 "objects": [obj for bundle in bundles for obj in bundle["objects"]]
             }
             return JSONResponse(content=combined_bundle, media_type="application/stix+json")

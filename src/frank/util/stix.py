@@ -13,7 +13,7 @@ SPDX-License-Identifier: Apache-2.0
 from typing import Dict, Any
 import uuid
 
-from frank.core import gen_id
+from frank.core import gen_stix_id
 from frank.core.enum import ObservableType
 from frank.core.models import Sighting
 
@@ -55,7 +55,7 @@ def sighting_to_stix_bundle(sighting: Sighting) -> Dict[str, Any]:
 
     # Extract the UUID from the model.id (e.g., 'sighting--<uuid>')
     sighting_uuid = str(sighting.sighting_id).split("--", 1)[-1]
-    observed_data_id = gen_id("observed-data", sighting_uuid)
+    observed_data_id = gen_stix_id("observed-data", sighting_uuid)
     stix_observed_data = {
         "type": "observed-data",
         "id": observed_data_id,
@@ -80,7 +80,7 @@ def sighting_to_stix_bundle(sighting: Sighting) -> Dict[str, Any]:
         if hit_target.organisation_id:
             identity_id = hit_target.organisation_id
         else:
-            identity_id = gen_id("identity", f"sector-{sector}-region-{region}-{uuid.uuid4}")
+            identity_id = gen_stix_id("identity", f"sector-{sector}-region-{region}-{uuid.uuid4()}")
         stix_identity = {
             "type": "identity",
             "id": identity_id,

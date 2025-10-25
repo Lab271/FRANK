@@ -17,7 +17,7 @@ from typing import Optional
 # Used with UUID5 to generate consistent user IDs from usernames
 IDENTIFIER_NAMESPACE = uuid.NAMESPACE_OID     # OID namespace UUID
 
-def gen_id(id_prefix: str, value: Optional[str] = None) -> str:
+def gen_stix_id(id_prefix: str, value: Optional[str] = None) -> str:
     """Generate a unique identifier for FRANK entities in STIX format, random when value not provided."""
     if value is None:
         value = str(uuid.uuid4())

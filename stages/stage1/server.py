@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import os
-import uuid
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any
 
@@ -23,6 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
 
 # Import enums from FRANK core 
+from frank.core import gen_stix_id
 from frank.core.enum import ObservableType, TLPLevel, AccessTier
 from frank.core.models import Submission
 
@@ -242,7 +242,7 @@ async def search_threat_sightings(
                             "end_date": end_date.isoformat() if end_date else None
                         },
                         "timestamp": datetime.now(timezone.utc).isoformat(),
-                        "request_id": f"req-{uuid.uuid4()}"
+                        "request_id": gen_stix_id("req")
                     }
                 }
             )
@@ -518,8 +518,7 @@ async def startup_event():
     for i in range(5):
         demo_submission = generate_minimal_submission(
             org_id="demo-partner-org",
-            access_level="partner",
-            confidence=70 + i * 5
+            access_level="partner"
         )
         db.store_submission(demo_submission)
     
@@ -536,7 +535,7 @@ async def http_exception_handler(request: Request, exc: HTTPException):
                 "code": "HTTP_ERROR",
                 "message": exc.detail,
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "request_id": f"req-{uuid.uuid4()}"
+                "request_id": gen_stix_id("req")
             }
         }
     )
@@ -551,7 +550,7 @@ async def general_exception_handler(request: Request, exc: Exception):
                 "code": "INTERNAL_SERVER_ERROR", 
                 "message": "An internal server error occurred",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "request_id": f"req-{uuid.uuid4()}"
+                "request_id": gen_stix_id("req")
             }
         }
     )

@@ -9,10 +9,10 @@ SPDX-License-Identifier: Apache-2.0
 """
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional
-import uuid
 
 from fastapi import HTTPException, status
 
+from frank.core import gen_stix_id
 
 #########################
 # Exceptions
@@ -100,6 +100,6 @@ def create_error_response(
 			"message": message,
 			"details": details or {},
 			"timestamp": datetime.now(timezone.utc).isoformat(),
-			"request_id": request_id or f"req-{uuid.uuid4()}"
+			"request_id": request_id or gen_stix_id("req")
 		}
 	}
