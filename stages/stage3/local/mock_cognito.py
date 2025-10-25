@@ -754,6 +754,49 @@ def create_app() -> FastAPI:
             ]
         }
 
+    @app.get("/debug/private-key")
+    async def get_private_key() -> Dict[str, Any]:
+        """
+        TESTING ONLY: Get the current RSA private key in PEM format
+        
+        ⚠️ WARNING: This endpoint exposes the private key and should NEVER be used in production.
+        It exists solely for testing purposes to allow test scripts to:
+        1. Download the current private key used by the mock service
+        2. Sign test tokens with the same key for validation testing
+        3. Test JWT signature verification flows
+        
+        This endpoint is only available when using RS256 algorithm.
+        """
+        logger.warning("⚠️ Private key endpoint accessed - THIS IS FOR TESTING ONLY")
+        
+        if current_config.jwt_algorithm != "RS256":
+            raise HTTPException(
+                status_code=400,
+                detail="Private key endpoint only available when using RS256 algorithm"
+            )
+        
+        if not current_config.private_key:
+            raise HTTPException(
+                status_code=500,
+                detail="Private key not available"
+            )
+        
+        # Export private key in PEM format
+        pem = current_config.private_key.private_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PrivateFormat.PKCS8,
+            encryption_algorithm=serialization.NoEncryption()
+        )
+        
+        logger.info("Private key exported in PEM format for testing")
+        
+        return {
+            "private_key_pem": pem.decode('utf-8'),
+            "algorithm": current_config.jwt_algorithm,
+            "kid": "mock-cognito-key-1",
+            "warning": "⚠️ THIS IS FOR TESTING ONLY - NEVER EXPOSE PRIVATE KEYS IN PRODUCTION"
+        }
+
     @app.get("/")
     async def root() -> Dict[str, Any]:
         """Root endpoint with service information"""
@@ -771,7 +814,8 @@ def create_app() -> FastAPI:
                 "userinfo": "/auth/userinfo",
                 "users": "/auth/users",
                 "config": "/config",
-                "health": "/health"
+                "health": "/health",
+                "debug_private_key": "/debug/private-key (TESTING ONLY)"
             },
             "supported_aws_operations": [
                 "InitiateAuth",

@@ -129,7 +129,7 @@ class Submitter(BaseModel):
 
     @field_validator("region")
     @classmethod
-    def normaliz_region(cls, v):
+    def normalize_region(cls, v):
         """Normalize region - 'be forgiving' on input"""
         if v is None:
             return v

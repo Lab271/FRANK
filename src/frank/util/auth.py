@@ -67,6 +67,10 @@ security = HTTPBearer()
 class CognitoValidator:
     """
     Cognito token validator supporting multiple validation strategies.
+    
+    Performance optimization: The PyJWKClient is cached as an instance variable
+    to avoid creating a new client on every request. PyJWKClient internally
+    caches the JWKS keys with a configurable TTL (default: 5 minutes).
     """ 
 
     def __init__(self, config: Optional[Dict[str, Any]] = None):
@@ -78,23 +82,31 @@ class CognitoValidator:
         self.cognito_url = self.config.get("cognito_url", "http://localhost:8100/")
         self.user_pool_id = self.config.get("user_pool_id", "eu-west-1_MOCKPOOL")
         self.jwks_url = f"{self.cognito_url}{self.user_pool_id}/.well-known/jwks.json"
+        
+        # Cache PyJWKClient instance to avoid creating new client on every request
+        # PyJWKClient internally caches keys with TTL (default: 300 seconds)
+        # This reduces network calls and improves performance
+        self._jwks_client: Optional[PyJWKClient] = None
+        
         self.logger.debug(f"Initialized CognitoValidator with JWKS URL: {self.jwks_url}")
 
-
-    def verify_token(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
+    def invalidate_jwks_cache(self) -> None:
         """
-        Verify Bearer token authentication
+        Manually invalidate the JWKS client cache.
         
-        For testing purposes, accepts 'valid-token' as a valid token.
-        In production, this would validate against a real authentication system.
+        This forces the next token validation to create a new PyJWKClient instance
+        and fetch fresh keys from the JWKS endpoint. Useful when:
+        - Key rotation is detected
+        - Connection to JWKS endpoint was temporarily unavailable
+        - Testing or troubleshooting authentication issues
+        
+        Note: PyJWKClient already handles automatic cache expiration based on
+        the configured lifespan (default: 300 seconds), so manual invalidation
+        is typically not needed during normal operation.
         """
-        if credentials.credentials != "valid-token":
-            raise UnauthenticatedException(detail="Invalid authentication token")
-        return {
-            "username": credentials.credentials,
-            "token_valid": True,
-            "validation_source": "mock"
-        }
+        if self._jwks_client is not None:
+            self.logger.info("Manually invalidating JWKS client cache")
+            self._jwks_client = None
 
     # Role mapping now uses AccessTier.from_string() method for flexible group handling
     # This maps Mock Cognito groups to FRANK AccessTier enum values
@@ -142,10 +154,20 @@ class CognitoValidator:
        
         try:
             if self.config['jwt_algorithm'] == "RS256":
-                # Use JWKS for RS256 tokens (AWS Cognito style)
-                jwks_client = PyJWKClient(self.jwks_url)
-                signing_key = jwks_client.get_signing_key_from_jwt(token)
-                self.logger.debug(f"Using JWKS from {self.jwks_url} for local JWT validation")
+                # Use cached JWKS client to avoid creating new client on every request
+                # This significantly improves performance by reducing network calls
+                if self._jwks_client is None:
+                    # Initialize client on first use with configurable cache TTL
+                    # Default TTL is 300 seconds (5 minutes) for JWKS key caching
+                    self._jwks_client = PyJWKClient(
+                        self.jwks_url,
+                        cache_keys=True,  # Enable key caching
+                        lifespan=300      # Cache keys for 5 minutes
+                    )
+                    self.logger.debug(f"Created new PyJWKClient for {self.jwks_url}")
+                
+                signing_key = self._jwks_client.get_signing_key_from_jwt(token)
+                self.logger.debug(f"Using cached JWKS client for local JWT validation")
                 
                 payload = jwt.decode(
                     token,
