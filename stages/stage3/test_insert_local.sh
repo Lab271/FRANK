@@ -101,7 +101,7 @@ response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$
             "submission_id": "submission--'$SUB_UUID'", 
             "submitter": { 
                 "organisation_id": "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff", 
-                "access_level": "partner",
+                "access_level": "core_member",
                 "organisation_type": "cyber_partner" 
             }, 
             "sighting": { 
