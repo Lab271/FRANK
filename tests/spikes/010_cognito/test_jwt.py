@@ -26,6 +26,7 @@ Why the hardcoded token failed:
 - Solution: Always use fresh tokens OR download current private key for testing
 """
 
+import pytest
 import jwt
 from jwt import PyJWKClient
 import json
@@ -101,6 +102,30 @@ def download_private_key():
     except Exception as e:
         print_error(f"Error downloading private key: {e}")
         return None, None, None
+
+
+@pytest.fixture(scope="module")
+def key_data():
+    """
+    Pytest fixture that downloads the private key and kid.
+    Shared across all tests in the module.
+    """
+    private_key, kid, algorithm = download_private_key()
+    if not private_key:
+        pytest.skip("Mock Cognito service not available")
+    return private_key, kid, algorithm
+
+
+@pytest.fixture(scope="module")
+def private_key(key_data):
+    """Pytest fixture for the private key."""
+    return key_data[0]
+
+
+@pytest.fixture(scope="module")
+def kid(key_data):
+    """Pytest fixture for the key ID."""
+    return key_data[1]
 
 
 def create_custom_token(private_key, kid: str, username: str = "testuser_custom", 

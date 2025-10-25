@@ -735,7 +735,7 @@ Resources:
           AttributeDataType: String
           Required: false
           Mutable: true
-        - Name: organization
+        - Name: organisation
           AttributeDataType: String
           Required: false
           Mutable: true            
@@ -743,10 +743,6 @@ Resources:
         EmailSendingAccount: COGNITO_DEFAULT
       # SmsConfiguration:  # Currently no MFA, so commented out
       #   SnsCallerArn: !GetAtt CognitoSMSRole.Arn
-      AccountRecoverySetting:
-        RecoveryMechanisms:
-          - Name: verified_email
-            Priority: 1
       UserPoolTags:
         Name: !Sub '${StackName}-user-pool'
         Environment: !Sub '${StackName}'

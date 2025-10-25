@@ -803,7 +803,7 @@ def create_app() -> FastAPI:
         logger.info("Root endpoint accessed")
         return {
             "service": "Mock Cognito Service",
-            "version": frank,
+            "version": frank.__version__,
             "user_pool_id": current_config.user_pool_id,
             "client_id": current_config.client_id,
             "region": current_config.region,

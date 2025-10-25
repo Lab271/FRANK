@@ -48,47 +48,6 @@ class TestCognitoValidatorInitialization(unittest.TestCase):
         self.assertIsNone(validator._jwks_client)
 
 
-class TestAccessTierMapping(unittest.TestCase):
-    """Test access tier mapping from user groups."""
-    
-    def setUp(self):
-        """Set up test configuration."""
-        self.config = {
-            "cognito_url": "http://localhost:8100/",
-            "user_pool_id": "eu-west-1_TESTPOOL",
-            "region": "eu-west-1",
-            "jwt_algorithm": "HS256",
-            "jwt_secret": "test-secret",
-            "validation_strategy": "local_only",
-            "environment": "localstack"
-        }
-        self.validator = CognitoValidator(self.config)
-    
-    def test_get_access_tier_from_empty_groups(self):
-        """Empty groups list should return PUBLIC access tier."""
-        tier = self.validator.get_access_tier_from_groups([])
-        self.assertEqual(tier, AccessTier.PUBLIC)
-    
-    def test_get_access_tier_from_core_member_group(self):
-        """Core member group should return CORE_MEMBER access tier."""
-        tier = self.validator.get_access_tier_from_groups(["core_member"])
-        self.assertEqual(tier, AccessTier.CORE_MEMBER)
-    
-    def test_get_access_tier_from_partner_group(self):
-        """Partner group should return PARTNER access tier."""
-        tier = self.validator.get_access_tier_from_groups(["partner"])
-        self.assertEqual(tier, AccessTier.PARTNER)
-    
-    def test_get_access_tier_from_contributor_group(self):
-        """Contributor group should return CONTRIBUTOR access tier."""
-        tier = self.validator.get_access_tier_from_groups(["contributor"])
-        self.assertEqual(tier, AccessTier.CONTRIBUTOR)
-    
-    def test_get_access_tier_uses_first_group(self):
-        """When multiple groups present, first group is used."""
-        tier = self.validator.get_access_tier_from_groups(["partner", "contributor"])
-        self.assertEqual(tier, AccessTier.PARTNER)
-
 
 class TestJWKSClientCaching(unittest.TestCase):
     """Test JWKS client caching functionality (Issue #4 fix)."""
@@ -110,7 +69,7 @@ class TestJWKSClientCaching(unittest.TestCase):
         self.test_payload = {
             "username": "testuser",
             "cognito:groups": ["core_member"],
-            "custom:organization": "test-org",
+            "custom:organisation": "test-org",
             "exp": datetime.now(timezone.utc) + timedelta(hours=1),
             "iss": f"https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_TESTPOOL"
         }
@@ -239,7 +198,7 @@ class TestTokenValidationHS256(unittest.TestCase):
         self.test_payload = {
             "username": "testuser",
             "cognito:groups": ["core_member"],
-            "custom:organization": "test-org",
+            "custom:organisation": "test-org",
             "exp": datetime.now(timezone.utc) + timedelta(hours=1)
         }
     
@@ -252,7 +211,7 @@ class TestTokenValidationHS256(unittest.TestCase):
         
         self.assertEqual(result["username"], "testuser")
         self.assertEqual(result["access_level"], AccessTier.CORE_MEMBER)
-        self.assertEqual(result["organization"], "test-org")
+        self.assertEqual(result["organisation"], "test-org")
         self.assertTrue(result["token_valid"])
         self.assertEqual(result["validation_source"], "local_jwt")
     
@@ -367,7 +326,7 @@ class TestPerformanceOptimization(unittest.TestCase):
         test_payload = {
             "username": "testuser",
             "cognito:groups": ["core_member"],
-            "custom:organization": "test-org",
+            "custom:organisation": "test-org",
             "exp": datetime.now(timezone.utc) + timedelta(hours=1),
             "iss": f"https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_TESTPOOL"
         }

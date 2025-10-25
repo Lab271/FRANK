@@ -16,6 +16,8 @@ from datetime import datetime, timezone, timedelta
 from fastapi import status
 from fastapi.testclient import TestClient
 
+import frank
+
 # Import the module under test
 from mock_cognito import (
     create_app, 
@@ -68,7 +70,7 @@ class TestMockCognitoApp(unittest.TestCase):
         data = response.json()
         
         self.assertEqual(data["service"], "Mock Cognito Service")
-        self.assertEqual(data["version"], "1.0.0")
+        self.assertEqual(data["version"], frank.__version__)
         self.assertEqual(data["user_pool_id"], get_config().user_pool_id)
         self.assertEqual(data["client_id"], get_config().client_id)
         self.assertEqual(data["region"], get_config().region)

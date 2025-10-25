@@ -29,7 +29,7 @@ Usage:
     
     @app.get("/protected")
     async def protected_endpoint(user: dict = Depends(get_current_user)):
-        return {"user_id": user["sub"], "organization": user.get("custom:organization")}
+        return {"user_id": user["sub"], "organisation": user.get("custom:organisation")}
 
 Dependencies:
 - FastAPI for dependency injection and HTTP exception handling
@@ -42,6 +42,8 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from typing import Any, Dict, Optional, List
+import time
+import hashlib
 
 import httpx
 from fastapi import Depends
@@ -52,11 +54,12 @@ from jwt import PyJWKClient
 from frank.core import gen_stix_id
 from frank.core.enum import AccessTier
 from frank.util.http_exceptions import ServiceUnavailableException, GatewayTimeoutException
-from frank.util.http_exceptions import UnauthorizedException, UnauthenticatedException
+from frank.util.http_exceptions import UnauthorizedException
 from frank.util.logger import get_module_logger
 
 
 AWS_COGNITO_TIMEOUT = 10.0  # seconds
+SERVER_VALIDATION_CACHE_TTL = 300  # 5 minutes cache for server validation results
 
 
 
@@ -88,7 +91,58 @@ class CognitoValidator:
         # This reduces network calls and improves performance
         self._jwks_client: Optional[PyJWKClient] = None
         
+        # Cache for server validation results to avoid repeated Cognito GetUser API calls
+        # Key: token hash, Value: (result dict, expiration timestamp)
+        self._server_validation_cache: Dict[str, tuple[Dict[str, Any], float]] = {}
+        self._cache_ttl = config.get('server_validation_cache_ttl', SERVER_VALIDATION_CACHE_TTL)
+        
         self.logger.debug(f"Initialized CognitoValidator with JWKS URL: {self.jwks_url}")
+        self.logger.debug(f"Server validation cache TTL: {self._cache_ttl} seconds")
+
+    def _get_token_hash(self, token: str) -> str:
+        """Generate a hash of the token for cache key"""
+        return hashlib.sha256(token.encode()).hexdigest()[:16]
+
+    def _get_from_cache(self, token_hash: str) -> Optional[Dict[str, Any]]:
+        """Get validation result from cache if not expired"""
+        if token_hash in self._server_validation_cache:
+            result, expiration = self._server_validation_cache[token_hash]
+            if time.time() < expiration:
+                self.logger.debug(f"Server validation cache hit for token hash: {token_hash}")
+                return result.copy()  # Return a copy to prevent mutation
+            else:
+                # Expired, remove from cache
+                del self._server_validation_cache[token_hash]
+                self.logger.debug(f"Server validation cache expired for token hash: {token_hash}")
+        return None
+
+    def _set_in_cache(self, token_hash: str, result: Dict[str, Any]) -> None:
+        """Store validation result in cache with TTL"""
+        expiration = time.time() + self._cache_ttl
+        self._server_validation_cache[token_hash] = (result.copy(), expiration)
+        self.logger.debug(f"Stored server validation result in cache for token hash: {token_hash}")
+        
+        # Clean up expired entries periodically (every 100 insertions)
+        if len(self._server_validation_cache) % 100 == 0:
+            self._cleanup_expired_cache()
+
+    def _cleanup_expired_cache(self) -> None:
+        """Remove expired entries from cache"""
+        current_time = time.time()
+        expired_keys = [
+            key for key, (_, expiration) in self._server_validation_cache.items()
+            if expiration < current_time
+        ]
+        for key in expired_keys:
+            del self._server_validation_cache[key]
+        if expired_keys:
+            self.logger.debug(f"Cleaned up {len(expired_keys)} expired cache entries")
+
+    def invalidate_server_validation_cache(self) -> None:
+        """Manually invalidate all server validation cache entries"""
+        count = len(self._server_validation_cache)
+        self._server_validation_cache.clear()
+        self.logger.info(f"Manually invalidated {count} server validation cache entries")
 
     def invalidate_jwks_cache(self) -> None:
         """
@@ -108,17 +162,6 @@ class CognitoValidator:
             self.logger.info("Manually invalidating JWKS client cache")
             self._jwks_client = None
 
-    # Role mapping now uses AccessTier.from_string() method for flexible group handling
-    # This maps Mock Cognito groups to FRANK AccessTier enum values
-    def get_access_tier_from_groups(self, groups: List[str]) -> AccessTier:
-        """Convert user groups to AccessTier using from_string method"""
-        if not groups:
-            return AccessTier.PUBLIC
-    
-        # Use the first group and convert it using the from_string method
-        primary_group = groups[0]
-        return AccessTier.from_string(primary_group, default=True)
-
     async def get_current_user(self, credentials: HTTPAuthorizationCredentials = Depends(security)) -> Dict[str, Any]:
         """
         Extract user information from JWT token by calling the Cognito server for validation.
@@ -137,17 +180,28 @@ class CognitoValidator:
                 if server_data:
                     if server_data["username"] != local_data["username"]:
                         raise UnauthorizedException(detail="Token validation failed: Username mismatch between local and server validation")    
-                    # For server validation, we still need to get groups from JWT
-                    # because GetUser API doesn't return group memberships
+                    
+                    # Merge server data with local data
+                    # Server provides: username, organisation, user_attributes (authoritative source)
+                    # Local provides: groups, access_level (not available from GetUser API)
                     local_data["validation_source"] = server_data["validation_source"]
-                    # Combine server validation with local group extraction
+
+                    # Use server organisation if available (more authoritative than JWT)
+                    if server_data.get("organisation"):
+                        local_data["organisation"] = server_data["organisation"]
+                        local_data["organisation_id"] = server_data["organisation_id"]
+                        self.logger.debug(f"Using organisation from server: {server_data['organisation']}")
+
+                    # Include user attributes from server for potential future use
+                    if server_data.get("user_attributes"):
+                        local_data["user_attributes"] = server_data["user_attributes"]
                 else:
                     raise UnauthorizedException(detail="Token validation failed: Could not validate with Cognito server")
             return local_data
         except httpx.ConnectError:
             raise ServiceUnavailableException(detail="Could not connect to Cognito service")
         except httpx.TimeoutException:
-            raise GatewayTimeoutException(detail="Cognito GetUser request timed out")   
+            raise GatewayTimeoutException(detail="Cognito GetUser request timed out")
             
     async def validate_token_locally(self, token: str) -> Dict[str, Any]:
         """Validate JWT token locally using JWKS (AWS Cognito compatible)"""
@@ -193,28 +247,40 @@ class CognitoValidator:
         
         username = payload.get("username")
         groups = payload.get("cognito:groups", [])
-        # Extract organization from custom attribute
-        organization = payload.get("custom:organization") or payload.get("organization")
-        
+        # Extract organisation from custom attribute
+        organisation = payload.get("custom:organisation") or payload.get("organisation")
+
         if not username:
             raise UnauthorizedException(detail="Invalid token: missing username")
 
-        access_tier = self.get_access_tier_from_groups(groups)
+        access_tier = AccessTier.get_access_tier_from_groups(groups)
         
         return {
             "username": username,
             "user_id": gen_stix_id("user", username),
             "groups": groups,
             "access_level": access_tier,
-            "organization": organization,
-            "organisation_id": gen_stix_id("org", organization),
+            "organisation": organisation,
+            "organisation_id": gen_stix_id("org", organisation),
             "request_id": gen_stix_id("req"),
             "token_valid": True,
             "validation_source": "local_jwt"
         }
         
     async def validate_token_with_server(self, token: str) -> Optional[Dict[str, Any]]:
-        """Validate token with Cognito server (mock or AWS)"""
+        """
+        Validate token with Cognito server (mock or AWS) and extract user attributes.
+        
+        Performance optimization: Results are cached with TTL to avoid repeated API calls
+        for the same token. Cache TTL defaults to 5 minutes but can be configured.
+        """
+        
+        # Check cache first
+        token_hash = self._get_token_hash(token)
+        cached_result = self._get_from_cache(token_hash)
+        if cached_result is not None:
+            cached_result["validation_source"] = f"{self.config['environment']}-cognito-getuser-cached"
+            return cached_result
 
         self.logger.debug(f"Using {self.config['environment']} Cognito GetUser API at {self.config['cognito_url']}")
 
@@ -236,12 +302,32 @@ class CognitoValidator:
                 if username:
                     self.logger.info(f"Token validated via {self.config['environment']} Cognito GetUser API for user: {username}")
 
-                    return {
+                    # Extract user attributes from the UserAttributes array
+                    user_attributes = {}
+                    for attr in user_info.get("UserAttributes", []):
+                        user_attributes[attr["Name"]] = attr["Value"]
+
+                    # Extract organisation from custom:organisation attribute
+                    organisation = user_attributes.get("custom:organisation") or user_attributes.get("organisation")
+
+                    self.logger.debug(f"Extracted attributes from GetUser: {user_attributes.keys()}")
+                    if organisation:
+                        self.logger.debug(f"Found organisation from GetUser: {organisation}")
+
+                    result = {
                         "username": username,
                         "user_id": gen_stix_id("user", username),
+                        "organisation": organisation,
+                        "organisation_id": gen_stix_id("org", organisation) if organisation else None,
                         "token_valid": True,
-                        "validation_source": f"{self.config['environment']}-cognito-getuser"
+                        "validation_source": f"{self.config['environment']}-cognito-getuser",
+                        "user_attributes": user_attributes  # Include all attributes for potential future use
                     }
+                    
+                    # Store in cache for future requests
+                    self._set_in_cache(token_hash, result)
+                    
+                    return result
 
             self.logger.warning(f"{self.config['environment']} Cognito GetUser failed with status {response.status_code}")
             raise UnauthorizedException(detail="Token validation failed: Could not validate with Cognito server")

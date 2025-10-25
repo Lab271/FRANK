@@ -8,6 +8,7 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 from enum import Enum
+from typing import List
 import yaml
 
 def enum_representer(dumper, data):
@@ -88,6 +89,24 @@ class AccessTier(str, Enum):
 
         valid_values = [member.value for member in cls]
         raise ValueError(f"'{value}' is not a valid AccessTier. Valid values are: {valid_values}")
+
+
+    @classmethod
+    def get_access_tier_from_groups(cls, groups: List[str]) -> "AccessTier":
+        """Convert user groups to AccessTier using from_string method"""
+        if not groups:
+            return cls.PUBLIC
+    
+         # Try each group until we find a valid AccessTier
+        for group in groups:
+            try:
+                # Try to convert without default to see if it's a valid tier
+                return AccessTier.from_string(group, default=False)
+            except ValueError:
+                # This group doesn't match an AccessTier, try the next one
+                continue
+        
+        return AccessTier.PUBLIC
 
 
 class ObservableType(str, Enum):

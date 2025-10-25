@@ -10,7 +10,7 @@ echo "=================================="
 
 # Parse command-line arguments for -u (username) and -p (profile)
 AWS_PROFILE="spike-account"
-USERNAME="testuser_observer"
+USERNAME="testuser_observer@example.com"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -253,11 +253,11 @@ decode_jwt_payload() {
 }
 
 echo "  Access Token payload:"
-decode_jwt_payload "$ACCESS_TOKEN" | head -10
+decode_jwt_payload "$ACCESS_TOKEN"
 echo ""
 
 echo "  ID Token payload:"  
-decode_jwt_payload "$ID_TOKEN" | head -10
+decode_jwt_payload "$ID_TOKEN" 
 echo ""
 
 # Test 6: Verify JWKS validation would work

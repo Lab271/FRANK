@@ -109,6 +109,13 @@
         - update
         - deploy
 
+    # User creation operations
+    - import_tasks: tasks/users.yml
+      tags:
+        - never
+        - users
+        - create
+
     # Cleanup operations
     - import_tasks: tasks/cleanup.yml
       tags:

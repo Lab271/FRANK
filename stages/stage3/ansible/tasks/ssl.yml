@@ -189,9 +189,9 @@
 - name: Check if spike hosted zone exists
   command: >
     aws route53 list-hosted-zones-by-name
-    --dns-name {{ spike_subdomain }}
+    --dns-name {{ app_domain }}
     --profile {{ aws_profile }}
-    --query "HostedZones[?Name=='{{ spike_subdomain }}.'].Id"
+    --query "HostedZones[?Name=='{{ app_domain }}.'].Id"
     --output text
   register: spike_hosted_zone_check
   failed_when: false
@@ -204,7 +204,7 @@
 - name: Create spike hosted zone if not exists
   command: >
     aws route53 create-hosted-zone
-    --name {{ spike_subdomain }}
+    --name {{ app_domain }}
     --caller-reference "spike-test-{{ ansible_date_time.epoch }}"
     --profile {{ aws_profile }}
     --query 'HostedZone.Id'
@@ -244,7 +244,7 @@
       "Changes": [{
         "Action": "UPSERT",
         "ResourceRecordSet": {
-          "Name": "{{ spike_subdomain }}",
+          "Name": "{{ app_domain }}",
           "Type": "NS",
           "TTL": 300,
           "ResourceRecords": [
@@ -269,7 +269,7 @@
     aws acm list-certificates
     --region {{ aws_region }}
     --profile {{ aws_profile }}
-    --query "CertificateSummaryList[?DomainName=='{{ spike_subdomain }}'].CertificateArn"
+    --query "CertificateSummaryList[?DomainName=='{{ app_domain }}'].CertificateArn"
     --output text
   register: spike_cert_check
   failed_when: false
@@ -283,7 +283,7 @@
 - name: Request spike certificate if not exists
   command: >
     aws acm request-certificate
-    --domain-name {{ spike_subdomain }}
+    --domain-name {{ app_domain }}
     --validation-method DNS
     --region {{ aws_region }}
     --profile {{ aws_profile }}
@@ -362,12 +362,12 @@
       - "Main Hosted Zone ID: {{ main_hosted_zone_id }}"
       - "Main Certificate ARN: {{ main_cert_arn | default('Not created') }}"
       - ""
-      - "Spike Domain: {{ spike_subdomain }}"
+      - "Spike Domain: {{ app_domain }}"
       - "Spike Hosted Zone ID: {{ spike_hosted_zone_id }}"
       - "Spike Certificate ARN: {{ ssl_certificate_arn | default('Not found') }}"
 
 - name: Warning if no SSL certificate found
   debug:
-    msg: "Warning: No SSL certificate found for domain {{ spike_subdomain }}. Deployment will proceed without HTTPS."
+    msg: "Warning: No SSL certificate found for domain {{ app_domain }}. Deployment will proceed without HTTPS."
   when: 
     - (ssl_certificate_arn is not defined or ssl_certificate_arn == "")

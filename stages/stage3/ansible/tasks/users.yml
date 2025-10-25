@@ -1,0 +1,164 @@
+---
+#
+# FRANK Platform - Cognito User Creation Tasks
+# Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling
+#
+# Creates test users and groups in Cognito User Pool
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+#
+
+- name: Get CloudFormation stack outputs
+  command: >
+    aws cloudformation describe-stacks
+    --stack-name {{ stack_name }}
+    --profile {{ aws_profile }}
+    --region {{ aws_region }}
+    --query 'Stacks[0].Outputs'
+    --output json
+  register: stack_outputs_result
+  changed_when: false
+
+- name: Parse stack outputs
+  set_fact:
+    stack_outputs: "{{ stack_outputs_result.stdout | from_json }}"
+
+- name: Extract Cognito User Pool ID
+  set_fact:
+    cognito_user_pool_id: "{{ stack_outputs | selectattr('OutputKey', 'equalto', 'CognitoUserPoolId') | map(attribute='OutputValue') | first }}"
+
+- name: Display Cognito User Pool ID
+  debug:
+    msg: "Creating users in Cognito User Pool: {{ cognito_user_pool_id }}"
+
+- name: Define user groups for role-based access control
+  set_fact:
+    cognito_groups:
+      - name: observer
+        description: "Observers - can view basic threat intelligence"
+        precedence: 4
+      - name: contributor
+        description: "Contributors - can access and submit basic threat intelligence"
+        precedence: 3
+      - name: partner
+        description: "Partners - can access advanced threat intelligence and submit data"
+        precedence: 2
+      - name: core_member
+        description: "Core Members - full access to all threat intelligence and platform features"
+        precedence: 1
+
+- name: Create Cognito User Pool Groups
+  command: >
+    aws cognito-idp create-group
+    --user-pool-id {{ cognito_user_pool_id }}
+    --group-name {{ item.name }}
+    --description "{{ item.description }}"
+    --precedence {{ item.precedence }}
+    --profile {{ aws_profile }}
+    --region {{ aws_region }}
+  loop: "{{ cognito_groups }}"
+  register: create_group_result
+  failed_when: 
+    - create_group_result.rc != 0
+    - "'GroupExistsException' not in create_group_result.stderr"
+  changed_when: create_group_result.rc == 0
+
+- name: Define test users
+  set_fact:
+    test_users:
+      - username: testuser_observer@example.com
+        email: testuser_observer@example.com
+        given_name: Observer
+        family_name: User
+        organisation: acme-corp
+        group: observer
+        temp_password: TempPass123!
+      - username: testuser_contributor@example.com
+        email: testuser_contributor@example.com
+        given_name: Contributor
+        family_name: User
+        organisation: cyber-security-inc
+        group: contributor
+        temp_password: TempPass123!
+      - username: testuser_partner@example.com
+        email: testuser_partner@example.com
+        given_name: Partner
+        family_name: User
+        organisation: threat-intel-partners
+        group: partner
+        temp_password: TempPass123!
+      - username: testuser_core_member@example.com
+        email: testuser_core_member@example.com
+        given_name: "Core Member"
+        family_name: User
+        organisation: frank-platform
+        group: core_member
+        temp_password: TempPass123!
+
+- name: Create Cognito users
+  command: >
+    aws cognito-idp admin-create-user
+    --user-pool-id {{ cognito_user_pool_id }}
+    --username {{ item.username }}
+    --user-attributes 
+    Name=email,Value={{ item.email }}
+    Name=given_name,Value="{{ item.given_name }}"
+    Name=family_name,Value="{{ item.family_name }}"
+    Name=custom:organization,Value={{ item.organization }}
+    Name=email_verified,Value=true
+    --message-action SUPPRESS
+    --profile {{ aws_profile }}
+    --region {{ aws_region }}
+  loop: "{{ test_users }}"
+  register: create_user_result
+  failed_when:
+    - create_user_result.rc != 0
+    - "'UsernameExistsException' not in create_user_result.stderr"
+  changed_when: create_user_result.rc == 0
+
+- name: Set permanent passwords for test users
+  command: >
+    aws cognito-idp admin-set-user-password
+    --user-pool-id {{ cognito_user_pool_id }}
+    --username {{ item.username }}
+    --password "{{ item.temp_password }}"
+    --permanent
+    --profile {{ aws_profile }}
+    --region {{ aws_region }}
+  loop: "{{ test_users }}"
+  register: set_password_result
+  changed_when: set_password_result.rc == 0
+
+- name: Add users to their respective groups
+  command: >
+    aws cognito-idp admin-add-user-to-group
+    --user-pool-id {{ cognito_user_pool_id }}
+    --username {{ item.username }}
+    --group-name {{ item.group }}
+    --profile {{ aws_profile }}
+    --region {{ aws_region }}
+  loop: "{{ test_users }}"
+  register: add_to_group_result
+  changed_when: add_to_group_result.rc == 0
+
+- name: Display user creation summary
+  debug:
+    msg:
+      - "=== Cognito Users Created Successfully ==="
+      - "User Pool ID: {{ cognito_user_pool_id }}"
+      - ""
+      - "Test Users (username = email):"
+      - "  - testuser_observer@example.com (observer group) - Password: TempPass123!"
+      - "  - testuser_contributor@example.com (contributor group) - Password: TempPass123!"
+      - "  - testuser_partner@example.com (partner group) - Password: TempPass123!"
+      - "  - testuser_core_member@example.com (core_member group) - Password: TempPass123!"
+      - ""
+      - "Test authentication with:"
+      - "  aws cognito-idp admin-initiate-auth \\"
+      - "    --user-pool-id {{ cognito_user_pool_id }} \\"
+      - "    --client-id <CLIENT_ID> \\"
+      - "    --auth-flow ADMIN_USER_PASSWORD_AUTH \\"
+      - "    --auth-parameters USERNAME=testuser_observer@example.com,PASSWORD=TempPass123! \\"
+      - "    --profile {{ aws_profile }} \\"
+      - "    --region {{ aws_region }}"

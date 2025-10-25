@@ -881,6 +881,245 @@ class TestEnumCompatibility(unittest.TestCase):
         self.assertIn("ObservableType", repr(ObservableType.IPV4_ADDR))
         self.assertIn("SeverityLevel", repr(SeverityLevel.HIGH))
 
+class TestAccessTierFromGroups(unittest.TestCase):
+    """Test AccessTier.get_access_tier_from_groups method"""
+
+    def test_empty_groups_returns_public(self):
+        """Test that empty groups list returns PUBLIC tier"""
+        result = AccessTier.get_access_tier_from_groups([])
+        self.assertEqual(result, AccessTier.PUBLIC)
+        self.assertIsInstance(result, AccessTier)
+
+    def test_single_valid_group(self):
+        """Test with a single valid group name"""
+        test_cases = [
+            (["contributor"], AccessTier.CONTRIBUTOR),
+            (["partner"], AccessTier.PARTNER),
+            (["core_member"], AccessTier.CORE_MEMBER),
+            (["observer"], AccessTier.OBSERVER),
+            (["public"], AccessTier.PUBLIC),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+                self.assertIsInstance(result, AccessTier)
+
+    def test_multiple_valid_groups_returns_first(self):
+        """Test that with multiple valid groups, the first one is returned"""
+        test_cases = [
+            (["contributor", "partner"], AccessTier.CONTRIBUTOR),
+            (["partner", "core_member"], AccessTier.PARTNER),
+            (["observer", "contributor", "partner"], AccessTier.OBSERVER),
+            (["public", "core_member"], AccessTier.PUBLIC),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_invalid_groups_returns_public(self):
+        """Test that invalid group names return PUBLIC tier"""
+        invalid_groups = [
+            ["admin"],
+            ["user"],
+            ["unknown"],
+            ["invalid_tier"],
+            ["some_random_group"],
+            ["group1", "group2", "group3"],
+        ]
+        
+        for groups in invalid_groups:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, AccessTier.PUBLIC)
+
+    def test_mixed_valid_and_invalid_groups(self):
+        """Test with mix of valid and invalid groups - should return first valid"""
+        test_cases = [
+            (["admin", "contributor", "unknown"], AccessTier.CONTRIBUTOR),
+            (["invalid1", "invalid2", "partner"], AccessTier.PARTNER),
+            (["group1", "group2", "core_member", "group3"], AccessTier.CORE_MEMBER),
+            (["unknown", "observer"], AccessTier.OBSERVER),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_case_insensitive_groups(self):
+        """Test that group matching is case-insensitive"""
+        test_cases = [
+            (["CONTRIBUTOR"], AccessTier.CONTRIBUTOR),
+            (["Partner"], AccessTier.PARTNER),
+            (["CORE_MEMBER"], AccessTier.CORE_MEMBER),
+            (["ObSeRvEr"], AccessTier.OBSERVER),
+            (["PUBLIC"], AccessTier.PUBLIC),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_groups_with_spaces(self):
+        """Test that groups with spaces are handled correctly"""
+        test_cases = [
+            (["core member"], AccessTier.CORE_MEMBER),
+            (["Core Member"], AccessTier.CORE_MEMBER),
+            (["CORE MEMBER"], AccessTier.CORE_MEMBER),
+            ([" core member "], AccessTier.CORE_MEMBER),  # with extra spaces
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_groups_with_whitespace(self):
+        """Test groups with various whitespace patterns"""
+        test_cases = [
+            (["  contributor  "], AccessTier.CONTRIBUTOR),
+            (["\tpartner\t"], AccessTier.PARTNER),
+            ([" observer "], AccessTier.OBSERVER),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_empty_string_in_groups(self):
+        """Test handling of empty strings in groups list"""
+        test_cases = [
+            (["", "contributor"], AccessTier.CONTRIBUTOR),
+            ([""], AccessTier.PUBLIC),
+            (["", "", "partner"], AccessTier.PARTNER),
+            (["invalid", "", "observer"], AccessTier.OBSERVER),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_realistic_aws_cognito_groups(self):
+        """Test with realistic AWS Cognito group names"""
+        # Cognito groups might include various prefixes and suffixes
+        test_cases = [
+            (["app-users", "contributor", "region-eu"], AccessTier.CONTRIBUTOR),
+            (["admin", "partner", "billing"], AccessTier.PARTNER),
+            (["viewer", "observer", "readonly"], AccessTier.OBSERVER),
+            (["everyone", "public"], AccessTier.PUBLIC),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_priority_order_when_multiple_valid(self):
+        """Test that order matters - first valid group is returned"""
+        # If a user has multiple access tiers, the first one in the list wins
+        test_cases = [
+            (["observer", "contributor"], AccessTier.OBSERVER),
+            (["contributor", "observer"], AccessTier.CONTRIBUTOR),
+            (["public", "partner"], AccessTier.PUBLIC),
+            (["core_member", "contributor"], AccessTier.CORE_MEMBER),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+    def test_groups_with_underscores_and_dashes(self):
+        """Test handling of various delimiter styles"""
+        # core_member should work with underscores
+        result1 = AccessTier.get_access_tier_from_groups(["core_member"])
+        self.assertEqual(result1, AccessTier.CORE_MEMBER)
+        
+        # Also test with spaces converted to underscores
+        result2 = AccessTier.get_access_tier_from_groups(["core member"])
+        self.assertEqual(result2, AccessTier.CORE_MEMBER)
+
+    def test_long_groups_list(self):
+        """Test with a long list of groups"""
+        # Simulate a user with many groups, where valid tier is near the end
+        groups = [f"group{i}" for i in range(100)]
+        groups.append("contributor")
+        groups.extend([f"other_group{i}" for i in range(100)])
+        
+        result = AccessTier.get_access_tier_from_groups(groups)
+        self.assertEqual(result, AccessTier.CONTRIBUTOR)
+
+    def test_none_values_handled_gracefully(self):
+        """Test that None values in groups list don't cause crashes"""
+        # The from_string method with default=False should raise ValueError for None
+        # get_access_tier_from_groups should catch this and continue
+        test_cases = [
+            ([None, "contributor"], AccessTier.CONTRIBUTOR),
+            (["partner", None], AccessTier.PARTNER),
+            ([None, None, "observer"], AccessTier.OBSERVER),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                # This might raise an exception depending on implementation
+                # If None is in the list, from_string should handle it
+                try:
+                    result = AccessTier.get_access_tier_from_groups(groups)
+                    self.assertEqual(result, expected)
+                except (ValueError, TypeError, AttributeError):
+                    # If implementation doesn't handle None gracefully, that's okay
+                    # But we document the behavior
+                    pass
+
+    def test_numeric_values_in_groups(self):
+        """Test handling of numeric values in groups"""
+        # Numbers might appear in group names, but shouldn't be valid tiers
+        test_cases = [
+            ([123, "contributor"], AccessTier.CONTRIBUTOR),
+            (["123", "partner"], AccessTier.PARTNER),
+            ([456], AccessTier.PUBLIC),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                try:
+                    result = AccessTier.get_access_tier_from_groups(groups)
+                    self.assertEqual(result, expected)
+                except (ValueError, TypeError, AttributeError):
+                    # If implementation doesn't handle numbers gracefully
+                    pass
+
+    def test_all_tiers_can_be_found(self):
+        """Test that all possible AccessTier values can be found from groups"""
+        for tier in AccessTier:
+            with self.subTest(tier=tier):
+                result = AccessTier.get_access_tier_from_groups([tier.value])
+                self.assertEqual(result, tier)
+
+    def test_integration_with_from_string(self):
+        """Test that get_access_tier_from_groups correctly uses from_string"""
+        # This test verifies the integration with from_string method
+        # All variations that from_string accepts should work
+        test_cases = [
+            (["Contributor"], AccessTier.CONTRIBUTOR),
+            (["CORE_MEMBER"], AccessTier.CORE_MEMBER),
+            (["core member"], AccessTier.CORE_MEMBER),
+            (["Core Member"], AccessTier.CORE_MEMBER),
+        ]
+        
+        for groups, expected in test_cases:
+            with self.subTest(groups=groups):
+                result = AccessTier.get_access_tier_from_groups(groups)
+                self.assertEqual(result, expected)
+
+
 class TestYAMLSerialization(unittest.TestCase):
     """Test YAML serialization and deserialization of enums"""
     

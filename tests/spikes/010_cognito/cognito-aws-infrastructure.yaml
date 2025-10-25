@@ -19,10 +19,6 @@ Resources:
     Type: AWS::Cognito::UserPool
     Properties:
       UserPoolName: !Sub '${ProjectName}-${Environment}-user-pool'
-      AliasAttributes:
-        - email
-      AutoVerifiedAttributes:
-        - email
       Policies:
         PasswordPolicy:
           MinimumLength: 8
@@ -31,6 +27,19 @@ Resources:
           RequireNumbers: true
           RequireSymbols: false
           TemporaryPasswordValidityDays: 7
+      AccountRecoverySetting:
+        RecoveryMechanisms:
+          - Name: verified_email
+            Priority: 1
+      UsernameAttributes:
+        - email
+      UsernameConfiguration:
+        CaseSensitive: false
+      AutoVerifiedAttributes:
+        - email
+      UserAttributeUpdateSettings:
+        AttributesRequireVerificationBeforeUpdate:
+          - email
       MfaConfiguration: 'OFF'
       Schema:
         - Name: email
@@ -45,23 +54,14 @@ Resources:
           AttributeDataType: String
           Required: false
           Mutable: true
-        - Name: organization
+        - Name: organisation
           AttributeDataType: String
           Required: false
           Mutable: true
-      UserAttributeUpdateSettings:
-        AttributesRequireVerificationBeforeUpdate:
-          - email
-      UsernameConfiguration:
-        CaseSensitive: false
       VerificationMessageTemplate:
         DefaultEmailOption: CONFIRM_WITH_CODE
         EmailSubject: 'FRANK Platform - Verify your email'
         EmailMessage: 'Welcome to FRANK Platform! Your verification code is {####}'
-      AccountRecoverySetting:
-        RecoveryMechanisms:
-          - Name: verified_email
-            Priority: 1
       UserPoolTags:
         Project: !Ref ProjectName
         Environment: !Ref Environment
@@ -126,107 +126,8 @@ Resources:
         - http://localhost:8080/auth/logout
         - https://frank-010-cognito.local/auth/logout
 
-  # Test Users for each Access Tier
-  TestUserObserver:
-    Type: AWS::Cognito::UserPoolUser
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: testuser_observer
-      UserAttributes:
-        - Name: email
-          Value: testuser_observer@example.com
-        - Name: given_name
-          Value: Observer
-        - Name: family_name
-          Value: User
-        - Name: organization
-          Value: acme-corp
-        - Name: email_verified
-          Value: 'true'
-      MessageAction: SUPPRESS
-
-  TestUserContributor:
-    Type: AWS::Cognito::UserPoolUser
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: testuser_contributor
-      UserAttributes:
-        - Name: email
-          Value: testuser_contributor@example.com
-        - Name: given_name
-          Value: Contributor
-        - Name: family_name
-          Value: User
-        - Name: organization
-          Value: cyber-security-inc
-        - Name: email_verified
-          Value: 'true'
-      MessageAction: SUPPRESS
-
-  TestUserPartner:
-    Type: AWS::Cognito::UserPoolUser
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: testuser_partner
-      UserAttributes:
-        - Name: email
-          Value: testuser_partner@example.com
-        - Name: given_name
-          Value: Partner
-        - Name: family_name
-          Value: User
-        - Name: organization
-          Value: threat-intel-partners
-        - Name: email_verified
-          Value: 'true'
-      MessageAction: SUPPRESS
-
-  TestUserCoreMember:
-    Type: AWS::Cognito::UserPoolUser
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: testuser_core_member
-      UserAttributes:
-        - Name: email
-          Value: testuser_core_member@example.com
-        - Name: given_name
-          Value: Core Member
-        - Name: family_name
-          Value: User
-        - Name: organization
-          Value: frank-platform
-        - Name: email_verified
-          Value: 'true'
-      MessageAction: SUPPRESS
-
-  # Add users to their respective groups
-  TestUserObserverGroupMembership:
-    Type: AWS::Cognito::UserPoolUserToGroupAttachment
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: !Ref TestUserObserver
-      GroupName: !Ref ObserverGroup
-
-  TestUserContributorGroupMembership:
-    Type: AWS::Cognito::UserPoolUserToGroupAttachment
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: !Ref TestUserContributor
-      GroupName: !Ref ContributorGroup
-
-  TestUserPartnerGroupMembership:
-    Type: AWS::Cognito::UserPoolUserToGroupAttachment
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: !Ref TestUserPartner
-      GroupName: !Ref PartnerGroup
-
-  TestUserCoreMemberGroupMembership:
-    Type: AWS::Cognito::UserPoolUserToGroupAttachment
-    Properties:
-      UserPoolId: !Ref CognitoUserPool
-      Username: !Ref TestUserCoreMember
-      GroupName: !Ref CoreMemberGroup
+  # NOTE: Test users are created via AWS CLI in deploy-cognito.sh
+  # CloudFormation AWS::Cognito::UserPoolUser resource has limitations
 
 Outputs:
   UserPoolId:

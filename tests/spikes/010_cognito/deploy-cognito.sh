@@ -144,8 +144,8 @@ deploy_stack() {
     fi
 }
 
-setup_user_passwords() {
-    print_header "Setting Up User Passwords"
+create_users() {
+    print_header "Creating Test Users"
     
     # Get User Pool ID from stack outputs
     USER_POOL_ID=$(aws cloudformation describe-stacks \
@@ -160,61 +160,136 @@ setup_user_passwords() {
         exit 1
     fi
     
-    # Set password for testuser_observer
-    echo "Setting password for testuser_observer..."
-    if aws cognito-idp admin-set-user-password \
-        --user-pool-id "$USER_POOL_ID" \
-        --username "testuser_observer" \
-        --password "TempPass123!" \
-        --permanent \
-        --profile "$PROFILE" \
-        --region "$REGION"; then
-        print_success "Password set for testuser_observer"
-    else
-        print_warning "Failed to set password for testuser_observer (user may not exist yet)"
-    fi
+    print_success "User Pool ID: $USER_POOL_ID"
+    echo ""
     
-    # Set password for testuser_contributor
-    echo "Setting password for testuser_contributor..."
-    if aws cognito-idp admin-set-user-password \
+    # Create testuser_observer
+    echo "Creating testuser_observer@example.com..."
+    aws cognito-idp admin-create-user \
         --user-pool-id "$USER_POOL_ID" \
-        --username "testuser_contributor" \
-        --password "TempPass123!" \
-        --permanent \
+        --username "testuser_observer@example.com" \
+        --user-attributes \
+            Name=email,Value=testuser_observer@example.com \
+            Name=given_name,Value=Observer \
+            Name=family_name,Value=User \
+            Name=custom:organisation,Value=acme-corp \
+            Name=email_verified,Value=true \
+        --message-action SUPPRESS \
         --profile "$PROFILE" \
-        --region "$REGION"; then
-        print_success "Password set for testuser_contributor"
-    else
-        print_warning "Failed to set password for testuser_contributor (user may not exist yet)"
-    fi
+        --region "$REGION" 2>/dev/null || echo "  (User may already exist)"
     
-    # Set password for testuser_partner
-    echo "Setting password for testuser_partner..."
-    if aws cognito-idp admin-set-user-password \
+    aws cognito-idp admin-set-user-password \
         --user-pool-id "$USER_POOL_ID" \
-        --username "testuser_partner" \
+        --username "testuser_observer@example.com" \
         --password "TempPass123!" \
         --permanent \
         --profile "$PROFILE" \
-        --region "$REGION"; then
-        print_success "Password set for testuser_partner"
-    else
-        print_warning "Failed to set password for testuser_partner (user may not exist yet)"
-    fi
+        --region "$REGION" >/dev/null
     
-    # Set password for testuser_core_member
-    echo "Setting password for testuser_core_member..."
-    if aws cognito-idp admin-set-user-password \
+    aws cognito-idp admin-add-user-to-group \
         --user-pool-id "$USER_POOL_ID" \
-        --username "testuser_core_member" \
+        --username "testuser_observer@example.com" \
+        --group-name "observer" \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || true
+    
+    print_success "testuser_observer@example.com created and added to observer group"
+    
+    # Create testuser_contributor
+    echo "Creating testuser_contributor@example.com..."
+    aws cognito-idp admin-create-user \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_contributor@example.com" \
+        --user-attributes \
+            Name=email,Value=testuser_contributor@example.com \
+            Name=given_name,Value=Contributor \
+            Name=family_name,Value=User \
+            Name=custom:organisation,Value=cyber-security-inc \
+            Name=email_verified,Value=true \
+        --message-action SUPPRESS \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || echo "  (User may already exist)"
+    
+    aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_contributor@example.com" \
         --password "TempPass123!" \
         --permanent \
         --profile "$PROFILE" \
-        --region "$REGION"; then
-        print_success "Password set for testuser_core_member"
-    else
-        print_warning "Failed to set password for testuser_core_member (user may not exist yet)"
-    fi
+        --region "$REGION" >/dev/null
+    
+    aws cognito-idp admin-add-user-to-group \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_contributor@example.com" \
+        --group-name "contributor" \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || true
+    
+    print_success "testuser_contributor@example.com created and added to contributor group"
+    
+    # Create testuser_partner
+    echo "Creating testuser_partner@example.com..."
+    aws cognito-idp admin-create-user \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_partner@example.com" \
+        --user-attributes \
+            Name=email,Value=testuser_partner@example.com \
+            Name=given_name,Value=Partner \
+            Name=family_name,Value=User \
+            Name=custom:organisation,Value=threat-intel-partners \
+            Name=email_verified,Value=true \
+        --message-action SUPPRESS \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || echo "  (User may already exist)"
+    
+    aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_partner@example.com" \
+        --password "TempPass123!" \
+        --permanent \
+        --profile "$PROFILE" \
+        --region "$REGION" >/dev/null
+    
+    aws cognito-idp admin-add-user-to-group \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_partner@example.com" \
+        --group-name "partner" \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || true
+    
+    print_success "testuser_partner@example.com created and added to partner group"
+    
+    # Create testuser_core_member
+    echo "Creating testuser_core_member@example.com..."
+    aws cognito-idp admin-create-user \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_core_member@example.com" \
+        --user-attributes \
+            Name=email,Value=testuser_core_member@example.com \
+            Name=given_name,Value="Core Member" \
+            Name=family_name,Value=User \
+            Name=custom:organisation,Value=frank-platform \
+            Name=email_verified,Value=true \
+        --message-action SUPPRESS \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || echo "  (User may already exist)"
+    
+    aws cognito-idp admin-set-user-password \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_core_member@example.com" \
+        --password "TempPass123!" \
+        --permanent \
+        --profile "$PROFILE" \
+        --region "$REGION" >/dev/null
+    
+    aws cognito-idp admin-add-user-to-group \
+        --user-pool-id "$USER_POOL_ID" \
+        --username "testuser_core_member@example.com" \
+        --group-name "core_member" \
+        --profile "$PROFILE" \
+        --region "$REGION" 2>/dev/null || true
+    
+    print_success "testuser_core_member@example.com created and added to core_member group"
 }
 
 get_outputs() {
@@ -303,7 +378,11 @@ case "${1:-deploy}" in
         check_prerequisites
         validate_template
         deploy_stack
-        setup_user_passwords
+        create_users
+        get_outputs
+        ;;
+    "setup")
+        create_users
         get_outputs
         ;;
     "status")
@@ -318,6 +397,7 @@ case "${1:-deploy}" in
         echo "Commands:"
         echo "  check    - Check AWS prerequisites only"
         echo "  deploy   - Deploy Cognito infrastructure and setup users"
+        echo "  setup    - Setup users"
         echo "  status   - Show stack status and configuration"
         echo "  cleanup  - Delete the stack and clean up"
         echo "  help     - Show this help message"
