@@ -7,7 +7,6 @@
     "sighting": {
       "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
       "timestamp": "2025-01-20T14:30:22Z",
-      "confidence": 87,
       "observables": {
         "network": [
           {
