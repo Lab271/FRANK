@@ -37,17 +37,16 @@ class TestSubmissionSerialization(unittest.TestCase):
                 "sighting": {
                     "sighting_id": "sighting-ee20065d-2555-424f-ad9e-0f8428623c75",
                     "timestamp": "2025-01-20T14:30:22Z",
-                    "confidence": 87,
                     "observables": {
                         "network": [
                             {
                                 "id": "ipv4-addr-c4e54321-1234-5678-9abc-def012345678",
-                                "type": "ipv4",
+                                "type": "ipv4-addr",
                                 "value": "185.220.102.45"
                             },
                             {
                                 "id": "domain-name-d5f65432-2345-6789-abcd-ef0123456789",
-                                "type": "domain",
+                                "type": "domain-name",
                                 "value": "secure-bank-verify.nl"
                             }
                         ]
@@ -65,12 +64,12 @@ class TestSubmissionSerialization(unittest.TestCase):
         self.test_observables = [
             Observable(
                 id="ipv4-addr-c4e54321-1234-5678-9abc-def012345678",
-                observable_type=ObservableType.IPV4,
+                observable_type=ObservableType.IPV4_ADDR,
                 value="185.220.102.45"
             ),
             Observable(
                 id="domain-name-d5f65432-2345-6789-abcd-ef0123456789",
-                observable_type=ObservableType.DOMAIN,
+                observable_type=ObservableType.DOMAIN_NAME,
                 value="secure-bank-verify.nl"
             )
         ]
@@ -196,19 +195,19 @@ class TestSubmissionSerialization(unittest.TestCase):
         yaml_str = """
         submission:
           submitter:
-            organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+            organisation_id: "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff"
             access_level: "partner"
           sighting:
-            sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
+            sighting_id: "sighting--ee20065d-2555-424f-ad9e-0f8428623c75"
             timestamp: "2025-01-20T14:30:22Z"
             confidence: 87
             observables:
               network:
-                - id: "ipv4-addr-c4e54321-1234-5678-9abc-def012345678"
-                  type: "ipv4"
+                - id: "ipv4-addr--c4e54321-1234-5678-9abc-def012345678"
+                  type: "ipv4-addr"
                   value: "185.220.102.45"
-                - id: "domain-name-d5f65432-2345-6789-abcd-ef0123456789"
-                  type: "domain"
+                - id: "domain-name--d5f65432-2345-6789-abcd-ef0123456789"
+                  type: "domain-name"
                   value: "secure-bank-verify.nl"
         """
         
@@ -323,7 +322,7 @@ class TestSubmissionSerialization(unittest.TestCase):
                 
                 # Check observable types
                 for obs in data["sighting"]["observables"]["network"]:
-                    self.assertIn(obs["observable_type"], ["ipv4", "domain"])
+                    self.assertIn(obs["observable_type"], ["ipv4-addr", "domain-name"])
                     self.assertIsInstance(obs["observable_type"], str)
 
     def test_extra_fields_ignored(self):
@@ -468,7 +467,7 @@ class TestLegacySubmissionParsing(unittest.TestCase):
         }
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
-        self.assertEqual(parsed.hit_target.sector, "finance")
+        self.assertEqual(parsed.hit_target.sector, "financial")
         self.assertTrue(parsed.sighting.observables.network)
 
     def test_from_legacy_dict_missing_submission_key(self):
@@ -480,17 +479,16 @@ class TestLegacySubmissionParsing(unittest.TestCase):
             },
             "sighting": {
                 "hit_target": {"sector": "finance"},
-                "confidence": 85,
                 "observables": {
                     "network": [
-                        {"type": "ipv4", "value": "203.0.113.1"}
+                        {"type": "ipv4-addr", "value": "203.0.113.1"}
                     ]
                 }
             }
         }
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
-        self.assertEqual(parsed.sighting.hit_target.sector, "finance")
+        self.assertEqual(parsed.sighting.hit_target.sector, "financial")
         self.assertEqual(parsed.submitter.organisation_id, "identity--1234abcd-12ab-34cd-56ef-1234567890ab")
         self.assertTrue(parsed.sighting.observables.network)
 
@@ -503,12 +501,11 @@ class TestLegacySubmissionParsing(unittest.TestCase):
                     "access_level": "partner"
                 },
                 "sighting": {
-                    "hit_target": {"sector": "finance"},
-                    "confidence": 85
+                    "hit_target": {"sector": "financial"},
                 },
                 "observables": {
                     "network": [
-                        {"type": "ipv4", "value": "203.0.113.1"}
+                        {"type": "ipv4-addr", "value": "203.0.113.1"}
                     ]
                 }
             }
@@ -516,7 +513,7 @@ class TestLegacySubmissionParsing(unittest.TestCase):
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
         self.assertEqual(parsed.submitter.organisation_id, "identity--1234abcd-12ab-34cd-56ef-1234567890ab")
-        self.assertEqual(parsed.sighting.hit_target.sector, "finance")
+        self.assertEqual(parsed.sighting.hit_target.sector, "financial")
 
     def test_from_legacy_dict_invalid_observable(self):
         """Test parsing with an invalid observable (should skip it)."""
@@ -528,19 +525,18 @@ class TestLegacySubmissionParsing(unittest.TestCase):
                 },
                 "sighting": {
                     "hit_target": {"sector": "finance"},
-                    "confidence": 85
                 },
                 "observables": {
                     "network": [
-                        {"type": "ipv4", "value": "203.0.113.1"},
-                        {"type": "ipv4"}  # Missing value, should be skipped
+                        {"type": "ipv4-addr", "value": "203.0.113.1"},
+                        {"type": "ipv4-addr"}  # Missing value, should be skipped
                     ]
                 }
             }
         }
         parsed = Submission.from_legacy_dict(legacy_data)
         self.assertIsInstance(parsed, Submission)
-        self.assertEqual(parsed.sighting.hit_target.sector, "finance")
+        self.assertEqual(parsed.sighting.hit_target.sector, "financial")
         self.assertEqual(len(parsed.sighting.observables.network), 1)
 
     def test_from_legacy_dict_error(self):

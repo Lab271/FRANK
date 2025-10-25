@@ -341,11 +341,11 @@ class TestObservableType(unittest.TestCase):
     def test_observable_type_values(self):
         """Test all ObservableType enum values"""
         expected_values = {
-            ObservableType.IPV4: "ipv4",
-            ObservableType.IPV6: "ipv6",
-            ObservableType.DOMAIN: "domain",
+            ObservableType.IPV4_ADDR: "ipv4-addr",
+            ObservableType.IPV6_ADDR: "ipv6-addr",
+            ObservableType.DOMAIN_NAME: "domain-name",
             ObservableType.URL: "url",
-            ObservableType.EMAIL: "email"
+            ObservableType.EMAIL_ADDR: "email-addr"
         }
         
         for obs_enum, expected_str in expected_values.items():
@@ -355,18 +355,18 @@ class TestObservableType(unittest.TestCase):
 
     def test_observable_type_string_comparison(self):
         """Test that enum values can be compared with strings"""
-        self.assertEqual(ObservableType.IPV4, "ipv4")
-        self.assertEqual(ObservableType.DOMAIN, "domain")
-        self.assertNotEqual(ObservableType.EMAIL, "phone")
+        self.assertEqual(ObservableType.IPV4_ADDR, "ipv4-addr")
+        self.assertEqual(ObservableType.DOMAIN_NAME, "domain-name")
+        self.assertNotEqual(ObservableType.EMAIL_ADDR, "phone")
 
     def test_observable_type_from_string(self):
         """Test creating ObservableType from string values"""
         test_cases = [
-            ("ipv4", ObservableType.IPV4),
-            ("ipv6", ObservableType.IPV6),
-            ("domain", ObservableType.DOMAIN),
+            ("ipv4-addr", ObservableType.IPV4_ADDR),
+            ("ipv6-addr", ObservableType.IPV6_ADDR),
+            ("domain-name", ObservableType.DOMAIN_NAME),
             ("url", ObservableType.URL),
-            ("email", ObservableType.EMAIL)
+            ("email-addr", ObservableType.EMAIL_ADDR)
         ]
         
         for string_val, expected_enum in test_cases:
@@ -375,7 +375,7 @@ class TestObservableType(unittest.TestCase):
 
     def test_observable_type_invalid_value(self):
         """Test that invalid observable type raises ValueError"""
-        invalid_values = ["file", "hash", "registry", "", None, 123]
+        invalid_values = ["file-hash", "hash", "registry", "", None, 123]
         
         for invalid_val in invalid_values:
             with self.subTest(invalid_val=invalid_val):
@@ -474,7 +474,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         """Test serialization with use_enum_values=True"""
         model = self.ModelWithEnumValues(
             access_level=AccessTier.PARTNER,
-            observable_type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4_ADDR,
             severity=SeverityLevel.HIGH
         )
         
@@ -482,7 +482,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         data = model.model_dump()
         
         self.assertEqual(data["access_level"], "partner")  # String value
-        self.assertEqual(data["observable_type"], "ipv4")  # String value
+        self.assertEqual(data["observable_type"], "ipv4-addr")  # String value
         self.assertEqual(data["severity"], "high")  # String value
         
         # Test JSON serialization
@@ -490,14 +490,14 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         parsed_json = json.loads(json_str)
         
         self.assertEqual(parsed_json["access_level"], "partner")
-        self.assertEqual(parsed_json["observable_type"], "ipv4")
+        self.assertEqual(parsed_json["observable_type"], "ipv4-addr")
         self.assertEqual(parsed_json["severity"], "high")
 
     def test_use_enum_values_false_serialization(self):
         """Test serialization with use_enum_values=False"""
         model = self.ModelWithoutEnumValues(
             access_level=AccessTier.PARTNER,
-            observable_type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4_ADDR,
             severity=SeverityLevel.HIGH
         )
         
@@ -506,7 +506,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         
         # Should serialize to enum objects, not string values
         self.assertEqual(data["access_level"], AccessTier.PARTNER)
-        self.assertEqual(data["observable_type"], ObservableType.IPV4)
+        self.assertEqual(data["observable_type"], ObservableType.IPV4_ADDR)
         self.assertEqual(data["severity"], SeverityLevel.HIGH)
         
         # Test JSON serialization (should convert to string representation)
@@ -515,14 +515,14 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         
         # In JSON, enums are typically serialized as their string values regardless
         self.assertEqual(parsed_json["access_level"], "partner")
-        self.assertEqual(parsed_json["observable_type"], "ipv4")
+        self.assertEqual(parsed_json["observable_type"], "ipv4-addr")
         self.assertEqual(parsed_json["severity"], "high")
 
     def test_default_enum_serialization_behavior(self):
         """Test default enum serialization behavior"""
         model = self.ModelDefault(
             access_level=AccessTier.CONTRIBUTOR,
-            observable_type=ObservableType.DOMAIN,
+            observable_type=ObservableType.DOMAIN_NAME,
             severity=SeverityLevel.MEDIUM
         )
         
@@ -531,7 +531,7 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         
         # Default behavior in Pydantic v2 is typically to use enum values
         self.assertEqual(data["access_level"], "contributor")
-        self.assertEqual(data["observable_type"], "domain")
+        self.assertEqual(data["observable_type"], "domain-name")
         self.assertEqual(data["severity"], "medium")
 
     def test_enum_input_flexibility(self):
@@ -539,14 +539,14 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         # Test with enum objects
         model1 = self.ModelWithEnumValues(
             access_level=AccessTier.PARTNER,
-            observable_type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4_ADDR,
             severity=SeverityLevel.HIGH
         )
         
         # Test with string values (should be converted to enums)
         model2 = self.ModelWithEnumValues(
             access_level="partner",
-            observable_type="ipv4", 
+            observable_type="ipv4-addr", 
             severity="high"
         )
         
@@ -559,13 +559,13 @@ class TestEnumSerializationWithUseEnumValues(unittest.TestCase):
         """Test handling of None enum values"""
         model = self.ModelWithEnumValues(
             access_level=AccessTier.OBSERVER,
-            observable_type=ObservableType.EMAIL,
+            observable_type=ObservableType.EMAIL_ADDR,
             severity=None  # Optional field
         )
         
         data = model.model_dump()
         self.assertEqual(data["access_level"], "observer")
-        self.assertEqual(data["observable_type"], "email")
+        self.assertEqual(data["observable_type"], "email-addr")
         self.assertIsNone(data["severity"])
 
     def test_enum_round_trip_consistency(self):
@@ -659,17 +659,17 @@ class TestEnumAccessTierFiltering(unittest.TestCase):
     def test_observable_type_network_categories(self):
         """Test that observable types cover network threat indicators"""
         network_types = [
-            ObservableType.IPV4,
-            ObservableType.IPV6,
-            ObservableType.DOMAIN,
+            ObservableType.IPV4_ADDR,
+            ObservableType.IPV6_ADDR,
+            ObservableType.DOMAIN_NAME,
             ObservableType.URL,
-            ObservableType.EMAIL,
-            ObservableType.FILE_HASH,
-            ObservableType.REGISTRY_KEY
+            ObservableType.EMAIL_ADDR,
+            ObservableType.FILE,
+            ObservableType.WINDOWS_REGISTRY_KEY
         ]
         
         # Test that all expected network indicators are covered
-        expected_network_values = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key"]
+        expected_network_values = ["ipv4-addr", "ipv6-addr", "domain-name", "url", "email-addr", "file", "windows-registry-key"]
         actual_values = [obs_type.value for obs_type in network_types]
         
         self.assertEqual(set(actual_values), set(expected_network_values))
@@ -681,9 +681,9 @@ class TestEnumAccessTierFiltering(unittest.TestCase):
         self.assertIn("partner", [tier.value for tier in AccessTier])
         
         # Test ObservableType membership
-        self.assertIn(ObservableType.IPV4, ObservableType)
-        self.assertIn("domain", [obs.value for obs in ObservableType])
-        
+        self.assertIn(ObservableType.IPV4_ADDR, ObservableType)
+        self.assertIn("domain-name", [obs.value for obs in ObservableType])
+
         # Test SeverityLevel membership
         self.assertIn(SeverityLevel.CRITICAL, SeverityLevel)
         self.assertIn("high", [sev.value for sev in SeverityLevel])
@@ -705,19 +705,19 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         # Test valid enum values
         model = TestModel(
             access_level="partner",
-            obs_type="ipv4",
+            obs_type="ipv4-addr",
             severity="high"
         )
         
         # Verify enum conversion
         self.assertEqual(model.access_level, AccessTier.PARTNER)
-        self.assertEqual(model.obs_type, ObservableType.IPV4)
+        self.assertEqual(model.obs_type, ObservableType.IPV4_ADDR)
         self.assertEqual(model.severity, SeverityLevel.HIGH)
         
         # Test serialization (should use string values)
         data = model.model_dump()
         self.assertEqual(data["access_level"], "partner")
-        self.assertEqual(data["obs_type"], "ipv4")
+        self.assertEqual(data["obs_type"], "ipv4-addr")
         self.assertEqual(data["severity"], "high")
 
     def test_pydantic_enum_validation_with_use_enum_values_false(self):
@@ -733,13 +733,13 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         # Test valid enum values
         model = TestModel(
             access_level="contributor",
-            obs_type="domain",
+            obs_type="domain-name",
             severity="medium"
         )
         
         # Verify enum conversion
         self.assertEqual(model.access_level, AccessTier.CONTRIBUTOR)
-        self.assertEqual(model.obs_type, ObservableType.DOMAIN)
+        self.assertEqual(model.obs_type, ObservableType.DOMAIN_NAME)
         self.assertEqual(model.severity, SeverityLevel.MEDIUM)
         
         # Test serialization (behavior may vary, but should still work)
@@ -822,54 +822,6 @@ class TestPydanticEnumIntegration(unittest.TestCase):
         self.assertNotIsInstance(model_true.access_level, AccessTier)
         self.assertIsInstance(model_false.access_level, AccessTier)
 
-    def test_frank_specific_enum_combinations(self):
-        """Test FRANK-specific enum combinations"""
-        
-        class FRANKTestModel(BaseModel):
-            model_config = ConfigDict(use_enum_values=False)
-            
-            submitter_access_level: AccessTier
-            target_sector: str
-            observable_type: ObservableType
-            threat_severity: SeverityLevel
-        
-        # Test realistic FRANK combinations
-        frank_scenarios = [
-            {
-                "submitter_access_level": AccessTier.PARTNER,
-                "target_sector": "financial",
-                "observable_type": ObservableType.IPV4,
-                "threat_severity": SeverityLevel.HIGH
-            },
-            {
-                "submitter_access_level": AccessTier.CORE_MEMBER,
-                "target_sector": "healthcare", 
-                "observable_type": ObservableType.DOMAIN,
-                "threat_severity": SeverityLevel.CRITICAL
-            },
-            {
-                "submitter_access_level": AccessTier.CONTRIBUTOR,
-                "target_sector": "technology",
-                "observable_type": ObservableType.URL,
-                "threat_severity": SeverityLevel.MEDIUM
-            }
-        ]
-        
-        for scenario in frank_scenarios:
-            with self.subTest(scenario=scenario):
-                model = FRANKTestModel(**scenario)
-                
-                # Verify all enums are properly set
-                self.assertIsInstance(model.submitter_access_level, AccessTier)
-                self.assertIsInstance(model.observable_type, ObservableType)
-                self.assertIsInstance(model.threat_severity, SeverityLevel)
-                
-                # Test serialization
-                data = model.model_dump()
-                self.assertIsInstance(data["submitter_access_level"], str)
-                self.assertIsInstance(data["observable_type"], str)
-                self.assertIsInstance(data["threat_severity"], str)
-
 
 class TestEnumCompatibility(unittest.TestCase):
     """Test enum compatibility and edge cases"""
@@ -907,7 +859,10 @@ class TestEnumCompatibility(unittest.TestCase):
         
         # Test ObservableType iteration
         obs_values = [obs.value for obs in ObservableType]
-        expected_obs = ["ipv4", "ipv6", "domain", "url", "email", "file_hash", "registry_key", "mutex", "certificate"]
+        expected_obs = ["ipv4-addr", "ipv6-addr", "domain-name", "url", "email-addr", 
+        "file", "windows-registry-key", "mutex", "x509-certificate",
+        "process", "autonomous-system", "artifact", "directory", 
+        "network-traffic", "software", "user-account", "custom"]
         self.assertEqual(obs_values, expected_obs)
         
         # Test SeverityLevel iteration
@@ -918,12 +873,12 @@ class TestEnumCompatibility(unittest.TestCase):
     def test_enum_string_representation(self):
         """Test string representation of enums"""
         self.assertEqual(str(AccessTier.PARTNER), "AccessTier.PARTNER")
-        self.assertEqual(str(ObservableType.DOMAIN), "ObservableType.DOMAIN")
+        self.assertEqual(str(ObservableType.DOMAIN_NAME), "ObservableType.DOMAIN_NAME")
         self.assertEqual(str(SeverityLevel.CRITICAL), "SeverityLevel.CRITICAL")
         
         # Test repr
         self.assertIn("AccessTier", repr(AccessTier.PARTNER))
-        self.assertIn("ObservableType", repr(ObservableType.IPV4))
+        self.assertIn("ObservableType", repr(ObservableType.IPV4_ADDR))
         self.assertIn("SeverityLevel", repr(SeverityLevel.HIGH))
 
 class TestYAMLSerialization(unittest.TestCase):

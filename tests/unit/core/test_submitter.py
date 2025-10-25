@@ -40,7 +40,7 @@ class TestSubmitter(unittest.TestCase):
         
         # Check that required fields are set
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertIsNone(submitter.organisation_type)  # default
+        self.assertEqual(submitter.organisation_type, "service_provider")  # default
         
         # Check that organisation_id is auto-generated
         self.assertIsNotNone(submitter.organisation_id)
@@ -69,17 +69,18 @@ class TestSubmitter(unittest.TestCase):
     def test_sector_normalization(self):
         """Test sector name normalization - 'be forgiving' on input"""
         test_cases = [
-            ("finance", "financial"),
-            ("banking", "financial"),
-            ("healthcare", "health"),
-            ("medical", "health"),
+            ("finance", "finance"),
+            ("banking", "banking"),
+            ("healthcare", "healthcare"),
+            ("medical", "medical"),
             ("government", "public_sector"),
             ("gov", "public_sector"),
-            ("tech", "technology"),
-            ("it", "technology"),
+            ("tech", "tech"),
+            ("outsource", "service_provider"),
+            ("it", "service_provider"),
             ("manufacturing", "manufacturing"),  # No change
-            ("FINANCE", "financial"),  # Case insensitive
-            ("  banking  ", "financial"),  # Whitespace handling
+            ("FINANCE", "finance"),  # Case insensitive
+            ("  banking  ", "banking"),  # Whitespace handling
         ]
         
         for input_sector, expected_output in test_cases:
@@ -127,7 +128,7 @@ class TestSubmitter(unittest.TestCase):
         )
         
         self.assertEqual(submitter.access_level, AccessTier.CONTRIBUTOR)
-        self.assertEqual(submitter.sector, "health")  # Should be normalized
+        self.assertEqual(submitter.sector, "healthcare")  # Should be normalized
         self.assertEqual(submitter.region, "asia_pacific")
         self.assertIsNotNone(submitter.organisation_id)
 
@@ -328,7 +329,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitter = Submitter(**self.minimal_data)
         
         self.assertEqual(submitter.access_level, AccessTier.PARTNER)
-        self.assertIsNone(submitter.organisation_type)  # Default value
+        self.assertEqual(submitter.organisation_type, "service_provider")  # Default value
         self.assertIsNotNone(submitter.organisation_id)
         self.assertTrue(submitter.organisation_id.startswith("identity--"))
 
@@ -461,14 +462,15 @@ class TestSubmitterSerialization(unittest.TestCase):
         """Test that sector normalization works during serialization roundtrips."""
         # Test various sector normalizations
         test_cases = [
-            ("Banking", "financial"),
-            ("finance", "financial"),
-            ("Healthcare", "health"),
-            ("medical", "health"),
+            ("Banking", "banking"),
+            ("finance", "finance"),
+            ("Healthcare", "healthcare"),
+            ("medical", "medical"),
             ("Government", "public_sector"),
             ("gov", "public_sector"),
-            ("Tech", "technology"),
-            ("IT", "technology"),
+            ("cyber", "cyber_partner"),           
+            ("Tech", "tech"),
+            ("IT", "service_provider"),
             ("custom_sector", "custom_sector")  # Unknown sector stays as-is
         ]
         
@@ -497,7 +499,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         # Test it serializes correctly
         data = submitter.model_dump(exclude_none=True)
         self.assertEqual(data["access_level"], "partner")
-        self.assertEqual(data["sector"], "health")  # Should be normalized
+        self.assertEqual(data["sector"], "healthcare")  # Should be normalized
         self.assertEqual(data["region"], "north_america")
         
         # Test roundtrip
@@ -647,7 +649,7 @@ class TestSubmitterSerialization(unittest.TestCase):
         submitter = Submitter.create(
             organisation_id=f"identity--{uuid.uuid4()}",
             access_level=AccessTier.OBSERVER,
-            sector="Banking",  # Should normalize to "financial"
+            sector="Outsource",  # Should normalize to "service_provider"
             region="north_america"
         )
         
@@ -672,7 +674,7 @@ class TestSubmitterSerialization(unittest.TestCase):
             with self.subTest(format=format_name):
                 reconstructed = Submitter(**data)
                 self.assertEqual(reconstructed.access_level, AccessTier.OBSERVER)
-                self.assertEqual(reconstructed.sector, "financial")  # Normalized
+                self.assertEqual(reconstructed.sector, "service_provider")  # Normalized
                 self.assertEqual(reconstructed.region, "north_america")
                 self.assertEqual(reconstructed.client_count, 500)
 

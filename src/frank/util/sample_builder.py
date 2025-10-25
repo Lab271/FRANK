@@ -43,7 +43,7 @@ class SampleDataSeeder(FRANKDatabaseSeeder):
 
         # Create some demo submissions
         for i in range(5):
-            demo_submission = generate_minimal_submission(org_id="demo-partner-org", access_level="partner", confidence=70 + i * 5)
+            demo_submission = generate_minimal_submission(org_id="demo-partner-org", access_level="partner")
             db_client.store_submission(demo_submission)
 
         return True
@@ -58,13 +58,13 @@ def get_default_observables() -> List[Dict[str, Any]]:
     """
     return [
         {
-            "id": f"ipv4--{uuid.uuid4()}",
-            "type": "ipv4",
+            "id": f"ipv4-addr--{uuid.uuid4()}",
+            "type": "ipv4-addr",
             "value": "185.220.102.45"
         },
         {
-            "id": f"domain--{uuid.uuid4()}",
-            "type": "domain", 
+            "id": f"domain-name--{uuid.uuid4()}",
+            "type": "domain-name", 
             "value": "secure-bank-verify.nl"
         }
     ]
@@ -73,13 +73,13 @@ def get_sample_malware_observables() -> List[Dict[str, Any]]:
     """Generate sample malware-related observables."""
     return [
         {
-            "id": f"file_hash--{uuid.uuid4()}",
-            "type": "file_hash",
+            "id": f"file--{uuid.uuid4()}",
+            "type": "file",
             "value": "a1b2c3d4e5f6789012345678901234567890abcdef1234567890abcdef123456"
         },
         {
-            "id": f"domain--{uuid.uuid4()}",
-            "type": "domain",
+            "id": f"domain-name--{uuid.uuid4()}",
+            "type": "domain-name",
             "value": "malicious-c2.example.com"
         }
     ]
@@ -93,8 +93,8 @@ def get_sample_phishing_observables() -> List[Dict[str, Any]]:
             "value": "https://fake-bank-login.suspicious.tld/auth"
         },
         {
-            "id": f"email--{uuid.uuid4()}",
-            "type": "email",
+            "id": f"email-addr--{uuid.uuid4()}",
+            "type": "email-addr",
             "value": "noreply@fake-bank.suspicious.tld"
         }
     ]
@@ -120,8 +120,7 @@ def get_observables_by_category(cls, category: str) -> List[Dict[str, Any]]:
 
 def generate_minimal_submission_dict(org_id: str = None,
                                 access_level: str = "partner",
-                                observables: List[Dict] = None,
-                                confidence: int = None) -> Dict[str, Any]:
+                                observables: List[Dict] = None) -> Dict[str, Any]:
     """
     Generate a minimal FRANK submission with only required fields.
     
@@ -129,7 +128,6 @@ def generate_minimal_submission_dict(org_id: str = None,
         org_id: organisation identifier (generated if None)
         access_level: organisation tier level
         observables: List of observable objects (default generated if None)
-        confidence: Confidence level 0-100 (uses default if None)
         
     Returns:
         Dict containing minimal valid submission
@@ -142,9 +140,6 @@ def generate_minimal_submission_dict(org_id: str = None,
     if access_level not in all_access_levels:
         raise FRANKValidationError(f"Invalid access level '{access_level}'. Must be one of: {all_access_levels}")
 
-    if confidence is not None and not (0 <= confidence <= 100):
-        raise FRANKValidationError(f"Confidence {confidence} out of range [0-100]")
-    
     # Generate default values if not provided
     if org_id is None:
         org_id = f"identity--{uuid.uuid4()}"
@@ -152,13 +147,13 @@ def generate_minimal_submission_dict(org_id: str = None,
     if observables is None:
         observables = [
             {
-                "id": f"ipv4--{uuid.uuid4()}",
-                "type": "ipv4",
+                "id": f"ipv4-addr--{uuid.uuid4()}",
+                "type": "ipv4-addr",
                 "value": "185.220.102.45"
             },
             {
-                "id": f"domain--{uuid.uuid4()}",
-                "type": "domain", 
+                "id": f"domain-name--{uuid.uuid4()}",
+                "type": "domain-name", 
                 "value": "secure-bank-verify.nl"
             }
         ]
@@ -178,7 +173,6 @@ def generate_minimal_submission_dict(org_id: str = None,
             "sighting": {
                 "sighting_id": f"sighting-{uuid.uuid4()}",
                 "timestamp": datetime.now(timezone.utc).isoformat(),
-                "confidence": confidence if confidence is not None else 69,
                 "observables": {
                     "network": observables
                 }
@@ -189,7 +183,7 @@ def generate_minimal_submission_dict(org_id: str = None,
     return submission
     
 
-def generate_minimal_submission(org_id: str = None, access_level: str = "partner", observables: list = None, confidence: int = None) -> Submission:
+def generate_minimal_submission(org_id: str = None, access_level: str = "core_member", observables: list = None) -> Submission:
     """
     Generate a minimal Submission instance with only required fields.
 
@@ -197,12 +191,11 @@ def generate_minimal_submission(org_id: str = None, access_level: str = "partner
         org_id: organisation identifier (generated if None)
         access_level: organisation tier level
         observables: List of observable objects (default generated if None)
-        confidence: Confidence level 0-100 (uses default if None)
 
     Returns:
         Submission instance containing minimal valid submission
     """
-    submission_dict = generate_minimal_submission_dict(org_id=org_id, access_level=access_level, observables=observables, confidence=confidence)
+    submission_dict = generate_minimal_submission_dict(org_id=org_id, access_level=access_level, observables=observables)
     return Submission(**submission_dict["submission"])
 
 
@@ -213,7 +206,7 @@ def generate_sample_submission(org_id: str = None, sample_type: str = "default",
     Args:
         org_id (str, optional): organisation identifier. If None, a STIX-style UUID is generated.
         sample_type (str, optional): Type of sample observables to include. One of 'default', 'malware', 'phishing'.
-        **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier, confidence).
+        **kwargs: Additional parameters passed to generate_minimal_submission_dict (e.g., tier).
 
     Returns:
         FRANKSubmission: Instance containing a sample valid submission.
@@ -229,7 +222,6 @@ def generate_comprehensive_submission(
     sector: str = None,
     observables: list = None,
     severity: str = "high",
-    confidence: int = 92,
     campaign_context: dict = None,
     sigma_detection: dict = None,
     impact_data: dict = None,
@@ -244,7 +236,6 @@ def generate_comprehensive_submission(
         hit_target_org (str, optional): organisation ID of the target (if applicable).
         observables (list, optional): List of observable objects. If None, default observables are generated.
         severity (str, optional): Sighting severity. Defaults to "high".
-        confidence (int, optional): Confidence level 0-100. Defaults to 92.
         campaign_context (dict, optional): Dictionary with campaign/actor context.
         sigma_detection (dict, optional): Dictionary with sigma rule detection info.
         impact_data (dict, optional): Dictionary with impact/severity/affected systems.
@@ -272,7 +263,6 @@ def generate_comprehensive_submission(
             "timestamp": now.isoformat(),
             "first_observed": (now.replace(hour=0, minute=0, second=0, microsecond=0)).isoformat(),
             "last_observed": now.isoformat(),
-            "confidence": confidence,
             "severity": severity,
             "observables": {
                 "network": observables
@@ -389,4 +379,7 @@ def example_usage():
     # client = FRANKClient(db_client)  # Replace with actual database client
     # seeder = SampleDataSeeder()
     # client.seed_database(seeder)
-    print("✓ Database seeded with sample data (pseudo-code)")        
+    print("✓ Database seeded with sample data (pseudo-code)")   
+
+if __name__ == "__main__":
+    example_usage()     

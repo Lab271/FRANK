@@ -65,11 +65,11 @@ response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$
                 "observables": { 
                     "network": [ 
                         { 
-                            "type": "ipv4", 
+                            "type": "ipv4-addr", 
                             "value": "185.220.102.45" 
                         }, 
                         { 
-                            "type": "domain", 
+                            "type": "domain-name", 
                             "value": "secure-bank-verify.nl" 
                         } 
                     ] 
@@ -101,7 +101,7 @@ response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$
             "submission_id": "submission--'$SUB_UUID'", 
             "submitter": { 
                 "organisation_id": "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff", 
-                "access_level": "core_member",
+                "access_level": "partner",
                 "organisation_type": "cyber_partner" 
             }, 
             "sighting": { 
@@ -115,11 +115,11 @@ response=$(curl -s -w "%{http_code}" -o /tmp/submission_response.json -X POST "$
                 "observables": { 
                     "network": [ 
                         { 
-                            "type": "ipv4", 
+                            "type": "ipv4-addr", 
                             "value": "185.220.102.45" 
                         }, 
                         { 
-                            "type": "domain", 
+                            "type": "domain-name", 
                             "value": "secure-bank-verify.nl" 
                         } 
                     ] 

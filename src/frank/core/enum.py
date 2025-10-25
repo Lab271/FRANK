@@ -91,17 +91,25 @@ class AccessTier(str, Enum):
 
 
 class ObservableType(str, Enum):
-    """Network observable types"""
+    """Network observable types, this is a subset of STIX2 types"""
 
-    IPV4 = "ipv4"
-    IPV6 = "ipv6"
-    DOMAIN = "domain"
+    IPV4_ADDR = "ipv4-addr"
+    IPV6_ADDR = "ipv6-addr"
+    DOMAIN_NAME = "domain-name"
     URL = "url"
-    EMAIL = "email"
-    FILE_HASH = "file_hash"
-    REGISTRY_KEY = "registry_key"
+    EMAIL_ADDR = "email-addr"
+    FILE = "file"
+    WINDOWS_REGISTRY_KEY = "windows-registry-key"
     MUTEX = "mutex"
-    CERTIFICATE = "certificate"
+    X509_CERTIFICATE = "x509-certificate"
+    PROCESS = "process"
+    AUTONOMOUS_SYSTEM = "autonomous-system"
+    ARTIFACT = "artifact"
+    DIRECTORY = "directory"
+    NETWORK_TRAFFIC = "network-traffic"
+    SOFTWARE = "software"
+    USER_ACCOUNT = "user-account"
+    CUSTOM = "custom"
 
 
 class SeverityLevel(str, Enum):

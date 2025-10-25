@@ -450,7 +450,6 @@ def generate_threat_context(results: List[Dict[str, Any]]) -> Dict[str, Any]:
     }
 
 
-
 def calculate_contribution_score(submission: Submission) -> int:
     """Calculate contribution score impact for a submission"""
     base_score = 10

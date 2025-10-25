@@ -4,12 +4,12 @@
 
 submission:
   submitter:
-    organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+    organisation_id: "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff"
       
   sighting:
     observables:
       network:
-        - type: "ipv4"
+        - type: "ipv4-addr"
           value: "185.220.102.45"
-        - type: "domain"
+        - type: "domain-name"
           value: "secure-bank-verify.nl"

@@ -33,10 +33,10 @@ class TestHitTarget(unittest.TestCase):
 
     def test_create_minimal_hittarget(self):
         """Test creating a hit target with minimal required fields"""
-        hittarget = HitTarget(sector="healthcare")
+        hittarget = HitTarget(sector="medical")
         
         # Check that required fields are set
-        self.assertEqual(hittarget.sector, "healthcare")
+        self.assertEqual(hittarget.sector, "health")
         self.assertIsNone(hittarget.organisation_type)  # default
         self.assertEqual(hittarget.anonymization_level, "high")  # default
         
@@ -115,7 +115,7 @@ class TestHitTarget(unittest.TestCase):
             region="asia_pacific"
         )
         
-        self.assertEqual(hittarget.sector, "healthcare")
+        self.assertEqual(hittarget.sector, "health")
         self.assertEqual(hittarget.organisation_size, "large")
         self.assertEqual(hittarget.region, "asia_pacific")
         self.assertIsNone(hittarget.organisation_id)
@@ -272,16 +272,20 @@ class TestHitTarget(unittest.TestCase):
 
     def test_sectors_validation(self):
         """Test various sector values"""
-        valid_sectors = [
-            "financial", "healthcare", "technology", "manufacturing",
-            "retail", "education", "government", "energy", "telecommunications",
+        test_sectors = [
+            "financial", "healthcare", "technology", "manufacturing", "it", "tech",
+            "retail", "education", "government", "gov", "energy", "telecommunications",
             "aerospace", "automotive", "construction", "media", "agriculture"
         ]
         
-        for sector in valid_sectors:
+        valid_sectors = ["financial", "health", "technology", "manufacturing",
+                         "retail", "education", "public_sector", "energy", "telecommunications",
+                         "aerospace", "automotive", "construction", "media", "agriculture"]
+
+        for sector in test_sectors:
             with self.subTest(sector=sector):
                 hittarget = HitTarget(sector=sector)
-                self.assertEqual(hittarget.sector, sector)
+                self.assertIn(hittarget.sector, valid_sectors)
 
     def test_regions_validation(self):
         """Test various region values"""
@@ -315,15 +319,15 @@ class TestHitTarget(unittest.TestCase):
         """Test handling of whitespace in various fields"""
         # Leading/trailing whitespace should be handled by normalization
         hittarget = HitTarget(
-            sector="  financial_services  ",
+            sector="  finance  ",
             organisation_type="  bank  ",
             region="  europe  "
         )
         
-        # Sector should preserve whitespace (no automatic stripping)
-        self.assertEqual(hittarget.sector, "  financial_services  ")
+        # Sector should resolve whitespace (automatic stripping)
+        self.assertEqual(hittarget.sector, "financial")
         self.assertEqual(hittarget.organisation_type, "  bank  ")
-        self.assertEqual(hittarget.region, "  europe  ")
+        self.assertEqual(hittarget.region, "europe")
 
 
 class TestHitTargetIntegration(unittest.TestCase):
@@ -359,9 +363,9 @@ class TestHitTargetValidationScenarios(unittest.TestCase):
 
     def test_sector_whitespace_only(self):
         """Test sector with only whitespace"""
-        # This should be allowed (whitespace is still a character)
+        # This should be allowed and normalized)
         hittarget = HitTarget(sector="   ")
-        self.assertEqual(hittarget.sector, "   ")
+        self.assertEqual(hittarget.sector, "")
 
     def test_organisation_size_case_insensitive_normalization(self):
         """Test that organisation size normalization is case insensitive"""

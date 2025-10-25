@@ -4,37 +4,35 @@
 
 submission:
   submitter:
-    organization_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+    organization_id: "identity--f431f809-377b-45e0-aa1c-6a4751cae5ff"
     access_level: "partner"
       
   sighting:
-    sighting_id: "sighting-28bf4bfe-51c0-4c0c-a6bb-8de52fd5b6d2"
+    sighting_id: "sighting--28bf4bfe-51c0-4c0c-a6bb-8de52fd5b6d2"
     timestamp: "2025-09-17T14:30:22Z"
-    confidence: 87 # 69 is default
     
     observables:
       network:
-        - id: "ipv4-addr-05c90a5a-b03e-465d-aaac-a5cac986030d"
-          type: "ipv4"
+        - id: "ipv4-addr--05c90a5a-b03e-465d-aaac-a5cac986030d"
+          type: "ipv4-addr"
           value: "178.63.67.106"
-        - id: "ipv4-addr-63b24544-7461-488e-809d-9c2c16de21f4"
-          type: "ipv4"
+        - id: "ipv4-addr--63b24544-7461-488e-809d-9c2c16de21f4"
+          type: "ipv4-addr"
           value: "178.63.67.153"
-        - id: "ipv6-addr-3394f046-23b9-4baf-8c6f-31a8f5c67c47"
-          type: "ipv6"
+        - id: "ipv6-addr--3394f046-23b9-4baf-8c6f-31a8f5c67c47"
+          type: "ipv6-addr"
           value: "2a01:4f8:121:114d::2"
-        - id: "ipv6-addr-08ec97ee-90bf-4d2d-afa7-1c280bfb55ce"
-          type: "ipv6"
+        - id: "ipv6-addr--08ec97ee-90bf-4d2d-afa7-1c280bfb55ce"
+          type: "ipv6-addr"
           value: "2a01:4f8:121:11a5::2"
-        - id: "domain-name-a1b917a8-ab3b-49a0-ab5a-31490a229bc2"
-          type: "domain"
+        - id: "domain-name--a1b917a8-ab3b-49a0-ab5a-31490a229bc2"
+          type: "domain-name"
           value: "webhook.site"
 
     threat_context:
       campaign:
-        id: "campaign-f63e2795-4e6e-4785-b3bd-96422b77029d"
+        id: "campaign--f63e2795-4e6e-4785-b3bd-96422b77029d"
         name: "npm_worm_shai_hulud_2025_q4"
-        confidence: 78
         attribution: "unknown_cybercriminal_group"
         attack_vector: "npm_packages"
         payload_type: ["credential_stealer", "worm"]
@@ -42,7 +40,7 @@ submission:
       
       mitre_attack:
         techniques:
-          - id: "attack-pattern-e9330a80-b16a-4d93-93bb-218f4a2e5d97"
+          - id: "attack-pattern--e9330a80-b16a-4d93-93bb-218f4a2e5d97"
             technique: "T1195.001 "  # Supply Chain Compromise
             description: "Supply Chain Compromise: Compromise Software Dependencies and Development Tools"
         tactics: ["initial_access"]

@@ -41,13 +41,11 @@ class TestSubmission(unittest.TestCase):
         )
         
         self.valid_sighting = Sighting.create(
-            observables=Observables(network=self.valid_network_observables),
-            observation_count=2
+            observables=Observables(network=self.valid_network_observables)
         )
         
         self.valid_sighting_hit_target = Sighting.create(
             observables=Observables(network=self.valid_network_observables),
-            observation_count=2,
             hit_target=self.valid_hit_target
         )
         self.valid_observables = Observables(
@@ -81,9 +79,9 @@ class TestSubmission(unittest.TestCase):
         # Verify observables properties
         self.assertEqual(len(submission.sighting.observables.network), 2)
         self.assertIsInstance(submission.sighting.observables.network[0], Observable)
-        self.assertEqual(submission.sighting.observables.network[0].observable_type, ObservableType.IPV4)
+        self.assertEqual(submission.sighting.observables.network[0].observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(submission.sighting.observables.network[0].value, "192.168.1.100")
-        self.assertEqual(submission.sighting.observables.network[1].observable_type, ObservableType.DOMAIN)
+        self.assertEqual(submission.sighting.observables.network[1].observable_type, ObservableType.DOMAIN_NAME)
         self.assertEqual(submission.sighting.observables.network[1].value, "malicious.example.com")
         
         # Verify default values
@@ -106,7 +104,7 @@ class TestSubmission(unittest.TestCase):
         
         
         # # Verify hit_target properties
-        self.assertEqual(submission.sighting.hit_target.sector, "healthcare")
+        self.assertEqual(submission.sighting.hit_target.sector, "health")
         self.assertEqual(submission.sighting.hit_target.organisation_size, "large")
         self.assertIsNone(submission.sighting.hit_target.organisation_id)
 
@@ -123,7 +121,7 @@ class TestSubmission(unittest.TestCase):
         self.assertIsNone(submission.sighting.hit_target)
         
         # Verify default values from factory method
-        self.assertEqual(submission.submitter.access_level, AccessTier.PARTNER)  # Default from factory
+        self.assertEqual(submission.submitter.access_level, AccessTier.CORE_MEMBER)  # Default from factory
         self.assertEqual(len(submission.sighting.observables.network), 2)        # Default IPs from factory
         
         # Verify default threat IPs are created
@@ -134,7 +132,7 @@ class TestSubmission(unittest.TestCase):
         # All network observables should have c2 role
         for obs in submission.sighting.observables.network:
             self.assertEqual(obs.role, "c2")
-            self.assertEqual(obs.observable_type, ObservableType.IPV4)
+            self.assertEqual(obs.observable_type, ObservableType.IPV4_ADDR)
         
         # Test with custom parameters
         custom_submission = Submission.create_minimal(
@@ -241,8 +239,7 @@ class TestSubmissionSerialization(unittest.TestCase):
         
         self.valid_sighting = Sighting.create(
             hit_target=self.valid_hit_target,
-            observables=Observables(network=self.valid_network_observables),
-            observation_count=2
+            observables=Observables(network=self.valid_network_observables)
         )
         
         self.valid_observables = Observables(

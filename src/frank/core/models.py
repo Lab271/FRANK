@@ -64,9 +64,9 @@ class Observable(BaseModel):
     @model_validator(mode="after")
     def normalize_values(self):
         """Normalize values based on type after all fields are processed."""
-        if self.observable_type == ObservableType.DOMAIN:
+        if self.observable_type == ObservableType.DOMAIN_NAME:
             self.value = self.value.strip().lower()
-        elif self.observable_type in [ObservableType.IPV4, ObservableType.IPV6]:
+        elif self.observable_type in [ObservableType.IPV4_ADDR, ObservableType.IPV6_ADDR]:
             self.value = self.value.strip().lower()
         elif self.observable_type == ObservableType.URL:
             self.value = self.value.strip()  # Preserve case for URLs
@@ -77,12 +77,12 @@ class Observable(BaseModel):
     @classmethod
     def create_ipv4(cls, value: str, role: str = None, port: int = None):
         """Factory method for IPv4 observables"""
-        return cls(observable_type=ObservableType.IPV4, value=value, role=role, port=port)
+        return cls(observable_type=ObservableType.IPV4_ADDR, value=value, role=role, port=port)
 
     @classmethod
     def create_domain(cls, value: str, role: str = None):
         """Factory method for domain observables"""
-        return cls(observable_type=ObservableType.DOMAIN, value=value, role=role)
+        return cls(observable_type=ObservableType.DOMAIN_NAME, value=value, role=role)
 
 
 class Submitter(BaseModel):
@@ -99,10 +99,10 @@ class Submitter(BaseModel):
     )
 
     organisation_id: str = Field(..., description="STIX identity for organisation (required)")
-    access_level: Optional[AccessTier] = Field(None, description="Access tier level")
-    organisation_type: Optional[str] = Field(None, description="organisation type")
 
     # Optional metadata
+    access_level: Optional[AccessTier] = Field(AccessTier.CORE_MEMBER, description="Access level tier")
+    organisation_type: Optional[str] = Field("service_provider", description="organisation type")
     sector: Optional[str] = Field(None, description="Industry sector")
     region: Optional[str] = Field(None, description="Geographic region")
     client_count: Optional[int] = Field(None, ge=0, description="Number of protected clients")
@@ -117,18 +117,25 @@ class Submitter(BaseModel):
         # Normalize common sector variations
         # TODO: outside model in separate file
         sector_mappings = {
-            "finance": "financial",
-            "banking": "financial",
-            "healthcare": "health",
-            "medical": "health",
             "government": "public_sector",
             "gov": "public_sector",
-            "tech": "technology",
-            "it": "technology",
+            "cyber": "cyber_partner",
+            "outsource": "service_provider",
+            "it": "service_provider",
         }
 
         normalized = v.lower().strip()
         return sector_mappings.get(normalized, normalized)
+
+    @field_validator("region")
+    @classmethod
+    def normaliz_region(cls, v):
+        """Normalize region - 'be forgiving' on input"""
+        if v is None:
+            return v
+
+        normalized = v.lower().strip()
+        return normalized
 
     @classmethod
     def create(cls, organisation_id: str, access_level: AccessTier = None, sector: str = None, region: str = None):
@@ -154,6 +161,39 @@ class HitTarget(BaseModel):
     organisation_size: Optional[str] = Field(None, description="organisation size category")
     region: Optional[str] = Field(None, description="Geographic region")
     anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
+
+    @field_validator("sector")
+    @classmethod
+    def normalize_sector(cls, v):
+        """Normalize sector names - 'be forgiving' on input"""
+        if v is None:
+            return v
+
+        # Normalize common sector variations
+        # TODO: outside model in separate file
+        sector_mappings = {
+            "finance": "financial",
+            "banking": "financial",
+            "healthcare": "health",
+            "medical": "health",
+            "government": "public_sector",
+            "gov": "public_sector",
+            "tech": "technology",
+            "it": "technology",
+        }
+
+        normalized = v.lower().strip()
+        return sector_mappings.get(normalized, normalized)
+
+    @field_validator("region")
+    @classmethod
+    def normalize_region(cls, v):
+        """Normalize region - 'be forgiving' on input"""
+        if v is None:
+            return v
+
+        normalized = v.lower().strip()
+        return normalized
 
     @field_validator("organisation_size")
     @classmethod
@@ -196,6 +236,19 @@ class Observables(BaseModel):
     network: Optional[List[Observable]] = Field(default_factory=list, description="Network observables")
     file: Optional[List[Observable]] = Field(default_factory=list, description="File observables")
     process: Optional[List[Observable]] = Field(default_factory=list, description="Process observables")
+
+
+    def __len__(self):
+        """Return total count of observables across all categories"""
+        total = 0
+        if self.network:
+            total += len(self.network)
+        if self.file:
+            total += len(self.file)
+        if self.process:
+            total += len(self.process)
+        return total
+
 
 class SigmaDetection(BaseModel):
     """
@@ -335,15 +388,14 @@ class Sighting(BaseModel):
     @classmethod
     def create(
         cls,
-        observables: Observables = None,
-        hit_target: HitTarget = None,
-        observation_count: int = 1,
+        observables: Observables,
+        hit_target: HitTarget = None
     ):
         """Factory method for creating sightings"""
         return cls(
             observables=observables,
             hit_target=hit_target,
-            observation_count=observation_count,
+            observation_count=len(observables)
         )
 
 
@@ -439,7 +491,7 @@ class Submission(BaseModel):
     @classmethod
     def create_minimal(
         cls,
-        submitter_access_level: AccessTier = AccessTier.PARTNER,
+        submitter_access_level: AccessTier = AccessTier.CORE_MEMBER,
         target_sector: str = None,
         threat_ips: List[str] = None,
     ) -> "Submission":
@@ -539,7 +591,7 @@ def example_usage():
     try:
         # This should fail validation
         Observable(
-            type=ObservableType.IPV4,
+            type=ObservableType.IPV4_ADDR,
             value="not.an.ip.address",  # Invalid IP
         )
     except ValueError as e:
@@ -558,7 +610,7 @@ def example_usage():
             },
             "observables": {  # Old format in Submission
                 "network": [
-                    {"type": "ipv4", "value": "203.0.113.1"}
+                    {"type": "ipv4-addr", "value": "203.0.113.1"}
                 ]
             }
         }
@@ -568,6 +620,8 @@ def example_usage():
     print("✓ Legacy format parsed successfully")
     print(f"  - Generated org IDs: {parsed.submitter.organisation_id[:12]}...")
     print(f"  - Normalized sector: {parsed.sighting.hit_target.sector}")
+    print(f"  - Observable count: {len(parsed.sighting.observables)}")
+    print(f"  - Observable value: {parsed.sighting.observables.network[0].value}")
 
     # 4. Demonstrate 'strong on return'
     print("\n4. Testing 'strong on return' output ...")
@@ -581,7 +635,7 @@ def example_usage():
     # 6. Demonstrate 'strong on return' output
     print("\n6. Testing 'strong on return' output ...")
     print("✓ Strong output format generated")  
-    print(f"  - Keys in output: {list(parsed.model_dump(exclude_none=True, by_alias=True).keys())}")
+    print(f"  - Keys in output: {len(parsed.model_dump(exclude_none=True, by_alias=True).keys())}")
     
 
     print("\n=== Pydantic v2 Benefits Demonstrated ===")

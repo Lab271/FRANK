@@ -337,21 +337,10 @@ class TestSighting(unittest.TestCase):
     def test_factory_method_create(self):
         """Test the create factory method"""
         sighting = Sighting.create(
-            observables=Observables(network=self.valid_network_observables),
-            observation_count=3,
-        )
-        
-        self.assertEqual(sighting.observation_count, 3)
-        self.assertIsNotNone(sighting.sighting_id)
-        self.assertIsNotNone(sighting.timestamp)
-
-    def test_factory_method_minimal(self):
-        """Test factory method with minimal parameters"""
-        sighting = Sighting.create(
             observables=Observables(network=self.valid_network_observables)
         )
-
-        self.assertEqual(sighting.observation_count, 1)  # Default
+        
+        self.assertEqual(sighting.observation_count, 2)
         self.assertIsNotNone(sighting.sighting_id)
         self.assertIsNotNone(sighting.timestamp)
 

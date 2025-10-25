@@ -16,7 +16,7 @@ import uuid
 from pydantic import ValidationError
 
 from frank.core.models import Submission
-from frank.core.enum import TLPLevel
+from frank.core.enum import TLPLevel, AccessTier
 from frank.core.exceptions import FRANKValidationError
 from frank.util.sample_builder import generate_minimal_submission
 from frank.util import sample_builder
@@ -25,7 +25,13 @@ def stix_uuid(object_type: str) -> str:
     """Generate a STIX-compliant UUID for a given object type."""
     return f"{object_type}--{uuid.uuid4()}"
 
-
+class TestExampleUsage(unittest.TestCase):
+    """Unit tests for example_usage logic in models.py"""
+    
+    def test_example_usage(self):
+        """Test minimal submission creation via factory method."""
+        sample_builder.example_usage()
+        self.assertTrue(True, "example_usage")  # If no exceptions, test passes
 
 class TestSubmission(unittest.TestCase):
     def setUp(self):
@@ -35,12 +41,12 @@ class TestSubmission(unittest.TestCase):
         self.valid_observables = [
             {
                 "id": stix_uuid("ipv4-addr"),
-                "type": "ipv4",
+                "type": "ipv4-addr",
                 "value": "185.220.102.45"
             },
             {
                 "id": stix_uuid("domain-name"),
-                "type": "domain",
+                "type": "domain-name",
                 "value": "secure-bank-verify.nl"
             }
         ]
@@ -56,7 +62,7 @@ class TestSubmission(unittest.TestCase):
         # Check required fields
         submitter = submission['submitter']
         self.assertIn('organisation_id', submitter)
-        self.assertEqual(submitter['access_level'], 'partner')  # default
+        self.assertEqual(submitter['access_level'], AccessTier.CORE_MEMBER)  # default
         
         sighting = submission['sighting']
         self.assertIn('sighting_id', sighting)
@@ -74,8 +80,7 @@ class TestSubmission(unittest.TestCase):
         submission = generate_minimal_submission(
             org_id=self.valid_org_id,
             access_level=self.valid_access_level,
-            observables=self.valid_observables,
-            confidence=85
+            observables=self.valid_observables
         ).model_dump()
         
         submitter = submission['submitter']
@@ -91,14 +96,6 @@ class TestSubmission(unittest.TestCase):
             generate_minimal_submission(access_level="invalid_access_level")
         
         self.assertIn("Invalid access level", str(context.exception))
-    
-    def test_generate_minimal_submission_invalid_confidence(self):
-        """Test generating submission with invalid confidence raises exception."""
-        with self.assertRaises(FRANKValidationError):
-            generate_minimal_submission(confidence=150)
-        
-        with self.assertRaises(FRANKValidationError):
-            generate_minimal_submission(confidence=-10)
     
     def test_generate_minimal_submission_invalid_observable_type(self):
         """Test generating submission with invalid observable type raises exception."""
@@ -121,8 +118,8 @@ class TestSubmission(unittest.TestCase):
         default_obs = get_observables_by_category(None, 'default')
         malware_obs = get_observables_by_category(None, 'malware')
         phishing_obs = get_observables_by_category(None, 'phishing')
-        self.assertTrue(any(obs['type'] == 'ipv4' for obs in default_obs))
-        self.assertTrue(any(obs['type'] == 'file_hash' for obs in malware_obs))
+        self.assertTrue(any(obs['type'] == 'ipv4-addr' for obs in default_obs))
+        self.assertTrue(any(obs['type'] == 'file' for obs in malware_obs))
         self.assertTrue(any(obs['type'] == 'url' for obs in phishing_obs))
 
     def test_generate_comprehensive_submission_dict(self):
@@ -139,8 +136,7 @@ class TestSubmission(unittest.TestCase):
         submission_dict = generate_minimal_submission_dict(
             org_id=org_id,
             access_level=access_level,
-            observables=observables,
-            confidence=92
+            observables=observables
         )
         submission_dict['submission']['tlp_level'] = tlp_level
         submission_dict['submission']['submission_id'] = 'submission-123'
@@ -378,30 +374,30 @@ class TestSampleBuilderCoverage(unittest.TestCase):
         """Test retrieval of default observables."""
         obs = sample_builder.get_default_observables()
         self.assertIsInstance(obs, list)
-        self.assertTrue(any(o['type'] == 'ipv4' for o in obs))
-        self.assertTrue(any(o['type'] == 'domain' for o in obs))
+        self.assertTrue(any(o['type'] == 'ipv4-addr' for o in obs))
+        self.assertTrue(any(o['type'] == 'domain-name' for o in obs))
 
     def test_get_sample_malware_observables(self):
         """Test retrieval of sample malware observables."""
         obs = sample_builder.get_sample_malware_observables()
-        self.assertTrue(any(o['type'] == 'file_hash' for o in obs))
-        self.assertTrue(any(o['type'] == 'domain' for o in obs))
+        self.assertTrue(any(o['type'] == 'file' for o in obs))
+        self.assertTrue(any(o['type'] == 'domain-name' for o in obs))
 
     def test_get_sample_phishing_observables(self):
         """Test retrieval of sample phishing observables."""
         obs = sample_builder.get_sample_phishing_observables()
         self.assertTrue(any(o['type'] == 'url' for o in obs))
-        self.assertTrue(any(o['type'] == 'email' for o in obs))
+        self.assertTrue(any(o['type'] == 'email-addr' for o in obs))
 
     def test_get_observables_by_category_default(self):
         """Test observables by 'default' category."""
         obs = sample_builder.get_observables_by_category(None, 'default')
-        self.assertTrue(any(o['type'] == 'ipv4' for o in obs))
+        self.assertTrue(any(o['type'] == 'ipv4-addr' for o in obs))
 
     def test_get_observables_by_category_malware(self):
         """Test observables by 'malware' category."""
         obs = sample_builder.get_observables_by_category(None, 'malware')
-        self.assertTrue(any(o['type'] == 'file_hash' for o in obs))
+        self.assertTrue(any(o['type'] == 'file' for o in obs))
 
     def test_get_observables_by_category_phishing(self):
         """Test observables by 'phishing' category."""
@@ -411,7 +407,7 @@ class TestSampleBuilderCoverage(unittest.TestCase):
     def test_get_observables_by_category_unknown(self):
         """Test observables by unknown category falls back to default."""
         obs = sample_builder.get_observables_by_category(None, 'unknown')
-        self.assertTrue(any(o['type'] == 'ipv4' for o in obs))
+        self.assertTrue(any(o['type'] == 'ipv4-addr' for o in obs))
 
     def test_create_demo_orgs(self):
         """Test creation of demo organisations with fixed and random IDs."""

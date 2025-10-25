@@ -26,20 +26,20 @@ class TestObservableValidation(unittest.TestCase):
     def test_create_ipv4_observable_minimal(self):
         """Test creating IPv4 observable with minimal required fields."""
         observable = Observable(
-            observable_type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4_ADDR,
             value="192.168.1.1"
         )
-        
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "192.168.1.1")
         self.assertIsNotNone(observable.id)
-        self.assertTrue(observable.id.startswith("ipv4--"))
+        self.assertTrue(observable.id.startswith("ipv4-addr--"))
 
     def test_create_ipv4_observable_full(self):
         """Test creating IPv4 observable with all fields."""
         test_time = datetime.now()
         observable = Observable(
-            type=ObservableType.IPV4,
+            type=ObservableType.IPV4_ADDR,
             value="203.0.113.42",
             role="c2_server",
             port=443,
@@ -47,8 +47,8 @@ class TestObservableValidation(unittest.TestCase):
             first_seen=test_time,
             connection_count=15
         )
-        
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "203.0.113.42")
         self.assertEqual(observable.role, "c2_server")
         self.assertEqual(observable.port, 443)
@@ -59,26 +59,26 @@ class TestObservableValidation(unittest.TestCase):
     def test_create_ipv6_observable(self):
         """Test creating IPv6 observable."""
         observable = Observable(
-            observable_type=ObservableType.IPV6,
+            observable_type=ObservableType.IPV6_ADDR,
             value="2001:db8::1"
         )
-        
-        self.assertEqual(observable.observable_type, ObservableType.IPV6)
+
+        self.assertEqual(observable.observable_type, ObservableType.IPV6_ADDR)
         self.assertEqual(observable.value, "2001:db8::1")
-        self.assertTrue(observable.id.startswith("ipv6--"))
+        self.assertTrue(observable.id.startswith("ipv6-addr--"))
 
     def test_create_domain_observable(self):
         """Test creating domain observable."""
         observable = Observable(
-            observable_type=ObservableType.DOMAIN,
+            observable_type=ObservableType.DOMAIN_NAME,
             value="malicious-site.com",
             role="phishing_domain"
         )
-        
-        self.assertEqual(observable.observable_type, ObservableType.DOMAIN)
+
+        self.assertEqual(observable.observable_type, ObservableType.DOMAIN_NAME)
         self.assertEqual(observable.value, "malicious-site.com")
         self.assertEqual(observable.role, "phishing_domain")
-        self.assertTrue(observable.id.startswith("domain--"))
+        self.assertTrue(observable.id.startswith("domain-name--"))
 
     def test_create_url_observable(self):
         """Test creating URL observable."""
@@ -94,18 +94,18 @@ class TestObservableValidation(unittest.TestCase):
     def test_create_email_observable(self):
         """Test creating email observable."""
         observable = Observable(
-            observable_type=ObservableType.EMAIL,
+            observable_type=ObservableType.EMAIL_ADDR,
             value="malicious@example.com"
         )
-        
-        self.assertEqual(observable.observable_type, ObservableType.EMAIL)
+
+        self.assertEqual(observable.observable_type, ObservableType.EMAIL_ADDR)
         self.assertEqual(observable.value, "malicious@example.com")
-        self.assertTrue(observable.id.startswith("email--"))
+        self.assertTrue(observable.id.startswith("email-addr--"))
 
     def test_stix_id_generation(self):
         """Test STIX-compliant ID generation."""
         observable = Observable(
-            observable_type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4_ADDR,
             value="192.168.1.1"
         )
         
@@ -121,8 +121,6 @@ class TestObservableValidation(unittest.TestCase):
         except ValueError:
             self.fail(f"Invalid UUID format: {uuid_part}")
 
-    def test_get_dict(self):
-        """Test export to dict"""
 
 class TestObservableSerialization(unittest.TestCase):
     """Test Observable serialization and deserialization with various formats."""
@@ -132,13 +130,13 @@ class TestObservableSerialization(unittest.TestCase):
         self.test_datetime = datetime(2025, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         
         self.minimal_data = {
-            "type": "ipv4",
+            "type": "ipv4-addr",
             "value": "192.168.1.1"
         }
         
         self.full_data = {
-            "id": "ipv4--12345678-1234-5678-9abc-123456789abc",
-            "type": "ipv4",
+            "id": "ipv4-addr--12345678-1234-5678-9abc-123456789abc",
+            "type": "ipv4-addr",
             "value": "192.168.1.1",
             "role": "C2",
             "port": 80,
@@ -148,7 +146,7 @@ class TestObservableSerialization(unittest.TestCase):
         }
         
         self.domain_data = {
-            "type": "domain",
+            "type": "domain-name",
             "value": "MALICIOUS.EXAMPLE.COM",  # Test normalization
             "role": "exfiltration"
         }
@@ -156,18 +154,18 @@ class TestObservableSerialization(unittest.TestCase):
     def test_dict_to_observable_minimal(self):
         """Test creating Observable from minimal dictionary."""
         observable = Observable(**self.minimal_data)
-        
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "192.168.1.1")
         self.assertIsNotNone(observable.id)
-        self.assertTrue(observable.id.startswith("ipv4--"))
+        self.assertTrue(observable.id.startswith("ipv4-addr--"))
 
     def test_dict_to_observable_full(self):
         """Test creating Observable from full dictionary."""
         observable = Observable(**self.full_data)
         
         self.assertEqual(observable.id, self.full_data["id"])
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "192.168.1.1")
         self.assertEqual(observable.role, "C2")
         self.assertEqual(observable.port, 80)
@@ -183,7 +181,7 @@ class TestObservableSerialization(unittest.TestCase):
         
         self.assertIn("type", result)
         self.assertNotIn("observable_type", result)
-        self.assertEqual(result["type"], "ipv4")
+        self.assertEqual(result["type"], "ipv4-addr")
         self.assertEqual(result["value"], "192.168.1.1")
         self.assertEqual(result["port"], 80)
         self.assertIsInstance(result["first_seen"], str)
@@ -196,7 +194,7 @@ class TestObservableSerialization(unittest.TestCase):
         
         self.assertIn("observable_type", result)
         self.assertNotIn("type", result)
-        self.assertEqual(result["observable_type"], "ipv4")
+        self.assertEqual(result["observable_type"], "ipv4-addr")
 
     def test_dict_roundtrip_minimal(self):
         """Test dictionary roundtrip with minimal data."""
@@ -230,7 +228,7 @@ class TestObservableSerialization(unittest.TestCase):
         
         # Verify it's valid JSON
         parsed = json.loads(json_str)
-        self.assertEqual(parsed["type"], "ipv4")
+        self.assertEqual(parsed["type"], "ipv4-addr")
         self.assertEqual(parsed["value"], "192.168.1.1")
 
     def test_json_deserialization(self):
@@ -239,7 +237,7 @@ class TestObservableSerialization(unittest.TestCase):
         parsed_dict = json.loads(json_str)
         observable = Observable(**parsed_dict)
         
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "192.168.1.1")
 
     def test_json_roundtrip(self):
@@ -270,7 +268,7 @@ class TestObservableSerialization(unittest.TestCase):
     def test_yaml_deserialization(self):
         """Test YAML deserialization."""
         yaml_str = """
-        type: ipv4
+        type: ipv4-addr
         value: "10.0.0.1"
         role: "C2"
         port: 443
@@ -279,8 +277,8 @@ class TestObservableSerialization(unittest.TestCase):
         
         parsed_dict = yaml.safe_load(yaml_str)
         observable = Observable(**parsed_dict)
-        
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "10.0.0.1")
         self.assertEqual(observable.role, "C2")
         self.assertEqual(observable.port, 443)
@@ -331,11 +329,11 @@ class TestObservableSerialization(unittest.TestCase):
     def test_field_name_vs_alias_parsing(self):
         """Test that both field names and aliases work for input."""
         # Using alias
-        obs1 = Observable(type=ObservableType.DOMAIN, value="example.com")
+        obs1 = Observable(type=ObservableType.DOMAIN_NAME, value="example.com")
         
         # Using field name
-        obs2 = Observable(observable_type=ObservableType.DOMAIN, value="example.com")
-        
+        obs2 = Observable(observable_type=ObservableType.DOMAIN_NAME, value="example.com")
+
         # Both should work and produce the same result
         self.assertEqual(obs1.observable_type, obs2.observable_type)
         self.assertEqual(obs1.value, obs2.value)
@@ -350,22 +348,22 @@ class TestObservableSerialization(unittest.TestCase):
         
         # Should not raise an error
         observable = Observable(**data_with_extra)
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "192.168.1.1")
 
     def test_invalid_data_validation(self):
         """Test that invalid data raises appropriate errors."""
         # Missing required field
         with self.assertRaises(Exception):
-            Observable(type="ipv4")  # Missing value
+            Observable(type="ipv4-addr")  # Missing value
         
         # Invalid port
         with self.assertRaises(Exception):
-            Observable(type="ipv4", value="192.168.1.1", port=70000)
-        
+            Observable(type="ipv4-addr", value="192.168.1.1", port=70000)
+
         # Invalid connection count
         with self.assertRaises(Exception):
-            Observable(type="ipv4", value="192.168.1.1", connection_count=-1)
+            Observable(type="ipv4-addr", value="192.168.1.1", connection_count=-1)
 
     def test_multiple_format_consistency(self):
         """Test that dict, JSON, and YAML produce consistent results."""
@@ -412,73 +410,60 @@ class TestObservableSerialization(unittest.TestCase):
         observable_dict = {
             "network": [
                 {
-                    "type": ObservableType.IPV4.value,
+                    "type": ObservableType.IPV4_ADDR.value,
                     "value": "198.51.100.1",
-                    "confidence": 80,
                 },
                 {
-                    "type": ObservableType.IPV6.value,
+                    "type": ObservableType.IPV6_ADDR.value,
                     "value": "2001:db8::1",
-                    "confidence": 70,
                 },
                 {
-                    "type": ObservableType.DOMAIN.value,
+                    "type": ObservableType.DOMAIN_NAME.value,
                     "value": "malicious.example.com",
-                    "confidence": 85,
                 },
                 {
                     "type": ObservableType.URL.value,
                     "value": "https://phishing.example.com/login",
-                    "confidence": 90,
                 },
                 {
-                    "type": ObservableType.EMAIL.value,
+                    "type": ObservableType.EMAIL_ADDR.value,
                     "value": "attacker@malicious.test",
-                    "confidence": 75,
                 },
                 {
-                    "type": ObservableType.CERTIFICATE.value,
+                    "type": ObservableType.X509_CERTIFICATE.value,
                     "value": "40:6B:8B:CD:F9:27:A2:1C:42:8A:B9:F1:12:34:56:78:9A:BC:DE:F0",
-                    "confidence": 75,
-                }
+                },
             ],
             "file": [
                 {
-                    "type": ObservableType.FILE_HASH.value,
+                    "type": ObservableType.FILE.value,
                     "value": "5d41402abc4b2a76b9719d911017c592",
-                    "confidence": 95,
                 },
                 {
-                    "type": ObservableType.FILE_HASH.value,
+                    "type": ObservableType.FILE.value,
                     "value": "356a192b7913b04c54574d18c28d46e6395428ab",
-                    "confidence": 90,
                 },
                 {
-                    "type": ObservableType.FILE_HASH.value,
+                    "type": ObservableType.FILE.value,
                     "value": "e258d248fda94c63753607f7c4494ee0fcbe92f1a76bfdac795c9d84101eb317",
-                    "confidence": 100,
                 }
              ],
             "process": [
                 {
                     "type": ObservableType.MUTEX.value,
                     "value": "Global\\MalwareMutex",
-                    "confidence": 85,
                 },
                 {
                     "type": ObservableType.MUTEX.value,
                     "value": "Local\\RansomwareLock",
-                    "confidence": 90,
                 },
                 {
-                    "type": ObservableType.REGISTRY_KEY.value,
+                    "type": ObservableType.WINDOWS_REGISTRY_KEY.value,
                     "value": "HKEY_LOCAL_MACHINE\\SOFTWARE\\Malware\\Config",
-                    "confidence": 80,
                 },
                 {
-                    "type": ObservableType.REGISTRY_KEY.value,
+                    "type": ObservableType.WINDOWS_REGISTRY_KEY.value,
                     "value": "HKEY_CURRENT_USER\\Software\\Microsoft\\Windows\\CurrentVersion\\Run\\Backdoor",
-                    "confidence": 95,
                 }
             ],
         }
@@ -495,7 +480,7 @@ class TestObservableBeForgivingPrinciple(unittest.TestCase):
     def test_extra_fields_ignored(self):
         """Test that extra fields are ignored per ConfigDict(extra='ignore')."""
         observable_data = {
-            "type": ObservableType.IPV4,
+            "type": ObservableType.IPV4_ADDR,
             "value": "192.168.1.1",
             "unexpected_field": "should_be_ignored",
             "another_extra": 12345
@@ -504,13 +489,13 @@ class TestObservableBeForgivingPrinciple(unittest.TestCase):
         observable = Observable(**observable_data)
         self.assertFalse(hasattr(observable, 'unexpected_field'))
         self.assertFalse(hasattr(observable, 'another_extra'))
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "192.168.1.1")
 
     def test_whitespace_trimming(self):
         """Test that values are trimmed of whitespace."""
         observable = Observable(
-            observable_type=ObservableType.DOMAIN,
+            observable_type=ObservableType.DOMAIN_NAME,
             value="  example.com  "
         )
         
@@ -519,17 +504,17 @@ class TestObservableBeForgivingPrinciple(unittest.TestCase):
     def test_case_normalization_domains(self):
         """Test that domains are normalized to lowercase."""
         observable = Observable(
-            observable_type=ObservableType.DOMAIN,
+            observable_type=ObservableType.DOMAIN_NAME,
             value="EXAMPLE.COM"
         )
         
         self.assertEqual(observable.value, "example.com")
 
-    def test_case_normalization_ipv4(self):
+    def test_normalization_ipv4(self):
         """Test that IPv4 addresses are normalized to lowercase."""
         observable = Observable(
-            observable_type=ObservableType.IPV4,
-            value="192.168.1.1"  # Already lowercase, but test the logic
+            observable_type=ObservableType.IPV4_ADDR,
+            value=" 192.168.1.1 "  # Already lowercase, but test the logic
         )
         
         self.assertEqual(observable.value, "192.168.1.1")
@@ -547,7 +532,7 @@ class TestObservableBeForgivingPrinciple(unittest.TestCase):
     def test_empty_optional_fields(self):
         """Test handling of None/empty optional fields."""
         observable = Observable(
-            observable_type=ObservableType.IPV4,
+            observable_type=ObservableType.IPV4_ADDR,
             value="192.168.1.1",
             role=None,
             port=None,
@@ -573,7 +558,7 @@ class TestObservableFactoryMethods(unittest.TestCase):
             port=8080
         )
         
-        self.assertEqual(observable.observable_type, ObservableType.IPV4)
+        self.assertEqual(observable.observable_type, ObservableType.IPV4_ADDR)
         self.assertEqual(observable.value, "203.0.113.10")
         self.assertEqual(observable.role, "malware_c2")
         self.assertEqual(observable.port, 8080)
@@ -585,7 +570,7 @@ class TestObservableFactoryMethods(unittest.TestCase):
             role="phishing_domain"
         )
         
-        self.assertEqual(observable.observable_type, ObservableType.DOMAIN)
+        self.assertEqual(observable.observable_type, ObservableType.DOMAIN_NAME)
         self.assertEqual(observable.value, "phishing-bank.com")
         self.assertEqual(observable.role, "phishing_domain")
 
@@ -594,8 +579,8 @@ class TestObservableFactoryMethods(unittest.TestCase):
         ipv4_obs = Observable.create_ipv4("192.168.1.1")
         domain_obs = Observable.create_domain("example.com")
         
-        self.assertTrue(ipv4_obs.id.startswith("ipv4--"))
-        self.assertTrue(domain_obs.id.startswith("domain--"))
+        self.assertTrue(ipv4_obs.id.startswith("ipv4-addr--"))
+        self.assertTrue(domain_obs.id.startswith("domain-name--"))
         self.assertNotEqual(ipv4_obs.id, domain_obs.id)
 
 if __name__ == "__main__":
