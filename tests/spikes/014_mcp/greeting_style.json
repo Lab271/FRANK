@@ -1,0 +1,6 @@
+{ 
+"greeting_styles": 
+[ "Hello, {name}! Good to see you !!", 
+"Hi there, {name}!, Welcome to the Class", 
+"Greetings, {name}!, Welcome to the team" ] 
+}
