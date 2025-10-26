@@ -8,4 +8,4 @@ This is the main version id to set
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-version = '0.10.1'
+version = '0.10.2'
