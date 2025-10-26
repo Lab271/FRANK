@@ -61,7 +61,7 @@ def get_config() -> Dict[str, Any]:
     aws_access_key_id = os.environ.get("AWS_ACCESS_KEY_ID", None)
     aws_secret_access_key = os.environ.get("AWS_SECRET_ACCESS_KEY", None)
     table_name = os.environ.get("DYNAMODB_TABLE", "frank-data")
-    audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit-table")
+    audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit")
 
     return {
         "endpoint": endpoint,  # None for AWS, set for LocalStack
@@ -607,8 +607,8 @@ Examples:
     parser.add_argument(
         "--audit-table-name",
         type=str,
-        default=os.getenv("DYNAMODB_AUDIT_TABLE", "frank-audit-table"),
-        help="DynamoDB audit table name (default: DYNAMODB_AUDIT_TABLE or 'frank-audit-table')"
+        default=os.getenv("DYNAMODB_AUDIT_TABLE", "frank-audit"),
+        help="DynamoDB audit table name (default: DYNAMODB_AUDIT_TABLE or 'frank-audit')"
     )
     
     # Logging configuration

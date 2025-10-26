@@ -328,7 +328,7 @@ def create_jwt_token(username: str, groups: List[str], token_type: str = "access
         user = USERS_DB[username]
         payload["email"] = user["email"]
         payload["email_verified"] = True
-        payload["organization"] = user["organization"]
+        payload["organisation"] = user["organisation"]
         payload["aud"] = current_config.client_id
     
     # Add kid (key ID) for RS256
