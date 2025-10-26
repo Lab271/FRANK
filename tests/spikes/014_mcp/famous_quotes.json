@@ -1,0 +1,212 @@
+{
+  "movie_quotes": {
+    "Gone with the Wind": {
+      "year": 1939,
+      "quotes": [
+        "Frankly, my dear, I don't give a damn.",
+        "After all, tomorrow is another day!",
+        "As God is my witness, I'll never be hungry again."
+      ]
+    },
+    "The Godfather": {
+      "year": 1972,
+      "quotes": [
+        "I'm gonna make him an offer he can't refuse.",
+        "Keep your friends close, but your enemies closer."
+      ]
+    },
+    "Casablanca": {
+      "year": 1942,
+      "quotes": [
+        "Here's looking at you, kid.",
+        "Louis, I think this is the beginning of a beautiful friendship.",
+        "We'll always have Paris.",
+        "Of all the gin joints in all the towns in all the world, she walks into mine.",
+        "Play it, Sam. Play 'As Time goes By.'",
+        "Round up the usual suspects."
+      ]
+    },
+    "The Wizard of Oz": {
+      "year": 1939,
+      "quotes": [
+        "Toto, I've a feeling we're not in Kansas anymore.",
+        "There's no place like home.",
+        "I'll get you, my pretty, and your little dog, too!"
+      ]
+    },
+    "Star Wars": {
+      "year": 1977,
+      "quotes": [
+        "May the Force be with you."
+      ]
+    },
+    "Forrest Gump": {
+      "year": 1994,
+      "quotes": [
+        "My mama always said life was like a box of chocolates. You never know what you're gonna get."
+      ]
+    },
+    "E.T.: The Extra-Terrestrial": {
+      "year": 1982,
+      "quotes": [
+        "E.T. phone home."
+      ]
+    },
+    "Apollo 13": {
+      "year": 1995,
+      "quotes": [
+        "Houston, we have a problem."
+      ]
+    },
+    "Jaws": {
+      "year": 1975,
+      "quotes": [
+        "You're gonna need a bigger boat."
+      ]
+    },
+    "Titanic": {
+      "year": 1997,
+      "quotes": [
+        "I'm the king of the world!"
+      ]
+    },
+    "On the Waterfront": {
+      "year": 1954,
+      "quotes": [
+        "You don't understand! I coulda had class. I coulda been a contender. I could've been somebody, instead of a bum, which is what I am."
+      ]
+    },
+    "Taxi Driver": {
+      "year": 1976,
+      "quotes": [
+        "You talking to me?"
+      ]
+    },
+    "Cool Hand Luke": {
+      "year": 1967,
+      "quotes": [
+        "What we've got here is failure to communicate."
+      ]
+    },
+    "Apocalypse Now": {
+      "year": 1979,
+      "quotes": [
+        "I love the smell of napalm in the morning."
+      ]
+    },
+    "Dirty Harry": {
+      "year": 1971,
+      "quotes": [
+        "You've got to ask yourself one question: 'Do I feel lucky?' Well, do ya, punk?"
+      ]
+    },
+    "The Terminator": {
+      "year": 1984,
+      "quotes": [
+        "I'll be back."
+      ]
+    },
+    "The Graduate": {
+      "year": 1967,
+      "quotes": [
+        "Plastics.",
+        "Mrs. Robinson, you're trying to seduce me. Aren't you?"
+      ]
+    },
+    "Rocky": {
+      "year": 1976,
+      "quotes": [
+        "Yo, Adrian!"
+      ]
+    },
+    "Sudden Impact": {
+      "year": 1983,
+      "quotes": [
+        "Go ahead, make my day."
+      ]
+    },
+    "The Silence of the Lambs": {
+      "year": 1991,
+      "quotes": [
+        "A census taker once tried to test me. I ate his liver with some fava beans and a nice Chianti."
+      ]
+    },
+    "The Shawshank Redemption": {
+      "year": 1994,
+      "quotes": [
+        "Get busy living, or get busy dying."
+      ]
+    },
+    "Scarface": {
+      "year": 1983,
+      "quotes": [
+        "Say hello to my little friend!"
+      ]
+    },
+    "Braveheart": {
+      "year": 1995,
+      "quotes": [
+        "They may take our lives, but they'll never take our freedom!"
+      ]
+    },
+    "The Dark Knight": {
+      "year": 2008,
+      "quotes": [
+        "Why so serious?"
+      ]
+    }    
+  },
+  "person_quotes": {
+    "William Shakespeare": {
+      "quotes": [
+        "To be, or not to be, that is the question.",
+        "All the world's a stage, and all the men and women merely players."
+      ]
+    },
+    "John Kennedy": {
+      "quotes": [
+        "Ask not what your country can do for you; ask what you can do for your country."
+      ]
+    },
+    "Albert Einstein": {
+      "quotes": [
+        "Strive not to be a success, but rather to be of value."
+      ]
+    },
+    "Mark Twain": {
+      "quotes": [
+        "The two most important days in your life are the day you are born and the day you find out why."
+      ]
+    },
+    "Theodore Roosevelt": {
+      "quotes": [
+        "Believe you can and you're halfway there."
+      ]
+    },
+    "Martin Luther King": {
+      "quotes": [
+        "Our lives begin to end the day we become silent about things that matter."
+      ]
+    },
+    "Steve Jobs": {
+      "quotes": [
+        "Your time is limited, so don't waste it living someone else's life."
+      ]
+    },
+    "Abraham Lincoln": {
+      "quotes": [
+        "It's not the years in your life that count. It's the life in your years."
+      ]
+    },
+    "Eleanor Roosevelt": {
+      "quotes": [
+        "Remember no one can make you feel inferior without your consent."
+      ]
+    },
+    "Maya Angelou": {
+      "quotes": [
+        "I've learned that people will forget what you said, people will forget what you did, but people will never forget how you made them feel."
+      ]
+    }
+  }
+}

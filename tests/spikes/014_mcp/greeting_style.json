@@ -1,6 +1,15 @@
 { 
-"greeting_styles": 
-[ "Hello, {name}! Good to see you !!", 
-"Hi there, {name}!, Welcome to the Class", 
-"Greetings, {name}!, Welcome to the team" ] 
+  "greeting_styles": 
+  [ 
+    "Hello, {name}! Good to see you !!", 
+    "Hi there, {name}!, Welcome to the Class", 
+    "Greetings, {name}!, Welcome to the team" 
+  ],
+  "farewell_styles": 
+  [
+    "Goodbye, {name}! See you soon!",
+    "Farewell, {name}! Take care!",
+    "See you later, {name}! Have a great day!",
+    "Until next time, {name}! Stay awesome!"
+  ]
 }
