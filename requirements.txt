@@ -29,7 +29,7 @@ comm==0.2.3
 coverage==7.10.7
 cryptography==46.0.3
 cucumber-expressions==18.0.1
-cucumber-tag-expressions==6.2.0
+cucumber-tag-expressions==8.0.0
 cyclonedx-bom==7.2.0
 cyclonedx-python-lib==11.2.0
 debugpy==1.8.17
