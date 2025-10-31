@@ -1,0 +1,39 @@
+# Environment variables with secrets
+local/.env
+
+# SSL certificates
+local/ssl-certs/
+
+# Ansible vault files
+ansible/.vault_pass
+
+# Terraform state (if added later)
+*.tfstate
+*.tfstate.backup
+.terraform/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.bak

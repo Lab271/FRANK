@@ -1,0 +1,63 @@
+---
+# MCP Server Platform - Ansible Deployment Playbook
+# Copyright (c) 2025 LAB271
+# SPDX-License-Identifier: Apache-2.0
+
+- name: Deploy MCP Server Platform to AWS
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  
+  vars:
+    env: "{{ env | default('dev') }}"
+    aws_region: "{{ aws_region | default('us-east-1') }}"
+    stack_name: "mcp-platform-{{ env }}"
+    
+  tasks:
+    - name: Load environment-specific variables
+      include_vars:
+        file: "vars/{{ env }}.yml"
+      tags: [always]
+
+    - name: Validate prerequisites
+      include_tasks: tasks/prerequisites.yml
+      tags: [prerequisites, setup]
+
+    - name: Create ECR repository and build Docker image
+      include_tasks: tasks/docker_build.yml
+      tags: [docker, build]
+
+    - name: Create Secrets in AWS Secrets Manager
+      include_tasks: tasks/secrets.yml
+      tags: [secrets, setup]
+
+    - name: Deploy CloudFormation stack
+      include_tasks: tasks/cloudformation.yml
+      tags: [cloudformation, deploy]
+
+    - name: Configure DNS (if enabled)
+      include_tasks: tasks/dns.yml
+      when: configure_dns | default(false)
+      tags: [dns, setup]
+
+    - name: Verify deployment
+      include_tasks: tasks/verify.yml
+      tags: [verify, test]
+
+    - name: Display deployment information
+      include_tasks: tasks/output.yml
+      tags: [always]
+
+- name: Cleanup MCP Platform
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tags: [never, cleanup]
+  
+  vars:
+    env: "{{ env | default('dev') }}"
+    stack_name: "mcp-platform-{{ env }}"
+  
+  tasks:
+    - name: Clean up CloudFormation stack
+      include_tasks: tasks/cleanup.yml

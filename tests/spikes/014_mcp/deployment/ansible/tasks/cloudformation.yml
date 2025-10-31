@@ -1,0 +1,41 @@
+---
+# CloudFormation deployment tasks
+
+- name: Deploy CloudFormation stack
+  amazon.aws.cloudformation:
+    stack_name: "{{ stack_name }}"
+    state: present
+    region: "{{ aws_region }}"
+    template: "{{ playbook_dir }}/../aws/mcp-infrastructure.yaml"
+    template_parameters:
+      StackName: "{{ stack_name }}"
+      Environment: "{{ env }}"
+      DomainName: "{{ domain_name | default('') }}"
+      HostedZoneId: "{{ hosted_zone_id | default('') }}"
+      CertificateArn: "{{ certificate_arn | default('') }}"
+      LogMCPImage: "{{ log_mcp_image }}"
+      ContainerCpu: "{{ container_cpu | default('256') }}"
+      ContainerMemory: "{{ container_memory | default('512') }}"
+      MinCapacity: "{{ min_capacity | default(2) }}"
+      MaxCapacity: "{{ max_capacity | default(10) }}"
+      TargetCPUUtilization: "{{ target_cpu_utilization | default(70) }}"
+      AbuseIPDBSecretArn: "{{ abuseipdb_secret_arn | default('') }}"
+    tags:
+      Environment: "{{ env }}"
+      ManagedBy: Ansible
+      Project: MCP-Platform
+  register: cloudformation_output
+
+- name: Wait for stack to be ready
+  amazon.aws.cloudformation_info:
+    stack_name: "{{ stack_name }}"
+    region: "{{ aws_region }}"
+  register: stack_info
+  until: stack_info.cloudformation[stack_name].stack_status == 'CREATE_COMPLETE' or 
+         stack_info.cloudformation[stack_name].stack_status == 'UPDATE_COMPLETE'
+  retries: 60
+  delay: 30
+
+- name: Save stack outputs
+  set_fact:
+    stack_outputs: "{{ stack_info.cloudformation[stack_name].stack_outputs }}"

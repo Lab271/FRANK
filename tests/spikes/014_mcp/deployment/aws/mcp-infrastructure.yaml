@@ -1,0 +1,653 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: 'MCP Server Platform - AWS Fargate Infrastructure with Secrets Manager'
+
+# This CloudFormation template deploys MCP servers on AWS Fargate with:
+# - Application Load Balancer with HTTPS/SSL
+# - ECS Fargate tasks in private subnets
+# - AWS Secrets Manager for secure environment variable injection
+# - Multi-AZ deployment for high availability
+# - Auto-scaling based on metrics
+# - CloudWatch logging
+
+Parameters:
+  StackName:
+    Type: String
+    Description: Name for this stack and all resources
+    Default: mcp-platform
+    
+  Environment:
+    Type: String
+    Description: Environment name (dev, staging, prod)
+    Default: dev
+    AllowedValues: [dev, staging, prod]
+
+  # Domain Configuration
+  DomainName:
+    Type: String
+    Description: Custom domain name (e.g., mcp.lab271.io)
+    Default: ''
+
+  HostedZoneId:
+    Type: String
+    Description: Route53 hosted zone ID for DNS
+    Default: ''
+
+  CertificateArn:
+    Type: String
+    Description: ARN of ACM certificate for HTTPS
+    Default: ''
+
+  # Container Configuration
+  LogMCPImage:
+    Type: String
+    Description: Docker image URI for Log MCP Server from ECR
+    Default: '123456789012.dkr.ecr.us-east-1.amazonaws.com/mcp/log-server:latest'
+
+  ContainerCpu:
+    Type: String
+    Description: Fargate task CPU units
+    Default: '256'
+    AllowedValues: ['256', '512', '1024', '2048', '4096']
+
+  ContainerMemory:
+    Type: String
+    Description: Fargate task memory (MB)
+    Default: '512'
+    AllowedValues: ['512', '1024', '2048', '4096', '8192']
+
+  # Auto Scaling
+  MinCapacity:
+    Type: Number
+    Description: Minimum number of ECS tasks
+    Default: 2
+    MinValue: 1
+    MaxValue: 10
+
+  MaxCapacity:
+    Type: Number
+    Description: Maximum number of ECS tasks
+    Default: 10
+    MinValue: 2
+    MaxValue: 50
+
+  TargetCPUUtilization:
+    Type: Number
+    Description: Target CPU utilization for auto scaling
+    Default: 70
+    MinValue: 10
+    MaxValue: 90
+
+  # Secrets Configuration
+  AbuseIPDBSecretArn:
+    Type: String
+    Description: ARN of Secrets Manager secret containing ABUSEIPDB_API_KEY
+    Default: ''
+
+Conditions:
+  HasSSL: !Not [!Equals [!Ref CertificateArn, '']]
+  HasDomain: !Not [!Equals [!Ref DomainName, '']]
+  HasHostedZone: !Not [!Equals [!Ref HostedZoneId, '']]
+  HasDNS: !And [!Condition HasDomain, !Condition HasHostedZone]
+  HasAbuseIPDBSecret: !Not [!Equals [!Ref AbuseIPDBSecretArn, '']]
+  IsProduction: !Equals [!Ref Environment, 'prod']
+
+Resources:
+  # ============================================================================
+  # NETWORKING - VPC, Subnets, NAT Gateways
+  # ============================================================================
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-vpc'
+        - Key: Environment
+          Value: !Ref Environment
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-igw'
+
+  AttachGateway:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  # Public Subnets (for ALB)
+  PublicSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-public-subnet-1'
+
+  PublicSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.3.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-public-subnet-2'
+
+  PublicSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.5.0/24
+      AvailabilityZone: !Select [2, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-public-subnet-3'
+
+  # Private Subnets (for Fargate tasks)
+  PrivateSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-private-subnet-1'
+
+  PrivateSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.4.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-private-subnet-2'
+
+  PrivateSubnet3:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.6.0/24
+      AvailabilityZone: !Select [2, !GetAZs '']
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-private-subnet-3'
+
+  # NAT Gateways for private subnet internet access
+  NATGatewayEIP1:
+    Type: AWS::EC2::EIP
+    DependsOn: AttachGateway
+    Properties:
+      Domain: vpc
+
+  NATGateway1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NATGatewayEIP1.AllocationId
+      SubnetId: !Ref PublicSubnet1
+
+  # Route Tables
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-public-rt'
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: AttachGateway
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PublicSubnet3
+      RouteTableId: !Ref PublicRouteTable
+
+  PrivateRouteTable1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-private-rt-1'
+
+  PrivateRoute1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTable1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGateway1
+
+  PrivateSubnetRouteTableAssociation1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet1
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateSubnetRouteTableAssociation2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet2
+      RouteTableId: !Ref PrivateRouteTable1
+
+  PrivateSubnetRouteTableAssociation3:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref PrivateSubnet3
+      RouteTableId: !Ref PrivateRouteTable1
+
+  # ============================================================================
+  # SECURITY GROUPS
+  # ============================================================================
+
+  ALBSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${StackName}-alb-sg'
+      GroupDescription: Security group for Application Load Balancer
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTP from internet
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp: 0.0.0.0/0
+          Description: Allow HTTPS from internet
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-alb-sg'
+
+  ECSSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub '${StackName}-ecs-sg'
+      GroupDescription: Security group for ECS tasks
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8000
+          ToPort: 8000
+          SourceSecurityGroupId: !Ref ALBSecurityGroup
+          Description: Allow traffic from ALB
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-ecs-sg'
+
+  # ============================================================================
+  # APPLICATION LOAD BALANCER
+  # ============================================================================
+
+  ApplicationLoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: !Sub '${StackName}-alb'
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref PublicSubnet1
+        - !Ref PublicSubnet2
+        - !Ref PublicSubnet3
+      SecurityGroups:
+        - !Ref ALBSecurityGroup
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-alb'
+
+  # Target Group for Log MCP Server
+  LogMCPTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: !Sub '${StackName}-log-mcp-tg'
+      Port: 8000
+      Protocol: HTTP
+      TargetType: ip
+      VpcId: !Ref VPC
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      HealthCheckIntervalSeconds: 30
+      HealthCheckTimeoutSeconds: 10
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 3
+      Matcher:
+        HttpCode: 200
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-log-mcp-tg'
+
+  # HTTP Listener (redirect to HTTPS if SSL enabled)
+  ALBListenerHTTP:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions:
+        - !If
+          - HasSSL
+          - Type: redirect
+            RedirectConfig:
+              Protocol: HTTPS
+              Port: 443
+              StatusCode: HTTP_301
+          - Type: forward
+            TargetGroupArn: !Ref LogMCPTargetGroup
+
+  # HTTPS Listener (conditional)
+  ALBListenerHTTPS:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Condition: HasSSL
+    Properties:
+      LoadBalancerArn: !Ref ApplicationLoadBalancer
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS-1-2-2017-01
+      Certificates:
+        - CertificateArn: !Ref CertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref LogMCPTargetGroup
+
+  # Path-based routing rule for /log/*
+  LogMCPListenerRule:
+    Type: AWS::ElasticLoadBalancingV2::ListenerRule
+    Condition: HasSSL
+    Properties:
+      ListenerArn: !Ref ALBListenerHTTPS
+      Priority: 10
+      Conditions:
+        - Field: path-pattern
+          Values:
+            - /log/*
+      Actions:
+        - Type: forward
+          TargetGroupArn: !Ref LogMCPTargetGroup
+
+  # DNS Record
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Condition: HasDNS
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ApplicationLoadBalancer.DNSName
+        HostedZoneId: !GetAtt ApplicationLoadBalancer.CanonicalHostedZoneID
+
+  # ============================================================================
+  # ECS CLUSTER
+  # ============================================================================
+
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${StackName}-cluster'
+      Tags:
+        - Key: Name
+          Value: !Sub '${StackName}-cluster'
+
+  # CloudWatch Log Group
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${StackName}'
+      RetentionInDays: !If [IsProduction, 30, 7]
+
+  # ============================================================================
+  # IAM ROLES - With Secrets Manager Permissions
+  # ============================================================================
+
+  TaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
+      Policies:
+        - PolicyName: SecretsManagerAccess
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
+                Resource:
+                  - !If
+                    - HasAbuseIPDBSecret
+                    - !Ref AbuseIPDBSecretArn
+                    - !Sub 'arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:mcp/*'
+              - Effect: Allow
+                Action:
+                  - kms:Decrypt
+                Resource: '*'
+                Condition:
+                  StringEquals:
+                    'kms:ViaService': !Sub 'secretsmanager.${AWS::Region}.amazonaws.com'
+
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudWatchLogs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: !GetAtt LogGroup.Arn
+
+  # ============================================================================
+  # ECS TASK DEFINITIONS - With Secrets Injection
+  # ============================================================================
+
+  LogMCPTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${StackName}-log-mcp-task'
+      NetworkMode: awsvpc
+      RequiresCompatibilities:
+        - FARGATE
+      Cpu: !Ref ContainerCpu
+      Memory: !Ref ContainerMemory
+      ExecutionRoleArn: !GetAtt TaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      ContainerDefinitions:
+        - Name: log-mcp-container
+          Image: !Ref LogMCPImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8000
+              Protocol: tcp
+          Environment:
+            - Name: SERVER_NAME
+              Value: log-mcp
+            - Name: SERVER_PORT
+              Value: '8000'
+            - Name: LOG_LEVEL
+              Value: info
+            - Name: ENVIRONMENT
+              Value: !Ref Environment
+          Secrets:
+            - !If
+              - HasAbuseIPDBSecret
+              - Name: ABUSEIPDB_API_KEY
+                ValueFrom: !Sub '${AbuseIPDBSecretArn}:ABUSEIPDB_API_KEY::'
+              - !Ref AWS::NoValue
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: log-mcp
+
+  # ============================================================================
+  # ECS SERVICES
+  # ============================================================================
+
+  LogMCPService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListenerHTTP
+    Properties:
+      ServiceName: !Sub '${StackName}-log-mcp-service'
+      Cluster: !Ref ECSCluster
+      TaskDefinition: !Ref LogMCPTaskDefinition
+      DesiredCount: !Ref MinCapacity
+      LaunchType: FARGATE
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 50
+        DeploymentCircuitBreaker:
+          Enable: true
+          Rollback: true
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: DISABLED
+          Subnets:
+            - !Ref PrivateSubnet1
+            - !Ref PrivateSubnet2
+            - !Ref PrivateSubnet3
+          SecurityGroups:
+            - !Ref ECSSecurityGroup
+      LoadBalancers:
+        - ContainerName: log-mcp-container
+          ContainerPort: 8000
+          TargetGroupArn: !Ref LogMCPTargetGroup
+      HealthCheckGracePeriodSeconds: 60
+
+  # ============================================================================
+  # AUTO SCALING
+  # ============================================================================
+
+  LogMCPAutoScalingTarget:
+    Type: AWS::ApplicationAutoScaling::ScalableTarget
+    Properties:
+      MaxCapacity: !Ref MaxCapacity
+      MinCapacity: !Ref MinCapacity
+      ResourceId: !Sub 'service/${ECSCluster}/${LogMCPService.Name}'
+      RoleARN: !Sub 'arn:aws:iam::${AWS::AccountId}:role/aws-service-role/ecs.application-autoscaling.amazonaws.com/AWSServiceRoleForApplicationAutoScaling_ECSService'
+      ScalableDimension: ecs:service:DesiredCount
+      ServiceNamespace: ecs
+
+  LogMCPCPUScalingPolicy:
+    Type: AWS::ApplicationAutoScaling::ScalingPolicy
+    Properties:
+      PolicyName: !Sub '${StackName}-log-mcp-cpu-policy'
+      PolicyType: TargetTrackingScaling
+      ScalingTargetId: !Ref LogMCPAutoScalingTarget
+      TargetTrackingScalingPolicyConfiguration:
+        PredefinedMetricSpecification:
+          PredefinedMetricType: ECSServiceAverageCPUUtilization
+        TargetValue: !Ref TargetCPUUtilization
+        ScaleOutCooldown: 300
+        ScaleInCooldown: 300
+
+Outputs:
+  LoadBalancerDNS:
+    Description: DNS name of the Application Load Balancer
+    Value: !GetAtt ApplicationLoadBalancer.DNSName
+    Export:
+      Name: !Sub '${AWS::StackName}-ALB-DNS'
+
+  LoadBalancerURL:
+    Description: URL to access the MCP platform
+    Value: !If
+      - HasSSL
+      - !If
+        - HasDomain
+        - !Sub 'https://${DomainName}'
+        - !Sub 'https://${ApplicationLoadBalancer.DNSName}'
+      - !Sub 'http://${ApplicationLoadBalancer.DNSName}'
+
+  LogMCPServiceURL:
+    Description: URL to access Log MCP Server
+    Value: !If
+      - HasSSL
+      - !If
+        - HasDomain
+        - !Sub 'https://${DomainName}/log/'
+        - !Sub 'https://${ApplicationLoadBalancer.DNSName}/log/'
+      - !Sub 'http://${ApplicationLoadBalancer.DNSName}/log/'
+
+  ClusterName:
+    Description: ECS Cluster Name
+    Value: !Ref ECSCluster
+    Export:
+      Name: !Sub '${AWS::StackName}-ClusterName'
+
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+    Export:
+      Name: !Sub '${AWS::StackName}-VpcId'
+
+  SecretsManagerInstructions:
+    Description: How to securely inject environment variables
+    Value: !Sub |
+      To add or update secrets for MCP servers:
+      
+      1. Create secret in Secrets Manager:
+         aws secretsmanager create-secret \
+           --name mcp/log-server/env \
+           --secret-string '{"ABUSEIPDB_API_KEY":"your-key-here"}' \
+           --region ${AWS::Region}
+      
+      2. Get the secret ARN and update the stack parameter:
+         AbuseIPDBSecretArn: <secret-arn>
+      
+      3. The TaskExecutionRole has permissions to read secrets matching: mcp/*
+      
+      4. Secrets are injected at container startup via the Secrets field in task definition
+      
+      5. View logs to verify:
+         aws logs tail /ecs/${StackName} --follow

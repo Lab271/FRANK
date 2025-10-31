@@ -1,0 +1,96 @@
+# MCP Server Platform - Local Docker Deployment
+# Copyright (c) 2025 LAB271
+# SPDX-License-Identifier: Apache-2.0
+
+x-common-environment: &common-environment
+  LOG_LEVEL: ${LOG_LEVEL:-info}
+  PYTHONUNBUFFERED: "1"
+
+services:
+  # NGINX Gateway - Routes all MCP server traffic
+  nginx-gateway:
+    image: nginx:alpine
+    container_name: mcp-nginx-gateway
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx-gateway.conf:/etc/nginx/nginx.conf:ro
+      - ./.ssl-certs/mcp.local.crt:/etc/nginx/ssl/mcp.crt:ro
+      - ./.ssl-certs/mcp.local.key:/etc/nginx/ssl/mcp.key:ro
+      - /tmp/log/nginx:/var/log/nginx
+    depends_on:
+      - log-mcp
+      - greeting-mcp
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "nginx", "-t"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Log MCP Server - Security log analysis
+  log-mcp:
+    build:
+      context: ../..
+      dockerfile: deployment/dockerfiles/Dockerfile.log-mcp
+    container_name: mcp-log-server
+    environment:
+      <<: *common-environment
+      ABUSEIPDB_API_KEY: ${ABUSEIPDB_API_KEY}
+      SERVER_NAME: log-mcp
+      SERVER_PORT: "8000"
+    expose:
+      - "8000"
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ../../log_mcp_server.py:/app/server.py:ro
+      - ../../.env:/app/.env:ro
+
+  # Greeting MCP Server - Greeting and farewell service
+  greeting-mcp:
+    build:
+      context: ../..
+      dockerfile: deployment/dockerfiles/Dockerfile.greeting-mcp
+    container_name: mcp-greeting-server
+    environment:
+      <<: *common-environment
+      SERVER_NAME: greeting-mcp
+      SERVER_PORT: "8001"
+      HEALTH_PORT: "8001"
+      RUN_MODE: "http"
+    expose:
+      - "8001"
+    networks:
+      - mcp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - ../../greeting_mcp_server.py:/app/server.py:ro
+      - ../../greeting_style.json:/app/greeting_style.json:ro
+
+networks:
+  mcp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
+
+volumes:
+  mcp-logs:
+    driver: local

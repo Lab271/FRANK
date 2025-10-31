@@ -1,0 +1,38 @@
+#!/bin/bash
+# Quick Manual Test Commands for Greeting MCP Server
+# Copyright (c) 2025 LAB271
+# Run these commands manually to test the server
+
+echo "=== Quick Test Commands for Greeting MCP Server ==="
+echo ""
+echo "1. Test Gateway Root:"
+echo "curl -sk https://mcp.local/ | jq ."
+echo ""
+echo "2. Test Gateway Health:"
+echo "curl -sk https://mcp.local/health | jq ."
+echo ""
+echo "3. Test Greeting Service Health:"
+echo "curl -sk https://mcp.local/greeting/health | jq ."
+echo ""
+echo "4. Test MCP Initialize (if endpoint exists):"
+echo 'curl -sk -H "Content-Type: application/json" -d '"'"'{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"test","version":"1.0"}}}'"'"' https://mcp.local/greeting/ | jq .'
+echo ""
+echo "5. Test Greet Tool (if MCP endpoint exists):"
+echo 'curl -sk -H "Content-Type: application/json" -d '"'"'{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"greet","arguments":{"name":"Alice"}}}'"'"' https://mcp.local/greeting/ | jq .'
+echo ""
+echo "6. Test Farewell Tool (if MCP endpoint exists):"
+echo 'curl -sk -H "Content-Type: application/json" -d '"'"'{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"farewell","arguments":{"name":"Bob"}}}'"'"' https://mcp.local/greeting/ | jq .'
+echo ""
+echo "7. Test 404 Error:"
+echo "curl -sk https://mcp.local/greeting/nonexistent"
+echo ""
+echo "8. View Logs:"
+echo "make logs-greeting-mcp"
+echo ""
+echo "9. Check Container Status:"
+echo "docker ps | grep greeting"
+echo ""
+echo "10. Run Full Test Suite:"
+echo "./test_greeting_server.sh"
+echo ""
+echo "=== Copy and paste these commands to test manually ==="

@@ -1,0 +1,38 @@
+# Dockerfile for Greeting MCP Server
+# Copyright (c) 2025 LAB271
+# SPDX-License-Identifier: Apache-2.0
+
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    && rm -rf /var/lib/apt/lists/*
+
+# Copy MCP server code and configuration
+COPY greeting_mcp_server.py /app/server.py
+COPY greeting_style.json /app/greeting_style.json
+
+# Install Python dependencies
+RUN pip install --no-cache-dir \
+    fastmcp>=2.13.0 \
+    fastapi==0.120.0 \
+    uvicorn==0.38.0
+
+# Create non-root user
+RUN useradd -m -u 1000 mcp && \
+    chown -R mcp:mcp /app
+
+USER mcp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8001/health').read()" || exit 1
+
+# Expose port
+EXPOSE 8001
+
+# Run the MCP server in HTTP mode
+CMD ["python", "server.py"]

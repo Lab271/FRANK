@@ -38,8 +38,9 @@ ssl-certs/nginx.crt:
 	@mkcert -key-file ssl-certs/nginx.key -cert-file ssl-certs/nginx.crt $(LOCAL_DOMAIN)
 
 clean: ## Clean up docker
+	@docker images | grep "localhost:" | awk '{print $$3}' | xargs docker rmi -f || true
 	@docker rm -f $$(docker ps -aq) || true
-	@docker volume prune -f || true
+	@docker rmi -f $$(docker images -aq) || true	@docker volume prune -f || true
 	@docker network prune -f || true
 	@docker system prune -f || true
 

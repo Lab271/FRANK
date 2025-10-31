@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-Security Log Analysis MCP Server
-Generates synthetic security logs using Faker for incident response demos
+Security Log Analysis MCP Server with Streaming & Threat Intelligence
+Generates synthetic security logs in real-time with AbuseIPDB lookups
 """
 
 import asyncio
@@ -9,15 +9,18 @@ import json
 from datetime import datetime, timedelta
 from typing import Any, Sequence
 import random
+import os
+from pathlib import Path
 
+import aiohttp
 from mcp.server import Server
 from mcp.server.stdio import stdio_server
-from mcp.types import Tool, TextContent
+from mcp.types import Tool, TextContent, EmbeddedResource, ImageContent
 from faker import Faker
+from dotenv import load_dotenv
 
-# Initialize Faker
-fake = Faker()
-Faker.seed(0)  # For reproducible demos, remove for random data
+# Load environment variables
+load_dotenv()
 
 # Configuration
 ATTACKER_IP = "203.0.113.42"
@@ -25,8 +28,14 @@ ATTACKER_COUNTRY = "North Korea"
 TARGET_SERVER = "web-server-01"
 DB_SERVER = "db-server-01"
 NORMAL_USER_COUNT = 8
+ABUSEIPDB_API_KEY = os.getenv("ABUSEIPDB_API_KEY")
 
-# Global cache for logs
+# Streaming state
+_streaming_active = False
+_streaming_task = None
+_streamed_logs = []
+
+# Cache for logs
 _cached_logs = None
 _attack_timeline = None
 
@@ -335,7 +344,7 @@ class SecurityLogGenerator:
             'rows_returned': 487653,
             'rows_affected': 0,
             'duration_ms': 45230,
-            'client_ip': '127.0.0.1',  # Local connection from compromised server
+            'client_ip': '127.0.0.1',
             'severity': 'critical',
             'tags': ['mass_data_access', 'pii_access', 'data_exfiltration'],
             'alert': 'MASSIVE CUSTOMER DATA EXTRACTION - ALL RECORDS'
@@ -452,6 +461,84 @@ class SecurityLogGenerator:
 # Initialize generator
 generator = SecurityLogGenerator()
 
+async def lookup_abuseipdb(ip: str, session: aiohttp.ClientSession = None) -> dict:
+    """Look up IP reputation on AbuseIPDB"""
+    if not ABUSEIPDB_API_KEY:
+        return {
+            'error': 'AbuseIPDB API key not configured',
+            'note': 'Set ABUSEIPDB_API_KEY in .env file'
+        }
+    
+    url = 'https://api.abuseipdb.com/api/v2/check'
+    headers = {
+        'Key': ABUSEIPDB_API_KEY,
+        'Accept': 'application/json'
+    }
+    params = {
+        'ipAddress': ip,
+        'maxAgeInDays': '90'
+    }
+    
+    try:
+        should_close = False
+        if session is None:
+            session = aiohttp.ClientSession()
+            should_close = True
+            
+        async with session.get(url, headers=headers, params=params) as response:
+            if response.status == 200:
+                data = await response.json()
+                result = data.get('data', {})
+                
+                # Format the response
+                formatted = {
+                    'ip': result.get('ipAddress'),
+                    'abuse_confidence_score': result.get('abuseConfidenceScore'),
+                    'country': result.get('countryName'),
+                    'usage_type': result.get('usageType'),
+                    'isp': result.get('isp'),
+                    'domain': result.get('domain'),
+                    'is_public': result.get('isPublic'),
+                    'is_whitelisted': result.get('isWhitelisted'),
+                    'total_reports': result.get('totalReports'),
+                    'num_distinct_users': result.get('numDistinctUsers'),
+                    'last_reported': result.get('lastReportedAt'),
+                    'threat_level': 'HIGH' if result.get('abuseConfidenceScore', 0) > 75 else 
+                                   'MEDIUM' if result.get('abuseConfidenceScore', 0) > 50 else
+                                   'LOW' if result.get('abuseConfidenceScore', 0) > 25 else
+                                   'CLEAN',
+                    'categories': []
+                }
+                
+                # Parse reports for categories
+                reports = result.get('reports', [])
+                if reports:
+                    categories_set = set()
+                    for report in reports[:10]:  # Last 10 reports
+                        for cat in report.get('categories', []):
+                            categories_set.add(cat)
+                    formatted['categories'] = list(categories_set)
+                    formatted['recent_reports_count'] = len(reports)
+                
+                if should_close:
+                    await session.close()
+                    
+                return formatted
+            else:
+                if should_close:
+                    await session.close()
+                return {
+                    'error': f'API returned status {response.status}',
+                    'ip': ip
+                }
+    except Exception as e:
+        if session and should_close:
+            await session.close()
+        return {
+            'error': str(e),
+            'ip': ip
+        }
+
 def generate_all_logs():
     """Generate complete log dataset and cache it"""
     global _cached_logs, _attack_timeline
@@ -475,7 +562,7 @@ def generate_all_logs():
     
     # Build attack timeline
     _attack_timeline = {
-        'incident_id': fake.uuid4(),
+        'incident_id': generator.fake.uuid4(),
         'detection_time': datetime.now().isoformat(),
         'attack_start': attack_start.isoformat(),
         'breach_time': breach_time.isoformat(),
@@ -544,6 +631,40 @@ def generate_all_logs():
     }
     
     return _cached_logs
+
+async def stream_logs_continuously():
+    """Stream logs in real-time simulation"""
+    global _streaming_active, _streamed_logs
+    
+    _streamed_logs = []
+    start_time = datetime.now()
+    
+    # Generate the attack scenario
+    ssh_logs, breach_time, attack_start = generator.generate_ssh_logs(start_time, duration_hours=1)
+    system_logs, recon_end = generator.generate_system_logs(breach_time)
+    db_logs, exfil_time = generator.generate_database_logs(start_time, breach_time, duration_hours=1)
+    network_logs = generator.generate_network_logs(start_time, exfil_time, duration_hours=1)
+    
+    # Combine and sort
+    all_logs = sorted(
+        ssh_logs + system_logs + db_logs + network_logs,
+        key=lambda x: x['timestamp']
+    )
+    
+    # Stream logs in accelerated real-time (10x speed)
+    for log in all_logs:
+        if not _streaming_active:
+            break
+            
+        log_time = datetime.fromisoformat(log['timestamp'])
+        time_delta = (log_time - start_time).total_seconds()
+        
+        # Sleep for accelerated time (10x faster than real-time)
+        await asyncio.sleep(time_delta / 10.0 if time_delta > 0 else 0.1)
+        
+        _streamed_logs.append(log)
+    
+    _streaming_active = False
 
 # Create MCP server
 app = Server("security-log-server")
@@ -622,6 +743,57 @@ async def list_tools() -> list[Tool]:
             },
         ),
         Tool(
+            name="lookup_ip_reputation",
+            description="Look up IP address reputation using AbuseIPDB threat intelligence. Returns abuse confidence score, country, ISP, and recent reports.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "ip": {
+                        "type": "string",
+                        "description": "IP address to look up (e.g., '203.0.113.42')"
+                    }
+                },
+                "required": ["ip"]
+            },
+        ),
+        Tool(
+            name="start_log_streaming",
+            description="Start streaming security logs in real-time (accelerated 10x). Simulates live log ingestion during an active attack.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="stop_log_streaming",
+            description="Stop the active log streaming session.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="get_streaming_status",
+            description="Check if log streaming is active and get current log count.",
+            inputSchema={
+                "type": "object",
+                "properties": {},
+            },
+        ),
+        Tool(
+            name="get_streamed_logs",
+            description="Get all logs that have been streamed so far. Only works during active streaming session.",
+            inputSchema={
+                "type": "object",
+                "properties": {
+                    "last_n": {
+                        "type": "integer",
+                        "description": "Get only the last N logs (optional, default: all)"
+                    }
+                }
+            },
+        ),
+        Tool(
             name="regenerate_logs",
             description="Generate a new set of synthetic logs with different random data but same attack pattern. Useful for repeated demos.",
             inputSchema={
@@ -634,18 +806,18 @@ async def list_tools() -> list[Tool]:
 @app.call_tool()
 async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
     """Handle tool execution"""
-    global _cached_logs, _attack_timeline
+    global _cached_logs, _attack_timeline, _streaming_active, _streaming_task, _streamed_logs
     
     try:
-        logs = generate_all_logs()
-        
         if name == "get_all_logs":
+            logs = generate_all_logs()
             return [TextContent(
                 type="text",
                 text=json.dumps(logs['all_logs'], indent=2)
             )]
         
         elif name == "get_logs_by_type":
+            logs = generate_all_logs()
             log_type = arguments.get('log_type')
             filtered = logs[f'{log_type}_logs']
             return [TextContent(
@@ -654,12 +826,14 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             )]
         
         elif name == "get_attack_timeline":
+            logs = generate_all_logs()
             return [TextContent(
                 type="text",
                 text=json.dumps(logs['attack_timeline'], indent=2)
             )]
         
         elif name == "search_logs":
+            logs = generate_all_logs()
             results = logs['all_logs']
             
             if 'ip' in arguments:
@@ -693,9 +867,107 @@ async def call_tool(name: str, arguments: Any) -> Sequence[TextContent]:
             )]
         
         elif name == "get_statistics":
+            logs = generate_all_logs()
             return [TextContent(
                 type="text",
                 text=json.dumps(logs['statistics'], indent=2)
+            )]
+        
+        elif name == "lookup_ip_reputation":
+            ip = arguments.get('ip')
+            if not ip:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({'error': 'IP address required'})
+                )]
+            
+            result = await lookup_abuseipdb(ip)
+            return [TextContent(
+                type="text",
+                text=json.dumps(result, indent=2)
+            )]
+        
+        elif name == "start_log_streaming":
+            if _streaming_active:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        'status': 'already_active',
+                        'message': 'Log streaming is already active',
+                        'logs_streamed': len(_streamed_logs)
+                    })
+                )]
+            
+            _streaming_active = True
+            _streamed_logs = []
+            _streaming_task = asyncio.create_task(stream_logs_continuously())
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    'status': 'started',
+                    'message': 'Log streaming started (accelerated 10x speed)',
+                    'note': 'Use get_streamed_logs to see incoming logs'
+                })
+            )]
+        
+        elif name == "stop_log_streaming":
+            if not _streaming_active:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        'status': 'not_active',
+                        'message': 'No active streaming session'
+                    })
+                )]
+            
+            _streaming_active = False
+            if _streaming_task:
+                _streaming_task.cancel()
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    'status': 'stopped',
+                    'message': 'Log streaming stopped',
+                    'total_logs_streamed': len(_streamed_logs)
+                })
+            )]
+        
+        elif name == "get_streaming_status":
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    'streaming_active': _streaming_active,
+                    'logs_streamed_so_far': len(_streamed_logs),
+                    'message': 'Streaming active' if _streaming_active else 'No active streaming'
+                })
+            )]
+        
+        elif name == "get_streamed_logs":
+            if not _streamed_logs:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        'message': 'No streamed logs available. Start streaming first.',
+                        'logs': []
+                    })
+                )]
+            
+            last_n = arguments.get('last_n')
+            if last_n:
+                logs_to_return = _streamed_logs[-last_n:]
+            else:
+                logs_to_return = _streamed_logs
+            
+            return [TextContent(
+                type="text",
+                text=json.dumps({
+                    'total_streamed': len(_streamed_logs),
+                    'returned': len(logs_to_return),
+                    'streaming_active': _streaming_active,
+                    'logs': logs_to_return
+                }, indent=2)
             )]
         
         elif name == "regenerate_logs":

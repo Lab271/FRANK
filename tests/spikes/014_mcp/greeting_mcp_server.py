@@ -2,9 +2,255 @@
 from mcp.server.fastmcp.server import FastMCP 
 import json
 import random
+import threading
+from http.server import HTTPServer, BaseHTTPRequestHandler
+import os
+import json as json_module
 
 # FastMCP Initialization
 mcp = FastMCP("greetings")
+
+class HealthHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        if self.path == '/health':
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(b'{"status": "healthy", "service": "greeting-mcp"}')
+        elif self.path.startswith('/greet/'):
+            # Extract name from URL path: /greet/Alice
+            name = self.path[7:]  # Remove '/greet/' prefix
+            if name and len(name) <= 20 and name.isalpha():
+                try:
+                    greeting = greet(name)
+                    response = {"greeting": greeting, "name": name}
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps(response).encode())
+                except Exception as e:
+                    self.send_error(500, f"Error generating greeting: {str(e)}")
+            else:
+                self.send_error(400, "Invalid name. Must be alphabetic, max 20 characters.")
+        elif self.path.startswith('/farewell/'):
+            # Extract name from URL path: /farewell/Bob
+            name = self.path[10:]  # Remove '/farewell/' prefix
+            if name and len(name) <= 20 and name.isalpha():
+                try:
+                    farewell_msg = farewell(name)
+                    response = {"farewell": farewell_msg, "name": name}
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps(response).encode())
+                except Exception as e:
+                    self.send_error(500, f"Error generating farewell: {str(e)}")
+            else:
+                self.send_error(400, "Invalid name. Must be alphabetic, max 20 characters.")
+        elif self.path == '/':
+            # Root endpoint - show available endpoints
+            response = {
+                "service": "greeting-mcp",
+                "status": "healthy",
+                "endpoints": {
+                    "health": "/health",
+                    "greet": "/greet/{name}",
+                    "farewell": "/farewell/{name}"
+                },
+                "examples": {
+                    "greet": "/greet/Alice",
+                    "farewell": "/farewell/Bob"
+                }
+            }
+            self.send_response(200)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            self.wfile.write(json_module.dumps(response).encode())
+        else:
+            self.send_response(404)
+            self.send_header('Content-type', 'application/json')
+            self.end_headers()
+            error_response = {"error": "Not Found", "path": self.path}
+            self.wfile.write(json_module.dumps(error_response).encode())
+    
+    def do_POST(self):
+        if self.path == '/mcp' or self.path == '/jsonrpc':
+            # Handle JSON-RPC requests for MCP protocol
+            content_length = int(self.headers.get('Content-Length', 0))
+            if content_length > 0:
+                post_data = self.rfile.read(content_length)
+                try:
+                    request = json_module.loads(post_data.decode())
+                    response = self.handle_jsonrpc_request(request)
+                    self.send_response(200)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps(response).encode())
+                except Exception as e:
+                    error_response = {
+                        "jsonrpc": "2.0",
+                        "error": {"code": -32603, "message": f"Internal error: {str(e)}"},
+                        "id": None
+                    }
+                    self.send_response(500)
+                    self.send_header('Content-type', 'application/json')
+                    self.end_headers()
+                    self.wfile.write(json_module.dumps(error_response).encode())
+            else:
+                self.send_error(400, "No data received")
+        else:
+            self.send_error(404, "Endpoint not found")
+    
+    def handle_jsonrpc_request(self, request):
+        """Handle JSON-RPC requests for MCP protocol"""
+        method = request.get("method")
+        params = request.get("params", {})
+        request_id = request.get("id")
+        
+        if method == "initialize":
+            return {
+                "jsonrpc": "2.0",
+                "result": {
+                    "protocolVersion": "2024-11-05",
+                    "capabilities": {
+                        "tools": {
+                            "listChanged": False
+                        }
+                    },
+                    "serverInfo": {
+                        "name": "greeting-mcp",
+                        "version": "1.0.0"
+                    }
+                },
+                "id": request_id
+            }
+        elif method == "tools/list":
+            return {
+                "jsonrpc": "2.0",
+                "result": {
+                    "tools": [
+                        {
+                            "name": "greet",
+                            "description": "Greet a person with a randomly selected greeting style",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "The name of the person to greet (max 20 characters, alphabetic only)"
+                                    }
+                                },
+                                "required": ["name"]
+                            }
+                        },
+                        {
+                            "name": "farewell",
+                            "description": "Say goodbye to a person with a randomly selected farewell style",
+                            "inputSchema": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {
+                                        "type": "string",
+                                        "description": "The name of the person to say goodbye to (max 20 characters, alphabetic only)"
+                                    }
+                                },
+                                "required": ["name"]
+                            }
+                        }
+                    ]
+                },
+                "id": request_id
+            }
+        elif method == "tools/call":
+            tool_name = params.get("name")
+            arguments = params.get("arguments", {})
+            
+            if tool_name == "greet":
+                name = arguments.get("name", "")
+                if name and len(name) <= 20 and name.isalpha():
+                    greeting_text = greet(name)
+                    return {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": greeting_text
+                                }
+                            ]
+                        },
+                        "id": request_id
+                    }
+                else:
+                    return {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid name. Must be alphabetic, max 20 characters."
+                        },
+                        "id": request_id
+                    }
+            elif tool_name == "farewell":
+                name = arguments.get("name", "")
+                if name and len(name) <= 20 and name.isalpha():
+                    farewell_text = farewell(name)
+                    return {
+                        "jsonrpc": "2.0",
+                        "result": {
+                            "content": [
+                                {
+                                    "type": "text",
+                                    "text": farewell_text
+                                }
+                            ]
+                        },
+                        "id": request_id
+                    }
+                else:
+                    return {
+                        "jsonrpc": "2.0",
+                        "error": {
+                            "code": -32602,
+                            "message": "Invalid name. Must be alphabetic, max 20 characters."
+                        },
+                        "id": request_id
+                    }
+            else:
+                return {
+                    "jsonrpc": "2.0",
+                    "error": {
+                        "code": -32601,
+                        "message": f"Unknown tool: {tool_name}"
+                    },
+                    "id": request_id
+                }
+        else:
+            return {
+                "jsonrpc": "2.0",
+                "error": {
+                    "code": -32601,
+                    "message": f"Unknown method: {method}"
+                },
+                "id": request_id
+            }
+    
+    # def log_message(self, format, *args):
+    #     # Suppress default HTTP server logging
+    #     pass
+
+def start_health_server():
+    """Start HTTP health check server in a separate thread"""
+    port = int(os.environ.get('HEALTH_PORT', '8001'))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    print(f"Starting HTTP server on port {port}")
+    server.serve_forever()
+
+def start_http_server():
+    """Start HTTP server for web API access"""
+    port = int(os.environ.get('SERVER_PORT', '8001'))
+    server = HTTPServer(('0.0.0.0', port), HealthHandler)
+    print(f"Starting HTTP server on port {port}")
+    server.serve_forever()
 
 @mcp.prompt()
 def greeting_prompt():
@@ -47,4 +293,18 @@ def farewell(name: str) -> str:
     return farewell_template.format(name=name)
 
 if __name__ == "__main__":
-    mcp.run(transport='stdio')
+    # Check if running in Docker (or if HTTP mode is requested)
+    run_mode = os.environ.get('RUN_MODE', 'stdio')
+    
+    if run_mode == 'http':
+        print("Starting in HTTP mode...")
+        # Start HTTP server directly (includes health endpoint)
+        start_http_server()
+    else:
+        print("Starting in MCP stdio mode...")
+        # Start health check server in background thread
+        health_thread = threading.Thread(target=start_health_server, daemon=True)
+        health_thread.start()
+        
+        # Start MCP server
+        mcp.run(transport='stdio')

@@ -1,0 +1,28 @@
+---
+# Development environment variables
+# Copyright (c) 2025 LAB271
+
+env: dev
+aws_region: us-east-1
+
+# Docker Configuration
+log_mcp_image: "{{ lookup('env', 'AWS_ACCOUNT_ID') }}.dkr.ecr.{{ aws_region }}.amazonaws.com/mcp/log-server:{{ lookup('env', 'IMAGE_TAG') | default('latest', true) }}"
+
+# ECS Configuration
+container_cpu: '256'
+container_memory: '512'
+min_capacity: 1
+max_capacity: 3
+target_cpu_utilization: 70
+
+# Domain Configuration (optional)
+domain_name: ''
+hosted_zone_id: ''
+certificate_arn: ''
+configure_dns: false
+
+# Secrets - Load from environment or prompt
+abuseipdb_api_key: "{{ lookup('env', 'ABUSEIPDB_API_KEY') }}"
+
+# Repository Configuration
+ecr_repository_name: mcp/log-server
