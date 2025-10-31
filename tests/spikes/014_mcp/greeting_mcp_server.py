@@ -1,11 +1,12 @@
 # https://medium.com/@ankitfotografia/getting-started-with-the-mcp-python-sdk-development-testing-and-beyond-with-mcp-inspector-dd40a255ac3d
-from mcp.server.fastmcp.server import FastMCP 
-import json
+import argparse
 import random
 import threading
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import os
-import json as json_module
+import json
+
+from mcp.server.fastmcp.server import FastMCP 
 
 # FastMCP Initialization
 mcp = FastMCP("greetings")
@@ -27,7 +28,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json_module.dumps(response).encode())
+                    self.wfile.write(json.dumps(response).encode())
                 except Exception as e:
                     self.send_error(500, f"Error generating greeting: {str(e)}")
             else:
@@ -42,7 +43,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json_module.dumps(response).encode())
+                    self.wfile.write(json.dumps(response).encode())
                 except Exception as e:
                     self.send_error(500, f"Error generating farewell: {str(e)}")
             else:
@@ -65,13 +66,13 @@ class HealthHandler(BaseHTTPRequestHandler):
             self.send_response(200)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
-            self.wfile.write(json_module.dumps(response).encode())
+            self.wfile.write(json.dumps(response).encode())
         else:
             self.send_response(404)
             self.send_header('Content-type', 'application/json')
             self.end_headers()
             error_response = {"error": "Not Found", "path": self.path}
-            self.wfile.write(json_module.dumps(error_response).encode())
+            self.wfile.write(json.dumps(error_response).encode())
     
     def do_POST(self):
         if self.path == '/mcp' or self.path == '/jsonrpc':
@@ -80,12 +81,12 @@ class HealthHandler(BaseHTTPRequestHandler):
             if content_length > 0:
                 post_data = self.rfile.read(content_length)
                 try:
-                    request = json_module.loads(post_data.decode())
+                    request = json.loads(post_data.decode())
                     response = self.handle_jsonrpc_request(request)
                     self.send_response(200)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json_module.dumps(response).encode())
+                    self.wfile.write(json.dumps(response).encode())
                 except Exception as e:
                     error_response = {
                         "jsonrpc": "2.0",
@@ -95,7 +96,7 @@ class HealthHandler(BaseHTTPRequestHandler):
                     self.send_response(500)
                     self.send_header('Content-type', 'application/json')
                     self.end_headers()
-                    self.wfile.write(json_module.dumps(error_response).encode())
+                    self.wfile.write(json.dumps(error_response).encode())
             else:
                 self.send_error(400, "No data received")
         else:
@@ -242,14 +243,12 @@ def start_health_server():
     """Start HTTP health check server in a separate thread"""
     port = int(os.environ.get('HEALTH_PORT', '8001'))
     server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    print(f"Starting HTTP server on port {port}")
     server.serve_forever()
 
 def start_http_server():
     """Start HTTP server for web API access"""
     port = int(os.environ.get('SERVER_PORT', '8001'))
     server = HTTPServer(('0.0.0.0', port), HealthHandler)
-    print(f"Starting HTTP server on port {port}")
     server.serve_forever()
 
 @mcp.prompt()
@@ -292,19 +291,136 @@ def farewell(name: str) -> str:
     farewell_template = random.choice(farewell_styles)
     return farewell_template.format(name=name)
 
-if __name__ == "__main__":
-    # Check if running in Docker (or if HTTP mode is requested)
-    run_mode = os.environ.get('RUN_MODE', 'stdio')
+# ===================================
+# Environment Setup
+# ===================================
+def setup_logging(silent: bool = False):
+    """
+    Setup logging configuration.
     
-    if run_mode == 'http':
-        print("Starting in HTTP mode...")
-        # Start HTTP server directly (includes health endpoint)
-        start_http_server()
+    Args:
+        silent: If True, suppress logging output.
+    """
+    import logging
+    logger = logging.getLogger("greeting-mcp")
+    # handler = logging.StreamHandler()
+    # formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+    # handler.setFormatter(formatter)
+    # logger.addHandler(handler)
+    
+    if silent:
+        logger.setLevel(logging.CRITICAL)
     else:
-        print("Starting in MCP stdio mode...")
-        # Start health check server in background thread
-        health_thread = threading.Thread(target=start_health_server, daemon=True)
-        health_thread.start()
-        
-        # Start MCP server
-        mcp.run(transport='stdio')
+        logger.setLevel(logging.INFO)
+    
+    return logger
+
+
+
+def log_startup_info(logger, args):
+    """
+    Log startup information based on command-line arguments.
+    Provides insights into the configured environment and settings.
+    
+    Args:
+        args: Parsed command-line arguments
+    """
+    logger.info("Starting Greeting MCP Server with the following configuration:")
+    logger.info(f"  Run Mode: {args.run_mode}")
+    logger.info(f"  Log Level: {args.log_level}")
+    logger.info(f"  Silent Mode: {args.silent}")
+
+def setup_environment(args):
+    """
+    Log startup information based on command-line arguments.
+    Provides insights into the configured environment and settings.
+
+    Args:
+        args: Parsed command-line arguments
+    """
+    os.environ['MCP_TRANSPORT'] = args.run_mode
+    os.environ['LOG_LEVEL'] = args.log_level
+    os.environ['SILENT'] = str(args.silent)
+
+# ===================================
+# Main Function
+# ===================================
+
+def main():
+    """
+    Main function with argument parsing for flexible MCP server configuration.
+    """
+    parser = argparse.ArgumentParser(
+        description="Greeting MCP Server with configurable options.",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  # Run with stdio
+  %(prog)s --run-mode stdio
+        """
+    )
+    
+    # Environment configuration
+    
+    # Logging configuration
+    parser.add_argument(
+        "--log-level",
+        type=str,
+        default=os.getenv("LOG_LEVEL", "info"),
+        choices=["debug", "info", "warning", "error"],
+        help="Logging level (default: LOG_LEVEL or 'info')"
+    )
+    parser.add_argument(
+        "-s", "--silent",
+        action="store_true",
+        default=os.getenv("SILENT", "False").lower() in ("true", "1", "yes"),
+        help="Enable silent mode (default: SILENT or False)"
+    )
+    
+    # MCP Server configuration
+    parser.add_argument(
+        "-m", "--run-mode",
+        type=str,
+        default=os.getenv("MCP_TRANSPORT", "stdio"),
+        choices=["stdio", "http"],
+        help="MCP server transport mode (default: MCP_TRANSPORT or 'stdio')"
+    )
+    
+    args = parser.parse_args()
+    
+    # Set environment variables
+    setup_environment(args)
+    
+    # Setup logging
+    if args.silent:
+        logger = setup_logging(silent=True)
+    else:
+        logger = setup_logging(silent=False)
+        log_startup_info(logger, args)
+    
+    # Run MCP server
+    try:
+        if args.run_mode == 'http':
+            logger.info("Starting MCP server via HTTP transport...")
+            # Start HTTP server directly (includes health endpoint)
+            start_http_server()
+        else:
+            logger.info("Starting MCP server via stdio transport...")
+            # Start health check server in background thread
+            health_thread = threading.Thread(target=start_health_server, daemon=True)
+            health_thread.start()
+            
+            # Start MCP server
+            mcp.run(transport='stdio')
+            
+    except KeyboardInterrupt:
+        logger.info("MCP server stopped by user")
+    except Exception as e:
+        logger.error(f"MCP server failed: {e}")
+        raise
+
+
+if __name__ == "__main__":
+    main()
+    
+
