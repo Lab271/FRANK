@@ -1,9 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(python -m pytest tests/spikes/010_cognito/test_token_refresh.py -v)"
-    ],
-    "deny": [],
-    "ask": []
-  }
-}

@@ -3,17 +3,15 @@
 # SPDX-License-Identifier: Apache-2.0
 ##
 [build-system]
-requires = ["setuptools>=64", "wheel"]
-build-backend = "setuptools.build_meta"
+requires = ["hatchling"]
+build-backend = "hatchling.build"
 
 [project]
 name = "frank"
-dynamic = [
-  "version",
-]
+dynamic = ["version"]
 description = "Vulnerability platform"
 readme = "README.md"
-license = {text = "Apache 2.0"}
+license = {text = "Apache-2.0"}
 authors = [{name = "Ilja Heitlager"}]
 maintainers = [{name = "Ilja Heitlager", email = "iheitlager@schubergphilis.com"}]
 keywords = ["security-tools"]
@@ -28,20 +26,53 @@ classifiers = [
     "Natural Language :: English"
 ]
 requires-python = ">=3.11"
-dependencies = []
+dependencies = [
+    "aioboto3>=15.0.0",
+    "aiobotocore>=2.0.0",
+    "aiofiles>=24.0.0",
+    "aiohttp>=3.12.0",
+    "ansible-core>=2.19.0",
+    "boto3>=1.40.0",
+    "botocore>=1.40.0",
+    "click>=8.3.0",
+    "fastapi>=0.120.0",
+    "httpx>=0.28.0",
+    "lark>=1.3.0",
+    "PyMySQL>=1.1.0",
+    "pydantic>=2.12.0",
+    "PyYAML>=6.0.0",
+    "requests>=2.32.0",
+    "ruff>=0.14.0",
+    "uvicorn>=0.38.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-bdd>=8.0.0",
+    "pytest-cov>=7.0.0",
+    "coverage>=7.10.0",
+    "mypy>=1.8.0",
+    "isort>=5.12.0",
+]
 
 [project.urls]
 Homepage = "https://github.com/LAB271/FRANK"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-dir]
-"" = "src"
-
-[tool.setuptools_scm]
-write_to = "src/frank/__version__.py"
+[tool.hatch.version]
+path = "src/frank/__version__.py"
 
 [tool.ruff]
-# Allow lines to be as long as 120.
 line-length = 120
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501", "E741"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.pytest.ini_options]
+testpaths = ["tests/unit", "tests/integration"]
+norecursedirs = ["tests", ".git", ".venv", "build", "dist"]
+addopts = "-v --tb=short"
