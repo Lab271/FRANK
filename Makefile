@@ -1,66 +1,80 @@
 .ONESHELL:
 SHELL := /bin/bash
+VENV := .venv
+PYTHON_VERSION := 3.11
+PACKAGE := frank
 
-PACKAGE=frank
-VIRTUALENV = ./.$(PACKAGE)
-PYTHON = $(VIRTUALENV)/bin/python
-.PHONY: test lint help unittests integration clean env dev update freeze outdated check
+.PHONY: help version check env sync lock test lint format type-check clean
 
-default: help
+version: ## Show project version
+	@uv run python -c "from $(PACKAGE) import __version__; print(f'version: {__version__}')"
 
-TARGETS = check env test
-all: $(TARGETS)
+check: ## Verify required tooling is available
+	@echo "Checking for required tools..."
+	@printf "Checking for 'uv'... "
+	@command -v uv >/dev/null 2>&1 || { echo >&2 "✗ 'uv' is required but not installed. Please install it from https://github.com/astral-sh/uv"; exit 1; }
+	@printf "\rChecking for 'pytest'... "
+	@uv run pytest --version > /dev/null 2>&1 || { echo >&2 "✗ pytest is not installed"; exit 1; }
+	@printf "\rChecking for 'ruff'... "
+	@uv run ruff --version > /dev/null 2>&1 || { echo >&2 "✗ ruff is not installed"; exit 1; }
+	@printf "\rChecking for 'mypy'... "
+	@uv run mypy --version > /dev/null 2>&1 || { echo >&2 "✗ mypy is not installed"; exit 1; }
+	@printf "\r\033[K✓ All required tools are installed\n"
 
-check: ## Validate primary development dependencies
-	@python --version > /dev/null
-	@python -m pip > /dev/null
-	@docker --version > /dev/null
-	@echo "All required tools available"
+env: ## Create and populate the development virtual environment
+	@echo "Setting up development environment with Python $(PYTHON_VERSION)..."
+	uv venv $(VENV) --python $(PYTHON_VERSION) --clear > /dev/null
+	@echo "✓ Virtual environment created at $(VENV)/"
+	@uv sync > /dev/null
+	@uv sync --all-groups > /dev/null
+	@if [ ! -f uv.lock ]; then \
+		echo "No uv.lock found, generating lock file..."; \
+		uv lock; \
+	fi
+	@uv run python -c "from $(PACKAGE) import __version__; print(f'version: {__version__}')"
+	@echo "To activate: source $(VENV)/bin/activate"
+	@echo "✓ Development environment is ready"
 
-freeze:  ## Freezes pip requirements
-	@echo "# Generated on `date`" >| requirements.txt
-	@$(PYTHON) -m pip freeze | grep -v "$(PACKAGE)" >> requirements.txt
-	@echo "requirements.txt regenerated"
+sync: ## Sync dependencies into the virtual environment
+	@echo "Syncing dependencies into virtual environment..."
+	uv sync > /dev/null
+	uv sync --all-groups > /dev/null
+	@echo "✓ Dependencies synced"
 
-clean: ## Clean all build files and virtualenv
-	-@echo y | pip uninstall $(PACKAGE)
-	@rm -rdf $(PACKAGE).egg*
-	@find . -name *.pyc -delete
-	@rm -rdf build dist
-	@rm -rdf $(VIRTUALENV)
-	@rm -frd .pytest_cache .ruff_cache .coverage
-	@rm -rfd __pycache__
+lock: ## Lock dependencies into uv.lock
+	@echo "Locking dependencies..."
+	uv lock
 
-env: $(VIRTUALENV)/bin/python ## create the virtualenv
-	@$(PYTHON) -m pip install --upgrade pip
-	@$(PYTHON) -m pip install -e .
-	@$(PYTHON) -m pip install ruff
-	@$(PYTHON) -m pip install pytest
-	@$(PYTHON) -m pip install coverage
-	@$(PYTHON) -m pip install -r requirements.txt
+test: ## Run tests with coverage
+	@echo "Running tests..."
+	uv run pytest --cov=src/$(PACKAGE) tests/
 
-test: ## Run unit tests and coverage
-	@coverage run -m pytest
-	@coverage report -m --fail-under=85
+lint: ## Lint code with ruff
+	@echo "Linting with ruff..."
+	uv run ruff check src/ tests/
 
-integration:  ## Run all integration tests
-	@behave tests/integration
+format: ## Format code with ruff
+	@echo "Formatting with ruff..."
+	uv run ruff check --fix src/ tests/
+	uv run ruff format src/ tests/
 
-lint: test ## Static code checking
-	@ruff check .
+type-check: ## Run type checks with mypy
+	@echo "Type checking with mypy..."
+	uv run mypy src/
 
-$(VIRTUALENV)/bin/python: # create the local virtualenv
-	virtualenv $(VIRTUALENV)
-	echo "To activate 'source $(VIRTUALENV)/bin/activate'"
+clean: ## Clean up artifacts and caches
+	@echo "Cleaning up..."
+	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name htmlcov -exec rm -rf {} + 2>/dev/null || true
+	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
+	@find . -type f -name "*.pyc" -delete
+	@find . -type f -name ".coverage" -delete
+	@echo "✓ Cleaned"
 
-outdated: ## list all outdated packages
-	@$(PYTHON) -m pip list --outdated	
-	
-version: ## show versions
-	@$(PYTHON) --version
-	@$(PYTHON) -c "from frank import __version__; print(f'FRANK version: {__version__}')"
-	@aws --version
-	
-help: ## Shows help screen
+.DEFAULT_GOAL := help
+
+help: ## Show this help message
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
-	@echo ""
