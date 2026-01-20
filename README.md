@@ -13,13 +13,15 @@ This is the Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdel
 
 This project contains everything from design to implementation of the FRANK project. To get started, clone this project and run:
 
-```
-    $ make env                # install all packages for development
-    $ source .*/bin/activate  # start the virtual env  
-    # PS I have alias venv="source .*/bin/activate"
-    $ make test               # run all unittests locally
+```bash
+    $ uv sync                 # install all packages for development (uses uv package manager)
+    $ source .venv/bin/activate  # start the virtual env
+    # PS I have alias venv="source .venv/bin/activate"
+    $ uv run pytest           # run all unittests locally
 ```
 
-This will prep your Macbook to run FRANK locally. It assumes Docker/Python/Make/AWS Cli to be available, you can test it with `make check`.
+This will prep your machine to run FRANK locally. It assumes Docker/Python/uv/AWS CLI to be available, you can test it with `make check`.
+
+**Build System**: This project uses [Hatch](https://hatch.pypa.io/) as the build system and [uv](https://docs.astral.sh/uv/) as the package manager for fast dependency installation and Python version management.
 
 Start to understand the [evolutionary design](docs/evolutionary_design.md) principles, before you continue coding on FRANK. 

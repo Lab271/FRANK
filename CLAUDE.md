@@ -18,7 +18,7 @@ make dev          # Create virtualenv and install all dependencies
 make env          # Install packages into existing virtualenv
 
 # Activate virtual environment
-source .frank/bin/activate    # Or use 'venv' alias if configured
+source .venv/bin/activate    # Or use 'venv' alias if configured
 
 # Testing
 make test         # Run unit tests with coverage (requires >=85% coverage)
