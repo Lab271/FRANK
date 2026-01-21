@@ -265,3 +265,4 @@ logs/
 *.temp
 .tmp/
 .temp/
+AGENTS.md
