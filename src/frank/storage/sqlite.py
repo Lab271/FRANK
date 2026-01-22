@@ -10,17 +10,18 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import json
+import logging
 import sqlite3
 import uuid
-import logging
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-from frank.core.models import Submission, Sighting, Submitter
-from frank.core.enum import ObservableType, AccessTier
-from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from frank.core.enum import AccessTier, ObservableType
+from frank.core.models import Sighting, Submission, Submitter
+
 from .base import BaseFRANKDatabase
+from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 
 # Configure SQLite datetime adapter to avoid Python 3.12 deprecation warnings
 sqlite3.register_adapter(datetime, lambda dt: dt.isoformat())
@@ -42,7 +43,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     Provides full functionality with file-based storage and supports
     the complete FRANK access tier model.
     """
-      
+
     def initialize(self) -> None:
         """Initialize the SQLite database with FRANK schema."""
         self.name = 'sqlite'
@@ -51,7 +52,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
                 conn.execute("PRAGMA journal_mode = WAL")  # Better concurrency
-                
+
                 # organisations table (cyber partners and customers)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS organisations (
@@ -67,7 +68,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         metadata_json TEXT
                     )
                 """)
-                
+
                 # Submissions table (main submission data)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS submissions (
@@ -85,7 +86,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         FOREIGN KEY (hit_target_org_id) REFERENCES organisations (organisation_id)
                     )
                 """)
-                
+
                 # Sightings table (individual threat sightings)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS sightings (
@@ -106,7 +107,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         FOREIGN KEY (submission_id) REFERENCES submissions (submission_id) ON DELETE CASCADE
                     )
                 """)
-                
+
                 # Observables table (IoCs and artifacts)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS observables (
@@ -123,7 +124,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         FOREIGN KEY (sighting_id) REFERENCES sightings (sighting_id) ON DELETE CASCADE
                     )
                 """)
-                
+
                 # Statistics table (aggregated sighting data)
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS observable_statistics (
@@ -138,12 +139,13 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         avg_confidence REAL,
                         sectors_json TEXT, -- JSON array of affected sectors
                         regions_json TEXT, -- JSON array of affected regions
+                        organisation_ids_json TEXT, -- JSON array of unique organisation IDs
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                         UNIQUE(observable_hash)
                     )
                 """)
-                
+
                 # Access logs for auditing
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS access_logs (
@@ -160,7 +162,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         details_json TEXT
                     )
                 """)
-                
+
                 # SIGMA rules table
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS sigma_rules (
@@ -177,7 +179,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         FOREIGN KEY (created_by_org) REFERENCES organisations (organisation_id)
                     )
                 """)
-                
+
                 # Campaign tracking table
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS campaigns (
@@ -197,14 +199,14 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
                 # Create indexes for performance
                 self._create_indexes(conn)
-                
+
                 conn.commit()
                 self.logger.info(f"Database initialized at {db_path}")
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Database initialization error: {e}")
             raise FRANKConnectionError(f"Failed to initialize database: {e}")
-    
+
     def _create_indexes(self, conn: sqlite3.Connection) -> None:
         """Create database indexes for optimal query performance."""
         indexes = [
@@ -212,35 +214,35 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             "CREATE INDEX IF NOT EXISTS idx_submissions_timestamp ON submissions (submission_timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_submissions_severity ON submissions (severity)",
             "CREATE INDEX IF NOT EXISTS idx_submissions_tlp ON submissions (tlp_level)",
-            
+
             "CREATE INDEX IF NOT EXISTS idx_sightings_submission ON sightings (submission_id)",
             "CREATE INDEX IF NOT EXISTS idx_sightings_confidence ON sightings (confidence)",
             "CREATE INDEX IF NOT EXISTS idx_sightings_observed ON sightings (first_observed)",
-            
+
             "CREATE INDEX IF NOT EXISTS idx_observables_hash ON observables (observable_hash)",
             "CREATE INDEX IF NOT EXISTS idx_observables_type ON observables (observable_type)",
             "CREATE INDEX IF NOT EXISTS idx_observables_sighting ON observables (sighting_id)",
             "CREATE INDEX IF NOT EXISTS idx_observables_value ON observables (observable_value)",
-            
+
             "CREATE INDEX IF NOT EXISTS idx_statistics_hash ON observable_statistics (observable_hash)",
             "CREATE INDEX IF NOT EXISTS idx_statistics_type ON observable_statistics (observable_type)",
             "CREATE INDEX IF NOT EXISTS idx_statistics_updated ON observable_statistics (updated_at)",
-            
+
             "CREATE INDEX IF NOT EXISTS idx_access_logs_org ON access_logs (organisation_id)",
             "CREATE INDEX IF NOT EXISTS idx_access_logs_timestamp ON access_logs (timestamp)",
             "CREATE INDEX IF NOT EXISTS idx_access_logs_action ON access_logs (action)",
-            
+
             "CREATE INDEX IF NOT EXISTS idx_organisations_tier ON organisations (tier)",
             "CREATE INDEX IF NOT EXISTS idx_organisations_sector ON organisations (sector)",
             "CREATE INDEX IF NOT EXISTS idx_organisations_active ON organisations (last_active)"
         ]
-        
+
         for index_sql in indexes:
             try:
                 conn.execute(index_sql)
             except sqlite3.Error as e:
                 self.logger.warning(f"Failed to create index: {e}")
-    
+
     def store_submission(self, submission: Submission) -> bool:
         """
         Store a complete submission in the database with full normalization.
@@ -257,7 +259,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.execute("PRAGMA foreign_keys = ON")
-                
+
                 # Extract main submission data
                 submitter = submission.submitter
                 hit_target = submission.hit_target
@@ -267,7 +269,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 self._upsert_organisation(conn, submitter.model_dump(
                         exclude_none=True,
                         by_alias=True), org_type='cyber_partner')
-                
+
                 # Store hit target if present
                 hit_target_id = None
                 if hit_target:
@@ -275,7 +277,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         exclude_none=True,
                         by_alias=True), org_type='customer')
                     hit_target_id = hit_target.organisation_id
-                
+
                 # Store main submission
                 conn.execute("""
                     INSERT OR REPLACE INTO submissions 
@@ -293,7 +295,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     submission.tlp_level,
                     submission.model_dump_json(by_alias=True, exclude_none=True)
                 ))
-                
+
                 # Store sighting
                 conn.execute("""
                     INSERT OR REPLACE INTO sightings 
@@ -303,7 +305,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                      )
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
-                    sighting.sighting_id, 
+                    sighting.sighting_id,
                     submission.submission_id,
                     sighting.first_observed,
                     sighting.last_observed,
@@ -315,15 +317,15 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     sighting.impact.affected_systems if sighting.impact else None,
                     sighting.impact.compromised_accounts if sighting.impact else None,
                     sighting.impact.containment_time if sighting.impact else None,
-                    sighting.impact.financial_impact_eur if sighting.impact else None   
+                    sighting.impact.financial_impact_eur if sighting.impact else None
                 ))
-                
+
                 # # Store observables and update statistics
                 self._store_observables(conn, sighting, submitter)
-                
+
                 # # Store SIGMA rule if present
                 self._store_sigma_rule(conn, sighting, submitter)
-                
+
                 # # Store campaign if present
                 self._store_campaign(conn, sighting)
 
@@ -333,7 +335,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 conn.commit()
                 self.logger.info(f"Stored submission {submission.submission_id}")
                 return True
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error storing submission: {e}")
             raise FRANKStorageError(f"Failed to store submission: {e}")
@@ -351,9 +353,9 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 for obs in obs_list:
                     if 'type' not in obs or 'value' not in obs:
                         continue
-                        
+
                     obs_hash = self.hash_observable(obs['type'], obs['value'])
-                    
+
                     # Store observable
                     conn.execute("""
                         INSERT OR REPLACE INTO observables 
@@ -370,10 +372,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         obs.get('port'),
                         obs.get('protocol'),
                         obs.get('first_seen'),
-                        json.dumps({k: v for k, v in obs.items() 
+                        json.dumps({k: v for k, v in obs.items()
                                    if k not in ['id', 'type', 'value', 'role', 'port', 'protocol', 'first_seen']})
                     ))
-                    
+
                     # Update statistics
                     self._update_observable_statistics(conn, obs, submitter)
 
@@ -382,7 +384,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         sigma_detection = sighting.sigma_detection
         if not sigma_detection:
             return
-            
+
         conn.execute("""
             INSERT OR REPLACE INTO sigma_rules 
             (rule_id, rule_name, rule_version, rule_status, sigma_yaml, 
@@ -407,7 +409,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         campaign = sighting.threat_context.campaign
         if not campaign:
             return
-            
+
         conn.execute("""
             INSERT OR REPLACE INTO campaigns 
             (campaign_id, campaign_name, attribution, target_sectors_json, 
@@ -424,15 +426,15 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             campaign.estimated_victims,
             campaign.confidence
         ))
-    
-        
+
+
 
     def _upsert_organisation(self, conn: sqlite3.Connection, org_data: Dict[str, Any], org_type: str = 'cyber_partner') -> None:
         """Insert or update organisation information."""
         self.logger.debug(f"Upserting organisation: {org_data}")
-        metadata = {k: v for k, v in org_data.items() 
+        metadata = {k: v for k, v in org_data.items()
                    if k not in ['organisation_id', 'organisation_type', 'access_level', 'sector', 'region', 'client_count']}
-        
+
         conn.execute("""
             INSERT OR REPLACE INTO organisations 
             (organisation_id, organisation_type, access_level, sector, region, 
@@ -453,44 +455,52 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def _update_observable_statistics(self, conn: sqlite3.Connection, observable: Dict[str, Any], submitter: Submitter) -> None:
         """Update aggregated statistics for observables."""
         obs_hash = self.hash_observable(observable['type'], observable['value'])
-        
+
         # Check if statistics record exists
         cursor = conn.execute("""
-            SELECT total_sightings, unique_organisations, sectors_json, regions_json 
+            SELECT total_sightings, unique_organisations, sectors_json, regions_json, organisation_ids_json
             FROM observable_statistics WHERE observable_hash = ?
         """, (obs_hash,))
-        
+
         existing = cursor.fetchone()
-        
+
         if existing:
             # Update existing record
-            total_sightings, unique_orgs, sectors_json, regions_json = existing
-            
+            total_sightings, unique_orgs, sectors_json, regions_json, org_ids_json = existing
+
             # Parse existing JSON data
             sectors = json.loads(sectors_json) if sectors_json else []
             regions = json.loads(regions_json) if regions_json else []
-            
+            org_ids = json.loads(org_ids_json) if org_ids_json else []
+
             # Add new sector/region if not present
             if submitter.sector and submitter.sector not in sectors:
                 sectors.append(submitter.sector)
             if submitter.region and submitter.region not in regions:
                 regions.append(submitter.region)
 
+            # Track unique organisations - only increment if new org
+            is_new_org = submitter.organisation_id not in org_ids
+            if is_new_org:
+                org_ids.append(submitter.organisation_id)
+
             # Update statistics
             conn.execute("""
-                UPDATE observable_statistics 
+                UPDATE observable_statistics
                 SET total_sightings = total_sightings + 1,
                     unique_organisations = ?,
                     last_seen = ?,
                     sectors_json = ?,
                     regions_json = ?,
+                    organisation_ids_json = ?,
                     updated_at = ?
                 WHERE observable_hash = ?
             """, (
-                unique_orgs + 1,  # Simplified - should track unique orgs properly
+                unique_orgs + (1 if is_new_org else 0),
                 datetime.now(timezone.utc).isoformat(),
                 json.dumps(sectors),
                 json.dumps(regions),
+                json.dumps(org_ids),
                 datetime.now(timezone.utc).isoformat(),
                 obs_hash
             ))
@@ -498,12 +508,13 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             # Create new statistics record
             sectors = [submitter.sector] if submitter.sector else []
             regions = [submitter.region] if submitter.region else []
+            org_ids = [submitter.organisation_id]
 
             conn.execute("""
-                INSERT INTO observable_statistics 
-                (observable_hash, observable_type, observable_value, total_sightings, 
-                 unique_organisations, first_seen, last_seen, sectors_json, regions_json)
-                VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?)
+                INSERT INTO observable_statistics
+                (observable_hash, observable_type, observable_value, total_sightings,
+                 unique_organisations, first_seen, last_seen, sectors_json, regions_json, organisation_ids_json)
+                VALUES (?, ?, ?, 1, 1, ?, ?, ?, ?, ?)
             """, (
                 obs_hash,
                 observable['type'],
@@ -511,9 +522,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 datetime.now(timezone.utc).isoformat(),
                 datetime.now(timezone.utc).isoformat(),
                 json.dumps(sectors),
-                json.dumps(regions)
+                json.dumps(regions),
+                json.dumps(org_ids)
             ))
-    
+
     def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
@@ -531,33 +543,33 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 cursor = conn.execute("""
                     SELECT s.*, o.access_level as submitter_tier
                     FROM submissions s
                     JOIN organisations o ON s.submitter_org_id = o.organisation_id
                     WHERE s.submission_id = ?
                 """, (submission_id,))
-                
+
                 row = cursor.fetchone()
                 if not row:
                     return None
-                
+
                 submission_dict = json.loads(row['full_submission_json'])
                 # Apply access level filtering
                 filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
-                
+
                 # Log access
                 self._log_access(conn, org_id, 'READ', 'submission', submission_id)
                 conn.commit()
-                
+
                 return Submission(**filtered_submission['submission'])
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error retrieving submission {submission_id}: {e}")
             raise FRANKQueryError(f"Failed to retrieve submission: {e}")
-    
-    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
+
+    def query_observables(self, org_id: str, observable_type: ObservableType = None,
                          limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
                          min_confidence: int = None, sectors: List[str] = None,
                          days_back: int = None) -> List[Dict[str, Any]]:
@@ -581,7 +593,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 # Build query based on access level and filters
                 query_parts = ["""
                     SELECT os.observable_hash, os.observable_type, os.observable_value,
@@ -589,22 +601,22 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                            os.last_seen, os.avg_confidence, os.sectors_json, os.regions_json
                     FROM observable_statistics os
                 """]
-                
+
                 where_clauses = []
                 params = []
-                
+
                 if observable_type:
                     where_clauses.append("COALESCE(os.observable_type, \"\") = ?")
                     params.append(observable_type.value)
-                
+
                 if min_confidence:
                     self.logger.info(f"finding min_confidence: {min_confidence}")
                     where_clauses.append("COALESCE(os.avg_confidence, 0) >= ?")
                     params.append(min_confidence)
-                
+
                 if days_back:
                     where_clauses.append("os.last_seen >= datetime('now', '-{} days')".format(days_back))
-                
+
                 if sectors:
                     # This is a simplified sector filter - in production would use JSON functions
                     sector_conditions = []
@@ -612,22 +624,22 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         sector_conditions.append("COALESCE(os.sectors_json, \"\") LIKE ?")
                         params.append(f'%"{sector}"%')
                     where_clauses.append(f"({' OR '.join(sector_conditions)})")
-                
+
                 if where_clauses:
                     query_parts.append(" WHERE " + " AND ".join(where_clauses))
-                
+
                 query_parts.append(f" ORDER BY os.last_seen DESC LIMIT {limit}")
-                
+
                 query = "".join(query_parts)
                 cursor = conn.execute(query, params)
                 results = []
-                
+
                 for row in cursor.fetchall():
                     result = dict(row)
-                    
+
                     # Apply access level filtering
                     result = self._filter_observable_by_access_level(result, access_level)
-                    
+
                     # Parse JSON fields
                     try:
                         result['sectors'] = json.loads(result['sectors_json']) if result['sectors_json'] else []
@@ -637,20 +649,20 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     except:
                         result['sectors'] = []
                         result['regions'] = []
-                    
+
                     results.append(result)
-                
+
                 # Log access
                 self._log_access(conn, org_id, 'QUERY', 'observables')
                 conn.commit()
-                
+
                 self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level.value})")
                 return results
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error querying observables: {e}")
             raise FRANKQueryError(f"Failed to query observables: {e}")
-    
+
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
         Get platform statistics summary.
@@ -667,9 +679,9 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 stats = {}
-                
+
                 # Basic submission statistics
                 cursor = conn.execute("""
                     SELECT 
@@ -679,10 +691,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     FROM submissions 
                     WHERE submission_timestamp >= datetime('now', '-{} days')
                 """.format(days))
-                
+
                 basic_stats = dict(cursor.fetchone())
                 stats.update(basic_stats)
-                
+
                 # Observable type distribution
                 cursor = conn.execute("""
                     SELECT observable_type, COUNT(*) as count,
@@ -695,10 +707,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 """.format(days))
 
                 stats['observable_types'] = {
-                       row[0]: {'count': row[1], 'avg_sightings': row[2]} 
+                       row[0]: {'count': row[1], 'avg_sightings': row[2]}
                        for row in cursor.fetchall()
                 }
-                                
+
                 # Severity distribution
                 cursor = conn.execute("""
                     SELECT severity, COUNT(*) as count
@@ -707,9 +719,9 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     AND severity IS NOT NULL
                     GROUP BY severity
                 """.format(days))
-                
+
                 stats['severity_distribution'] = dict(cursor.fetchall())
-                
+
                 # Top sectors by activity
                 cursor = conn.execute("""
                     SELECT sector, COUNT(*) as submissions
@@ -721,9 +733,9 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     ORDER BY submissions DESC
                     LIMIT 5
                 """.format(days))
-                
+
                 stats['top_sectors'] = dict(cursor.fetchall())
-                
+
                 # Recent activity trend (daily counts)
                 cursor = conn.execute("""
                     SELECT DATE(submission_timestamp) as date, COUNT(*) as count
@@ -732,19 +744,19 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     GROUP BY DATE(submission_timestamp)
                     ORDER BY date DESC
                 """.format(days))
-                
+
                 stats['daily_activity'] = dict(cursor.fetchall())
-                
+
                 # Log access
                 self._log_access(conn, org_id, 'STATS', 'summary')
                 conn.commit()
-                
+
                 return stats
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error getting statistics: {e}")
             raise FRANKQueryError(f"Failed to get statistics: {e}")
-    
+
     def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
         """
         Insert or update organisation information.
@@ -765,9 +777,9 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         except sqlite3.Error as e:
             self.logger.error(f"Error upserting organisation: {e}")
             return False
-   
-    def _log_access(self, conn: sqlite3.Connection, org_id: str, action: str, 
-                   resource_type: str = None, resource_id: str = None, 
+
+    def _log_access(self, conn: sqlite3.Connection, org_id: str, action: str,
+                   resource_type: str = None, resource_id: str = None,
                    details: Dict[str, Any] = None) -> None:
         """Internal method to log access."""
         conn.execute("""
@@ -781,9 +793,9 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             resource_id,
             json.dumps(details) if details else None
         ))
-       
-    def log_access(self, org_id: str, action: str, 
-                   resource_type: str = None, resource_id: str = None, 
+
+    def log_access(self, org_id: str, action: str,
+                   resource_type: str = None, resource_id: str = None,
                    details: Dict[str, Any] = None) -> bool:
         """
         Log an access event for auditing purposes.
@@ -808,7 +820,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         except sqlite3.Error as e:
             self.logger.error(f"Error logging access: {e}")
             return False
-        
+
     # def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
     #     """Filter submission data based on access level."""
     #     # TODO: Upgrade this to Pydantic classes
@@ -836,7 +848,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     #                 for obs in obs_list:
     #                     if 'value' in obs:
     #                         obs['value'] = obs['value'][:10] + "..." if len(obs['value']) > 10 else obs['value']
-            
+
     #         # Remove sensitive sections
     #         filtered.pop('hit_target', None)
     #         filtered.pop('tlp_level', None)
@@ -845,7 +857,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     #     elif access_level == AccessTier.CONTRIBUTOR:
     #         # Remove only the most sensitive information
     #         filtered = self._deep_copy(submission)
-            
+
     #         # Anonymize hit target details
     #         if 'hit_target' in filtered:
     #             hit_target = filtered['hit_target']
@@ -872,10 +884,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     #             value = filtered['observable_value']
     #             filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
     #         return filtered
-        
+
     #     # Contributor and above get full access
     #     return observable
-    
+
     # def _deep_copy(self, obj: Any) -> Any:
     #     """Create a deep copy of an object."""
     #     if isinstance(obj, dict):
@@ -884,8 +896,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     #         return [self._deep_copy(item) for item in obj]
     #     else:
     #         return obj
-    
-    def search_observables_by_value(self, org_id: str, search_value: str, 
+
+    def search_observables_by_value(self, org_id: str, search_value: str,
                                    access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
         """
         Search for observables by partial value match.
@@ -903,19 +915,19 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 cursor = conn.execute("""
                     SELECT os.* FROM observable_statistics os
                     WHERE os.observable_value LIKE ?
                     ORDER BY os.total_sightings DESC
                     LIMIT 100
                 """, (f"%{search_value}%",))
-                
+
                 results = []
                 for row in cursor.fetchall():
                     result = dict(row)
                     result = self._filter_observable_by_access_level(result, access_level)
-                    
+
                     # Parse JSON fields
                     try:
                         result['sectors'] = json.loads(result['sectors_json']) if result['sectors_json'] else []
@@ -925,19 +937,19 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     except:
                         result['sectors'] = []
                         result['regions'] = []
-                    
+
                     results.append(result)
-                
+
                 # Log access
                 self._log_access(conn, org_id, 'SEARCH', 'observables', details={'search_value': search_value})
                 conn.commit()
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error searching observables: {e}")
             raise FRANKQueryError(f"Failed to search observables: {e}")
-    
+
     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
         """
         Get organisation information.
@@ -953,17 +965,17 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 cursor = conn.execute("""
                     SELECT * FROM organisations WHERE organisation_id = ?
                 """, (org_id,))
-                
+
                 row = cursor.fetchone()
                 if not row:
                     return None
-                
+
                 org_data = dict(row)
-                
+
                 # Parse metadata JSON
                 try:
                     metadata = json.loads(org_data['metadata_json']) if org_data['metadata_json'] else {}
@@ -971,14 +983,14 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     del org_data['metadata_json']
                 except:
                     del org_data['metadata_json']
-                
+
                 return org_data
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error getting organisation info: {e}")
             return None
-    
-    def get_sigma_rules(self, org_id: str, rule_status: str = None, 
+
+    def get_sigma_rules(self, org_id: str, rule_status: str = None,
                        limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get SIGMA rules with optional filtering.
@@ -996,30 +1008,30 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 query = "SELECT * FROM sigma_rules"
                 params = []
-                
+
                 if rule_status:
                     query += " WHERE rule_status = ?"
                     params.append(rule_status)
-                
+
                 query += f" ORDER BY updated_at DESC LIMIT {limit}"
-                
+
                 cursor = conn.execute(query, params)
                 results = [dict(row) for row in cursor.fetchall()]
-                
+
                 # Log access
                 self._log_access(conn, org_id, 'QUERY', 'sigma_rules')
                 conn.commit()
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error getting SIGMA rules: {e}")
             raise FRANKQueryError(f"Failed to get SIGMA rules: {e}")
-    
-    def get_campaigns(self, org_id: str, active_only: bool = False, 
+
+    def get_campaigns(self, org_id: str, active_only: bool = False,
                      limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get campaign information.
@@ -1037,40 +1049,40 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 query = "SELECT * FROM campaigns"
-                
+
                 if active_only:
                     query += " WHERE updated_at >= datetime('now', '-30 days')"
-                
+
                 query += f" ORDER BY updated_at DESC LIMIT {limit}"
-                
+
                 cursor = conn.execute(query)
                 results = []
-                
+
                 for row in cursor.fetchall():
                     campaign = dict(row)
-                    
+
                     # Parse JSON fields
                     try:
                         campaign['target_sectors'] = json.loads(campaign['target_sectors_json']) if campaign['target_sectors_json'] else []
                         del campaign['target_sectors_json']
                     except:
                         campaign['target_sectors'] = []
-                    
+
                     results.append(campaign)
-                
+
                 # Log access
                 self._log_access(conn, org_id, 'QUERY', 'campaigns')
                 conn.commit()
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error getting campaigns: {e}")
             raise FRANKQueryError(f"Failed to get campaigns: {e}")
-    
-    def get_access_logs(self, org_id: str, days: int = 7, 
+
+    def get_access_logs(self, org_id: str, days: int = 7,
                        actions: List[str] = None) -> List[Dict[str, Any]]:
         """
         Get access logs for auditing.
@@ -1088,28 +1100,28 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         try:
             with sqlite3.connect(db_path) as conn:
                 conn.row_factory = sqlite3.Row
-                
+
                 query = """
                     SELECT * FROM access_logs 
                     WHERE organisation_id = ? 
                     AND timestamp >= datetime('now', '-{} days')
                 """.format(days)
-                
+
                 params = [org_id]
-                
+
                 if actions:
                     placeholders = ','.join('?' * len(actions))
                     query += f" AND action IN ({placeholders})"
                     params.extend(actions)
-                
+
                 query += " ORDER BY timestamp DESC LIMIT 1000"
-                
+
                 cursor = conn.execute(query, params)
                 results = []
-                
+
                 for row in cursor.fetchall():
                     log_entry = dict(row)
-                    
+
                     # Parse details JSON
                     try:
                         details = json.loads(log_entry['details_json']) if log_entry['details_json'] else {}
@@ -1118,15 +1130,15 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     except:
                         log_entry['details'] = {}
                         del log_entry['details_json']
-                    
+
                     results.append(log_entry)
-                
+
                 return results
-                
+
         except sqlite3.Error as e:
             self.logger.error(f"Error getting access logs: {e}")
             raise FRANKQueryError(f"Failed to get access logs: {e}")
-    
+
     def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the database.
@@ -1141,7 +1153,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 # Basic connectivity test
                 cursor = conn.execute("SELECT 1")
                 cursor.fetchone()
-                
+
                 # Get database statistics
                 cursor = conn.execute("""
                     SELECT name, COUNT(*) as count FROM (
@@ -1158,19 +1170,19 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         SELECT 'access_logs' as name FROM access_logs
                     ) GROUP BY name
                 """)
-                
+
                 table_counts = dict(cursor.fetchall())
-                
+
                 # Check database size
                 db_size = Path(db_path).stat().st_size if Path(db_path).exists() else 0
-                
+
                 return {
                     'status': 'healthy',
                     'database_path': db_path,
                     'database_size_bytes': db_size,
                     'table_counts': table_counts
                 }
-                
+
         except Exception as e:
             self.logger.error(f"Health check failed: {e}")
             return {
@@ -1205,4 +1217,4 @@ def create_sqlite_database(db_path: str = "/tmp/frank_local.db",
     return SQLiteFRANKDatabase(connection_params, logger=logger)
 
 
-    
+
