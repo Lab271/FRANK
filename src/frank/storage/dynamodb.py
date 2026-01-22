@@ -9,19 +9,20 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from copy import deepcopy
-from decimal import Decimal
-from datetime import datetime, timezone, timedelta
 import logging
-from typing import Dict, Any, List, Optional
+from copy import deepcopy
+from datetime import datetime, timedelta, timezone
+from decimal import Decimal
+from typing import Any, Dict, List, Optional
 
 import boto3
 from botocore.exceptions import ClientError
 
-from frank.core.models import Submission, Observable
-from frank.core.enum import ObservableType, AccessTier
-from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from frank.core.enum import AccessTier, ObservableType
+from frank.core.models import Observable, Submission
+
 from .base import BaseFRANKDatabase
+from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 
 
 class DynamoDBFRANKDatabase(BaseFRANKDatabase):
@@ -42,7 +43,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     LOG#{org_id}        | LOG#{timestamp} | ACTION#{action} | #{timestamp} | Access Log      | Audit trail for actions
 
     """
-    
+
     def initialize(self) -> None:
         """
         Initialize DynamoDB database connection for LocalStack environment.
@@ -61,7 +62,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         self.region = self.connection_params.get("AWS_DEFAULT_REGION", "eu-west-1")
         self.endpoint = self.connection_params.get("ENDPOINT", None)
 
-        self.logger.info(f"Connection to DynamoDB database")
+        self.logger.info("Connection to DynamoDB database")
         self.logger.info(f"config {self.connection_params.items()}")
 
         # Initialize AWS DynamoDB client
@@ -92,7 +93,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         "dynamodb",
                         region_name=self.region
                     )
-            
+
         except Exception as e:
             self.logger.error(f"Failed to initialize DynamoDB: {e}")
             raise FRANKConnectionError(f"DynamoDB connection failed: {e}")
@@ -114,7 +115,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         elif isinstance(obj, list):
             return [self._convert_floats_to_decimal(item) for item in obj]
         return obj
-    
+
     def _convert_decimals_to_float(self, obj: Any) -> Any:
         """Convert Decimal values back to float for JSON serialization."""
         if isinstance(obj, Decimal):
@@ -196,7 +197,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             except Exception as e:
                 self.logger.warning(f"Could not enable TTL for '{table_name}': {e}")
         return table
-   
+
     def store_submission(self, submission: Submission) -> None:
         """
         Store a complete submission in the DynamoDB database.
@@ -214,7 +215,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         # TODO: consider the TTL strategy for different entities
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
-        
+
         # Create the main submission item
         submission_item = {
             'PK': f"SUB#{submission.submission_id}",
@@ -227,17 +228,17 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             'access_level': submission.submitter.access_level, # make sure this is explicitly stored
             'submission_timestamp': timestamp_str,
             'tlp_level': submission.tlp_level,
-            'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission 
+            'submission_data': submission.model_dump(by_alias=True, exclude_none=True),  # Complete submission
             'processed_at': timestamp_str,
             'TTL': int((timestamp + timedelta(days=2555)).timestamp())
-        }    
+        }
         items_to_write = [submission_item]
 
         # Store submitter info for querying
         org_item = {
             'PK': f"ORG#{submission.submitter.organisation_id}",
             'SK': 'ORG',
-            'GSI1PK': f"TIER#SUBMITTER",
+            'GSI1PK': "TIER#SUBMITTER",
             'GSI1SK': timestamp_str,
             'EntityType': 'organisation',
             'organisation_id': submission.submitter.organisation_id,
@@ -254,7 +255,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             ht_org_item = {
                 'PK': f"ORG#{hit_target.organisation_id}",
                 'SK': 'ORG',
-                'GSI1PK': f"TIER#TARGET",
+                'GSI1PK': "TIER#TARGET",
                 'GSI1SK': timestamp_str,
                 'EntityType': 'organisation',
                 'organisation_id': hit_target.organisation_id,
@@ -357,18 +358,18 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         timestamp = submission.timestamp or datetime.now(timezone.utc)
         timestamp_str = timestamp.isoformat()
-        
+
         observables_list = []
         observables = submission.sighting.observables.model_dump(exclude_none=True, by_alias=True)
-        
+
         for obs_category, obs_list in observables.items():
             if isinstance(obs_list, list):
                 for obs in obs_list:
                     if 'type' not in obs or 'value' not in obs:
                         continue
-                    
+
                     obs_hash = self.hash_observable(obs['type'], obs['value'])
-                    
+
                     # Create observable index item
                     observable_index_item = {
                         'PK': f"OBS#{obs_hash}",
@@ -433,7 +434,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         try:
             response = self.table.get_item(
-                Key={'PK': f'STAT#{obs_hash}', f'SK': 'STAT#{obs_type}'}
+                Key={'PK': f'STAT#{obs_hash}', 'SK': 'STAT#{obs_type}'}
             )
             item = response.get('Item')
         except ClientError as e:
@@ -516,12 +517,12 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """
         # DynamoDB batch write limit is 25 items
         chunk_size = 25
-        
+
         for i in range(0, len(items), chunk_size):
             chunk = items[i:i + chunk_size]
-            
+
             transact_items = [
-                {'Put': 
+                {'Put':
                     {
                         'TableName': self.table_name,
                         'Item': item
@@ -529,17 +530,17 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 }
                 for item in chunk
             ]
-            
+
             try:
                 response = self.client.transact_write_items(TransactItems=transact_items)
-                
+
                 # Handle unprocessed items
                 unprocessed_items = response.get('UnprocessedItems', {})
                 while unprocessed_items:
                     self.logger.warning(f"Retrying {len(unprocessed_items)} unprocessed items")
                     response = self.client.transact_write_items(TransactItems=unprocessed_items)
                     unprocessed_items = response.get('UnprocessedItems', {})
-                    
+
             except ClientError as e:
                 self.logger.error(f"Batch write failed: {e}")
                 raise FRANKStorageError(f"Batch write operation failed: {e}")
@@ -579,7 +580,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
     def query_observables(self, user_id: str,  access_level: AccessTier = AccessTier.CONTRIBUTOR,
                          observable_type: ObservableType = None, sectors: List[str] = None,
-                         min_confidence: float = None, 
+                         min_confidence: float = None,
                          limit: int = 100, days_back: int = None) -> List[Observable]:
         """
         Query observables with access level filtering and additional filters.
@@ -675,7 +676,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 
                 obs_entry = observables_map[obs_hash]
                 obs_entry['total_sightings'] += 1
-                org_id_val = item.get('submitter_org_id')
+                org_id_val = item.get('submitter_id')
                 if org_id_val:
                     obs_entry['unique_organisations'].add(org_id_val)
                 obs_entry['confidence_values'].append(item.get('confidence', 0))
@@ -840,7 +841,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                 'total_organisations': total_organisations,
                 'total_submissions': total_submissions,
                 'total_sightings': total_sightings,
-                'total_observables': total_observables, 
+                'total_observables': total_observables,
                 'observable_totals': totals_by_type
             }
         except ClientError as e:
@@ -891,10 +892,10 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
 #         """
 #         Get organisation information using DynamoDB query.
-        
+
 #         Args:
 #             org_id: organisation ID to look up
-            
+
 #         Returns:
 #             organisation data or None if not found
 #         """
@@ -905,18 +906,18 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #                     'SK': 'ORG'
 #                 }
 #             )
-            
+
 #             if 'Item' not in response:
 #                 return None
-            
+
 #             item = self._convert_decimals_to_float(response['Item'])
-            
+
 #             # Remove DynamoDB-specific fields
-#             org_data = {k: v for k, v in item.items() 
+#             org_data = {k: v for k, v in item.items()
 #                        if k not in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'EntityType', 'TTL']}
-            
+
 #             return org_data
-            
+
 #         except ClientError as e:
 #             self.logger.error(f"Error getting organisation info: {e}")
 #             return None
@@ -925,17 +926,17 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #         """
 #         Clean up old data using TTL (Time To Live) feature.
 #         DynamoDB automatically handles cleanup based on TTL values.
-        
+
 #         Args:
-#             days: This parameter is maintained for API compatibility but 
+#             days: This parameter is maintained for API compatibility but
 #                   actual cleanup is handled by DynamoDB TTL
-            
+
 #         Returns:
 #             Number of records that would be eligible for cleanup
 #         """
 #         try:
 #             cutoff_date = datetime.now(timezone.utc) - timedelta(days=days)
-            
+
 #             # Count items that would be eligible for cleanup
 #             # In production, DynamoDB TTL handles actual deletion
 #             response = self.table.scan(
@@ -950,11 +951,11 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #                 },
 #                 Select='COUNT'
 #             )
-            
+
 #             count = response.get('Count', 0)
 #             self.logger.info(f"Found {count} items eligible for cleanup (handled by DynamoDB TTL)")
 #             return count
-            
+
 #         except ClientError as e:
 #             self.logger.error(f"Error during cleanup check: {e}")
 #             return 0
@@ -963,7 +964,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #     def update_observable_statistics(self, obs_hash: str, increment_count: int = 1) -> None:
 #         """
 #         Update observable statistics using DynamoDB atomic counters.
-        
+
 #         Args:
 #             obs_hash: Observable hash to update
 #             increment_count: Amount to increment counters by
@@ -984,7 +985,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
 #             self.logger.warning(f"Failed to update observable statistics: {e}")
 
 # Factory function for easy instantiation
-def create_dynamodb_database(table_name: str = "frank_table", 
+def create_dynamodb_database(table_name: str = "frank_table",
                              audit_table_name: str = "frank_audit",
                             region: str = "eu-west-1",
                             endpoint: str = "http://localstack:4566",
@@ -1010,7 +1011,7 @@ def create_dynamodb_database(table_name: str = "frank_table",
         "DYNAMODB_TABLE": table_name,
         "AUDIT_TABLE": audit_table_name,
         "ENDPOINT": endpoint,
-        "AWS_ACCESS_KEY_ID": aws_access_key_id, 
+        "AWS_ACCESS_KEY_ID": aws_access_key_id,
         "AWS_SECRET_ACCESS_KEY": aws_secret_access_key,
         "AWS_DEFAULT_REGION": region
     }
