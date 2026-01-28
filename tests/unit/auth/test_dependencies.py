@@ -6,6 +6,7 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
@@ -136,8 +137,7 @@ class TestGetCurrentUser:
 class TestGetCurrentUserServerValidation:
     """Tests for get_current_user with server validation strategies."""
 
-    @pytest.mark.asyncio
-    async def test_server_first_falls_back_to_local(self):
+    def test_server_first_falls_back_to_local(self):
         """Test that server_first falls back to local validation."""
         AuthConfig.configure(
             jwt_algorithm="HS256",
@@ -156,13 +156,12 @@ class TestGetCurrentUserServerValidation:
         with patch("frank.auth.dependencies.validate_token_with_cognito") as mock_cognito:
             mock_cognito.side_effect = CognitoValidationError("Server error")
 
-            result = await get_current_user(credentials)
+            result = asyncio.run(get_current_user(credentials))
 
             assert result.username == "testuser"
             assert result.validation_source == "local_jwt"
 
-    @pytest.mark.asyncio
-    async def test_server_only_fails_without_cognito(self):
+    def test_server_only_fails_without_cognito(self):
         """Test that server_only fails when Cognito unavailable."""
         AuthConfig.configure(
             jwt_algorithm="HS256",
@@ -181,13 +180,12 @@ class TestGetCurrentUserServerValidation:
             mock_cognito.side_effect = CognitoValidationError("Server error")
 
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(credentials)
+                asyncio.run(get_current_user(credentials))
 
             assert exc_info.value.status_code == 401
             assert "Could not validate with Cognito" in exc_info.value.detail
 
-    @pytest.mark.asyncio
-    async def test_server_success_updates_validation_source(self):
+    def test_server_success_updates_validation_source(self):
         """Test that successful server validation updates source."""
         AuthConfig.configure(
             jwt_algorithm="HS256",
@@ -208,13 +206,12 @@ class TestGetCurrentUserServerValidation:
                 validation_source="mock-cognito-getuser",
             )
 
-            result = await get_current_user(credentials)
+            result = asyncio.run(get_current_user(credentials))
 
             assert result.username == "testuser"
             assert result.validation_source == "mock-cognito-getuser"
 
-    @pytest.mark.asyncio
-    async def test_cognito_connection_error_returns_503(self):
+    def test_cognito_connection_error_returns_503(self):
         """Test that Cognito connection error returns 503."""
         AuthConfig.configure(
             jwt_algorithm="HS256",
@@ -233,12 +230,11 @@ class TestGetCurrentUserServerValidation:
             mock_cognito.side_effect = CognitoConnectionError("Connection refused")
 
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(credentials)
+                asyncio.run(get_current_user(credentials))
 
             assert exc_info.value.status_code == 503
 
-    @pytest.mark.asyncio
-    async def test_cognito_timeout_returns_504(self):
+    def test_cognito_timeout_returns_504(self):
         """Test that Cognito timeout returns 504."""
         AuthConfig.configure(
             jwt_algorithm="HS256",
@@ -257,7 +253,7 @@ class TestGetCurrentUserServerValidation:
             mock_cognito.side_effect = CognitoTimeoutError("Timeout")
 
             with pytest.raises(HTTPException) as exc_info:
-                await get_current_user(credentials)
+                asyncio.run(get_current_user(credentials))
 
             assert exc_info.value.status_code == 504
 

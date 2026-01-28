@@ -6,6 +6,7 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
@@ -56,8 +57,7 @@ class TestCognitoUserInfo:
 class TestValidateTokenWithCognito:
     """Tests for async validate_token_with_cognito function."""
 
-    @pytest.mark.asyncio
-    async def test_successful_validation(self, mock_config):
+    def test_successful_validation(self, mock_config):
         """Test successful token validation with Cognito."""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -67,13 +67,12 @@ class TestValidateTokenWithCognito:
         mock_client.__aenter__.return_value.post.return_value = mock_response
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
-            result = await validate_token_with_cognito("test-token", mock_config)
+            result = asyncio.run(validate_token_with_cognito("test-token", mock_config))
 
             assert result.username == "testuser"
             assert result.validation_source == "mock-cognito-getuser"
 
-    @pytest.mark.asyncio
-    async def test_validation_failure(self, mock_config):
+    def test_validation_failure(self, mock_config):
         """Test token validation failure."""
         mock_response = MagicMock()
         mock_response.status_code = 401
@@ -83,30 +82,27 @@ class TestValidateTokenWithCognito:
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
             with pytest.raises(CognitoValidationError, match="status 401"):
-                await validate_token_with_cognito("test-token", mock_config)
+                asyncio.run(validate_token_with_cognito("test-token", mock_config))
 
-    @pytest.mark.asyncio
-    async def test_connection_error(self, mock_config):
+    def test_connection_error(self, mock_config):
         """Test handling of connection errors."""
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value.post.side_effect = httpx.ConnectError("Connection refused")
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
             with pytest.raises(CognitoConnectionError, match="Could not connect"):
-                await validate_token_with_cognito("test-token", mock_config)
+                asyncio.run(validate_token_with_cognito("test-token", mock_config))
 
-    @pytest.mark.asyncio
-    async def test_timeout_error(self, mock_config):
+    def test_timeout_error(self, mock_config):
         """Test handling of timeout errors."""
         mock_client = AsyncMock()
         mock_client.__aenter__.return_value.post.side_effect = httpx.TimeoutException("Timeout")
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
             with pytest.raises(CognitoTimeoutError, match="timed out"):
-                await validate_token_with_cognito("test-token", mock_config)
+                asyncio.run(validate_token_with_cognito("test-token", mock_config))
 
-    @pytest.mark.asyncio
-    async def test_uses_correct_headers(self, mock_config):
+    def test_uses_correct_headers(self, mock_config):
         """Test that correct AWS headers are sent."""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -117,15 +113,14 @@ class TestValidateTokenWithCognito:
         mock_client.__aenter__.return_value.post = mock_post
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
-            await validate_token_with_cognito("test-token", mock_config)
+            asyncio.run(validate_token_with_cognito("test-token", mock_config))
 
             call_kwargs = mock_post.call_args.kwargs
             assert call_kwargs["headers"]["X-Amz-Target"] == "AWSCognitoIdentityProviderService.GetUser"
             assert call_kwargs["headers"]["Content-Type"] == "application/x-amz-json-1.1"
             assert call_kwargs["json"] == {"AccessToken": "test-token"}
 
-    @pytest.mark.asyncio
-    async def test_uses_singleton_config_when_not_provided(self, mock_config):
+    def test_uses_singleton_config_when_not_provided(self, mock_config):
         """Test that singleton config is used when config not provided."""
         mock_response = MagicMock()
         mock_response.status_code = 200
@@ -135,12 +130,11 @@ class TestValidateTokenWithCognito:
         mock_client.__aenter__.return_value.post.return_value = mock_response
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
-            result = await validate_token_with_cognito("test-token")
+            result = asyncio.run(validate_token_with_cognito("test-token"))
 
             assert result.username == "testuser"
 
-    @pytest.mark.asyncio
-    async def test_aws_environment_validation_source(self):
+    def test_aws_environment_validation_source(self):
         """Test that AWS environment shows correct validation source."""
         config = AuthConfig.configure(
             environment="aws",
@@ -156,7 +150,7 @@ class TestValidateTokenWithCognito:
         mock_client.__aenter__.return_value.post.return_value = mock_response
 
         with patch("frank.auth.cognito.httpx.AsyncClient", return_value=mock_client):
-            result = await validate_token_with_cognito("test-token", config)
+            result = asyncio.run(validate_token_with_cognito("test-token", config))
 
             assert result.validation_source == "aws-cognito-getuser"
 
