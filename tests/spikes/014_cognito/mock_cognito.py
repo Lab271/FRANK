@@ -728,6 +728,151 @@ def create_app() -> FastAPI:
             ]
         }
 
+    # ========== Admin User Management Endpoints ==========
+
+    @app.post("/admin/users", status_code=201)
+    async def admin_create_user(request: Request) -> Dict[str, Any]:
+        """
+        Create a new user in the mock user pool (admin API).
+        Used by Management API for user creation.
+        """
+        body = await request.json()
+        username = body.get("username")
+        email = body.get("email")
+        password = body.get("password", "TempPass123!")
+        groups = body.get("groups", [])
+        temporary_password = body.get("temporary_password", True)
+
+        if not username:
+            raise HTTPException(status_code=400, detail="username is required")
+        if not email:
+            raise HTTPException(status_code=400, detail="email is required")
+
+        if username in USERS_DB:
+            raise HTTPException(status_code=409, detail=f"User {username} already exists")
+
+        # Create the user
+        USERS_DB[username] = {
+            "username": username,
+            "password": password,
+            "email": email,
+            "groups": groups,
+            "enabled": True,
+            "user_status": "FORCE_CHANGE_PASSWORD" if temporary_password else "CONFIRMED"
+        }
+
+        logger.info(f"Admin created user: {username} with groups: {groups}")
+
+        return {
+            "username": username,
+            "email": email,
+            "groups": groups,
+            "enabled": True,
+            "user_status": USERS_DB[username]["user_status"],
+            "created_at": datetime.now(timezone.utc).isoformat()
+        }
+
+    @app.get("/admin/users/{username}")
+    async def admin_get_user(username: str) -> Dict[str, Any]:
+        """
+        Get user details from the mock user pool (admin API).
+        """
+        if username not in USERS_DB:
+            raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+        user = USERS_DB[username]
+        logger.info(f"Admin retrieved user: {username}")
+
+        return {
+            "username": user["username"],
+            "email": user["email"],
+            "groups": user["groups"],
+            "enabled": user["enabled"],
+            "user_status": user["user_status"]
+        }
+
+    @app.put("/admin/users/{username}")
+    async def admin_update_user(username: str, request: Request) -> Dict[str, Any]:
+        """
+        Update user in the mock user pool (admin API).
+        """
+        if username not in USERS_DB:
+            raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+        body = await request.json()
+        user = USERS_DB[username]
+
+        # Update allowed fields
+        if "email" in body:
+            user["email"] = body["email"]
+        if "enabled" in body:
+            user["enabled"] = body["enabled"]
+        if "groups" in body:
+            user["groups"] = body["groups"]
+        if "password" in body:
+            user["password"] = body["password"]
+
+        logger.info(f"Admin updated user: {username}")
+
+        return {
+            "username": user["username"],
+            "email": user["email"],
+            "groups": user["groups"],
+            "enabled": user["enabled"],
+            "user_status": user["user_status"]
+        }
+
+    @app.delete("/admin/users/{username}", status_code=200)
+    async def admin_delete_user(username: str) -> Dict[str, Any]:
+        """
+        Delete user from the mock user pool (admin API).
+        """
+        if username not in USERS_DB:
+            raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+        del USERS_DB[username]
+        logger.info(f"Admin deleted user: {username}")
+
+        return {"message": f"User {username} deleted"}
+
+    @app.post("/admin/users/{username}/groups")
+    async def admin_add_user_to_group(username: str, request: Request) -> Dict[str, Any]:
+        """
+        Add user to a group in the mock user pool (admin API).
+        """
+        if username not in USERS_DB:
+            raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+        body = await request.json()
+        group = body.get("group")
+
+        if not group:
+            raise HTTPException(status_code=400, detail="group is required")
+
+        user = USERS_DB[username]
+        if group not in user["groups"]:
+            user["groups"].append(group)
+
+        logger.info(f"Admin added user {username} to group: {group}")
+
+        return {"message": f"User {username} added to group {group}"}
+
+    @app.delete("/admin/users/{username}/groups/{group_name}")
+    async def admin_remove_user_from_group(username: str, group_name: str) -> Dict[str, Any]:
+        """
+        Remove user from a group in the mock user pool (admin API).
+        """
+        if username not in USERS_DB:
+            raise HTTPException(status_code=404, detail=f"User {username} not found")
+
+        user = USERS_DB[username]
+        if group_name in user["groups"]:
+            user["groups"].remove(group_name)
+
+        logger.info(f"Admin removed user {username} from group: {group_name}")
+
+        return {"message": f"User {username} removed from group {group_name}"}
+
     @app.get("/config")
     async def get_config() -> Dict[str, Any]:
         """

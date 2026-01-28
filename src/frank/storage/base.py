@@ -280,6 +280,181 @@ class BaseFRANKDatabase(ABC):
                 value = filtered['observable_value']
                 filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
             return filtered
-        
+
         # Contributor and above get full access
         return observable
+
+    # ========== Organisation CRUD Methods ==========
+
+    @abstractmethod
+    def create_organisation(self, org_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new organisation in the database.
+
+        Args:
+            org_data (Dict[str, Any]): Organisation data including:
+                - name: Organisation name (required)
+                - organisation_type: 'cyber_partner' or 'customer'
+                - access_level: Access tier level
+                - sector: Industry sector
+                - region: Geographic region
+
+        Returns:
+            Dict[str, Any]: Created organisation data with generated organisation_id
+
+        Raises:
+            FRANKStorageError: If organisation creation fails
+        """
+        pass
+
+    @abstractmethod
+    def get_organisation(self, organisation_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve an organisation by ID.
+
+        Args:
+            organisation_id (str): The organisation ID to retrieve
+
+        Returns:
+            Dict[str, Any]: Organisation data or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def list_organisations(
+        self,
+        organisation_type: str = None,
+        access_level: str = None,
+        sector: str = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        List organisations with optional filtering.
+
+        Args:
+            organisation_type: Filter by organisation type
+            access_level: Filter by access level
+            sector: Filter by sector
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List[Dict[str, Any]]: List of matching organisations
+        """
+        pass
+
+    @abstractmethod
+    def update_organisation(self, organisation_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Update an existing organisation.
+
+        Args:
+            organisation_id (str): The organisation ID to update
+            updates (Dict[str, Any]): Fields to update
+
+        Returns:
+            Dict[str, Any]: Updated organisation data or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def delete_organisation(self, organisation_id: str) -> bool:
+        """
+        Delete an organisation by ID.
+
+        Args:
+            organisation_id (str): The organisation ID to delete
+
+        Returns:
+            bool: True if deleted, False if not found
+        """
+        pass
+
+    # ========== Organisation Member Methods ==========
+
+    @abstractmethod
+    def add_organisation_member(
+        self,
+        organisation_id: str,
+        username: str,
+        role: str = "member"
+    ) -> Dict[str, Any]:
+        """
+        Add a user as a member of an organisation.
+
+        Args:
+            organisation_id (str): The organisation ID
+            username (str): The Cognito username
+            role (str): Member role ('member', 'admin', 'owner')
+
+        Returns:
+            Dict[str, Any]: Membership record
+
+        Raises:
+            FRANKStorageError: If adding member fails
+        """
+        pass
+
+    @abstractmethod
+    def remove_organisation_member(self, organisation_id: str, username: str) -> bool:
+        """
+        Remove a user from an organisation.
+
+        Args:
+            organisation_id (str): The organisation ID
+            username (str): The Cognito username
+
+        Returns:
+            bool: True if removed, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def get_organisation_members(
+        self,
+        organisation_id: str,
+        role: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all members of an organisation.
+
+        Args:
+            organisation_id (str): The organisation ID
+            role (str, optional): Filter by role
+
+        Returns:
+            List[Dict[str, Any]]: List of membership records
+        """
+        pass
+
+    @abstractmethod
+    def get_user_organisations(self, username: str) -> List[Dict[str, Any]]:
+        """
+        Get all organisations a user belongs to.
+
+        Args:
+            username (str): The Cognito username
+
+        Returns:
+            List[Dict[str, Any]]: List of organisations with membership role
+        """
+        pass
+
+    @abstractmethod
+    def get_organisation_member(
+        self,
+        organisation_id: str,
+        username: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific organisation member.
+
+        Args:
+            organisation_id (str): The organisation ID
+            username (str): The Cognito username
+
+        Returns:
+            Dict[str, Any]: Membership record or None if not found
+        """
+        pass

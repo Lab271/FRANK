@@ -70,6 +70,48 @@ class DummyDatabase(BaseFRANKDatabase):
         super().health_check()
         return {"status": "ok"}
 
+    # Organisation CRUD methods (required abstract methods)
+    def create_organisation(self, org_data):
+        super().create_organisation(org_data)
+        return org_data
+
+    def get_organisation(self, organisation_id):
+        super().get_organisation(organisation_id)
+        return None
+
+    def list_organisations(self, organisation_type=None, access_level=None, sector=None, limit=100, offset=0):
+        super().list_organisations(organisation_type, access_level, sector, limit, offset)
+        return []
+
+    def update_organisation(self, organisation_id, updates):
+        super().update_organisation(organisation_id, updates)
+        return None
+
+    def delete_organisation(self, organisation_id):
+        super().delete_organisation(organisation_id)
+        return False
+
+    # Organisation member methods (required abstract methods)
+    def add_organisation_member(self, organisation_id, username, role="member"):
+        super().add_organisation_member(organisation_id, username, role)
+        return {"organisation_id": organisation_id, "username": username, "role": role}
+
+    def remove_organisation_member(self, organisation_id, username):
+        super().remove_organisation_member(organisation_id, username)
+        return False
+
+    def get_organisation_members(self, organisation_id, role=None):
+        super().get_organisation_members(organisation_id, role)
+        return []
+
+    def get_user_organisations(self, username):
+        super().get_user_organisations(username)
+        return []
+
+    def get_organisation_member(self, organisation_id, username):
+        super().get_organisation_member(organisation_id, username)
+        return None
+
 class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
     """
     Unit tests for the BaseFRANKDatabase abstract base class.
