@@ -163,6 +163,19 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     )
                 """)
 
+                # Organisation members table (maps Cognito users to organisations)
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS organisation_members (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        organisation_id TEXT NOT NULL,
+                        username TEXT NOT NULL,
+                        role TEXT NOT NULL CHECK (role IN ('member', 'admin', 'owner')),
+                        joined_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        FOREIGN KEY (organisation_id) REFERENCES organisations(organisation_id) ON DELETE CASCADE,
+                        UNIQUE(organisation_id, username)
+                    )
+                """)
+
                 # SIGMA rules table
                 conn.execute("""
                     CREATE TABLE IF NOT EXISTS sigma_rules (
@@ -234,7 +247,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
             "CREATE INDEX IF NOT EXISTS idx_organisations_tier ON organisations (tier)",
             "CREATE INDEX IF NOT EXISTS idx_organisations_sector ON organisations (sector)",
-            "CREATE INDEX IF NOT EXISTS idx_organisations_active ON organisations (last_active)"
+            "CREATE INDEX IF NOT EXISTS idx_organisations_active ON organisations (last_active)",
+
+            "CREATE INDEX IF NOT EXISTS idx_org_members_org ON organisation_members (organisation_id)",
+            "CREATE INDEX IF NOT EXISTS idx_org_members_user ON organisation_members (username)"
         ]
 
         for index_sql in indexes:
@@ -1190,6 +1206,468 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 'error': str(e)
             }
 
+    # ========== Organisation CRUD Methods ==========
+
+    def create_organisation(self, org_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Create a new organisation in the database.
+
+        Args:
+            org_data: Organisation data including name, organisation_type, access_level, etc.
+
+        Returns:
+            Created organisation data with generated organisation_id
+        """
+        db_path = self.connection_params['db_path']
+
+        # Generate organisation_id if not provided
+        if 'organisation_id' not in org_data or not org_data['organisation_id']:
+            org_data['organisation_id'] = f"identity--{uuid.uuid4()}"
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                # Extract fields
+                metadata = {k: v for k, v in org_data.items()
+                           if k not in ['organisation_id', 'organisation_type', 'access_level',
+                                       'sector', 'region', 'client_count', 'name']}
+                # Include name in metadata for storage
+                if 'name' in org_data:
+                    metadata['name'] = org_data['name']
+
+                conn.execute("""
+                    INSERT INTO organisations
+                    (organisation_id, organisation_type, access_level, sector, region,
+                     last_active, client_count, metadata_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                """, (
+                    org_data['organisation_id'],
+                    org_data.get('organisation_type', 'customer'),
+                    org_data.get('access_level'),
+                    org_data.get('sector'),
+                    org_data.get('region'),
+                    datetime.now(timezone.utc).isoformat(),
+                    org_data.get('client_count', 0),
+                    json.dumps(metadata)
+                ))
+                conn.commit()
+
+                self.logger.info(f"Created organisation {org_data['organisation_id']}")
+                return self.get_organisation(org_data['organisation_id'])
+
+        except sqlite3.IntegrityError as e:
+            self.logger.error(f"Organisation already exists: {e}")
+            raise FRANKStorageError(f"Organisation already exists: {e}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating organisation: {e}")
+            raise FRANKStorageError(f"Failed to create organisation: {e}")
+
+    def get_organisation(self, organisation_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve an organisation by ID.
+
+        Args:
+            organisation_id: The organisation ID to retrieve
+
+        Returns:
+            Organisation data or None if not found
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                cursor = conn.execute("""
+                    SELECT * FROM organisations WHERE organisation_id = ?
+                """, (organisation_id,))
+
+                row = cursor.fetchone()
+                if not row:
+                    return None
+
+                org_data = dict(row)
+
+                # Parse metadata JSON
+                try:
+                    metadata = json.loads(org_data['metadata_json']) if org_data['metadata_json'] else {}
+                    org_data.update(metadata)
+                    del org_data['metadata_json']
+                except (json.JSONDecodeError, KeyError):
+                    if 'metadata_json' in org_data:
+                        del org_data['metadata_json']
+
+                return org_data
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting organisation: {e}")
+            return None
+
+    def list_organisations(
+        self,
+        organisation_type: str = None,
+        access_level: str = None,
+        sector: str = None,
+        limit: int = 100,
+        offset: int = 0
+    ) -> List[Dict[str, Any]]:
+        """
+        List organisations with optional filtering.
+
+        Args:
+            organisation_type: Filter by organisation type
+            access_level: Filter by access level
+            sector: Filter by sector
+            limit: Maximum number of results
+            offset: Number of results to skip
+
+        Returns:
+            List of matching organisations
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                query = "SELECT * FROM organisations WHERE 1=1"
+                params = []
+
+                if organisation_type:
+                    query += " AND organisation_type = ?"
+                    params.append(organisation_type)
+
+                if access_level:
+                    query += " AND access_level = ?"
+                    params.append(access_level)
+
+                if sector:
+                    query += " AND sector = ?"
+                    params.append(sector)
+
+                query += " ORDER BY created_at DESC LIMIT ? OFFSET ?"
+                params.extend([limit, offset])
+
+                cursor = conn.execute(query, params)
+                results = []
+
+                for row in cursor.fetchall():
+                    org_data = dict(row)
+
+                    # Parse metadata JSON
+                    try:
+                        metadata = json.loads(org_data['metadata_json']) if org_data['metadata_json'] else {}
+                        org_data.update(metadata)
+                        del org_data['metadata_json']
+                    except (json.JSONDecodeError, KeyError):
+                        if 'metadata_json' in org_data:
+                            del org_data['metadata_json']
+
+                    results.append(org_data)
+
+                return results
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error listing organisations: {e}")
+            raise FRANKQueryError(f"Failed to list organisations: {e}")
+
+    def update_organisation(self, organisation_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """
+        Update an existing organisation.
+
+        Args:
+            organisation_id: The organisation ID to update
+            updates: Fields to update
+
+        Returns:
+            Updated organisation data or None if not found
+        """
+        db_path = self.connection_params['db_path']
+
+        # Check if organisation exists
+        existing = self.get_organisation(organisation_id)
+        if not existing:
+            return None
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                # Build update query dynamically
+                allowed_fields = ['organisation_type', 'access_level', 'sector', 'region', 'client_count']
+                set_clauses = []
+                params = []
+
+                for field in allowed_fields:
+                    if field in updates:
+                        set_clauses.append(f"{field} = ?")
+                        params.append(updates[field])
+
+                # Handle metadata updates
+                metadata_fields = {k: v for k, v in updates.items() if k not in allowed_fields and k != 'organisation_id'}
+                if metadata_fields:
+                    # Merge with existing metadata
+                    existing_metadata = {k: v for k, v in existing.items()
+                                        if k not in ['organisation_id', 'organisation_type', 'access_level',
+                                                    'sector', 'region', 'client_count', 'created_at', 'last_active',
+                                                    'contribution_score']}
+                    existing_metadata.update(metadata_fields)
+                    set_clauses.append("metadata_json = ?")
+                    params.append(json.dumps(existing_metadata))
+
+                if not set_clauses:
+                    return existing
+
+                # Always update last_active
+                set_clauses.append("last_active = ?")
+                params.append(datetime.now(timezone.utc).isoformat())
+
+                params.append(organisation_id)
+
+                query = f"UPDATE organisations SET {', '.join(set_clauses)} WHERE organisation_id = ?"
+                conn.execute(query, params)
+                conn.commit()
+
+                self.logger.info(f"Updated organisation {organisation_id}")
+                return self.get_organisation(organisation_id)
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error updating organisation: {e}")
+            raise FRANKStorageError(f"Failed to update organisation: {e}")
+
+    def delete_organisation(self, organisation_id: str) -> bool:
+        """
+        Delete an organisation by ID.
+
+        Args:
+            organisation_id: The organisation ID to delete
+
+        Returns:
+            True if deleted, False if not found
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                cursor = conn.execute("""
+                    DELETE FROM organisations WHERE organisation_id = ?
+                """, (organisation_id,))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    self.logger.info(f"Deleted organisation {organisation_id}")
+                    return True
+                return False
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error deleting organisation: {e}")
+            raise FRANKStorageError(f"Failed to delete organisation: {e}")
+
+    # ========== Organisation Member Methods ==========
+
+    def add_organisation_member(
+        self,
+        organisation_id: str,
+        username: str,
+        role: str = "member"
+    ) -> Dict[str, Any]:
+        """
+        Add a user as a member of an organisation.
+
+        Args:
+            organisation_id: The organisation ID
+            username: The Cognito username
+            role: Member role ('member', 'admin', 'owner')
+
+        Returns:
+            Membership record
+        """
+        db_path = self.connection_params['db_path']
+
+        # Validate role
+        if role not in ['member', 'admin', 'owner']:
+            raise FRANKStorageError(f"Invalid role: {role}. Must be 'member', 'admin', or 'owner'")
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("PRAGMA foreign_keys = ON")
+
+                conn.execute("""
+                    INSERT INTO organisation_members (organisation_id, username, role)
+                    VALUES (?, ?, ?)
+                """, (organisation_id, username, role))
+                conn.commit()
+
+                self.logger.info(f"Added member {username} to organisation {organisation_id} with role {role}")
+                return {
+                    "organisation_id": organisation_id,
+                    "username": username,
+                    "role": role,
+                    "joined_at": datetime.now(timezone.utc).isoformat()
+                }
+
+        except sqlite3.IntegrityError as e:
+            if "UNIQUE constraint" in str(e):
+                raise FRANKStorageError(f"User {username} is already a member of organisation {organisation_id}")
+            elif "FOREIGN KEY constraint" in str(e):
+                raise FRANKStorageError(f"Organisation {organisation_id} does not exist")
+            raise FRANKStorageError(f"Failed to add member: {e}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error adding organisation member: {e}")
+            raise FRANKStorageError(f"Failed to add member: {e}")
+
+    def remove_organisation_member(self, organisation_id: str, username: str) -> bool:
+        """
+        Remove a user from an organisation.
+
+        Args:
+            organisation_id: The organisation ID
+            username: The Cognito username
+
+        Returns:
+            True if removed, False if not found
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.execute("""
+                    DELETE FROM organisation_members
+                    WHERE organisation_id = ? AND username = ?
+                """, (organisation_id, username))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    self.logger.info(f"Removed member {username} from organisation {organisation_id}")
+                    return True
+                return False
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error removing organisation member: {e}")
+            raise FRANKStorageError(f"Failed to remove member: {e}")
+
+    def get_organisation_members(
+        self,
+        organisation_id: str,
+        role: str = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get all members of an organisation.
+
+        Args:
+            organisation_id: The organisation ID
+            role: Filter by role (optional)
+
+        Returns:
+            List of membership records
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                query = """
+                    SELECT organisation_id, username, role, joined_at
+                    FROM organisation_members
+                    WHERE organisation_id = ?
+                """
+                params = [organisation_id]
+
+                if role:
+                    query += " AND role = ?"
+                    params.append(role)
+
+                query += " ORDER BY joined_at ASC"
+
+                cursor = conn.execute(query, params)
+                return [dict(row) for row in cursor.fetchall()]
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting organisation members: {e}")
+            raise FRANKQueryError(f"Failed to get organisation members: {e}")
+
+    def get_user_organisations(self, username: str) -> List[Dict[str, Any]]:
+        """
+        Get all organisations a user belongs to.
+
+        Args:
+            username: The Cognito username
+
+        Returns:
+            List of organisations with membership role
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                cursor = conn.execute("""
+                    SELECT o.*, m.role as member_role, m.joined_at as member_joined_at
+                    FROM organisations o
+                    JOIN organisation_members m ON o.organisation_id = m.organisation_id
+                    WHERE m.username = ?
+                    ORDER BY m.joined_at ASC
+                """, (username,))
+
+                results = []
+                for row in cursor.fetchall():
+                    org_data = dict(row)
+
+                    # Parse metadata JSON
+                    try:
+                        metadata = json.loads(org_data['metadata_json']) if org_data['metadata_json'] else {}
+                        org_data.update(metadata)
+                        del org_data['metadata_json']
+                    except (json.JSONDecodeError, KeyError):
+                        if 'metadata_json' in org_data:
+                            del org_data['metadata_json']
+
+                    results.append(org_data)
+
+                return results
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting user organisations: {e}")
+            raise FRANKQueryError(f"Failed to get user organisations: {e}")
+
+    def get_organisation_member(
+        self,
+        organisation_id: str,
+        username: str
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get a specific organisation member.
+
+        Args:
+            organisation_id: The organisation ID
+            username: The Cognito username
+
+        Returns:
+            Membership record or None if not found
+        """
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                cursor = conn.execute("""
+                    SELECT organisation_id, username, role, joined_at
+                    FROM organisation_members
+                    WHERE organisation_id = ? AND username = ?
+                """, (organisation_id, username))
+
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting organisation member: {e}")
+            return None
 
 
 # Factory function for easy instantiation

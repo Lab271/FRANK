@@ -1,0 +1,83 @@
+# FRANK Platform - Local Development Stack
+#
+# Provides Mock Cognito + Management API for local development.
+#
+# Usage:
+#   docker compose -f docker-compose.local.yml up -d
+#   docker compose -f docker-compose.local.yml logs -f
+#   docker compose -f docker-compose.local.yml down
+#
+# Copyright (c) 2025 Schuberg Philis B.V.
+# SPDX-License-Identifier: Apache-2.0
+
+services:
+  # Mock Cognito service for authentication
+  mock-cognito:
+    build:
+      context: .
+      dockerfile: tests/spikes/014_cognito/Dockerfile.cognito
+      args:
+        BUILD_CONTEXT: tests/spikes/014_cognito
+        PACKAGE_CONTEXT: .
+    container_name: frank-mock-cognito
+    ports:
+      - "${MOCK_COGNITO_PORT:-8100}:8100"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - RELOAD=${RELOAD:-false}
+      - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-RS256}
+      - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
+      - CLIENT_ID=${CLIENT_ID:-mock-client-id-123456}
+      - REGION=${REGION:-eu-west-1}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8100/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - frank-net
+
+  # Management API service
+  management-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.management
+    container_name: frank-management-api
+    ports:
+      - "${MANAGEMENT_API_PORT:-8001}:8001"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - RELOAD=${RELOAD:-false}
+      - PORT=8001
+      - FRANK_DB_PATH=/data/frank.db
+      - FRANK_AUTH_MODE=mock
+      - COGNITO_URL=http://mock-cognito:8100
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-RS256}
+      - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
+      - REGION=${REGION:-eu-west-1}
+      - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-local_only}
+    volumes:
+      - frank-data:/data
+    depends_on:
+      mock-cognito:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - frank-net
+
+volumes:
+  frank-data:
+    driver: local
+
+networks:
+  frank-net:
+    driver: bridge
