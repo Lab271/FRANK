@@ -1,5 +1,13 @@
 # FRANK AWS Deployment Spike
 
+## Status
+ABANDONED
+
+## Integrated Into
+- Superseded by Ansible-based deployment (see 009-013 AWS spikes)
+
+---
+
 https://saml-doc.okta.com/SAML_Docs/How-to-Configure-SAML-2.0-for-Amazon-Web-Service.html?baseAdminUrl=https://sbplabs-admin.okta-emea.com&app=amazon_aws&instanceId=0oaf6yvlks5CemF4J0i7#A-step1
 
 ## Overview
