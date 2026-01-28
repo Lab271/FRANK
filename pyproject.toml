@@ -78,3 +78,4 @@ quote-style = "double"
 testpaths = ["tests/unit", "tests/integration"]
 norecursedirs = ["tests", ".git", ".venv", "build", "dist"]
 addopts = "-v --tb=short"
+asyncio_mode = "auto"
