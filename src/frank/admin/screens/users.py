@@ -12,7 +12,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select, Static, Switch
+from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Label, Select, Static, Switch
 
 
 class UsersScreen(Screen):
@@ -20,13 +20,12 @@ class UsersScreen(Screen):
 
     CSS = """
     UsersScreen {
-        layout: grid;
-        grid-size: 1;
-        grid-rows: auto 1fr auto;
+        layout: vertical;
     }
 
     #content {
         padding: 1;
+        height: 1fr;
     }
 
     #filter-bar {
@@ -41,13 +40,13 @@ class UsersScreen(Screen):
 
     #user-table {
         height: 1fr;
+        min-height: 10;
     }
 
     #status {
-        dock: bottom;
         height: 1;
         padding: 0 1;
-        background: $surface;
+        background: $surface-darken-1;
     }
     """
 
@@ -205,15 +204,13 @@ class UserDetailScreen(Screen):
 
     CSS = """
     UserDetailScreen {
-        layout: grid;
-        grid-size: 1;
-        grid-rows: auto 1fr auto;
+        layout: vertical;
     }
 
     #form-container {
         padding: 2;
         width: 80;
-        height: auto;
+        height: 1fr;
     }
 
     .form-field {
@@ -230,15 +227,23 @@ class UserDetailScreen(Screen):
         padding: 1;
     }
 
+    .group-row {
+        height: 3;
+        padding: 0 1;
+    }
+
+    .group-label {
+        width: 30;
+    }
+
     #button-row {
         margin-top: 2;
     }
 
     #status {
-        dock: bottom;
         height: 1;
         padding: 0 1;
-        background: $surface;
+        background: $surface-darken-1;
     }
     """
 
@@ -288,9 +293,19 @@ class UserDetailScreen(Screen):
                 yield Switch(value=True, id="field-enabled")
 
             with Vertical(id="groups-section"):
-                yield Label("Groups", classes="field-label")
-                yield Static("FRANK_OBSERVER, FRANK_CONTRIBUTOR, FRANK_PARTNER, FRANK_CORE_MEMBER")
-                yield Input(placeholder="Comma-separated groups", id="field-groups")
+                yield Label("Groups (select access level)", classes="field-label")
+                with Horizontal(classes="group-row"):
+                    yield Checkbox("Observer", id="group-observer")
+                    yield Label("Basic read access", classes="group-label")
+                with Horizontal(classes="group-row"):
+                    yield Checkbox("Contributor", id="group-contributor")
+                    yield Label("Can submit threat data", classes="group-label")
+                with Horizontal(classes="group-row"):
+                    yield Checkbox("Partner", id="group-partner")
+                    yield Label("Partner organisation access", classes="group-label")
+                with Horizontal(classes="group-row"):
+                    yield Checkbox("Core Member", id="group-core-member")
+                    yield Label("Full administrative access", classes="group-label")
 
             with Horizontal(id="button-row"):
                 yield Button("Save", variant="primary", id="btn-save")
@@ -314,7 +329,11 @@ class UserDetailScreen(Screen):
             self.query_one("#field-enabled", Switch).value = user.get("enabled", True)
 
             groups = user.get("groups", [])
-            self.query_one("#field-groups", Input).value = ", ".join(groups)
+            # Set checkboxes based on user's groups
+            self.query_one("#group-observer", Checkbox).value = "observer" in groups
+            self.query_one("#group-contributor", Checkbox).value = "contributor" in groups
+            self.query_one("#group-partner", Checkbox).value = "partner" in groups
+            self.query_one("#group-core-member", Checkbox).value = "core_member" in groups
 
             self.query_one("#status", Static).update(f"Loaded: {self.username}")
 
@@ -328,8 +347,16 @@ class UserDetailScreen(Screen):
         email = self.query_one("#field-email", Input).value.strip()
         enabled = self.query_one("#field-enabled", Switch).value
 
-        groups_str = self.query_one("#field-groups", Input).value.strip()
-        groups = [g.strip() for g in groups_str.split(",") if g.strip()] if groups_str else []
+        # Collect groups from checkboxes
+        groups = []
+        if self.query_one("#group-observer", Checkbox).value:
+            groups.append("observer")
+        if self.query_one("#group-contributor", Checkbox).value:
+            groups.append("contributor")
+        if self.query_one("#group-partner", Checkbox).value:
+            groups.append("partner")
+        if self.query_one("#group-core-member", Checkbox).value:
+            groups.append("core_member")
 
         if not username or not email:
             self.query_one("#status", Static).update("Error: Username and email required")
