@@ -1,0 +1,596 @@
+#!/usr/bin/env python3
+"""
+FRANK Platform - Management API
+
+FastAPI application for organisation and user management.
+
+Copyright (c) 2025 Schuberg Philis B.V.
+SPDX-License-Identifier: Apache-2.0
+"""
+
+import logging
+from datetime import datetime, timezone
+from typing import Any, Dict
+
+from fastapi import Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
+
+import frank
+from frank.auth import TokenPayload, get_current_user, require_access_tier
+from frank.core.enum import AccessTier
+from frank.management.cognito_service import (
+    BaseCognitoService,
+    CognitoServiceError,
+    UserAlreadyExistsError,
+    UserNotFoundError,
+    get_cognito_service,
+)
+from frank.management.models import (
+    OrganisationCreate,
+    OrganisationListResponse,
+    OrganisationMemberCreate,
+    OrganisationMemberListResponse,
+    OrganisationMemberResponse,
+    OrganisationResponse,
+    OrganisationUpdate,
+    UserCreate,
+    UserListResponse,
+    UserResponse,
+    UserUpdate,
+)
+from frank.storage.base import BaseFRANKDatabase
+from frank.storage.exceptions import FRANKStorageError
+
+logger = logging.getLogger(__name__)
+
+
+def create_management_app(
+    database: BaseFRANKDatabase = None,
+    cognito_service: BaseCognitoService = None
+) -> FastAPI:
+    """
+    Create and configure the Management API FastAPI application.
+
+    Args:
+        database: Database instance for organisation storage
+        cognito_service: Cognito service for user management
+
+    Returns:
+        Configured FastAPI application
+    """
+
+    app = FastAPI(
+        title="FRANK Management API",
+        description="Organisation and user management API for the FRANK platform",
+        version=frank.__version__,
+        docs_url="/docs",
+        redoc_url="/redoc"
+    )
+
+    # CORS middleware
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],  # In production, specify actual origins
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    # Store services in app state
+    app.state.database = database
+    app.state.cognito_service = cognito_service
+
+    def get_database() -> BaseFRANKDatabase:
+        """Dependency to get database instance"""
+        if app.state.database is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database not configured"
+            )
+        return app.state.database
+
+    def get_cognito() -> BaseCognitoService:
+        """Dependency to get Cognito service instance"""
+        if app.state.cognito_service is None:
+            # Lazy initialization
+            app.state.cognito_service = get_cognito_service()
+        return app.state.cognito_service
+
+    # ========== Health Check ==========
+
+    @app.get("/health", tags=["Health"])
+    async def health_check() -> Dict[str, Any]:
+        """Health check endpoint"""
+        result = {
+            "status": "healthy",
+            "service": "frank-management-api",
+            "version": frank.__version__,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+        # Check database health if available
+        if app.state.database:
+            try:
+                db_health = app.state.database.health_check()
+                result["database"] = db_health.get("status", "unknown")
+            except Exception as e:
+                result["database"] = "unhealthy"
+                result["database_error"] = str(e)
+
+        return result
+
+    # ========== Organisation Endpoints ==========
+
+    @app.post(
+        "/v1/organisations",
+        response_model=OrganisationResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["Organisations"]
+    )
+    async def create_organisation(
+        org_data: OrganisationCreate,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> OrganisationResponse:
+        """
+        Create a new organisation.
+
+        Requires CORE_MEMBER access level.
+        """
+        try:
+            result = db.create_organisation(org_data.model_dump(exclude_none=True))
+            logger.info(f"Organisation created: {result.get('organisation_id')} by {current_user.username}")
+            return OrganisationResponse(**result)
+        except FRANKStorageError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e)
+            )
+
+    @app.get(
+        "/v1/organisations",
+        response_model=OrganisationListResponse,
+        tags=["Organisations"]
+    )
+    async def list_organisations(
+        organisation_type: str = None,
+        access_level: str = None,
+        sector: str = None,
+        limit: int = 100,
+        offset: int = 0,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.OBSERVER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> OrganisationListResponse:
+        """
+        List organisations with optional filtering.
+
+        Requires OBSERVER access level.
+        """
+        organisations = db.list_organisations(
+            organisation_type=organisation_type,
+            access_level=access_level,
+            sector=sector,
+            limit=limit,
+            offset=offset
+        )
+        return OrganisationListResponse(
+            organisations=[OrganisationResponse(**org) for org in organisations],
+            total=len(organisations),
+            limit=limit,
+            offset=offset
+        )
+
+    @app.get(
+        "/v1/organisations/{organisation_id}",
+        response_model=OrganisationResponse,
+        tags=["Organisations"]
+    )
+    async def get_organisation(
+        organisation_id: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.OBSERVER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> OrganisationResponse:
+        """
+        Get a specific organisation by ID.
+
+        Requires OBSERVER access level.
+        """
+        result = db.get_organisation(organisation_id)
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+        return OrganisationResponse(**result)
+
+    @app.put(
+        "/v1/organisations/{organisation_id}",
+        response_model=OrganisationResponse,
+        tags=["Organisations"]
+    )
+    async def update_organisation(
+        organisation_id: str,
+        updates: OrganisationUpdate,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> OrganisationResponse:
+        """
+        Update an organisation.
+
+        Requires CORE_MEMBER access level.
+        """
+        result = db.update_organisation(
+            organisation_id,
+            updates.model_dump(exclude_none=True)
+        )
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+        logger.info(f"Organisation updated: {organisation_id} by {current_user.username}")
+        return OrganisationResponse(**result)
+
+    @app.delete(
+        "/v1/organisations/{organisation_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Organisations"]
+    )
+    async def delete_organisation(
+        organisation_id: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ):
+        """
+        Delete an organisation.
+
+        Requires CORE_MEMBER access level.
+        """
+        if not db.delete_organisation(organisation_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+        logger.info(f"Organisation deleted: {organisation_id} by {current_user.username}")
+
+    # ========== Organisation Member Endpoints ==========
+
+    @app.post(
+        "/v1/organisations/{organisation_id}/members",
+        response_model=OrganisationMemberResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["Organisation Members"]
+    )
+    async def add_organisation_member(
+        organisation_id: str,
+        member_data: OrganisationMemberCreate,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> OrganisationMemberResponse:
+        """
+        Add a user to an organisation.
+
+        Requires CORE_MEMBER access level or admin role in the organisation.
+        """
+        # Verify organisation exists
+        if not db.get_organisation(organisation_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+
+        try:
+            result = db.add_organisation_member(
+                organisation_id,
+                member_data.username,
+                member_data.role
+            )
+            logger.info(
+                f"Member {member_data.username} added to {organisation_id} "
+                f"by {current_user.username}"
+            )
+            return OrganisationMemberResponse(**result)
+        except FRANKStorageError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e)
+            )
+
+    @app.get(
+        "/v1/organisations/{organisation_id}/members",
+        response_model=OrganisationMemberListResponse,
+        tags=["Organisation Members"]
+    )
+    async def list_organisation_members(
+        organisation_id: str,
+        role: str = None,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.OBSERVER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> OrganisationMemberListResponse:
+        """
+        List members of an organisation.
+
+        Requires OBSERVER access level.
+        """
+        # Verify organisation exists
+        if not db.get_organisation(organisation_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+
+        members = db.get_organisation_members(organisation_id, role=role)
+        return OrganisationMemberListResponse(
+            members=[OrganisationMemberResponse(**m) for m in members],
+            total=len(members)
+        )
+
+    @app.delete(
+        "/v1/organisations/{organisation_id}/members/{username}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Organisation Members"]
+    )
+    async def remove_organisation_member(
+        organisation_id: str,
+        username: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ):
+        """
+        Remove a user from an organisation.
+
+        Requires CORE_MEMBER access level or admin role in the organisation.
+        """
+        if not db.remove_organisation_member(organisation_id, username):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Member {username} not found in organisation {organisation_id}"
+            )
+        logger.info(
+            f"Member {username} removed from {organisation_id} "
+            f"by {current_user.username}"
+        )
+
+    # ========== User Endpoints (Cognito) ==========
+
+    @app.post(
+        "/v1/organisations/{organisation_id}/users",
+        response_model=UserResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["Users"]
+    )
+    async def create_user(
+        organisation_id: str,
+        user_data: UserCreate,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> UserResponse:
+        """
+        Create a new user and add them to the organisation.
+
+        Requires CORE_MEMBER access level or admin role in the organisation.
+        """
+        # Verify organisation exists
+        if not db.get_organisation(organisation_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+
+        try:
+            # Create user in Cognito
+            result = await cognito.create_user(
+                username=user_data.username,
+                email=user_data.email,
+                password=user_data.password,
+                groups=user_data.groups,
+                temporary_password=user_data.temporary_password
+            )
+
+            # Add user to organisation as member
+            try:
+                db.add_organisation_member(organisation_id, user_data.username, "member")
+            except FRANKStorageError:
+                # User already a member, that's OK
+                pass
+
+            logger.info(
+                f"User {user_data.username} created in org {organisation_id} "
+                f"by {current_user.username}"
+            )
+            return UserResponse(**result)
+
+        except UserAlreadyExistsError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.get(
+        "/v1/organisations/{organisation_id}/users",
+        response_model=UserListResponse,
+        tags=["Users"]
+    )
+    async def list_organisation_users(
+        organisation_id: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.OBSERVER)),
+        db: BaseFRANKDatabase = Depends(get_database),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> UserListResponse:
+        """
+        List users in an organisation.
+
+        Requires OBSERVER access level.
+        """
+        # Verify organisation exists
+        if not db.get_organisation(organisation_id):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Organisation not found: {organisation_id}"
+            )
+
+        # Get members from database
+        members = db.get_organisation_members(organisation_id)
+
+        # Fetch user details from Cognito for each member
+        users = []
+        for member in members:
+            try:
+                user = await cognito.get_user(member["username"])
+                users.append(UserResponse(**user))
+            except UserNotFoundError:
+                # User exists in org but not in Cognito - skip
+                logger.warning(f"User {member['username']} not found in Cognito")
+                continue
+            except CognitoServiceError as e:
+                logger.warning(f"Error fetching user {member['username']}: {e}")
+                continue
+
+        return UserListResponse(users=users, total=len(users))
+
+    @app.get(
+        "/v1/users/{username}",
+        response_model=UserResponse,
+        tags=["Users"]
+    )
+    async def get_user(
+        username: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.OBSERVER)),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> UserResponse:
+        """
+        Get a user by username.
+
+        Requires OBSERVER access level.
+        """
+        try:
+            result = await cognito.get_user(username)
+            return UserResponse(**result)
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.put(
+        "/v1/users/{username}",
+        response_model=UserResponse,
+        tags=["Users"]
+    )
+    async def update_user(
+        username: str,
+        updates: UserUpdate,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> UserResponse:
+        """
+        Update a user.
+
+        Requires CORE_MEMBER access level.
+        """
+        try:
+            result = await cognito.update_user(
+                username=username,
+                email=updates.email,
+                enabled=updates.enabled
+            )
+
+            # Handle group updates if provided
+            if updates.groups is not None:
+                current_groups = await cognito.get_user_groups(username)
+
+                # Remove from groups no longer in the list
+                for group in current_groups:
+                    if group not in updates.groups:
+                        await cognito.remove_user_from_group(username, group)
+
+                # Add to new groups
+                for group in updates.groups:
+                    if group not in current_groups:
+                        await cognito.add_user_to_group(username, group)
+
+                # Refresh user data
+                result = await cognito.get_user(username)
+
+            logger.info(f"User {username} updated by {current_user.username}")
+            return UserResponse(**result)
+
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.delete(
+        "/v1/users/{username}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Users"]
+    )
+    async def delete_user(
+        username: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ):
+        """
+        Delete a user.
+
+        Removes from Cognito and all organisation memberships.
+        Requires CORE_MEMBER access level.
+        """
+        try:
+            # Remove from all organisations first
+            user_orgs = db.get_user_organisations(username)
+            for org in user_orgs:
+                db.remove_organisation_member(org["organisation_id"], username)
+
+            # Delete from Cognito
+            await cognito.delete_user(username)
+            logger.info(f"User {username} deleted by {current_user.username}")
+
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    # ========== Root Endpoint ==========
+
+    @app.get("/", tags=["Root"])
+    async def root() -> Dict[str, Any]:
+        """Root endpoint with API information"""
+        return {
+            "service": "FRANK Management API",
+            "version": frank.__version__,
+            "endpoints": {
+                "health": "/health",
+                "organisations": "/v1/organisations",
+                "users": "/v1/users/{username}",
+                "docs": "/docs"
+            },
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        }
+
+    logger.info("Management API application created successfully")
+    return app

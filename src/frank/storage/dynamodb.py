@@ -889,6 +889,49 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error logging access: {e}")
             raise FRANKQueryError(f"Failed to log access: {e}")
 
+    # ========== Organisation CRUD Methods (Not yet implemented for DynamoDB) ==========
+
+    def create_organisation(self, org_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create organisation - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def get_organisation(self, organisation_id: str) -> Optional[Dict[str, Any]]:
+        """Get organisation - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def list_organisations(self, organisation_type: str = None, access_level: str = None,
+                          sector: str = None, limit: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """List organisations - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def update_organisation(self, organisation_id: str, updates: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+        """Update organisation - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def delete_organisation(self, organisation_id: str) -> bool:
+        """Delete organisation - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def add_organisation_member(self, organisation_id: str, username: str, role: str = "member") -> Dict[str, Any]:
+        """Add organisation member - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def remove_organisation_member(self, organisation_id: str, username: str) -> bool:
+        """Remove organisation member - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def get_organisation_members(self, organisation_id: str, role: str = None) -> List[Dict[str, Any]]:
+        """Get organisation members - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def get_user_organisations(self, username: str) -> List[Dict[str, Any]]:
+        """Get user organisations - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
+    def get_organisation_member(self, organisation_id: str, username: str) -> Optional[Dict[str, Any]]:
+        """Get organisation member - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
+
 #     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
 #         """
 #         Get organisation information using DynamoDB query.

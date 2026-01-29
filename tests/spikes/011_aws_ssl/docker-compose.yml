@@ -1,0 +1,39 @@
+services:
+  nginx-lb:
+    image: nginx:alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    container_name: nginx-lb
+    volumes:
+      - ./nginx-lb.conf:/etc/nginx/nginx.conf
+      - ./ssl-certs/nginx.crt:/etc/nginx/ssl/nginx.crt:ro
+      - ./ssl-certs/nginx.key:/etc/nginx/ssl/nginx.key:ro
+    depends_on:
+      - simple-api
+    networks:
+      - private-net
+
+  simple-api:
+    build: 
+      context: ../../..
+      dockerfile: tests/spikes/011_aws_ssl/Dockerfile
+      args:
+        BUILD_CONTEXT: tests/spikes/011_aws_ssl
+        PACKAGE_CONTEXT: .
+    container_name: simple-api
+    # External ports - accessible without nginx
+    ports:
+      - "8000:8000"    
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - private-net
+    
+networks:
+  private-net:
+    driver: bridge
