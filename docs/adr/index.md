@@ -10,7 +10,8 @@ This directory contains Architecture Decision Records (ADRs) for the FRANK proje
 | [0002](0002-repository-pattern-database-abstraction.md) | Repository Pattern for Database Abstraction | Accepted | Architecture | 2026-01-23 |
 | [0003](0003-tiered-access-control-model.md) | Tiered Access Control Model | Accepted | Security | 2026-01-23 |
 | [0004](0004-three-layer-testing-strategy.md) | Three-Layer Testing Strategy | Accepted | Testing | 2026-01-23 |
-| [0005](0005-admin-mvc-architecture.md) | MVC Architecture for Admin Module | Accepted | Architecture | 2026-01-29 |
+| [0005](0005-cognito-authentication.md) | AWS Cognito Authentication Strategy | Accepted | Security | 2026-01-29 |
+| [0006](0006-admin-mvc-architecture.md) | MVC Architecture for Admin Module | Accepted | Architecture | 2026-01-29 |
 
 ## ADR Format
 
@@ -25,7 +26,7 @@ Each ADR follows this structure:
 
 ## Creating New ADRs
 
-1. Use next available number (currently 0006)
+1. Use next available number (currently 0007)
 2. Follow the template structure
 3. Update this index
 4. Submit via PR for review

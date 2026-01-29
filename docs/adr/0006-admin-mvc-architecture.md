@@ -1,4 +1,4 @@
-# ADR-0005: MVC Architecture for Admin Module
+# ADR-0006: MVC Architecture for Admin Module
 
 ## Status
 
@@ -193,6 +193,7 @@ Test evidence:
 
 - ADR-0002: Repository Pattern - Similar abstraction approach
 - ADR-0004: Three-Layer Testing Strategy - Test organization
+- ADR-0005: Cognito Authentication - Auth services used by admin
 
 ## Implementation Notes
 
