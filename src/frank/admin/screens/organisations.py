@@ -151,15 +151,13 @@ class OrganisationDetailScreen(Screen):
 
     CSS = """
     OrganisationDetailScreen {
-        layout: grid;
-        grid-size: 1;
-        grid-rows: auto 1fr auto;
+        layout: vertical;
     }
 
     #form-container {
         padding: 2;
         width: 80;
-        height: auto;
+        height: 1fr;
     }
 
     .form-field {
@@ -185,10 +183,9 @@ class OrganisationDetailScreen(Screen):
     }
 
     #status {
-        dock: bottom;
         height: 1;
         padding: 0 1;
-        background: $surface;
+        background: $surface-darken-1;
     }
     """
 
