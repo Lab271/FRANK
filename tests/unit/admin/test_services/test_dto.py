@@ -10,7 +10,7 @@ from datetime import datetime
 
 import pytest
 
-from frank.admin.services.dto import (
+from frank.admin.models import (
     HealthStatus,
     MemberDTO,
     MemberListResult,
@@ -200,34 +200,6 @@ class TestUserDTO:
         assert dto.groups == []
         assert dto.enabled is True
 
-    def test_groups_display(self):
-        """Test groups display property."""
-        dto = UserDTO(
-            username="test",
-            email="test@example.com",
-            groups=["FRANK_OBSERVER", "FRANK_CONTRIBUTOR"],
-        )
-
-        assert dto.groups_display == "FRANK_OBSERVER, FRANK_CONTRIBUTOR"
-
-    def test_groups_display_empty(self):
-        """Test groups display when empty."""
-        dto = UserDTO(username="test", email="test@example.com", groups=[])
-
-        assert dto.groups_display == "-"
-
-    def test_status_display_active(self):
-        """Test status display when enabled."""
-        dto = UserDTO(username="test", email="test@example.com", enabled=True)
-
-        assert dto.status_display == "Active"
-
-    def test_status_display_disabled(self):
-        """Test status display when disabled."""
-        dto = UserDTO(username="test", email="test@example.com", enabled=False)
-
-        assert dto.status_display == "Disabled"
-
 
 class TestUserListResult:
     """Tests for UserListResult."""
@@ -277,12 +249,6 @@ class TestHealthStatus:
         status = HealthStatus(status="healthy", database="error")
 
         assert status.is_healthy is False
-
-    def test_display(self):
-        """Test display property."""
-        status = HealthStatus(status="healthy", database="healthy")
-
-        assert status.display == "API: healthy | DB: healthy"
 
     def test_from_dict_unknown(self):
         """Test creating health status from empty dict."""

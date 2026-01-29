@@ -12,8 +12,8 @@ import pytest
 
 from frank.admin.client import AdminClientError, ConflictError, NotFoundError
 from frank.admin.config import AdminConfig
-from frank.admin.services.dto import UserDTO, UserListResult
-from frank.admin.services.user_service import UserService
+from frank.admin.models import UserDTO, UserListResult
+from frank.admin.services import ServiceResult, UserService
 
 
 @pytest.fixture(autouse=True)

@@ -8,39 +8,20 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from dataclasses import dataclass
 from typing import TYPE_CHECKING, Optional
 
 from frank.admin.client import AdminClientError, ConflictError, NotFoundError
-from frank.admin.services.dto import (
+from frank.admin.models import (
     HealthStatus,
     MemberDTO,
     MemberListResult,
     OrganisationDTO,
     OrganisationListResult,
 )
+from frank.admin.services.base import ServiceResult
 
 if TYPE_CHECKING:
     from frank.admin.client import AdminClient
-
-
-@dataclass
-class ServiceResult:
-    """Generic service operation result."""
-
-    success: bool
-    data: Optional[any] = None
-    error: Optional[str] = None
-
-    @classmethod
-    def ok(cls, data: any = None) -> "ServiceResult":
-        """Create successful result."""
-        return cls(success=True, data=data)
-
-    @classmethod
-    def fail(cls, error: str) -> "ServiceResult":
-        """Create failed result."""
-        return cls(success=False, error=error)
 
 
 class OrganisationService:

@@ -10,25 +10,13 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 from frank.admin.services.auth_service import AuthResult, AuthService
-from frank.admin.services.dto import (
-    HealthStatus,
-    MemberDTO,
-    OrganisationDTO,
-    OrganisationListResult,
-    UserDTO,
-    UserListResult,
-)
+from frank.admin.services.base import ServiceResult
 from frank.admin.services.organisation_service import OrganisationService
 from frank.admin.services.user_service import UserService
 
 __all__ = [
-    # DTOs
-    "OrganisationDTO",
-    "UserDTO",
-    "MemberDTO",
-    "HealthStatus",
-    "OrganisationListResult",
-    "UserListResult",
+    # Results
+    "ServiceResult",
     "AuthResult",
     # Services
     "AuthService",

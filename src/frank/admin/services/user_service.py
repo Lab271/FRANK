@@ -11,8 +11,8 @@ SPDX-License-Identifier: Apache-2.0
 from typing import TYPE_CHECKING, List, Optional
 
 from frank.admin.client import AdminClientError, ConflictError, NotFoundError
-from frank.admin.services.dto import UserDTO, UserListResult
-from frank.admin.services.organisation_service import ServiceResult
+from frank.admin.models import UserDTO, UserListResult
+from frank.admin.services.base import ServiceResult
 
 if TYPE_CHECKING:
     from frank.admin.client import AdminClient
