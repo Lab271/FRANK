@@ -15,7 +15,6 @@ from pydantic import BaseModel, ConfigDict, Field, field_serializer, field_valid
 
 from frank.core.enum import AccessTier
 
-
 # ========== Organisation Models ==========
 
 class OrganisationBase(BaseModel):
@@ -337,3 +336,108 @@ class MFAStatusResponse(BaseModel):
 
     enabled: bool = Field(..., description="Whether MFA is enabled for the user")
     mfa_type: Optional[str] = Field(None, description="Type of MFA (e.g., 'TOTP') or None if disabled")
+
+
+# ========== Authentication Models ==========
+
+class LoginRequest(BaseModel):
+    """Request model for user login"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    username: str = Field(..., min_length=1, description="Username or email")
+    password: str = Field(..., min_length=1, description="User password")
+
+
+class LoginResponse(BaseModel):
+    """Response model for successful login"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    access_token: str = Field(..., description="JWT access token")
+    refresh_token: str = Field(..., description="JWT refresh token")
+    token_type: str = Field(default="Bearer", description="Token type")
+    expires_in: int = Field(..., description="Access token lifetime in seconds")
+
+
+class RefreshTokenRequest(BaseModel):
+    """Request model for token refresh"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    refresh_token: str = Field(..., description="The refresh token to exchange")
+
+
+class RefreshTokenResponse(BaseModel):
+    """Response model for token refresh"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    access_token: str = Field(..., description="New JWT access token")
+    token_type: str = Field(default="Bearer", description="Token type")
+    expires_in: int = Field(..., description="Access token lifetime in seconds")
+
+
+# ========== API Key Models ==========
+
+class ApiKeyCreate(BaseModel):
+    """Request model for creating an API key"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: str = Field(
+        ...,
+        min_length=1,
+        max_length=100,
+        description="Human-readable name for the API key"
+    )
+    expires_in_days: Optional[int] = Field(
+        default=365,
+        ge=1,
+        le=730,
+        description="Key lifetime in days (default: 365, max: 730)"
+    )
+
+
+class ApiKeyResponse(BaseModel):
+    """Response model for an API key (returned at creation with full key)"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    key_id: str = Field(..., description="Unique key identifier")
+    key: Optional[str] = Field(None, description="The API key (only shown at creation)")
+    key_prefix: str = Field(..., description="Key prefix for identification")
+    name: str = Field(..., description="Human-readable key name")
+    user_id: str = Field(..., description="Owner user ID")
+    expires_at: Optional[str] = Field(None, description="Expiration datetime (ISO format)")
+    created_at: str = Field(..., description="Creation datetime (ISO format)")
+    last_used_at: Optional[str] = Field(None, description="Last usage datetime (ISO format)")
+
+
+class ApiKeyListResponse(BaseModel):
+    """Response model for listing API keys"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    api_keys: List[ApiKeyResponse] = Field(
+        default_factory=list,
+        description="List of API keys"
+    )
+    total: int = Field(..., description="Total number of keys")
+
+
+class ApiKeyUpdate(BaseModel):
+    """Request model for updating an API key"""
+
+    model_config = ConfigDict(extra="ignore")
+
+    name: Optional[str] = Field(
+        None,
+        min_length=1,
+        max_length=100,
+        description="New name for the API key"
+    )
+    expires_at: Optional[str] = Field(
+        None,
+        description="New expiration datetime (ISO format)"
+    )

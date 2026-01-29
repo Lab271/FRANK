@@ -458,3 +458,174 @@ class BaseFRANKDatabase(ABC):
             Dict[str, Any]: Membership record or None if not found
         """
         pass
+
+    # ========== API Key Methods ==========
+
+    @abstractmethod
+    def create_api_key(
+        self,
+        user_id: str,
+        key_hash: str,
+        name: str,
+        expires_at: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """
+        Store a new API key in the database.
+
+        Note: Only the hash is stored, not the plain key.
+
+        Args:
+            user_id (str): The user ID owning the key
+            key_hash (str): SHA-256 hash of the API key
+            name (str): Human-readable name for the key
+            expires_at (str, optional): ISO format expiry datetime
+
+        Returns:
+            Dict[str, Any]: Created key metadata (without hash)
+
+        Raises:
+            FRANKStorageError: If creation fails
+        """
+        pass
+
+    @abstractmethod
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve an API key by its hash.
+
+        Used during authentication to validate API keys.
+
+        Args:
+            key_hash (str): SHA-256 hash of the API key
+
+        Returns:
+            Dict[str, Any]: Key data including user_id, or None if not found/inactive
+        """
+        pass
+
+    @abstractmethod
+    def list_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+        """
+        List all API keys for a user.
+
+        Args:
+            user_id (str): The user ID
+
+        Returns:
+            List[Dict[str, Any]]: List of key metadata (without hashes)
+        """
+        pass
+
+    @abstractmethod
+    def update_api_key(
+        self,
+        key_id: str,
+        user_id: str,
+        updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Update API key metadata.
+
+        Args:
+            key_id (str): The key ID to update
+            user_id (str): The owner user ID (for authorization)
+            updates (Dict[str, Any]): Fields to update (name, expires_at)
+
+        Returns:
+            Dict[str, Any]: Updated key data or None if not found
+        """
+        pass
+
+    @abstractmethod
+    def revoke_api_key(self, key_id: str, user_id: str) -> bool:
+        """
+        Revoke (soft delete) an API key.
+
+        Args:
+            key_id (str): The key ID to revoke
+            user_id (str): The owner user ID (for authorization)
+
+        Returns:
+            bool: True if revoked, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def update_api_key_last_used(self, key_id: str) -> None:
+        """
+        Update the last_used_at timestamp for an API key.
+
+        Called on each successful authentication with the key.
+
+        Args:
+            key_id (str): The key ID to update
+        """
+        pass
+
+    # ========== Refresh Token Methods ==========
+
+    @abstractmethod
+    def store_refresh_token(
+        self,
+        user_id: str,
+        token_id: str,
+        token_hash: str,
+        expires_at: str
+    ) -> Dict[str, Any]:
+        """
+        Store a refresh token hash in the database.
+
+        Args:
+            user_id (str): The user ID owning the token
+            token_id (str): Unique token identifier (jti claim)
+            token_hash (str): SHA-256 hash of the refresh token
+            expires_at (str): ISO format expiry datetime
+
+        Returns:
+            Dict[str, Any]: Token metadata
+
+        Raises:
+            FRANKStorageError: If storage fails
+        """
+        pass
+
+    @abstractmethod
+    def get_refresh_token(self, token_id: str) -> Optional[Dict[str, Any]]:
+        """
+        Retrieve a refresh token by its ID.
+
+        Args:
+            token_id (str): The token ID (jti claim)
+
+        Returns:
+            Dict[str, Any]: Token data or None if not found/revoked
+        """
+        pass
+
+    @abstractmethod
+    def revoke_refresh_token(self, token_id: str) -> bool:
+        """
+        Revoke a refresh token.
+
+        Args:
+            token_id (str): The token ID to revoke
+
+        Returns:
+            bool: True if revoked, False if not found
+        """
+        pass
+
+    @abstractmethod
+    def revoke_all_user_refresh_tokens(self, user_id: str) -> int:
+        """
+        Revoke all refresh tokens for a user.
+
+        Used during logout or password change.
+
+        Args:
+            user_id (str): The user ID
+
+        Returns:
+            int: Number of tokens revoked
+        """
+        pass

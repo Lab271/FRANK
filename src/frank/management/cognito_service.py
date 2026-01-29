@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 import logging
 import os
 from abc import ABC, abstractmethod
-from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 import httpx
@@ -301,6 +300,23 @@ class BaseCognitoService(ABC):
         """
         pass
 
+    @abstractmethod
+    async def authenticate_user(self, username: str, password: str) -> Dict[str, Any]:
+        """
+        Authenticate a user with username and password.
+
+        Args:
+            username: Username to authenticate
+            password: User's password
+
+        Returns:
+            Dict containing authentication result with tokens
+
+        Raises:
+            UserNotFoundError: If user doesn't exist
+            CognitoServiceError: For authentication failures (wrong password, etc.)
+        """
+        pass
 
 class MockCognitoService(BaseCognitoService):
     """
@@ -603,6 +619,56 @@ class MockCognitoService(BaseCognitoService):
                 error_data = response.json() if response.content else {}
                 raise CognitoServiceError(
                     error_data.get("message", "Failed to get MFA status"),
+                    error_data.get("__type", "UnknownError"),
+                    response.status_code
+                )
+
+            return response.json()
+
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to Mock Cognito: {e}")
+            raise CognitoServiceError(f"Could not connect to Cognito service: {e}")
+
+    async def authenticate_user(self, username: str, password: str) -> Dict[str, Any]:
+        """Authenticate user via Mock Cognito"""
+        try:
+            # Mock Cognito uses the standard Cognito InitiateAuth API
+            response = await self._client.post(
+                f"{self.base_url}/",
+                headers={
+                    "X-Amz-Target": "AWSCognitoIdentityProviderService.InitiateAuth",
+                    "Content-Type": "application/x-amz-json-1.1",
+                },
+                json={
+                    "AuthFlow": "USER_PASSWORD_AUTH",
+                    "AuthParameters": {
+                        "USERNAME": username,
+                        "PASSWORD": password
+                    },
+                    "ClientId": "mock-client-id"
+                }
+            )
+
+            if response.status_code == 400:
+                error_data = response.json() if response.content else {}
+                error_type = error_data.get("__type", "")
+                if "NotAuthorizedException" in error_type:
+                    raise CognitoServiceError(
+                        "Incorrect username or password",
+                        "NotAuthorizedException",
+                        401
+                    )
+                elif "UserNotFoundException" in error_type:
+                    raise UserNotFoundError(username)
+                raise CognitoServiceError(
+                    error_data.get("message", "Authentication failed"),
+                    error_type,
+                    response.status_code
+                )
+            elif response.status_code >= 400:
+                error_data = response.json() if response.content else {}
+                raise CognitoServiceError(
+                    error_data.get("message", "Authentication failed"),
                     error_data.get("__type", "UnknownError"),
                     response.status_code
                 )
@@ -1031,6 +1097,46 @@ class AWSCognitoService(BaseCognitoService):
         except Exception as e:
             logger.error(f"Error getting MFA status: {e}")
             raise CognitoServiceError(f"Failed to get MFA status: {e}")
+
+    async def authenticate_user(self, username: str, password: str) -> Dict[str, Any]:
+        """Authenticate user via AWS Cognito"""
+        try:
+            response = self.client.admin_initiate_auth(
+                UserPoolId=self.user_pool_id,
+                ClientId=os.getenv("COGNITO_CLIENT_ID", ""),
+                AuthFlow="ADMIN_USER_PASSWORD_AUTH",
+                AuthParameters={
+                    "USERNAME": username,
+                    "PASSWORD": password
+                }
+            )
+
+            auth_result = response.get("AuthenticationResult", {})
+            return {
+                "access_token": auth_result.get("AccessToken"),
+                "refresh_token": auth_result.get("RefreshToken"),
+                "id_token": auth_result.get("IdToken"),
+                "token_type": auth_result.get("TokenType", "Bearer"),
+                "expires_in": auth_result.get("ExpiresIn", 3600)
+            }
+
+        except self.client.exceptions.UserNotFoundException:
+            raise UserNotFoundError(username)
+        except self.client.exceptions.NotAuthorizedException:
+            raise CognitoServiceError(
+                "Incorrect username or password",
+                "NotAuthorizedException",
+                401
+            )
+        except self.client.exceptions.UserNotConfirmedException:
+            raise CognitoServiceError(
+                "User account not confirmed",
+                "UserNotConfirmedException",
+                401
+            )
+        except Exception as e:
+            logger.error(f"Error authenticating user: {e}")
+            raise CognitoServiceError(f"Authentication failed: {e}")
 
     def _format_user_response(self, user_data: Dict[str, Any], groups: List[str]) -> Dict[str, Any]:
         """Format Cognito user data to standard response format"""
