@@ -289,3 +289,51 @@ class OrganisationMemberListResponse(BaseModel):
         description="List of organisation members"
     )
     total: int = Field(..., description="Total number of members")
+
+
+# ========== MFA Models ==========
+
+class MFASetupResponse(BaseModel):
+    """Response model for MFA setup initiation"""
+
+    model_config = ConfigDict(
+        extra="ignore",
+    )
+
+    secret: str = Field(..., description="TOTP secret key (base32 encoded)")
+    qr_code_uri: str = Field(..., description="otpauth:// URI for QR code generation")
+    issuer: str = Field(..., description="Issuer name for authenticator app")
+
+
+class MFAVerifyRequest(BaseModel):
+    """Request model for verifying MFA setup"""
+
+    model_config = ConfigDict(
+        extra="ignore",
+    )
+
+    totp_code: str = Field(
+        ...,
+        min_length=6,
+        max_length=6,
+        description="6-digit TOTP code from authenticator app"
+    )
+
+    @field_validator("totp_code")
+    @classmethod
+    def validate_totp_code(cls, v: str) -> str:
+        """Validate TOTP code is numeric"""
+        if not v.isdigit():
+            raise ValueError("TOTP code must contain only digits")
+        return v
+
+
+class MFAStatusResponse(BaseModel):
+    """Response model for MFA status"""
+
+    model_config = ConfigDict(
+        extra="ignore",
+    )
+
+    enabled: bool = Field(..., description="Whether MFA is enabled for the user")
+    mfa_type: Optional[str] = Field(None, description="Type of MFA (e.g., 'TOTP') or None if disabled")

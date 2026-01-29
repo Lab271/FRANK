@@ -17,6 +17,8 @@ from frank.management.cognito_service import (
     AWSCognitoService,
     BaseCognitoService,
     CognitoServiceError,
+    MFASetupError,
+    MFAVerificationError,
     MockCognitoService,
     UserAlreadyExistsError,
     UserNotFoundError,
@@ -59,6 +61,24 @@ class TestCognitoServiceErrors:
         assert "existinguser" in error.message
         assert error.error_code == "UsernameExistsException"
         assert error.status_code == 409
+
+    def test_mfa_setup_error(self):
+        """Test MFASetupError creation."""
+        error = MFASetupError("Failed to generate secret")
+
+        assert "MFA setup failed" in error.message
+        assert "Failed to generate secret" in error.message
+        assert error.error_code == "MFASetupError"
+        assert error.status_code == 400
+
+    def test_mfa_verification_error(self):
+        """Test MFAVerificationError creation."""
+        error = MFAVerificationError("Invalid TOTP code")
+
+        assert "MFA verification failed" in error.message
+        assert "Invalid TOTP code" in error.message
+        assert error.error_code == "MFAVerificationError"
+        assert error.status_code == 400
 
 
 class TestMockCognitoService:
@@ -436,6 +456,191 @@ class TestMockCognitoService:
             call_args = mock_client.post.call_args
             assert call_args[1]["json"]["password"] == "TempPass123!"
 
+    # ========== MFA Tests ==========
+
+    @pytest.mark.asyncio
+    async def test_setup_mfa_success(self, mock_service):
+        """Test successful MFA setup."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "secret": "JBSWY3DPEHPK3PXP",
+                "qr_code_uri": "otpauth://totp/FRANK:testuser?secret=JBSWY3DPEHPK3PXP&issuer=FRANK",
+                "issuer": "FRANK"
+            }
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            result = await mock_service.setup_mfa("testuser")
+
+            assert result["secret"] == "JBSWY3DPEHPK3PXP"
+            assert "qr_code_uri" in result
+            assert result["issuer"] == "FRANK"
+
+    @pytest.mark.asyncio
+    async def test_setup_mfa_user_not_found(self, mock_service):
+        """Test MFA setup for non-existent user."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            with pytest.raises(UserNotFoundError):
+                await mock_service.setup_mfa("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_setup_mfa_error(self, mock_service):
+        """Test MFA setup failure."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 400
+            mock_response.content = b'{"message": "MFA already enabled"}'
+            mock_response.json.return_value = {"message": "MFA already enabled"}
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            with pytest.raises(MFASetupError):
+                await mock_service.setup_mfa("testuser")
+
+    @pytest.mark.asyncio
+    async def test_setup_mfa_connection_error(self, mock_service):
+        """Test MFA setup with connection error."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_client.post = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
+
+            with pytest.raises(CognitoServiceError):
+                await mock_service.setup_mfa("testuser")
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_setup_success(self, mock_service):
+        """Test successful MFA verification."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            result = await mock_service.verify_mfa_setup("testuser", "123456")
+
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_user_not_found(self, mock_service):
+        """Test MFA verification for non-existent user."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            with pytest.raises(UserNotFoundError):
+                await mock_service.verify_mfa_setup("nonexistent", "123456")
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_invalid_code(self, mock_service):
+        """Test MFA verification with invalid code."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 400
+            mock_response.content = b'{"message": "Invalid TOTP code"}'
+            mock_response.json.return_value = {"message": "Invalid TOTP code"}
+            mock_client.post = AsyncMock(return_value=mock_response)
+
+            with pytest.raises(MFAVerificationError):
+                await mock_service.verify_mfa_setup("testuser", "000000")
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_connection_error(self, mock_service):
+        """Test MFA verification with connection error."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_client.post = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
+
+            with pytest.raises(CognitoServiceError):
+                await mock_service.verify_mfa_setup("testuser", "123456")
+
+    @pytest.mark.asyncio
+    async def test_disable_mfa_success(self, mock_service):
+        """Test successful MFA disable."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_client.delete = AsyncMock(return_value=mock_response)
+
+            result = await mock_service.disable_mfa("testuser")
+
+            assert result is True
+
+    @pytest.mark.asyncio
+    async def test_disable_mfa_user_not_found(self, mock_service):
+        """Test disabling MFA for non-existent user."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+            mock_client.delete = AsyncMock(return_value=mock_response)
+
+            with pytest.raises(UserNotFoundError):
+                await mock_service.disable_mfa("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_disable_mfa_connection_error(self, mock_service):
+        """Test disabling MFA with connection error."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_client.delete = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
+
+            with pytest.raises(CognitoServiceError):
+                await mock_service.disable_mfa("testuser")
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_enabled(self, mock_service):
+        """Test getting MFA status when enabled."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "enabled": True,
+                "mfa_type": "TOTP"
+            }
+            mock_client.get = AsyncMock(return_value=mock_response)
+
+            result = await mock_service.get_mfa_status("testuser")
+
+            assert result["enabled"] is True
+            assert result["mfa_type"] == "TOTP"
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_disabled(self, mock_service):
+        """Test getting MFA status when disabled."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 200
+            mock_response.json.return_value = {
+                "enabled": False,
+                "mfa_type": None
+            }
+            mock_client.get = AsyncMock(return_value=mock_response)
+
+            result = await mock_service.get_mfa_status("testuser")
+
+            assert result["enabled"] is False
+            assert result["mfa_type"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_user_not_found(self, mock_service):
+        """Test getting MFA status for non-existent user."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_response = MagicMock()
+            mock_response.status_code = 404
+            mock_client.get = AsyncMock(return_value=mock_response)
+
+            with pytest.raises(UserNotFoundError):
+                await mock_service.get_mfa_status("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_connection_error(self, mock_service):
+        """Test getting MFA status with connection error."""
+        with patch.object(mock_service, "_client") as mock_client:
+            mock_client.get = AsyncMock(side_effect=httpx.RequestError("Connection failed"))
+
+            with pytest.raises(CognitoServiceError):
+                await mock_service.get_mfa_status("testuser")
+
 
 class TestAWSCognitoService:
     """Tests for AWSCognitoService."""
@@ -697,6 +902,168 @@ class TestAWSCognitoService:
         assert result["email"] == "test@example.com"
         assert result["groups"] == ["FRANK_ADMIN"]
         assert result["enabled"] is True
+
+    # ========== AWS MFA Tests ==========
+
+    @pytest.mark.asyncio
+    async def test_setup_mfa_success(self, mock_boto3_client):
+        """Test MFA setup in AWS Cognito."""
+        mock_client, _ = mock_boto3_client
+        mock_client.admin_get_user.return_value = {
+            "Username": "testuser",
+            "UserAttributes": []
+        }
+        mock_client.admin_list_groups_for_user.return_value = {"Groups": []}
+
+        # pyotp is imported locally inside setup_mfa, so we use builtins.__import__
+        import pyotp
+        with patch.object(pyotp, "random_base32", return_value="JBSWY3DPEHPK3PXP"):
+            service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+            result = await service.setup_mfa("testuser")
+
+            assert result["secret"] == "JBSWY3DPEHPK3PXP"
+            assert "qr_code_uri" in result
+            assert result["issuer"] == "FRANK"
+            mock_client.admin_update_user_attributes.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_setup_mfa_user_not_found(self, mock_boto3_client):
+        """Test MFA setup for non-existent user."""
+        mock_client, _ = mock_boto3_client
+        mock_client.exceptions.UserNotFoundException = type("UserNotFoundException", (Exception,), {})
+        mock_client.admin_get_user.side_effect = mock_client.exceptions.UserNotFoundException()
+        mock_client.admin_list_groups_for_user.side_effect = mock_client.exceptions.UserNotFoundException()
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+
+        # setup_mfa catches UserNotFoundError and re-raises as MFASetupError
+        with pytest.raises(MFASetupError):
+            await service.setup_mfa("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_setup_success(self, mock_boto3_client):
+        """Test successful MFA verification in AWS Cognito."""
+        mock_client, _ = mock_boto3_client
+        mock_client.admin_get_user.return_value = {
+            "Username": "testuser",
+            "UserAttributes": [
+                {"Name": "custom:mfa_secret_pending", "Value": "JBSWY3DPEHPK3PXP"}
+            ]
+        }
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+        # Use real pyotp with a valid code for the test secret
+        import pyotp
+        totp = pyotp.TOTP("JBSWY3DPEHPK3PXP")
+        valid_code = totp.now()
+
+        result = await service.verify_mfa_setup("testuser", valid_code)
+
+        assert result is True
+        mock_client.admin_update_user_attributes.assert_called()
+        mock_client.admin_set_user_mfa_preference.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_no_pending_secret(self, mock_boto3_client):
+        """Test MFA verification when no pending secret exists."""
+        mock_client, _ = mock_boto3_client
+        mock_client.admin_get_user.return_value = {
+            "Username": "testuser",
+            "UserAttributes": []  # No pending secret
+        }
+        # Set up exception class for the mock client
+        mock_client.exceptions.UserNotFoundException = type("UserNotFoundException", (Exception,), {})
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+
+        with pytest.raises(MFAVerificationError, match="No pending MFA setup"):
+            await service.verify_mfa_setup("testuser", "123456")
+
+    @pytest.mark.asyncio
+    async def test_verify_mfa_invalid_code(self, mock_boto3_client):
+        """Test MFA verification with invalid TOTP code."""
+        mock_client, _ = mock_boto3_client
+        mock_client.admin_get_user.return_value = {
+            "Username": "testuser",
+            "UserAttributes": [
+                {"Name": "custom:mfa_secret_pending", "Value": "JBSWY3DPEHPK3PXP"}
+            ]
+        }
+        # Set up exception class for the mock client
+        mock_client.exceptions.UserNotFoundException = type("UserNotFoundException", (Exception,), {})
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+
+        with pytest.raises(MFAVerificationError, match="Invalid TOTP code"):
+            await service.verify_mfa_setup("testuser", "000000")
+
+    @pytest.mark.asyncio
+    async def test_disable_mfa_success(self, mock_boto3_client):
+        """Test disabling MFA in AWS Cognito."""
+        mock_client, _ = mock_boto3_client
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+        result = await service.disable_mfa("testuser")
+
+        assert result is True
+        mock_client.admin_update_user_attributes.assert_called_once()
+        mock_client.admin_set_user_mfa_preference.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_disable_mfa_user_not_found(self, mock_boto3_client):
+        """Test disabling MFA for non-existent user."""
+        mock_client, _ = mock_boto3_client
+        mock_client.exceptions.UserNotFoundException = type("UserNotFoundException", (Exception,), {})
+        mock_client.admin_update_user_attributes.side_effect = mock_client.exceptions.UserNotFoundException()
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+
+        with pytest.raises(UserNotFoundError):
+            await service.disable_mfa("nonexistent")
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_enabled(self, mock_boto3_client):
+        """Test getting MFA status when enabled."""
+        mock_client, _ = mock_boto3_client
+        mock_client.admin_get_user.return_value = {
+            "Username": "testuser",
+            "UserAttributes": [
+                {"Name": "custom:mfa_enabled", "Value": "true"}
+            ]
+        }
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+        result = await service.get_mfa_status("testuser")
+
+        assert result["enabled"] is True
+        assert result["mfa_type"] == "TOTP"
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_disabled(self, mock_boto3_client):
+        """Test getting MFA status when disabled."""
+        mock_client, _ = mock_boto3_client
+        mock_client.admin_get_user.return_value = {
+            "Username": "testuser",
+            "UserAttributes": []  # No MFA enabled attribute
+        }
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+        result = await service.get_mfa_status("testuser")
+
+        assert result["enabled"] is False
+        assert result["mfa_type"] is None
+
+    @pytest.mark.asyncio
+    async def test_get_mfa_status_user_not_found(self, mock_boto3_client):
+        """Test getting MFA status for non-existent user."""
+        mock_client, _ = mock_boto3_client
+        mock_client.exceptions.UserNotFoundException = type("UserNotFoundException", (Exception,), {})
+        mock_client.admin_get_user.side_effect = mock_client.exceptions.UserNotFoundException()
+
+        service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
+
+        with pytest.raises(UserNotFoundError):
+            await service.get_mfa_status("nonexistent")
 
 
 class TestGetCognitoService:
