@@ -170,22 +170,25 @@ class AdminClient:
         Raises:
             AuthenticationError: If credentials are invalid
         """
-        # Call Mock Cognito's token endpoint
+        # Call Mock Cognito's login endpoint
         cognito_url = self.api_endpoint.replace(":8001", ":8100")
 
         try:
             response = await self._client.post(
-                f"{cognito_url}/oauth2/token",
-                data={
-                    "grant_type": "password",
+                f"{cognito_url}/auth/login",
+                json={
                     "username": username,
                     "password": password,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                headers={"Content-Type": "application/json"},
             )
 
-            if response.status_code != 200:
+            if response.status_code == 401:
                 raise AuthenticationError("Invalid credentials", response.status_code)
+            elif response.status_code == 404:
+                raise AuthenticationError("User not found", response.status_code)
+            elif response.status_code != 200:
+                raise AuthenticationError("Authentication failed", response.status_code)
 
             data = response.json()
 
