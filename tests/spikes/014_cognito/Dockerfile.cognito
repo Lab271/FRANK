@@ -51,6 +51,9 @@ RUN pip install --no-cache-dir --user \
 
 FROM base AS production
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
 
@@ -65,7 +68,7 @@ ARG PACKAGE_CONTEXT=.
 WORKDIR /app
 
 COPY ${BUILD_CONTEXT}/README.md .
-COPY ${PACKAGE_CONTEXT}/setup.py .
+COPY ${PACKAGE_CONTEXT}/pyproject.toml .
 # Load frank package and install
 COPY ${PACKAGE_CONTEXT}/src/ ./src/.
 RUN pip install --no-cache-dir .
