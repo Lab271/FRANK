@@ -76,6 +76,10 @@ class OrganisationsScreen(Screen):
 
         await self._load_organisations()
 
+    async def on_screen_resume(self) -> None:
+        """Refresh data when returning from detail screen."""
+        await self._load_organisations()
+
     async def _load_organisations(self) -> None:
         """Load organisations from API."""
         table = self.query_one("#org-table", DataTable)

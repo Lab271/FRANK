@@ -12,7 +12,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Container, Horizontal, Vertical
 from textual.screen import Screen
-from textual.widgets import Button, Checkbox, DataTable, Footer, Header, Input, Label, Select, Static, Switch
+from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select, Static, Switch
 
 
 class UsersScreen(Screen):
@@ -100,6 +100,10 @@ class UsersScreen(Screen):
         # Load users
         await self._load_users()
 
+    async def on_screen_resume(self) -> None:
+        """Refresh data when returning from detail screen."""
+        await self._load_users()
+
     async def _load_org_filter(self) -> None:
         """Load organisations for the filter dropdown."""
         try:
@@ -110,8 +114,12 @@ class UsersScreen(Screen):
             options = [(org["name"], org["organisation_id"]) for org in orgs]
             select.set_options(options)
 
+            # Auto-select organisation if specified or select first one
             if self.organisation_id:
                 select.value = self.organisation_id
+            elif orgs:
+                # Auto-select first organisation for better UX
+                select.value = orgs[0]["organisation_id"]
 
         except Exception as e:
             self.query_one("#status", Static).update(f"Error loading orgs: {e}")
@@ -221,21 +229,6 @@ class UserDetailScreen(Screen):
         padding: 0 0 0 1;
     }
 
-    #groups-section {
-        margin-top: 2;
-        border: solid $primary;
-        padding: 1;
-    }
-
-    .group-row {
-        height: 3;
-        padding: 0 1;
-    }
-
-    .group-label {
-        width: 30;
-    }
-
     #button-row {
         margin-top: 2;
     }
@@ -286,26 +279,24 @@ class UserDetailScreen(Screen):
             if self.is_new:
                 with Vertical(classes="form-field"):
                     yield Label("Password", classes="field-label")
-                    yield Input(placeholder="Initial password", password=True, id="field-password")
+                    yield Input(placeholder="Min 8 characters", password=True, id="field-password")
 
             with Vertical(classes="form-field"):
                 yield Label("Enabled", classes="field-label")
                 yield Switch(value=True, id="field-enabled")
 
-            with Vertical(id="groups-section"):
-                yield Label("Groups (select access level)", classes="field-label")
-                with Horizontal(classes="group-row"):
-                    yield Checkbox("Observer", id="group-observer")
-                    yield Label("Basic read access", classes="group-label")
-                with Horizontal(classes="group-row"):
-                    yield Checkbox("Contributor", id="group-contributor")
-                    yield Label("Can submit threat data", classes="group-label")
-                with Horizontal(classes="group-row"):
-                    yield Checkbox("Partner", id="group-partner")
-                    yield Label("Partner organisation access", classes="group-label")
-                with Horizontal(classes="group-row"):
-                    yield Checkbox("Core Member", id="group-core-member")
-                    yield Label("Full administrative access", classes="group-label")
+            with Vertical(classes="form-field"):
+                yield Label("Access Level", classes="field-label")
+                yield Select(
+                    [
+                        ("Observer - Read only access", "observer"),
+                        ("Contributor - Can submit threat data", "contributor"),
+                        ("Partner - Partner organisation access", "partner"),
+                        ("Core Member - Full administrative access", "core_member"),
+                    ],
+                    id="field-access-level",
+                    value="observer",
+                )
 
             with Horizontal(id="button-row"):
                 yield Button("Save", variant="primary", id="btn-save")
@@ -329,11 +320,15 @@ class UserDetailScreen(Screen):
             self.query_one("#field-enabled", Switch).value = user.get("enabled", True)
 
             groups = user.get("groups", [])
-            # Set checkboxes based on user's groups
-            self.query_one("#group-observer", Checkbox).value = "observer" in groups
-            self.query_one("#group-contributor", Checkbox).value = "contributor" in groups
-            self.query_one("#group-partner", Checkbox).value = "partner" in groups
-            self.query_one("#group-core-member", Checkbox).value = "core_member" in groups
+            # Set access level dropdown (pick highest level)
+            if "core_member" in groups:
+                self.query_one("#field-access-level", Select).value = "core_member"
+            elif "partner" in groups:
+                self.query_one("#field-access-level", Select).value = "partner"
+            elif "contributor" in groups:
+                self.query_one("#field-access-level", Select).value = "contributor"
+            elif "observer" in groups:
+                self.query_one("#field-access-level", Select).value = "observer"
 
             self.query_one("#status", Static).update(f"Loaded: {self.username}")
 
@@ -347,16 +342,9 @@ class UserDetailScreen(Screen):
         email = self.query_one("#field-email", Input).value.strip()
         enabled = self.query_one("#field-enabled", Switch).value
 
-        # Collect groups from checkboxes
-        groups = []
-        if self.query_one("#group-observer", Checkbox).value:
-            groups.append("observer")
-        if self.query_one("#group-contributor", Checkbox).value:
-            groups.append("contributor")
-        if self.query_one("#group-partner", Checkbox).value:
-            groups.append("partner")
-        if self.query_one("#group-core-member", Checkbox).value:
-            groups.append("core_member")
+        # Get access level from dropdown
+        access_level = self.query_one("#field-access-level", Select).value
+        groups = [access_level] if access_level else []
 
         if not username or not email:
             self.query_one("#status", Static).update("Error: Username and email required")
@@ -367,6 +355,9 @@ class UserDetailScreen(Screen):
                 password = self.query_one("#field-password", Input).value
                 if not password:
                     self.query_one("#status", Static).update("Error: Password required for new user")
+                    return
+                if len(password) < 8:
+                    self.query_one("#status", Static).update("Error: Password must be at least 8 characters")
                     return
 
                 await self.app.client.create_user(
