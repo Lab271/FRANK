@@ -20,12 +20,11 @@ class OrganisationsScreen(Screen):
 
     CSS = """
     OrganisationsScreen {
-        layout: grid;
-        grid-size: 1;
-        grid-rows: auto 1fr auto;
+        layout: vertical;
     }
 
     #content {
+        height: 1fr;
         padding: 1;
     }
 
@@ -36,13 +35,13 @@ class OrganisationsScreen(Screen):
 
     #org-table {
         height: 1fr;
+        min-height: 10;
     }
 
     #status {
-        dock: bottom;
         height: 1;
         padding: 0 1;
-        background: $surface;
+        background: $surface-darken-1;
     }
     """
 
@@ -86,6 +85,12 @@ class OrganisationsScreen(Screen):
 
         try:
             result = await self.app.client.list_organisations()
+
+            # Handle potential error responses
+            if "detail" in result:
+                self.query_one("#status", Static).update(f"Error: {result['detail']}")
+                return
+
             orgs = result.get("organisations", [])
 
             for org in orgs:
@@ -93,7 +98,7 @@ class OrganisationsScreen(Screen):
                     org.get("organisation_id", ""),
                     org.get("name", ""),
                     org.get("organisation_type", ""),
-                    org.get("sector", "-"),
+                    org.get("sector") or "-",
                     str(org.get("client_count", 0)),
                 )
 
