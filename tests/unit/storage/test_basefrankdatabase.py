@@ -112,6 +112,46 @@ class DummyDatabase(BaseFRANKDatabase):
         super().get_organisation_member(organisation_id, username)
         return None
 
+    # API Key methods (required abstract methods)
+    def create_api_key(self, user_id, key_hash, name, expires_at=None):
+        super().create_api_key(user_id, key_hash, name, expires_at)
+        return {"key_id": "test-key", "user_id": user_id, "name": name}
+
+    def get_api_key_by_hash(self, key_hash):
+        super().get_api_key_by_hash(key_hash)
+        return None
+
+    def list_api_keys(self, user_id):
+        super().list_api_keys(user_id)
+        return []
+
+    def update_api_key(self, key_id, user_id, updates):
+        super().update_api_key(key_id, user_id, updates)
+        return None
+
+    def revoke_api_key(self, key_id, user_id):
+        super().revoke_api_key(key_id, user_id)
+        return False
+
+    def update_api_key_last_used(self, key_id):
+        super().update_api_key_last_used(key_id)
+
+    # Refresh token methods (required abstract methods)
+    def store_refresh_token(self, user_id, token_id, token_hash, expires_at):
+        super().store_refresh_token(user_id, token_id, token_hash, expires_at)
+
+    def get_refresh_token(self, token_id):
+        super().get_refresh_token(token_id)
+        return None
+
+    def revoke_refresh_token(self, token_id):
+        super().revoke_refresh_token(token_id)
+        return False
+
+    def revoke_all_user_refresh_tokens(self, user_id):
+        super().revoke_all_user_refresh_tokens(user_id)
+        return 0
+
 class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
     """
     Unit tests for the BaseFRANKDatabase abstract base class.

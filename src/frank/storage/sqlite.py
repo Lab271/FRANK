@@ -210,6 +210,33 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     )
                 """)
 
+                # API keys table for programmatic access
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS api_keys (
+                        key_id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        key_hash TEXT NOT NULL UNIQUE,
+                        key_prefix TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        expires_at TIMESTAMP,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        last_used_at TIMESTAMP,
+                        is_active BOOLEAN DEFAULT 1
+                    )
+                """)
+
+                # Refresh tokens table for OAuth2 flow
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS refresh_tokens (
+                        token_id TEXT PRIMARY KEY,
+                        user_id TEXT NOT NULL,
+                        token_hash TEXT NOT NULL UNIQUE,
+                        expires_at TIMESTAMP NOT NULL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        is_revoked BOOLEAN DEFAULT 0
+                    )
+                """)
+
                 # Create indexes for performance
                 self._create_indexes(conn)
 
@@ -250,7 +277,15 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             "CREATE INDEX IF NOT EXISTS idx_organisations_active ON organisations (last_active)",
 
             "CREATE INDEX IF NOT EXISTS idx_org_members_org ON organisation_members (organisation_id)",
-            "CREATE INDEX IF NOT EXISTS idx_org_members_user ON organisation_members (username)"
+            "CREATE INDEX IF NOT EXISTS idx_org_members_user ON organisation_members (username)",
+
+            "CREATE INDEX IF NOT EXISTS idx_api_keys_user ON api_keys (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_api_keys_hash ON api_keys (key_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_api_keys_active ON api_keys (is_active)",
+
+            "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user ON refresh_tokens (user_id)",
+            "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_hash ON refresh_tokens (token_hash)",
+            "CREATE INDEX IF NOT EXISTS idx_refresh_tokens_revoked ON refresh_tokens (is_revoked)"
         ]
 
         for index_sql in indexes:
@@ -1668,6 +1703,297 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
         except sqlite3.Error as e:
             self.logger.error(f"Error getting organisation member: {e}")
             return None
+
+    # ========== API Key Methods ==========
+
+    def create_api_key(
+        self,
+        user_id: str,
+        key_hash: str,
+        name: str,
+        expires_at: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Store a new API key in the database."""
+        db_path = self.connection_params['db_path']
+        key_id = f"key-{uuid.uuid4().hex[:12]}"
+        key_prefix = f"frank_...{key_hash[-8:]}"  # Last 8 chars of hash for display
+        now = datetime.now(timezone.utc).isoformat()
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    INSERT INTO api_keys (key_id, user_id, key_hash, key_prefix, name, expires_at, created_at)
+                    VALUES (?, ?, ?, ?, ?, ?, ?)
+                """, (key_id, user_id, key_hash, key_prefix, name, expires_at, now))
+                conn.commit()
+
+                self.logger.info(f"Created API key {key_id} for user {user_id}")
+                return {
+                    "key_id": key_id,
+                    "user_id": user_id,
+                    "key_prefix": key_prefix,
+                    "name": name,
+                    "expires_at": expires_at,
+                    "created_at": now,
+                    "is_active": True
+                }
+
+        except sqlite3.IntegrityError as e:
+            self.logger.error(f"API key already exists: {e}")
+            raise FRANKStorageError(f"API key already exists: {e}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error creating API key: {e}")
+            raise FRANKStorageError(f"Failed to create API key: {e}")
+
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """Retrieve an API key by its hash."""
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT key_id, user_id, key_prefix, name, expires_at, created_at, last_used_at, is_active
+                    FROM api_keys
+                    WHERE key_hash = ? AND is_active = 1
+                """, (key_hash,))
+
+                row = cursor.fetchone()
+                if not row:
+                    return None
+
+                result = dict(row)
+                # Check expiry
+                if result.get("expires_at"):
+                    expires = datetime.fromisoformat(result["expires_at"])
+                    if expires.tzinfo is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) > expires:
+                        return None  # Expired
+
+                return result
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting API key: {e}")
+            return None
+
+    def list_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+        """List all API keys for a user."""
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT key_id, user_id, key_prefix, name, expires_at, created_at, last_used_at, is_active
+                    FROM api_keys
+                    WHERE user_id = ? AND is_active = 1
+                    ORDER BY created_at DESC
+                """, (user_id,))
+
+                return [dict(row) for row in cursor.fetchall()]
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error listing API keys: {e}")
+            return []
+
+    def update_api_key(
+        self,
+        key_id: str,
+        user_id: str,
+        updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Update API key metadata."""
+        db_path = self.connection_params['db_path']
+
+        # Only allow updating name and expires_at
+        allowed_fields = {"name", "expires_at"}
+        filtered_updates = {k: v for k, v in updates.items() if k in allowed_fields}
+
+        if not filtered_updates:
+            return None
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+
+                # Build update query
+                set_clause = ", ".join(f"{k} = ?" for k in filtered_updates.keys())
+                values = list(filtered_updates.values()) + [key_id, user_id]
+
+                cursor = conn.execute(f"""
+                    UPDATE api_keys
+                    SET {set_clause}
+                    WHERE key_id = ? AND user_id = ? AND is_active = 1
+                """, values)
+                conn.commit()
+
+                if cursor.rowcount == 0:
+                    return None
+
+                # Fetch updated record
+                cursor = conn.execute("""
+                    SELECT key_id, user_id, key_prefix, name, expires_at, created_at, last_used_at, is_active
+                    FROM api_keys
+                    WHERE key_id = ?
+                """, (key_id,))
+                row = cursor.fetchone()
+                return dict(row) if row else None
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error updating API key: {e}")
+            return None
+
+    def revoke_api_key(self, key_id: str, user_id: str) -> bool:
+        """Revoke (soft delete) an API key."""
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.execute("""
+                    UPDATE api_keys
+                    SET is_active = 0
+                    WHERE key_id = ? AND user_id = ? AND is_active = 1
+                """, (key_id, user_id))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    self.logger.info(f"Revoked API key {key_id} for user {user_id}")
+                    return True
+                return False
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error revoking API key: {e}")
+            return False
+
+    def update_api_key_last_used(self, key_id: str) -> None:
+        """Update the last_used_at timestamp for an API key."""
+        db_path = self.connection_params['db_path']
+        now = datetime.now(timezone.utc).isoformat()
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    UPDATE api_keys
+                    SET last_used_at = ?
+                    WHERE key_id = ?
+                """, (now, key_id))
+                conn.commit()
+
+        except sqlite3.Error as e:
+            self.logger.warning(f"Error updating API key last_used: {e}")
+
+    # ========== Refresh Token Methods ==========
+
+    def store_refresh_token(
+        self,
+        user_id: str,
+        token_id: str,
+        token_hash: str,
+        expires_at: str
+    ) -> Dict[str, Any]:
+        """Store a refresh token hash in the database."""
+        db_path = self.connection_params['db_path']
+        now = datetime.now(timezone.utc).isoformat()
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.execute("""
+                    INSERT INTO refresh_tokens (token_id, user_id, token_hash, expires_at, created_at)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (token_id, user_id, token_hash, expires_at, now))
+                conn.commit()
+
+                self.logger.info(f"Stored refresh token {token_id} for user {user_id}")
+                return {
+                    "token_id": token_id,
+                    "user_id": user_id,
+                    "expires_at": expires_at,
+                    "created_at": now
+                }
+
+        except sqlite3.IntegrityError as e:
+            self.logger.error(f"Refresh token already exists: {e}")
+            raise FRANKStorageError(f"Refresh token already exists: {e}")
+        except sqlite3.Error as e:
+            self.logger.error(f"Error storing refresh token: {e}")
+            raise FRANKStorageError(f"Failed to store refresh token: {e}")
+
+    def get_refresh_token(self, token_id: str) -> Optional[Dict[str, Any]]:
+        """Retrieve a refresh token by its ID."""
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                conn.row_factory = sqlite3.Row
+                cursor = conn.execute("""
+                    SELECT token_id, user_id, token_hash, expires_at, created_at, is_revoked
+                    FROM refresh_tokens
+                    WHERE token_id = ? AND is_revoked = 0
+                """, (token_id,))
+
+                row = cursor.fetchone()
+                if not row:
+                    return None
+
+                result = dict(row)
+                # Check expiry
+                if result.get("expires_at"):
+                    expires = datetime.fromisoformat(result["expires_at"])
+                    if expires.tzinfo is None:
+                        expires = expires.replace(tzinfo=timezone.utc)
+                    if datetime.now(timezone.utc) > expires:
+                        return None  # Expired
+
+                return result
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error getting refresh token: {e}")
+            return None
+
+    def revoke_refresh_token(self, token_id: str) -> bool:
+        """Revoke a refresh token."""
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.execute("""
+                    UPDATE refresh_tokens
+                    SET is_revoked = 1
+                    WHERE token_id = ? AND is_revoked = 0
+                """, (token_id,))
+                conn.commit()
+
+                if cursor.rowcount > 0:
+                    self.logger.info(f"Revoked refresh token {token_id}")
+                    return True
+                return False
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error revoking refresh token: {e}")
+            return False
+
+    def revoke_all_user_refresh_tokens(self, user_id: str) -> int:
+        """Revoke all refresh tokens for a user."""
+        db_path = self.connection_params['db_path']
+
+        try:
+            with sqlite3.connect(db_path) as conn:
+                cursor = conn.execute("""
+                    UPDATE refresh_tokens
+                    SET is_revoked = 1
+                    WHERE user_id = ? AND is_revoked = 0
+                """, (user_id,))
+                conn.commit()
+
+                count = cursor.rowcount
+                if count > 0:
+                    self.logger.info(f"Revoked {count} refresh tokens for user {user_id}")
+                return count
+
+        except sqlite3.Error as e:
+            self.logger.error(f"Error revoking user refresh tokens: {e}")
+            return 0
 
 
 # Factory function for easy instantiation

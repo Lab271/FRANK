@@ -932,6 +932,67 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         """Get organisation member - not yet implemented for DynamoDB"""
         raise NotImplementedError("DynamoDB organisation CRUD not yet implemented. Use SQLite.")
 
+    # ========== API Key Methods (Not yet implemented for DynamoDB) ==========
+
+    def create_api_key(
+        self,
+        user_id: str,
+        key_hash: str,
+        name: str,
+        expires_at: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Create API key - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB API key management not yet implemented. Use SQLite.")
+
+    def get_api_key_by_hash(self, key_hash: str) -> Optional[Dict[str, Any]]:
+        """Get API key by hash - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB API key management not yet implemented. Use SQLite.")
+
+    def list_api_keys(self, user_id: str) -> List[Dict[str, Any]]:
+        """List API keys - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB API key management not yet implemented. Use SQLite.")
+
+    def update_api_key(
+        self,
+        key_id: str,
+        user_id: str,
+        updates: Dict[str, Any]
+    ) -> Optional[Dict[str, Any]]:
+        """Update API key - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB API key management not yet implemented. Use SQLite.")
+
+    def revoke_api_key(self, key_id: str, user_id: str) -> bool:
+        """Revoke API key - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB API key management not yet implemented. Use SQLite.")
+
+    def update_api_key_last_used(self, key_id: str) -> None:
+        """Update API key last used timestamp - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB API key management not yet implemented. Use SQLite.")
+
+    # ========== Refresh Token Methods (Not yet implemented for DynamoDB) ==========
+
+    def store_refresh_token(
+        self,
+        user_id: str,
+        token_id: str,
+        token_hash: str,
+        expires_at: str
+    ) -> None:
+        """Store refresh token - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB refresh token management not yet implemented. Use SQLite.")
+
+    def get_refresh_token(self, token_id: str) -> Optional[Dict[str, Any]]:
+        """Get refresh token - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB refresh token management not yet implemented. Use SQLite.")
+
+    def revoke_refresh_token(self, token_id: str) -> bool:
+        """Revoke refresh token - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB refresh token management not yet implemented. Use SQLite.")
+
+    def revoke_all_user_refresh_tokens(self, user_id: str) -> int:
+        """Revoke all refresh tokens for user - not yet implemented for DynamoDB"""
+        raise NotImplementedError("DynamoDB refresh token management not yet implemented. Use SQLite.")
+
 #     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
 #         """
 #         Get organisation information using DynamoDB query.

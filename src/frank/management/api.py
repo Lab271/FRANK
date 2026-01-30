@@ -17,6 +17,16 @@ from fastapi.middleware.cors import CORSMiddleware
 
 import frank
 from frank.auth import TokenPayload, get_current_user, require_access_tier
+from frank.auth.config import AuthConfig
+from frank.auth.tokens import (
+    ACCESS_TOKEN_LIFETIME_HOURS,
+    decode_refresh_token,
+    generate_access_token,
+    generate_api_key,
+    generate_refresh_token,
+    get_expiry_datetime,
+    hash_token,
+)
 from frank.core.enum import AccessTier
 from frank.management.cognito_service import (
     BaseCognitoService,
@@ -28,6 +38,12 @@ from frank.management.cognito_service import (
     get_cognito_service,
 )
 from frank.management.models import (
+    ApiKeyCreate,
+    ApiKeyListResponse,
+    ApiKeyResponse,
+    ApiKeyUpdate,
+    LoginRequest,
+    LoginResponse,
     MFASetupResponse,
     MFAStatusResponse,
     MFAVerifyRequest,
@@ -38,6 +54,8 @@ from frank.management.models import (
     OrganisationMemberResponse,
     OrganisationResponse,
     OrganisationUpdate,
+    RefreshTokenRequest,
+    RefreshTokenResponse,
     UserCreate,
     UserListResponse,
     UserResponse,
@@ -712,6 +730,307 @@ def create_management_app(
                 status_code=e.status_code,
                 detail=e.message
             )
+
+    # ========== Authentication Endpoints ==========
+
+    @app.post(
+        "/v1/auth/login",
+        response_model=LoginResponse,
+        tags=["Authentication"]
+    )
+    async def login(
+        login_data: LoginRequest,
+        cognito: BaseCognitoService = Depends(get_cognito),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> LoginResponse:
+        """
+        Authenticate user and return access + refresh tokens.
+
+        Uses Cognito for authentication.
+        """
+        try:
+            # Authenticate via Cognito (validates credentials)
+            await cognito.authenticate_user(
+                login_data.username,
+                login_data.password
+            )
+
+            # Get user groups for access token
+            groups = await cognito.get_user_groups(login_data.username)
+
+            # Generate tokens
+            config = AuthConfig.get()
+            access_token = generate_access_token(
+                username=login_data.username,
+                groups=groups,
+                secret=config.jwt_secret,
+                algorithm=config.jwt_algorithm,
+            )
+
+            refresh_token = generate_refresh_token(
+                username=login_data.username,
+                secret=config.jwt_secret,
+                algorithm=config.jwt_algorithm,
+            )
+
+            # Decode refresh token to get jti for storage
+            refresh_payload = decode_refresh_token(
+                refresh_token, config.jwt_secret, config.jwt_algorithm
+            )
+            if refresh_payload:
+                token_id = refresh_payload.get("jti")
+                expires_at = datetime.fromtimestamp(
+                    refresh_payload["exp"], tz=timezone.utc
+                ).isoformat()
+
+                # Store refresh token hash
+                db.store_refresh_token(
+                    user_id=login_data.username,
+                    token_id=token_id,
+                    token_hash=hash_token(refresh_token),
+                    expires_at=expires_at
+                )
+
+            logger.info(f"User {login_data.username} logged in successfully")
+            return LoginResponse(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                token_type="Bearer",
+                expires_in=ACCESS_TOKEN_LIFETIME_HOURS * 3600
+            )
+
+        except UserNotFoundError:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password"
+            )
+        except CognitoServiceError as e:
+            if "NotAuthorizedException" in str(e) or "UserNotFoundException" in str(e):
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid username or password"
+                )
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.post(
+        "/v1/auth/refresh",
+        response_model=RefreshTokenResponse,
+        tags=["Authentication"]
+    )
+    async def refresh_token(
+        refresh_data: RefreshTokenRequest,
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> RefreshTokenResponse:
+        """
+        Exchange refresh token for new access token.
+
+        The refresh token is validated and a new access token is issued.
+        """
+        config = AuthConfig.get()
+
+        # Decode and validate refresh token
+        payload = decode_refresh_token(
+            refresh_data.refresh_token,
+            config.jwt_secret,
+            config.jwt_algorithm
+        )
+
+        if not payload:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid or expired refresh token"
+            )
+
+        token_id = payload.get("jti")
+        username = payload.get("username")
+
+        # Verify token exists in database and not revoked
+        stored_token = db.get_refresh_token(token_id)
+        if not stored_token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Refresh token has been revoked or expired"
+            )
+
+        # Verify hash matches
+        if stored_token.get("token_hash") != hash_token(refresh_data.refresh_token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid refresh token"
+            )
+
+        # Get user groups for new access token
+        try:
+            cognito = get_cognito_service()
+            groups = await cognito.get_user_groups(username)
+        except Exception:
+            groups = []  # Fallback to empty groups
+
+        # Generate new access token
+        access_token = generate_access_token(
+            username=username,
+            groups=groups,
+            secret=config.jwt_secret,
+            algorithm=config.jwt_algorithm,
+        )
+
+        logger.info(f"Access token refreshed for user {username}")
+        return RefreshTokenResponse(
+            access_token=access_token,
+            token_type="Bearer",
+            expires_in=ACCESS_TOKEN_LIFETIME_HOURS * 3600
+        )
+
+    @app.post(
+        "/v1/auth/logout",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["Authentication"]
+    )
+    async def logout(
+        current_user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ):
+        """
+        Logout user by revoking all their refresh tokens.
+
+        Requires authentication.
+        """
+        count = db.revoke_all_user_refresh_tokens(current_user.username)
+        logger.info(f"User {current_user.username} logged out, {count} refresh tokens revoked")
+
+    # ========== API Key Endpoints ==========
+
+    @app.post(
+        "/v1/api-keys",
+        response_model=ApiKeyResponse,
+        status_code=status.HTTP_201_CREATED,
+        tags=["API Keys"]
+    )
+    async def create_api_key_endpoint(
+        key_data: ApiKeyCreate,
+        current_user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> ApiKeyResponse:
+        """
+        Generate a new API key for the authenticated user.
+
+        The full API key is only returned once at creation.
+        Store it securely - it cannot be retrieved later.
+        """
+        # Generate API key
+        plain_key = generate_api_key()
+        key_hash = hash_token(plain_key)
+
+        # Calculate expiry
+        expires_at = None
+        if key_data.expires_in_days:
+            expires_at = get_expiry_datetime(key_data.expires_in_days).isoformat()
+
+        try:
+            result = db.create_api_key(
+                user_id=current_user.username,
+                key_hash=key_hash,
+                name=key_data.name,
+                expires_at=expires_at
+            )
+
+            logger.info(f"API key {result['key_id']} created for user {current_user.username}")
+
+            # Return with the plain key (only shown once!)
+            return ApiKeyResponse(
+                key_id=result["key_id"],
+                key=plain_key,  # Only returned at creation
+                key_prefix=plain_key[:12] + "...",
+                name=result["name"],
+                user_id=result["user_id"],
+                expires_at=result.get("expires_at"),
+                created_at=result["created_at"],
+                last_used_at=result.get("last_used_at")
+            )
+
+        except FRANKStorageError as e:
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=str(e)
+            )
+
+    @app.get(
+        "/v1/api-keys",
+        response_model=ApiKeyListResponse,
+        tags=["API Keys"]
+    )
+    async def list_api_keys_endpoint(
+        current_user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> ApiKeyListResponse:
+        """
+        List all API keys for the authenticated user.
+
+        Note: The full key values are not returned - only prefixes.
+        """
+        keys = db.list_api_keys(current_user.username)
+        return ApiKeyListResponse(
+            api_keys=[ApiKeyResponse(**k) for k in keys],
+            total=len(keys)
+        )
+
+    @app.put(
+        "/v1/api-keys/{key_id}",
+        response_model=ApiKeyResponse,
+        tags=["API Keys"]
+    )
+    async def update_api_key_endpoint(
+        key_id: str,
+        updates: ApiKeyUpdate,
+        current_user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> ApiKeyResponse:
+        """
+        Update an API key's metadata (name, expiration).
+
+        Only the key owner can update their keys.
+        """
+        result = db.update_api_key(
+            key_id=key_id,
+            user_id=current_user.username,
+            updates=updates.model_dump(exclude_none=True)
+        )
+
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"API key not found: {key_id}"
+            )
+
+        logger.info(f"API key {key_id} updated by {current_user.username}")
+        return ApiKeyResponse(**result)
+
+    @app.delete(
+        "/v1/api-keys/{key_id}",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["API Keys"]
+    )
+    async def revoke_api_key_endpoint(
+        key_id: str,
+        current_user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ):
+        """
+        Revoke an API key.
+
+        The key will immediately stop working for authentication.
+        Only the key owner can revoke their keys.
+        """
+        if not db.revoke_api_key(key_id, current_user.username):
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"API key not found: {key_id}"
+            )
+
+        logger.info(f"API key {key_id} revoked by {current_user.username}")
 
     # ========== Root Endpoint ==========
 
