@@ -166,10 +166,12 @@ def create_auth_routes(
         if session:
             logger.info(f"User {session.username} logged out")
 
-        # Clear session cookie
-        session_manager.clear_session(response)
+        # Create redirect response first
+        redirect = RedirectResponse(url="/login", status_code=303)
 
-        # Redirect to login
-        return RedirectResponse(url="/login", status_code=303)
+        # Clear session cookie on the redirect response
+        session_manager.clear_session(redirect)
+
+        return redirect
 
     return router

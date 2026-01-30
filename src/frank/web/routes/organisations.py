@@ -58,6 +58,41 @@ async def fetch_organisations(
             return []
 
 
+async def fetch_organisation(
+    management_api_url: str,
+    access_token: str,
+    organisation_id: str,
+) -> Optional[dict]:
+    """
+    Fetch single organisation from Management API.
+
+    Args:
+        management_api_url: Management API base URL
+        access_token: JWT access token
+        organisation_id: Organisation ID
+
+    Returns:
+        Organisation dictionary or None if not found
+    """
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.get(
+                f"{management_api_url}/v1/organisations/{organisation_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10.0,
+            )
+
+            if response.status_code == 200:
+                return response.json()
+            else:
+                logger.warning(f"Failed to fetch organisation {organisation_id}: {response.status_code}")
+                return None
+
+        except httpx.RequestError as e:
+            logger.error(f"Request failed: {e}")
+            return None
+
+
 async def create_organisation(
     management_api_url: str,
     access_token: str,
@@ -86,8 +121,92 @@ async def create_organisation(
             if response.status_code == 201:
                 return True, None
             else:
-                error_data = response.json()
-                error_msg = error_data.get("detail", f"Failed with status {response.status_code}")
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("detail", f"Failed with status {response.status_code}")
+                except Exception:
+                    error_msg = f"Failed with status {response.status_code}"
+                return False, error_msg
+
+        except httpx.RequestError as e:
+            logger.error(f"Request failed: {e}")
+            return False, f"Connection error: {str(e)}"
+
+
+async def update_organisation(
+    management_api_url: str,
+    access_token: str,
+    organisation_id: str,
+    org_data: dict,
+) -> tuple[bool, Optional[str]]:
+    """
+    Update organisation via Management API.
+
+    Args:
+        management_api_url: Management API base URL
+        access_token: JWT access token
+        organisation_id: Organisation ID
+        org_data: Organisation data dictionary
+
+    Returns:
+        Tuple of (success, error_message)
+    """
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.put(
+                f"{management_api_url}/v1/organisations/{organisation_id}",
+                json=org_data,
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10.0,
+            )
+
+            if response.status_code == 200:
+                return True, None
+            else:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("detail", f"Failed with status {response.status_code}")
+                except Exception:
+                    error_msg = f"Failed with status {response.status_code}"
+                return False, error_msg
+
+        except httpx.RequestError as e:
+            logger.error(f"Request failed: {e}")
+            return False, f"Connection error: {str(e)}"
+
+
+async def delete_organisation(
+    management_api_url: str,
+    access_token: str,
+    organisation_id: str,
+) -> tuple[bool, Optional[str]]:
+    """
+    Delete organisation via Management API.
+
+    Args:
+        management_api_url: Management API base URL
+        access_token: JWT access token
+        organisation_id: Organisation ID
+
+    Returns:
+        Tuple of (success, error_message)
+    """
+    async with httpx.AsyncClient() as client:
+        try:
+            response = await client.delete(
+                f"{management_api_url}/v1/organisations/{organisation_id}",
+                headers={"Authorization": f"Bearer {access_token}"},
+                timeout=10.0,
+            )
+
+            if response.status_code in (200, 204):
+                return True, None
+            else:
+                try:
+                    error_data = response.json()
+                    error_msg = error_data.get("detail", f"Failed with status {response.status_code}")
+                except Exception:
+                    error_msg = f"Failed with status {response.status_code}"
                 return False, error_msg
 
         except httpx.RequestError as e:
@@ -192,7 +311,7 @@ def create_organisation_routes(config: WebConfig, templates) -> APIRouter:
         # Create organisation
         org_data = {
             "name": name.strip(),
-            "access_tier": tier,
+            "access_level": tier.lower(),
         }
 
         success, error = await create_organisation(
@@ -208,6 +327,163 @@ def create_organisation_routes(config: WebConfig, templates) -> APIRouter:
             logger.warning(f"Failed to create organisation: {error}")
             return RedirectResponse(
                 url=f"/organisations/new?error={error}",
+                status_code=303,
+            )
+
+    @router.get("/{organisation_id}", response_class=HTMLResponse)
+    async def view_organisation(
+        request: Request,
+        organisation_id: str,
+        session: SessionData = Depends(get_current_session),
+    ):
+        """
+        View organisation details.
+
+        Args:
+            request: FastAPI request
+            organisation_id: Organisation ID
+            session: Current session
+
+        Returns:
+            Rendered organisation view page
+        """
+        organisation = await fetch_organisation(
+            management_api_url=config.management_api_url,
+            access_token=session.access_token,
+            organisation_id=organisation_id,
+        )
+
+        if not organisation:
+            return RedirectResponse(url="/organisations?error=Organisation+not+found", status_code=303)
+
+        return templates.TemplateResponse(
+            "organisations/view.html",
+            {
+                "request": request,
+                "username": session.username,
+                "organisation": organisation,
+            },
+        )
+
+    @router.get("/{organisation_id}/edit", response_class=HTMLResponse)
+    async def edit_organisation_form(
+        request: Request,
+        organisation_id: str,
+        session: SessionData = Depends(get_current_session),
+        error: Optional[str] = None,
+    ):
+        """
+        Display edit organisation form.
+
+        Args:
+            request: FastAPI request
+            organisation_id: Organisation ID
+            session: Current session
+            error: Optional error message
+
+        Returns:
+            Rendered edit organisation form
+        """
+        organisation = await fetch_organisation(
+            management_api_url=config.management_api_url,
+            access_token=session.access_token,
+            organisation_id=organisation_id,
+        )
+
+        if not organisation:
+            return RedirectResponse(url="/organisations?error=Organisation+not+found", status_code=303)
+
+        return templates.TemplateResponse(
+            "organisations/edit.html",
+            {
+                "request": request,
+                "username": session.username,
+                "organisation": organisation,
+                "error": error,
+            },
+        )
+
+    @router.post("/{organisation_id}/edit")
+    async def update_organisation_submit(
+        request: Request,
+        organisation_id: str,
+        session: SessionData = Depends(get_current_session),
+        name: str = Form(...),
+        tier: str = Form(...),
+    ):
+        """
+        Handle edit organisation form submission.
+
+        Args:
+            request: FastAPI request
+            organisation_id: Organisation ID
+            session: Current session
+            name: Organisation name
+            tier: Access tier
+
+        Returns:
+            Redirect to view or form with error
+        """
+        # Validate inputs
+        if not name or len(name.strip()) == 0:
+            return RedirectResponse(
+                url=f"/organisations/{organisation_id}/edit?error=Organisation+name+is+required",
+                status_code=303,
+            )
+
+        # Update organisation
+        org_data = {
+            "name": name.strip(),
+            "access_level": tier.lower(),
+        }
+
+        success, error = await update_organisation(
+            management_api_url=config.management_api_url,
+            access_token=session.access_token,
+            organisation_id=organisation_id,
+            org_data=org_data,
+        )
+
+        if success:
+            logger.info(f"Organisation '{organisation_id}' updated by {session.username}")
+            return RedirectResponse(url=f"/organisations/{organisation_id}", status_code=303)
+        else:
+            logger.warning(f"Failed to update organisation: {error}")
+            return RedirectResponse(
+                url=f"/organisations/{organisation_id}/edit?error={error}",
+                status_code=303,
+            )
+
+    @router.post("/{organisation_id}/delete")
+    async def delete_organisation_submit(
+        request: Request,
+        organisation_id: str,
+        session: SessionData = Depends(get_current_session),
+    ):
+        """
+        Handle organisation deletion.
+
+        Args:
+            request: FastAPI request
+            organisation_id: Organisation ID
+            session: Current session
+
+        Returns:
+            Redirect to list
+        """
+        success, error = await delete_organisation(
+            management_api_url=config.management_api_url,
+            access_token=session.access_token,
+            organisation_id=organisation_id,
+        )
+
+        if success:
+            logger.info(f"Organisation '{organisation_id}' deleted by {session.username}")
+            return RedirectResponse(url="/organisations", status_code=303)
+        else:
+            logger.warning(f"Failed to delete organisation: {error}")
+            return RedirectResponse(
+                url=f"/organisations?error={error}",
                 status_code=303,
             )
 

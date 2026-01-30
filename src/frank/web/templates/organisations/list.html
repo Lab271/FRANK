@@ -55,21 +55,26 @@
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap">
                         <span class="px-2 inline-flex text-xs leading-5 font-semibold rounded-full
-                            {% if org.access_tier == 'CORE_MEMBER' %}bg-purple-100 text-purple-800
-                            {% elif org.access_tier == 'PARTNER' %}bg-blue-100 text-blue-800
-                            {% elif org.access_tier == 'CONTRIBUTOR' %}bg-green-100 text-green-800
-                            {% elif org.access_tier == 'OBSERVER' %}bg-yellow-100 text-yellow-800
+                            {% if org.access_level == 'core_member' %}bg-purple-100 text-purple-800
+                            {% elif org.access_level == 'partner' %}bg-blue-100 text-blue-800
+                            {% elif org.access_level == 'contributor' %}bg-green-100 text-green-800
+                            {% elif org.access_level == 'observer' %}bg-yellow-100 text-yellow-800
                             {% else %}bg-gray-100 text-gray-800{% endif %}">
-                            {{ org.access_tier }}
+                            {{ org.access_level|upper }}
                         </span>
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-sm text-gray-500 font-mono">
-                        {{ org.id }}
+                        {{ org.organisation_id }}
                     </td>
-                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <span class="text-gray-400 text-xs">
-                            View/Edit/Delete coming soon
-                        </span>
+                    <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium space-x-3">
+                        <a href="/organisations/{{ org.organisation_id }}" class="text-blue-600 hover:text-blue-900">View</a>
+                        <a href="/organisations/{{ org.organisation_id }}/edit" class="text-indigo-600 hover:text-indigo-900">Edit</a>
+                        <button
+                            onclick="confirmDelete('{{ org.organisation_id }}', '{{ org.name }}')"
+                            class="text-red-600 hover:text-red-900"
+                        >
+                            Delete
+                        </button>
                     </td>
                 </tr>
                 {% endfor %}
@@ -103,4 +108,52 @@
     </div>
     {% endif %}
 </div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4">Delete Organisation</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500" id="deleteMessage">
+                    Are you sure you want to delete this organisation? This action cannot be undone.
+                </p>
+            </div>
+            <div class="flex justify-center space-x-4 px-4 py-3">
+                <button
+                    onclick="closeModal()"
+                    class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none"
+                >
+                    Cancel
+                </button>
+                <form method="POST" id="deleteForm" class="inline">
+                    <button
+                        type="submit"
+                        class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none"
+                    >
+                        Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete(orgId, orgName) {
+    document.getElementById('deleteMessage').textContent =
+        `Are you sure you want to delete "${orgName}"? This action cannot be undone.`;
+    document.getElementById('deleteForm').action = `/organisations/${orgId}/delete`;
+    document.getElementById('deleteModal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('deleteModal').classList.add('hidden');
+}
+</script>
 {% endblock %}

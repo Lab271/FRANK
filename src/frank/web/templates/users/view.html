@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+
+{% block title %}{{ user.username }} - FRANK Web GUI{% endblock %}
+
+{% block nav_items %}
+<a href="/dashboard" class="hover:text-blue-200 transition">Dashboard</a>
+<a href="/organisations" class="hover:text-blue-200 transition">Organisations</a>
+<a href="/users" class="hover:text-blue-200 transition">Users</a>
+<a href="/logout" class="hover:text-blue-200 transition">Logout ({{ username }})</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800">{{ user.username }}</h2>
+            <p class="text-gray-600 mt-1">User Details</p>
+        </div>
+        <div class="flex space-x-3">
+            <a
+                href="/users/{{ user.username }}/edit"
+                class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold"
+            >
+                Edit
+            </a>
+            <button
+                onclick="confirmDelete()"
+                class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition font-semibold"
+            >
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- User Info Card -->
+    <div class="bg-white rounded-lg shadow-lg p-8 mb-6">
+        <div class="grid grid-cols-2 gap-6">
+            <!-- Username -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Username
+                </label>
+                <div class="text-lg text-gray-900 font-mono">
+                    {{ user.username }}
+                </div>
+            </div>
+
+            <!-- Email -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Email
+                </label>
+                <div class="text-lg text-gray-900">
+                    {{ user.email if user.email else '-' }}
+                </div>
+            </div>
+
+            <!-- User ID -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    User ID
+                </label>
+                <div class="text-sm text-gray-900 font-mono">
+                    {{ user.id if user.id else user.username }}
+                </div>
+            </div>
+
+            <!-- MFA Status -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Multi-Factor Authentication
+                </label>
+                <div>
+                    {% if user.mfa_enabled %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                        Enabled
+                    </span>
+                    {% else %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-gray-100 text-gray-800">
+                        Disabled
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Account Status -->
+            {% if user.user_status %}
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Account Status
+                </label>
+                <div>
+                    {% if user.user_status == "CONFIRMED" %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                        Confirmed
+                    </span>
+                    {% elif user.user_status == "FORCE_CHANGE_PASSWORD" %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                        Password Change Required
+                    </span>
+                    {% else %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-gray-100 text-gray-800">
+                        {{ user.user_status }}
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Enabled -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Account Enabled
+                </label>
+                <div>
+                    {% if user.enabled %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                        Yes
+                    </span>
+                    {% else %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-red-100 text-red-800">
+                        No
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Groups -->
+        {% if user.groups %}
+        <div class="mt-6 pt-6 border-t border-gray-200">
+            <label class="block text-sm font-medium text-gray-500 mb-3">
+                Groups
+            </label>
+            <div class="flex flex-wrap gap-2">
+                {% for group in user.groups %}
+                <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                    {{ group }}
+                </span>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Security Notice -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-blue-900 mb-3">Security Information</h3>
+        <ul class="list-disc list-inside text-blue-800 space-y-1">
+            <li>Users should enable MFA for enhanced security</li>
+            <li>Passwords should be changed regularly</li>
+            <li>Group membership determines platform permissions</li>
+        </ul>
+    </div>
+
+    <!-- Back Button -->
+    <div class="flex justify-start">
+        <a
+            href="/users"
+            class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition font-medium"
+        >
+            Back to List
+        </a>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4">Delete User</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500">
+                    Are you sure you want to delete "{{ user.username }}"? This action cannot be undone.
+                </p>
+            </div>
+            <div class="flex justify-center space-x-4 px-4 py-3">
+                <button
+                    onclick="closeModal()"
+                    class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none"
+                >
+                    Cancel
+                </button>
+                <form method="POST" action="/users/{{ user.username }}/delete" class="inline">
+                    <button
+                        type="submit"
+                        class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none"
+                    >
+                        Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete() {
+    document.getElementById('deleteModal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('deleteModal').classList.add('hidden');
+}
+</script>
+{% endblock %}
