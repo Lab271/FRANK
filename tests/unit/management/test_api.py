@@ -18,6 +18,8 @@ from frank.management.api import create_management_app
 from frank.management.cognito_service import (
     BaseCognitoService,
     CognitoServiceError,
+    MFASetupError,
+    MFAVerificationError,
     UserAlreadyExistsError,
     UserNotFoundError,
 )
@@ -695,3 +697,199 @@ class TestDatabaseNotConfigured:
         response = client.get("/v1/organisations")
         assert response.status_code == 503
         assert "Database not configured" in response.json()["detail"]
+
+
+class TestMFAEndpoints:
+    """Tests for MFA endpoints."""
+
+    def test_setup_mfa_success(self, mock_database, mock_cognito, core_member_user):
+        """Test initiating MFA setup."""
+        mock_cognito.setup_mfa.return_value = {
+            "secret": "JBSWY3DPEHPK3PXP",
+            "qr_code_uri": "otpauth://totp/FRANK:testuser?secret=JBSWY3DPEHPK3PXP&issuer=FRANK",
+            "issuer": "FRANK"
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post("/v1/users/testuser/mfa/setup")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["secret"] == "JBSWY3DPEHPK3PXP"
+        assert "qr_code_uri" in data
+        assert data["issuer"] == "FRANK"
+
+    def test_setup_mfa_user_not_found(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA setup for non-existent user."""
+        mock_cognito.setup_mfa.side_effect = UserNotFoundError("nonexistent")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post("/v1/users/nonexistent/mfa/setup")
+
+        assert response.status_code == 404
+
+    def test_setup_mfa_error(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA setup failure."""
+        mock_cognito.setup_mfa.side_effect = MFASetupError("Failed to generate secret")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post("/v1/users/testuser/mfa/setup")
+
+        assert response.status_code == 400
+        assert "MFA setup failed" in response.json()["detail"]
+
+    def test_verify_mfa_setup_success(self, mock_database, mock_cognito, core_member_user):
+        """Test verifying MFA setup with valid code."""
+        mock_cognito.verify_mfa_setup.return_value = True
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/users/testuser/mfa/verify",
+            json={"totp_code": "123456"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["message"] == "MFA enabled successfully"
+        assert data["username"] == "testuser"
+
+    def test_verify_mfa_user_not_found(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA verification for non-existent user."""
+        mock_cognito.verify_mfa_setup.side_effect = UserNotFoundError("nonexistent")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/users/nonexistent/mfa/verify",
+            json={"totp_code": "123456"}
+        )
+
+        assert response.status_code == 404
+
+    def test_verify_mfa_invalid_code(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA verification with invalid code."""
+        mock_cognito.verify_mfa_setup.side_effect = MFAVerificationError("Invalid TOTP code")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/users/testuser/mfa/verify",
+            json={"totp_code": "000000"}
+        )
+
+        assert response.status_code == 400
+        assert "MFA verification failed" in response.json()["detail"]
+
+    def test_verify_mfa_invalid_code_format(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA verification with non-numeric code."""
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/users/testuser/mfa/verify",
+            json={"totp_code": "abcdef"}
+        )
+
+        assert response.status_code == 422  # Validation error
+
+    def test_disable_mfa_success(self, mock_database, mock_cognito, core_member_user):
+        """Test disabling MFA."""
+        mock_cognito.disable_mfa.return_value = True
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.delete("/v1/users/testuser/mfa")
+
+        assert response.status_code == 204
+
+    def test_disable_mfa_user_not_found(self, mock_database, mock_cognito, core_member_user):
+        """Test disabling MFA for non-existent user."""
+        mock_cognito.disable_mfa.side_effect = UserNotFoundError("nonexistent")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.delete("/v1/users/nonexistent/mfa")
+
+        assert response.status_code == 404
+
+    def test_disable_mfa_service_error(self, mock_database, mock_cognito, core_member_user):
+        """Test disabling MFA with service error."""
+        mock_cognito.disable_mfa.side_effect = CognitoServiceError("Service error", status_code=500)
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.delete("/v1/users/testuser/mfa")
+
+        assert response.status_code == 500
+
+    def test_get_mfa_status_enabled(self, mock_database, mock_cognito, core_member_user):
+        """Test getting MFA status when enabled."""
+        mock_cognito.get_mfa_status.return_value = {
+            "enabled": True,
+            "mfa_type": "TOTP"
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/users/testuser/mfa/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["enabled"] is True
+        assert data["mfa_type"] == "TOTP"
+
+    def test_get_mfa_status_disabled(self, mock_database, mock_cognito, core_member_user):
+        """Test getting MFA status when disabled."""
+        mock_cognito.get_mfa_status.return_value = {
+            "enabled": False,
+            "mfa_type": None
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/users/testuser/mfa/status")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["enabled"] is False
+        assert data["mfa_type"] is None
+
+    def test_get_mfa_status_user_not_found(self, mock_database, mock_cognito, core_member_user):
+        """Test getting MFA status for non-existent user."""
+        mock_cognito.get_mfa_status.side_effect = UserNotFoundError("nonexistent")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/users/nonexistent/mfa/status")
+
+        assert response.status_code == 404
+
+    def test_get_mfa_status_observer_access(self, mock_database, mock_cognito, observer_user):
+        """Test that OBSERVER can view MFA status."""
+        mock_cognito.get_mfa_status.return_value = {
+            "enabled": False,
+            "mfa_type": None
+        }
+
+        app = create_test_app(mock_database, mock_cognito, observer_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/users/testuser/mfa/status")
+
+        assert response.status_code == 200

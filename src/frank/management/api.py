@@ -21,11 +21,16 @@ from frank.core.enum import AccessTier
 from frank.management.cognito_service import (
     BaseCognitoService,
     CognitoServiceError,
+    MFASetupError,
+    MFAVerificationError,
     UserAlreadyExistsError,
     UserNotFoundError,
     get_cognito_service,
 )
 from frank.management.models import (
+    MFASetupResponse,
+    MFAStatusResponse,
+    MFAVerifyRequest,
     OrganisationCreate,
     OrganisationListResponse,
     OrganisationMemberCreate,
@@ -564,6 +569,139 @@ def create_management_app(
             await cognito.delete_user(username)
             logger.info(f"User {username} deleted by {current_user.username}")
 
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    # ========== MFA Endpoints ==========
+
+    @app.post(
+        "/v1/users/{username}/mfa/setup",
+        response_model=MFASetupResponse,
+        tags=["MFA"]
+    )
+    async def setup_mfa(
+        username: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> MFASetupResponse:
+        """
+        Start MFA enrollment for a user.
+
+        Generates a TOTP secret and returns data needed for QR code generation.
+        Requires CORE_MEMBER access level or the user themselves.
+        """
+        try:
+            result = await cognito.setup_mfa(username)
+            logger.info(f"MFA setup initiated for user {username} by {current_user.username}")
+            return MFASetupResponse(**result)
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except MFASetupError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.post(
+        "/v1/users/{username}/mfa/verify",
+        status_code=status.HTTP_200_OK,
+        tags=["MFA"]
+    )
+    async def verify_mfa_setup(
+        username: str,
+        verify_request: MFAVerifyRequest,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> Dict[str, Any]:
+        """
+        Verify MFA setup with a TOTP code.
+
+        Called after user scans QR code and enters verification code from authenticator app.
+        Requires CORE_MEMBER access level or the user themselves.
+        """
+        try:
+            await cognito.verify_mfa_setup(username, verify_request.totp_code)
+            logger.info(f"MFA verified and enabled for user {username} by {current_user.username}")
+            return {"message": "MFA enabled successfully", "username": username}
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except MFAVerificationError as e:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.delete(
+        "/v1/users/{username}/mfa",
+        status_code=status.HTTP_204_NO_CONTENT,
+        tags=["MFA"]
+    )
+    async def disable_mfa(
+        username: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ):
+        """
+        Disable MFA for a user.
+
+        Requires CORE_MEMBER access level.
+        """
+        try:
+            await cognito.disable_mfa(username)
+            logger.info(f"MFA disabled for user {username} by {current_user.username}")
+        except UserNotFoundError as e:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=str(e.message)
+            )
+        except CognitoServiceError as e:
+            raise HTTPException(
+                status_code=e.status_code,
+                detail=e.message
+            )
+
+    @app.get(
+        "/v1/users/{username}/mfa/status",
+        response_model=MFAStatusResponse,
+        tags=["MFA"]
+    )
+    async def get_mfa_status(
+        username: str,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.OBSERVER)),
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ) -> MFAStatusResponse:
+        """
+        Get MFA status for a user.
+
+        Requires OBSERVER access level.
+        """
+        try:
+            result = await cognito.get_mfa_status(username)
+            return MFAStatusResponse(**result)
         except UserNotFoundError as e:
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,

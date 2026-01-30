@@ -44,6 +44,20 @@ class UserAlreadyExistsError(CognitoServiceError):
         super().__init__(f"User already exists: {username}", "UsernameExistsException", 409)
 
 
+class MFASetupError(CognitoServiceError):
+    """Raised when MFA setup fails"""
+
+    def __init__(self, message: str):
+        super().__init__(f"MFA setup failed: {message}", "MFASetupError", 400)
+
+
+class MFAVerificationError(CognitoServiceError):
+    """Raised when MFA verification fails"""
+
+    def __init__(self, message: str):
+        super().__init__(f"MFA verification failed: {message}", "MFAVerificationError", 400)
+
+
 class BaseCognitoService(ABC):
     """
     Abstract base class for Cognito user management.
@@ -202,6 +216,85 @@ class BaseCognitoService(ABC):
 
         Returns:
             List of group names
+
+        Raises:
+            UserNotFoundError: If user doesn't exist
+        """
+        pass
+
+    # ========== MFA Methods ==========
+
+    @abstractmethod
+    async def setup_mfa(self, username: str) -> Dict[str, Any]:
+        """
+        Start MFA enrollment for a user.
+
+        Generates a TOTP secret and returns data needed for QR code.
+
+        Args:
+            username: Username to set up MFA for
+
+        Returns:
+            Dict containing:
+                - secret: TOTP secret key
+                - qr_code_uri: otpauth:// URI for QR code generation
+                - issuer: App name for authenticator
+
+        Raises:
+            UserNotFoundError: If user doesn't exist
+            MFASetupError: If MFA setup fails
+        """
+        pass
+
+    @abstractmethod
+    async def verify_mfa_setup(self, username: str, totp_code: str) -> bool:
+        """
+        Verify MFA setup with a TOTP code.
+
+        Called after user scans QR code and enters verification code.
+
+        Args:
+            username: Username verifying MFA
+            totp_code: 6-digit TOTP code from authenticator app
+
+        Returns:
+            True if verification successful and MFA is now enabled
+
+        Raises:
+            UserNotFoundError: If user doesn't exist
+            MFAVerificationError: If code is invalid
+        """
+        pass
+
+    @abstractmethod
+    async def disable_mfa(self, username: str) -> bool:
+        """
+        Disable MFA for a user.
+
+        Args:
+            username: Username to disable MFA for
+
+        Returns:
+            True if MFA was disabled
+
+        Raises:
+            UserNotFoundError: If user doesn't exist
+            CognitoServiceError: If operation fails
+        """
+        pass
+
+    @abstractmethod
+    async def get_mfa_status(self, username: str) -> Dict[str, Any]:
+        """
+        Get MFA status for a user.
+
+        Args:
+            username: Username to check
+
+        Returns:
+            Dict containing:
+                - enabled: Whether MFA is enabled
+                - mfa_type: Type of MFA (e.g., "TOTP") or None
 
         Raises:
             UserNotFoundError: If user doesn't exist
@@ -427,6 +520,98 @@ class MockCognitoService(BaseCognitoService):
         """Get user groups from Mock Cognito"""
         user = await self.get_user(username)
         return user.get("groups", [])
+
+    async def setup_mfa(self, username: str) -> Dict[str, Any]:
+        """Start MFA enrollment via Mock Cognito"""
+        try:
+            response = await self._client.post(
+                f"{self.base_url}/admin/users/{username}/mfa/setup"
+            )
+
+            if response.status_code == 404:
+                raise UserNotFoundError(username)
+            elif response.status_code >= 400:
+                error_data = response.json() if response.content else {}
+                raise MFASetupError(error_data.get("message", "Failed to setup MFA"))
+
+            return response.json()
+
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to Mock Cognito: {e}")
+            raise CognitoServiceError(f"Could not connect to Cognito service: {e}")
+
+    async def verify_mfa_setup(self, username: str, totp_code: str) -> bool:
+        """Verify MFA setup via Mock Cognito"""
+        try:
+            response = await self._client.post(
+                f"{self.base_url}/admin/users/{username}/mfa/verify",
+                json={"totp_code": totp_code}
+            )
+
+            if response.status_code == 404:
+                raise UserNotFoundError(username)
+            elif response.status_code == 400:
+                error_data = response.json() if response.content else {}
+                raise MFAVerificationError(error_data.get("message", "Invalid TOTP code"))
+            elif response.status_code >= 400:
+                error_data = response.json() if response.content else {}
+                raise CognitoServiceError(
+                    error_data.get("message", "Failed to verify MFA"),
+                    error_data.get("__type", "UnknownError"),
+                    response.status_code
+                )
+
+            return True
+
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to Mock Cognito: {e}")
+            raise CognitoServiceError(f"Could not connect to Cognito service: {e}")
+
+    async def disable_mfa(self, username: str) -> bool:
+        """Disable MFA via Mock Cognito"""
+        try:
+            response = await self._client.delete(
+                f"{self.base_url}/admin/users/{username}/mfa"
+            )
+
+            if response.status_code == 404:
+                raise UserNotFoundError(username)
+            elif response.status_code >= 400:
+                error_data = response.json() if response.content else {}
+                raise CognitoServiceError(
+                    error_data.get("message", "Failed to disable MFA"),
+                    error_data.get("__type", "UnknownError"),
+                    response.status_code
+                )
+
+            return True
+
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to Mock Cognito: {e}")
+            raise CognitoServiceError(f"Could not connect to Cognito service: {e}")
+
+    async def get_mfa_status(self, username: str) -> Dict[str, Any]:
+        """Get MFA status via Mock Cognito"""
+        try:
+            response = await self._client.get(
+                f"{self.base_url}/admin/users/{username}/mfa/status"
+            )
+
+            if response.status_code == 404:
+                raise UserNotFoundError(username)
+            elif response.status_code >= 400:
+                error_data = response.json() if response.content else {}
+                raise CognitoServiceError(
+                    error_data.get("message", "Failed to get MFA status"),
+                    error_data.get("__type", "UnknownError"),
+                    response.status_code
+                )
+
+            return response.json()
+
+        except httpx.RequestError as e:
+            logger.error(f"Error connecting to Mock Cognito: {e}")
+            raise CognitoServiceError(f"Could not connect to Cognito service: {e}")
 
     async def close(self):
         """Close the HTTP client"""
@@ -677,6 +862,175 @@ class AWSCognitoService(BaseCognitoService):
         except Exception as e:
             logger.error(f"Error getting user groups: {e}")
             raise CognitoServiceError(f"Failed to get user groups: {e}")
+
+    async def setup_mfa(self, username: str) -> Dict[str, Any]:
+        """
+        Start MFA enrollment in AWS Cognito.
+
+        Associates a software token (TOTP) with the user.
+        """
+        try:
+            # First, get an access token for the user via admin auth
+            # For TOTP setup, we use associate_software_token
+            # This requires getting a session first via admin_initiate_auth
+
+            # Get user to verify they exist
+            await self.get_user(username)
+
+            # For AWS Cognito, TOTP setup requires a user session
+            # We'll generate a secret locally and store it as a custom attribute
+            # then verify it when the user submits a code
+            import pyotp
+
+            # Generate a new TOTP secret
+            secret = pyotp.random_base32()
+
+            # Store the secret temporarily as a custom attribute (pending verification)
+            self.client.admin_update_user_attributes(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                UserAttributes=[
+                    {"Name": "custom:mfa_secret_pending", "Value": secret}
+                ]
+            )
+
+            # Create the otpauth URI for QR code
+            totp = pyotp.TOTP(secret)
+            issuer = "FRANK"
+            qr_code_uri = totp.provisioning_uri(name=username, issuer_name=issuer)
+
+            return {
+                "secret": secret,
+                "qr_code_uri": qr_code_uri,
+                "issuer": issuer
+            }
+
+        except self.client.exceptions.UserNotFoundException:
+            raise UserNotFoundError(username)
+        except Exception as e:
+            logger.error(f"Error setting up MFA: {e}")
+            raise MFASetupError(str(e))
+
+    async def verify_mfa_setup(self, username: str, totp_code: str) -> bool:
+        """
+        Verify MFA setup with a TOTP code in AWS Cognito.
+
+        Validates the code against the pending secret and enables MFA.
+        """
+        try:
+            import pyotp
+
+            # Get the pending secret from user attributes
+            response = self.client.admin_get_user(
+                UserPoolId=self.user_pool_id,
+                Username=username
+            )
+
+            # Find the pending MFA secret
+            secret = None
+            for attr in response.get("UserAttributes", []):
+                if attr["Name"] == "custom:mfa_secret_pending":
+                    secret = attr["Value"]
+                    break
+
+            if not secret:
+                raise MFAVerificationError("No pending MFA setup found")
+
+            # Verify the TOTP code
+            totp = pyotp.TOTP(secret)
+            if not totp.verify(totp_code):
+                raise MFAVerificationError("Invalid TOTP code")
+
+            # Move secret from pending to active and enable MFA
+            self.client.admin_update_user_attributes(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                UserAttributes=[
+                    {"Name": "custom:mfa_secret", "Value": secret},
+                    {"Name": "custom:mfa_enabled", "Value": "true"},
+                    {"Name": "custom:mfa_secret_pending", "Value": ""}  # Clear pending
+                ]
+            )
+
+            # Set MFA preference to SOFTWARE_TOKEN_MFA
+            self.client.admin_set_user_mfa_preference(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                SoftwareTokenMfaSettings={
+                    "Enabled": True,
+                    "PreferredMfa": True
+                }
+            )
+
+            logger.info(f"MFA enabled for user: {username}")
+            return True
+
+        except self.client.exceptions.UserNotFoundException:
+            raise UserNotFoundError(username)
+        except MFAVerificationError:
+            raise
+        except Exception as e:
+            logger.error(f"Error verifying MFA: {e}")
+            raise MFAVerificationError(str(e))
+
+    async def disable_mfa(self, username: str) -> bool:
+        """Disable MFA for a user in AWS Cognito"""
+        try:
+            # Clear MFA attributes
+            self.client.admin_update_user_attributes(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                UserAttributes=[
+                    {"Name": "custom:mfa_secret", "Value": ""},
+                    {"Name": "custom:mfa_enabled", "Value": "false"},
+                    {"Name": "custom:mfa_secret_pending", "Value": ""}
+                ]
+            )
+
+            # Disable MFA preference
+            self.client.admin_set_user_mfa_preference(
+                UserPoolId=self.user_pool_id,
+                Username=username,
+                SoftwareTokenMfaSettings={
+                    "Enabled": False,
+                    "PreferredMfa": False
+                }
+            )
+
+            logger.info(f"MFA disabled for user: {username}")
+            return True
+
+        except self.client.exceptions.UserNotFoundException:
+            raise UserNotFoundError(username)
+        except Exception as e:
+            logger.error(f"Error disabling MFA: {e}")
+            raise CognitoServiceError(f"Failed to disable MFA: {e}")
+
+    async def get_mfa_status(self, username: str) -> Dict[str, Any]:
+        """Get MFA status for a user in AWS Cognito"""
+        try:
+            response = self.client.admin_get_user(
+                UserPoolId=self.user_pool_id,
+                Username=username
+            )
+
+            # Check for MFA enabled attribute
+            mfa_enabled = False
+            for attr in response.get("UserAttributes", []):
+                if attr["Name"] == "custom:mfa_enabled" and attr["Value"] == "true":
+                    mfa_enabled = True
+                    break
+
+            return {
+                "enabled": mfa_enabled,
+                "mfa_type": "TOTP" if mfa_enabled else None
+            }
+
+        except self.client.exceptions.UserNotFoundException:
+            raise UserNotFoundError(username)
+        except Exception as e:
+            logger.error(f"Error getting MFA status: {e}")
+            raise CognitoServiceError(f"Failed to get MFA status: {e}")
 
     def _format_user_response(self, user_data: Dict[str, Any], groups: List[str]) -> Dict[str, Any]:
         """Format Cognito user data to standard response format"""
