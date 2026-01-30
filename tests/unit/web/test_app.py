@@ -80,30 +80,51 @@ class TestHealthEndpoint:
 class TestRootEndpoint:
     """Test root / endpoint."""
 
-    def test_root_returns_html(self, client):
-        """Test that root endpoint returns HTML."""
-        response = client.get("/")
+    def test_root_redirects_to_login_when_not_authenticated(self, client):
+        """Test that root redirects to login when no session."""
+        response = client.get("/", follow_redirects=False)
 
-        assert response.status_code == 200
-        assert "text/html" in response.headers["content-type"]
+        assert response.status_code == 303
+        assert response.headers["location"] == "/login"
 
-    def test_root_contains_title(self, client):
-        """Test that root page contains expected title."""
-        response = client.get("/")
+    def test_root_redirects_to_dashboard_when_authenticated(self, app, web_config):
+        """Test that root redirects to dashboard with valid session."""
+        from frank.web.middleware.session import SessionManager
 
-        assert "FRANK Web GUI" in response.text
+        # Create session manager and authenticated session
+        session_manager = SessionManager(web_config)
 
-    def test_root_contains_version(self, client):
-        """Test that root page contains version info."""
-        response = client.get("/")
+        # Create test client and mock response to set session cookie
+        client = TestClient(app)
 
-        assert "0.9.3" in response.text or "version" in response.text.lower()
+        # Get initial response to trigger session creation
+        response = client.get("/login")
 
-    def test_root_contains_features(self, client):
-        """Test that root page lists key features."""
-        response = client.get("/")
+        # Manually create a session cookie
+        from fastapi import Response
+        mock_response = Response()
+        session_manager.create_session(
+            response=mock_response,
+            access_token="test-token-123",
+            username="testuser",
+            expires_in=3600,
+        )
 
-        assert "Organisation Management" in response.text
-        assert "User Management" in response.text
-        assert "API Key Management" in response.text
-        assert "MFA Security" in response.text
+        # Extract the session cookie from mock response
+        if "set-cookie" in mock_response.headers:
+            cookie_header = mock_response.headers["set-cookie"]
+            # Extract just the cookie value
+            cookie_parts = cookie_header.split(";")
+            cookie_value = cookie_parts[0]
+
+            # Set the cookie on the test client
+            client.cookies.set(
+                web_config.session_cookie_name,
+                cookie_value.split("=", 1)[1] if "=" in cookie_value else cookie_value,
+            )
+
+        # Now test the root endpoint with authenticated session
+        response = client.get("/", follow_redirects=False)
+
+        assert response.status_code == 303
+        assert response.headers["location"] == "/dashboard"
