@@ -4,7 +4,7 @@ VENV := .venv
 PYTHON_VERSION := 3.11
 PACKAGE := frank
 
-.PHONY: help version check env sync lock test lint format type-check clean
+.PHONY: help version check env sync lock test lint format type-check clean docker-up docker-down docker-logs docker-build
 
 version: ## Show project version
 	@uv run python -c "from $(PACKAGE) import __version__; print(f'version: {__version__}')"
@@ -73,6 +73,31 @@ clean: ## Clean up artifacts and caches
 	@find . -type f -name "*.pyc" -delete
 	@find . -type f -name ".coverage" -delete
 	@echo "✓ Cleaned"
+
+docker-build: ## Build all Docker images
+	@echo "Building Docker images..."
+	docker compose -f docker-compose.local.yml build
+
+docker-up: ## Start all services (Web GUI + Management API + Mock Cognito)
+	@echo "Starting FRANK platform services..."
+	@docker compose -f docker-compose.local.yml up -d
+	@echo "✓ Services started"
+	@echo ""
+	@echo "Access points:"
+	@echo "  Web GUI:        http://localhost:3000"
+	@echo "  Management API: http://localhost:8001/docs"
+	@echo "  Mock Cognito:   http://localhost:8100/health"
+	@echo ""
+	@echo "View logs: make docker-logs"
+	@echo "Stop services: make docker-down"
+
+docker-down: ## Stop all services
+	@echo "Stopping FRANK platform services..."
+	@docker compose -f docker-compose.local.yml down
+	@echo "✓ Services stopped"
+
+docker-logs: ## Follow logs from all services
+	@docker compose -f docker-compose.local.yml logs -f
 
 .DEFAULT_GOAL := help
 
