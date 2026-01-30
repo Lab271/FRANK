@@ -251,6 +251,14 @@ def get_config() -> AppConfig:
 
 # In-memory user store (simulates Cognito User Pool)
 USERS_DB = {
+    "admin": {
+        "username": "admin",
+        "password": "admin123",
+        "email": "admin@frank.local",
+        "groups": ["core_member"],
+        "enabled": True,
+        "user_status": "CONFIRMED"
+    },
     "testuser_observer": {
         "username": "testuser_observer",
         "password": "TempPass123!",
@@ -260,7 +268,7 @@ USERS_DB = {
         "user_status": "CONFIRMED"
     },
     "testuser_contributor": {
-        "username": "testuser_contributor", 
+        "username": "testuser_contributor",
         "password": "TempPass123!",
         "email": "contributor@example.com",
         "groups": ["contributor"],
@@ -268,7 +276,7 @@ USERS_DB = {
         "user_status": "CONFIRMED"
     },
     "testuser_partner": {
-        "username": "testuser_partner", 
+        "username": "testuser_partner",
         "password": "TempPass123!",
         "email": "partner@example.com",
         "groups": ["partner"],
@@ -276,7 +284,7 @@ USERS_DB = {
         "user_status": "CONFIRMED"
     },
     "testuser_core_member": {
-        "username": "testuser_core_member", 
+        "username": "testuser_core_member",
         "password": "TempPass123!",
         "email": "core_member@example.com",
         "groups": ["core_member"],
