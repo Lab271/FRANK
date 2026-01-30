@@ -18,6 +18,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from frank.web.config import WebConfig
 from frank.web.dependencies import get_current_session
 from frank.web.middleware.session import SessionData
+from frank.web.routes.organisations import fetch_organisations
 
 logger = logging.getLogger(__name__)
 
@@ -61,6 +62,7 @@ async def fetch_users(
 async def create_user(
     management_api_url: str,
     access_token: str,
+    organisation_id: str,
     user_data: dict,
 ) -> tuple[bool, Optional[str]]:
     """
@@ -69,6 +71,7 @@ async def create_user(
     Args:
         management_api_url: Management API base URL
         access_token: JWT access token
+        organisation_id: Organisation ID to add user to
         user_data: User data dictionary
 
     Returns:
@@ -77,7 +80,7 @@ async def create_user(
     async with httpx.AsyncClient() as client:
         try:
             response = await client.post(
-                f"{management_api_url}/v1/users",
+                f"{management_api_url}/v1/organisations/{organisation_id}/users",
                 json=user_data,
                 headers={"Authorization": f"Bearer {access_token}"},
                 timeout=10.0,
@@ -154,12 +157,19 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
         Returns:
             Rendered new user form
         """
+        # Fetch organisations for the dropdown
+        organisations = await fetch_organisations(
+            management_api_url=config.management_api_url,
+            access_token=session.access_token,
+        )
+
         return templates.TemplateResponse(
             "users/new.html",
             {
                 "request": request,
                 "username": session.username,
                 "error": error,
+                "organisations": organisations,
             },
         )
 
@@ -169,6 +179,7 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
         session: SessionData = Depends(get_current_session),
         username: str = Form(...),
         email: str = Form(...),
+        organisation_id: str = Form(...),
         password: str = Form(...),
     ):
         """
@@ -179,6 +190,7 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
             session: Current session
             username: Username for new user
             email: Email address
+            organisation_id: Organisation to add user to
             password: Temporary password
 
         Returns:
@@ -197,6 +209,12 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
                 status_code=303,
             )
 
+        if not organisation_id:
+            return RedirectResponse(
+                url="/users/new?error=Organisation+is+required",
+                status_code=303,
+            )
+
         # Create user
         user_data = {
             "username": username.strip(),
@@ -207,11 +225,12 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
         success, error = await create_user(
             management_api_url=config.management_api_url,
             access_token=session.access_token,
+            organisation_id=organisation_id,
             user_data=user_data,
         )
 
         if success:
-            logger.info(f"User '{username}' created by {session.username}")
+            logger.info(f"User '{username}' created in organisation {organisation_id} by {session.username}")
             return RedirectResponse(url="/users", status_code=303)
         else:
             logger.warning(f"Failed to create user: {error}")
