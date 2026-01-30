@@ -1,11 +1,16 @@
 # FRANK Platform - Local Development Stack
 #
-# Provides Mock Cognito + Management API for local development.
+# Provides Mock Cognito + Management API + Web GUI for local development.
 #
 # Usage:
 #   docker compose -f docker-compose.local.yml up -d
 #   docker compose -f docker-compose.local.yml logs -f
 #   docker compose -f docker-compose.local.yml down
+#
+# Access points:
+#   - Web GUI:        http://localhost:3000
+#   - Management API: http://localhost:8001/docs
+#   - Mock Cognito:   http://localhost:8100/health
 #
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
@@ -67,6 +72,35 @@ services:
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:8001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - frank-net
+
+  # Web GUI service
+  web-gui:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.web
+    container_name: frank-web-gui
+    ports:
+      - "${WEB_GUI_PORT:-3000}:3000"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - RELOAD=${RELOAD:-false}
+      - PORT=3000
+      - FRANK_MANAGEMENT_API_URL=http://management-api:8001
+      - COGNITO_URL=http://mock-cognito:8100
+      - TEMPLATE_AUTO_RELOAD=${TEMPLATE_AUTO_RELOAD:-false}
+      - FRANK_SESSION_SECRET=${FRANK_SESSION_SECRET:-development-secret-key-change-in-production-min-32-chars}
+    depends_on:
+      management-api:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/health"]
       interval: 10s
       timeout: 5s
       retries: 3
