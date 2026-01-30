@@ -8,8 +8,7 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from fastapi import Depends, Request
-from fastapi.responses import RedirectResponse
+from fastapi import Depends, HTTPException, Request
 
 from frank.web.middleware.session import SessionData, SessionManager
 
@@ -44,13 +43,17 @@ def get_current_session(
         Current session data
 
     Raises:
-        RedirectResponse: If not authenticated (redirects to login)
+        HTTPException: 401 if not authenticated
     """
     session = session_manager.get_session(request)
 
     if not session or session.is_expired():
-        # Not authenticated - redirect to login
-        return RedirectResponse(url="/login", status_code=303)
+        # Not authenticated - raise 401
+        raise HTTPException(
+            status_code=401,
+            detail="Not authenticated",
+            headers={"Location": "/login"},
+        )
 
     return session
 
