@@ -1,0 +1,189 @@
+{% extends "base.html" %}
+
+{% block title %}{{ organisation.name }} - FRANK Web GUI{% endblock %}
+
+{% block nav_items %}
+<a href="/dashboard" class="hover:text-blue-200 transition">Dashboard</a>
+<a href="/organisations" class="hover:text-blue-200 transition">Organisations</a>
+<a href="/users" class="hover:text-blue-200 transition">Users</a>
+<a href="/logout" class="hover:text-blue-200 transition">Logout ({{ username }})</a>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-4xl mx-auto">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-8">
+        <div>
+            <h2 class="text-3xl font-bold text-gray-800">{{ organisation.name }}</h2>
+            <p class="text-gray-600 mt-1">Organisation Details</p>
+        </div>
+        <div class="flex space-x-3">
+            <a
+                href="/organisations/{{ organisation.organisation_id }}/edit"
+                class="bg-blue-600 text-white px-6 py-3 rounded-lg hover:bg-blue-700 transition font-semibold"
+            >
+                Edit
+            </a>
+            <button
+                onclick="confirmDelete()"
+                class="bg-red-600 text-white px-6 py-3 rounded-lg hover:bg-red-700 transition font-semibold"
+            >
+                Delete
+            </button>
+        </div>
+    </div>
+
+    <!-- Organisation Info Card -->
+    <div class="bg-white rounded-lg shadow-lg p-8 mb-6">
+        <div class="grid grid-cols-2 gap-6">
+            <!-- Organisation ID -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Organisation ID
+                </label>
+                <div class="text-lg text-gray-900 font-mono">
+                    {{ organisation.organisation_id }}
+                </div>
+            </div>
+
+            <!-- Access Tier -->
+            <div>
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Access Tier
+                </label>
+                <div>
+                    {% if organisation.access_level == "core_member" %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-purple-100 text-purple-800">
+                        CORE MEMBER
+                    </span>
+                    {% elif organisation.access_level == "partner" %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                        PARTNER
+                    </span>
+                    {% elif organisation.access_level == "contributor" %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                        CONTRIBUTOR
+                    </span>
+                    {% elif organisation.access_level == "observer" %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-yellow-100 text-yellow-800">
+                        OBSERVER
+                    </span>
+                    {% else %}
+                    <span class="px-3 py-1 inline-flex text-sm font-semibold rounded-full bg-gray-100 text-gray-800">
+                        PUBLIC
+                    </span>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Name -->
+            <div class="col-span-2">
+                <label class="block text-sm font-medium text-gray-500 mb-1">
+                    Name
+                </label>
+                <div class="text-lg text-gray-900">
+                    {{ organisation.name }}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Access Tier Description -->
+    <div class="bg-blue-50 border border-blue-200 rounded-lg p-6 mb-6">
+        <h3 class="text-lg font-semibold text-blue-900 mb-3">Access Tier Permissions</h3>
+        {% if organisation.access_level == "core_member" %}
+        <p class="text-blue-800">
+            <strong>CORE MEMBER</strong> organisations have full administrative access to the platform, including:
+        </p>
+        <ul class="list-disc list-inside text-blue-800 mt-2 space-y-1">
+            <li>Submit and view all threat intelligence</li>
+            <li>Manage users and organisations</li>
+            <li>Access to all data regardless of access tier</li>
+            <li>Platform administration capabilities</li>
+        </ul>
+        {% elif organisation.access_level == "partner" %}
+        <p class="text-blue-800">
+            <strong>PARTNER</strong> organisations have enhanced collaboration access, including:
+        </p>
+        <ul class="list-disc list-inside text-blue-800 mt-2 space-y-1">
+            <li>Submit and view partner-level threat intelligence</li>
+            <li>Enhanced collaboration features</li>
+            <li>Priority support and consultation</li>
+            <li>Access to partner-shared intelligence</li>
+        </ul>
+        {% elif organisation.access_level == "contributor" %}
+        <p class="text-blue-800">
+            <strong>CONTRIBUTOR</strong> organisations can actively submit intelligence, including:
+        </p>
+        <ul class="list-disc list-inside text-blue-800 mt-2 space-y-1">
+            <li>Submit observables and sightings</li>
+            <li>View contributor-level shared data</li>
+            <li>Participate in threat intelligence sharing</li>
+        </ul>
+        {% elif organisation.access_level == "observer" %}
+        <p class="text-blue-800">
+            <strong>OBSERVER</strong> organisations have read-only access to shared intelligence feeds.
+        </p>
+        {% else %}
+        <p class="text-blue-800">
+            <strong>PUBLIC</strong> organisations have access to publicly available threat data only.
+        </p>
+        {% endif %}
+    </div>
+
+    <!-- Back Button -->
+    <div class="flex justify-start">
+        <a
+            href="/organisations"
+            class="px-6 py-3 border border-gray-300 rounded-lg text-gray-700 hover:bg-gray-50 transition font-medium"
+        >
+            Back to List
+        </a>
+    </div>
+</div>
+
+<!-- Delete Confirmation Modal -->
+<div id="deleteModal" class="hidden fixed inset-0 bg-gray-600 bg-opacity-50 overflow-y-auto h-full w-full z-50">
+    <div class="relative top-20 mx-auto p-5 border w-96 shadow-lg rounded-md bg-white">
+        <div class="mt-3 text-center">
+            <div class="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100">
+                <svg class="h-6 w-6 text-red-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+                </svg>
+            </div>
+            <h3 class="text-lg leading-6 font-medium text-gray-900 mt-4">Delete Organisation</h3>
+            <div class="mt-2 px-7 py-3">
+                <p class="text-sm text-gray-500">
+                    Are you sure you want to delete "{{ organisation.name }}"? This action cannot be undone.
+                </p>
+            </div>
+            <div class="flex justify-center space-x-4 px-4 py-3">
+                <button
+                    onclick="closeModal()"
+                    class="px-4 py-2 bg-gray-300 text-gray-800 text-base font-medium rounded-md shadow-sm hover:bg-gray-400 focus:outline-none"
+                >
+                    Cancel
+                </button>
+                <form method="POST" action="/organisations/{{ organisation.organisation_id }}/delete" class="inline">
+                    <button
+                        type="submit"
+                        class="px-4 py-2 bg-red-600 text-white text-base font-medium rounded-md shadow-sm hover:bg-red-700 focus:outline-none"
+                    >
+                        Delete
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function confirmDelete() {
+    document.getElementById('deleteModal').classList.remove('hidden');
+}
+
+function closeModal() {
+    document.getElementById('deleteModal').classList.add('hidden');
+}
+</script>
+{% endblock %}

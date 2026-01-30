@@ -153,10 +153,45 @@ class AppConfig:
     
     def _generate_rsa_keys(self):
         """Generate RSA key pair for JWT signing"""
-        # Generate private key
-        self.private_key = rsa.generate_private_key(
-            public_exponent=65537,
-            key_size=2048,
+        # Use fixed RSA key for development to prevent signature verification errors
+        # when containers restart. In production, use proper key management/persistence.
+
+        # Fixed development private key (2048-bit RSA)
+        fixed_private_key_pem = """-----BEGIN PRIVATE KEY-----
+MIIEvgIBADANBgkqhkiG9w0BAQEFAASCBKgwggSkAgEAAoIBAQCk/cQZlb04L9Ls
+HwSer25j8paOdUFfk3p8OLxLC1PV0V7hvQOHeYww3ncZH+8OWoTAFDepCTTrUtUz
+rDioeaQ8GommrNR1OLLeWf0JzQwlBiqSglOagSDjxE4mvwckq+zMOiaX2aOuTroR
+lM0BHXtg3XBZpxtWeYdgIMSsjviSnkv29hTqFC9MsMBZGL5HHPnbOnGTiDhYOTO8
+vlzgC368qDH90nOpI3ivSZcZIsY4renXbbpJsW0ichECA1Qfu61Jsb+lyIwf87pd
+/z3WW+2Xh5u7LfDCxMWc6raaqYcwmXRDjIJ/q4Ukou/Wfedo75b3fLvYhciE+6aq
+i3khWxClAgMBAAECggEAD/VMOdieBX4OrcWZmfWdkkTno14bqsW7c6ITMu5PYgok
+XhDSSLtiFWShwAgy2ZW6FaVUSuENQXObaSo6Yq/n9Djxi8cCAlfaaR+Va2oYnMjP
+ZlNSXcp+kWPZK+3kdXtm5cv8E/Tk3C+uLJQoDfhkM2wc+UxB8dJtsce0Q30ioB+l
+YeCRjpz20d2scRphib0rHrFdX2AYzLYeq2QcrX7CKWIgsthZzRU2fslYeN/FcClR
+5ox0EjGm2MTJBKw4AkvPKwjCqvAt0W5sPhehoXFnyhavcP+0qOhkpTyI3hZ2FfAR
+gORTZPDeLU9QD8vBWcuMKcTon0KfHhpNZg+/+o48owKBgQDOS751VfJZK8468OYJ
+48kd3HDGrgg4M5BoVdZGo1qVOJRHdBJ+VD7tU5skiFmvN2CMx+WdihAe2N/7Tm55
+x78mPFKdX+ldj2ujDCKqrvjPFoZDWznf2I1aP86lqzlo+k/74eUBIrF6lwmuFHwl
+HOflMzZluP6K6uSvMNHg+pKKLwKBgQDMvl5zTTF+1ZQnNYHh5DRRHsYqMKxKSUCX
+DfjWaNC5J5vwh57v14AdX6i+Hm3z+RR4ezhWosrQcO9WfupQ1edfm7HXywz/BOMp
+Q5ViscSuqy0MYZOLPU1AqexYjg3YXltslyHbR05IGBwJ4SNtoDEa7PzWnG6p+bF7
+wHY1bdjhawKBgGU5Gzn9sw14Bhg7rdQ6dat2R8vlBtl0y622OI6uhrrjaTZqSMy9
+z6apuF1DniXwWSqaxxr27JQGPFjWEjUlArDjNnJL5njm75ywTq5LboBGgBi6wXoJ
+iso2ttHpYyEUeXyRScm12TnatIA7QvL+7PY0m8Nr81H8kbs4jDMFIDQ3AoGBAI1F
+fZ5JUTGW5Rb40JmxAHhIp6tM0lSfnrWbqmsm/34CWpLowT30kC20Z5ZnIK8K2pkX
+TJRa115jzoD8KWmFbpSFtXyUWm9MTAGY5GapCnELI5Y7bbbRoZBQrwebXOpCkQqo
+bXAED3unRxF6CxwFQFy30O20Gpel9lTRQ78yAEfpAoGBAIug+AS8so1rrN46MEY2
+vz2EFF29FoVNwu4aI8sJ4gTPPo+tAmt9tJqyOw/h7uk+ppyPRPY+j+UvdBM8yQoE
+LSYraOIRCY6sXKZY1z+/RI6xBeQi4qi4BkMPbDc7fPC1F/GMRI1jPfs1RlboVW5t
+bHHufNA4TcOb6n+tmU5//nXB
+-----END PRIVATE KEY-----"""
+
+        from cryptography.hazmat.primitives import serialization
+
+        # Load the fixed private key
+        self.private_key = serialization.load_pem_private_key(
+            fixed_private_key_pem.encode(),
+            password=None,
             backend=default_backend()
         )
         
@@ -251,6 +286,14 @@ def get_config() -> AppConfig:
 
 # In-memory user store (simulates Cognito User Pool)
 USERS_DB = {
+    "admin": {
+        "username": "admin",
+        "password": "admin123",
+        "email": "admin@frank.local",
+        "groups": ["core_member"],
+        "enabled": True,
+        "user_status": "CONFIRMED"
+    },
     "testuser_observer": {
         "username": "testuser_observer",
         "password": "TempPass123!",
@@ -260,7 +303,7 @@ USERS_DB = {
         "user_status": "CONFIRMED"
     },
     "testuser_contributor": {
-        "username": "testuser_contributor", 
+        "username": "testuser_contributor",
         "password": "TempPass123!",
         "email": "contributor@example.com",
         "groups": ["contributor"],
@@ -268,7 +311,7 @@ USERS_DB = {
         "user_status": "CONFIRMED"
     },
     "testuser_partner": {
-        "username": "testuser_partner", 
+        "username": "testuser_partner",
         "password": "TempPass123!",
         "email": "partner@example.com",
         "groups": ["partner"],
@@ -276,7 +319,7 @@ USERS_DB = {
         "user_status": "CONFIRMED"
     },
     "testuser_core_member": {
-        "username": "testuser_core_member", 
+        "username": "testuser_core_member",
         "password": "TempPass123!",
         "email": "core_member@example.com",
         "groups": ["core_member"],

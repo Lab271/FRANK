@@ -133,9 +133,12 @@ def create_auth_routes(
                 status_code=303,
             )
 
-        # Create session
+        # Create redirect response
+        redirect = RedirectResponse(url="/dashboard", status_code=303)
+
+        # Create session on the redirect response
         session_manager.create_session(
-            response=response,
+            response=redirect,
             access_token=token_data["access_token"],
             username=username,
             expires_in=token_data.get("expires_in", 3600),
@@ -144,8 +147,7 @@ def create_auth_routes(
 
         logger.info(f"User {username} logged in successfully")
 
-        # Redirect to dashboard
-        return RedirectResponse(url="/dashboard", status_code=303)
+        return redirect
 
     @router.get("/logout")
     @router.post("/logout")
@@ -164,10 +166,12 @@ def create_auth_routes(
         if session:
             logger.info(f"User {session.username} logged out")
 
-        # Clear session cookie
-        session_manager.clear_session(response)
+        # Create redirect response first
+        redirect = RedirectResponse(url="/login", status_code=303)
 
-        # Redirect to login
-        return RedirectResponse(url="/login", status_code=303)
+        # Clear session cookie on the redirect response
+        session_manager.clear_session(redirect)
+
+        return redirect
 
     return router

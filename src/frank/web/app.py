@@ -12,7 +12,7 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from fastapi import Depends, FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
@@ -20,7 +20,7 @@ from fastapi.templating import Jinja2Templates
 import frank
 from frank.web.config import WebConfig
 from frank.web.dependencies import get_current_session
-from frank.web.middleware.session import SessionManager, SessionData
+from frank.web.middleware.session import SessionData, SessionManager
 from frank.web.routes.auth import create_auth_routes
 from frank.web.routes.organisations import create_organisation_routes
 from frank.web.routes.users import create_user_routes
@@ -55,6 +55,16 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
     # Setup session manager
     session_manager = SessionManager(config)
     app.state.session_manager = session_manager
+
+    # Exception handler for authentication failures
+    @app.exception_handler(HTTPException)
+    async def auth_exception_handler(request: Request, exc: HTTPException):
+        """Handle 401 errors by redirecting to login for browser requests."""
+        if exc.status_code == 401:
+            # Redirect to login for browser requests
+            return RedirectResponse(url="/login", status_code=303)
+        # Re-raise other HTTP exceptions
+        raise exc
 
     # Setup Jinja2 templates
     templates_dir = Path(__file__).parent / "templates"
