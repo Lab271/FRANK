@@ -12,13 +12,16 @@ import logging
 from pathlib import Path
 from typing import Dict
 
-from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi import Depends, FastAPI, Request
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 import frank
 from frank.web.config import WebConfig
+from frank.web.dependencies import get_current_session
+from frank.web.middleware.session import SessionManager, SessionData
+from frank.web.routes.auth import create_auth_routes
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +50,10 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
     # Store config in app state
     app.state.config = config
 
+    # Setup session manager
+    session_manager = SessionManager(config)
+    app.state.session_manager = session_manager
+
     # Setup Jinja2 templates
     templates_dir = Path(__file__).parent / "templates"
     templates = Jinja2Templates(
@@ -59,6 +66,10 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
     static_dir = Path(__file__).parent / "static"
     if static_dir.exists():
         app.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    # Register authentication routes
+    auth_router = create_auth_routes(config, session_manager, templates)
+    app.include_router(auth_router)
 
     # Health check endpoint
     @app.get("/health")
@@ -75,23 +86,45 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
             "version": frank.__version__,
         }
 
-    # Root endpoint - temporary landing page
-    @app.get("/", response_class=HTMLResponse)
+    # Root endpoint - redirect based on authentication
+    @app.get("/")
     async def root(request: Request):
         """
-        Root endpoint - renders landing page.
+        Root endpoint - redirects to dashboard if authenticated, login otherwise.
 
         Args:
             request: FastAPI request object
 
         Returns:
-            Rendered HTML page
+            Redirect response
+        """
+        session = session_manager.get_session(request)
+        if session and not session.is_expired():
+            return RedirectResponse(url="/dashboard", status_code=303)
+        else:
+            return RedirectResponse(url="/login", status_code=303)
+
+    # Dashboard - protected route
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def dashboard(
+        request: Request,
+        session: SessionData = Depends(get_current_session),
+    ):
+        """
+        Dashboard page - requires authentication.
+
+        Args:
+            request: FastAPI request object
+            session: Current authenticated session
+
+        Returns:
+            Rendered dashboard page
         """
         return templates.TemplateResponse(
-            "index.html",
+            "dashboard.html",
             {
                 "request": request,
-                "title": "FRANK Web GUI",
+                "username": session.username,
                 "version": frank.__version__,
             }
         )
