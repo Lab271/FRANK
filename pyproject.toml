@@ -89,3 +89,19 @@ testpaths = ["tests/unit", "tests/integration"]
 norecursedirs = ["tests", ".git", ".venv", "build", "dist"]
 addopts = "-v --tb=short"
 asyncio_mode = "auto"
+
+[tool.coverage.run]
+omit = [
+    "*/server.py",
+    "*/admin/server.py",
+    "*/web/server.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "if __name__ == .__main__.:",
+    "raise AssertionError",
+    "raise NotImplementedError",
+]
