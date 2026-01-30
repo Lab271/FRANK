@@ -10,8 +10,8 @@ Docker containers for local development and deployment.
 # Using make (recommended)
 make docker-up
 
-# Or directly with docker compose
-docker compose -f docker-compose.local.yml up -d
+# Or directly with docker-compose
+docker-compose -f docker-compose.local.yml up -d
 ```
 
 ### Access Points
@@ -29,9 +29,9 @@ Once started, services are available at:
 make docker-logs
 
 # Or specific service
-docker compose -f docker-compose.local.yml logs -f web-gui
-docker compose -f docker-compose.local.yml logs -f management-api
-docker compose -f docker-compose.local.yml logs -f mock-cognito
+docker-compose -f docker-compose.local.yml logs -f web-gui
+docker-compose -f docker-compose.local.yml logs -f management-api
+docker-compose -f docker-compose.local.yml logs -f mock-cognito
 ```
 
 ### Stop Services
@@ -199,7 +199,7 @@ curl http://localhost:8100/health
 make docker-logs
 
 # Check container status
-docker compose -f docker-compose.local.yml ps
+docker-compose -f docker-compose.local.yml ps
 
 # Rebuild images
 make docker-build

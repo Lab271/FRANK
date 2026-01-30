@@ -76,11 +76,11 @@ clean: ## Clean up artifacts and caches
 
 docker-build: ## Build all Docker images
 	@echo "Building Docker images..."
-	docker compose -f docker-compose.local.yml build
+	docker-compose -f docker-compose.local.yml build
 
 docker-up: ## Start all services (Web GUI + Management API + Mock Cognito)
 	@echo "Starting FRANK platform services..."
-	@docker compose -f docker-compose.local.yml up -d
+	@docker-compose -f docker-compose.local.yml up -d
 	@echo "✓ Services started"
 	@echo ""
 	@echo "Access points:"
@@ -93,11 +93,11 @@ docker-up: ## Start all services (Web GUI + Management API + Mock Cognito)
 
 docker-down: ## Stop all services
 	@echo "Stopping FRANK platform services..."
-	@docker compose -f docker-compose.local.yml down
+	@docker-compose -f docker-compose.local.yml down
 	@echo "✓ Services stopped"
 
 docker-logs: ## Follow logs from all services
-	@docker compose -f docker-compose.local.yml logs -f
+	@docker-compose -f docker-compose.local.yml logs -f
 
 .DEFAULT_GOAL := help
 
