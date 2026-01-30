@@ -81,15 +81,9 @@
                         {{ user.id if user.id else user.username }}
                     </td>
                     <td class="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
-                        <a href="/users/{{ user.username }}" class="text-blue-600 hover:text-blue-900 mr-4">
-                            View
-                        </a>
-                        <a href="/users/{{ user.username }}/edit" class="text-indigo-600 hover:text-indigo-900 mr-4">
-                            Edit
-                        </a>
-                        <a href="/users/{{ user.username }}/delete" class="text-red-600 hover:text-red-900">
-                            Delete
-                        </a>
+                        <span class="text-gray-400 text-xs">
+                            View/Edit/Delete coming soon
+                        </span>
                     </td>
                 </tr>
                 {% endfor %}
