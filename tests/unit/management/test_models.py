@@ -275,3 +275,61 @@ class TestOrganisationMemberResponse:
         assert data["organisation_id"] == "identity--123"
         assert data["username"] == "testuser"
         assert data["role"] == "member"
+
+
+class TestOrganisationValidators:
+    """Tests for Organisation model validators."""
+
+    def test_organisation_type_none_accepted(self):
+        """Test that None organisation_type is accepted in updates."""
+        # This should not raise an error
+        update = OrganisationUpdate(name="Test", organisation_type=None)
+        assert update.organisation_type is None
+
+
+class TestUserCreateValidators:
+    """Tests for UserCreate model validators."""
+
+    def test_email_invalid_missing_at(self):
+        """Test invalid email without @ symbol."""
+        with pytest.raises(ValidationError) as exc_info:
+            UserCreate(
+                username="testuser",
+                password="SecurePass123!",
+                email="invalidemail.com"
+            )
+        assert "Invalid email format" in str(exc_info.value)
+
+    def test_email_invalid_missing_dot(self):
+        """Test invalid email without dot."""
+        with pytest.raises(ValidationError) as exc_info:
+            UserCreate(
+                username="testuser",
+                password="SecurePass123!",
+                email="invalid@emailcom"
+            )
+        assert "Invalid email format" in str(exc_info.value)
+
+    def test_email_normalized_to_lowercase(self):
+        """Test email is normalized to lowercase."""
+        user = UserCreate(
+            username="testuser",
+            password="SecurePass123!",
+            email="Test.User@EXAMPLE.COM"
+        )
+        assert user.email == "test.user@example.com"
+
+
+class TestUserUpdateValidators:
+    """Tests for UserUpdate model validators."""
+
+    def test_email_none_in_update(self):
+        """Test that None email is accepted in updates."""
+        update = UserUpdate(email=None)
+        assert update.email is None
+
+    def test_email_validation_in_update(self):
+        """Test email validation in update model."""
+        with pytest.raises(ValidationError) as exc_info:
+            UserUpdate(email="not-an-email")
+        assert "Invalid email format" in str(exc_info.value)
