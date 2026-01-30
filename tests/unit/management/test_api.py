@@ -481,6 +481,31 @@ class TestUserEndpoints:
 
         assert response.status_code == 503
 
+    def test_create_user_already_member(self, mock_database, mock_cognito, core_member_user):
+        """Test creating user who is already a member of the organisation."""
+        mock_database.get_organisation.return_value = {"organisation_id": "org-123", "name": "Test Org"}
+        mock_cognito.create_user.return_value = {
+            "username": "existinguser",
+            "email": "existing@example.com",
+            "groups": ["FRANK_OBSERVER"],
+            "enabled": True
+        }
+        # User creation succeeds but adding as member fails (already exists)
+        mock_database.add_organisation_member.side_effect = FRANKStorageError("User already a member")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/organisations/org-123/users",
+            json={"username": "existinguser", "email": "existing@example.com", "password": "SecurePass123!"}
+        )
+
+        # Should succeed - the exception is caught and ignored
+        assert response.status_code == 201
+        data = response.json()
+        assert data["username"] == "existinguser"
+
     def test_list_organisation_users(self, mock_database, mock_cognito, core_member_user):
         """Test listing users in organisation."""
         mock_database.get_organisation.return_value = {"organisation_id": "org-123", "name": "Test Org"}
@@ -893,6 +918,56 @@ class TestMFAEndpoints:
         response = client.get("/v1/users/testuser/mfa/status")
 
         assert response.status_code == 200
+
+    def test_setup_mfa_cognito_service_error(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA setup with generic Cognito service error."""
+        mock_cognito.setup_mfa.side_effect = CognitoServiceError(
+            "Service temporarily unavailable",
+            status_code=503
+        )
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post("/v1/users/testuser/mfa/setup")
+
+        assert response.status_code == 503
+        assert "Service temporarily unavailable" in response.json()["detail"]
+
+    def test_verify_mfa_cognito_service_error(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA verification with generic Cognito service error."""
+        from frank.management.models import MFAVerifyRequest
+
+        mock_cognito.verify_mfa_setup.side_effect = CognitoServiceError(
+            "Internal service error",
+            status_code=500
+        )
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/users/testuser/mfa/verify",
+            json={"totp_code": "123456"}
+        )
+
+        assert response.status_code == 500
+        assert "Internal service error" in response.json()["detail"]
+
+    def test_get_mfa_status_cognito_service_error(self, mock_database, mock_cognito, core_member_user):
+        """Test MFA status retrieval with generic Cognito service error."""
+        mock_cognito.get_mfa_status.side_effect = CognitoServiceError(
+            "Connection timeout",
+            status_code=504
+        )
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/users/testuser/mfa/status")
+
+        assert response.status_code == 504
+        assert "Connection timeout" in response.json()["detail"]
 
 
 class TestAuthenticationEndpoints:
