@@ -893,3 +893,430 @@ class TestMFAEndpoints:
         response = client.get("/v1/users/testuser/mfa/status")
 
         assert response.status_code == 200
+
+
+class TestAuthenticationEndpoints:
+    """Tests for authentication endpoints (login, refresh, logout)."""
+
+    def test_login_success(self, mock_database, mock_cognito):
+        """Test successful login returns access and refresh tokens."""
+        with patch("frank.management.api.generate_access_token") as mock_access, \
+             patch("frank.management.api.generate_refresh_token") as mock_refresh, \
+             patch("frank.management.api.decode_refresh_token") as mock_decode:
+
+            mock_cognito.authenticate_user.return_value = True
+            mock_cognito.get_user_groups.return_value = ["FRANK_OBSERVER"]
+            mock_database.store_refresh_token.return_value = None
+
+            mock_access.return_value = "mock_access_token"
+            mock_refresh.return_value = "mock_refresh_token"
+            mock_decode.return_value = {
+                "jti": "token-id-123",
+                "exp": 1738281600,  # 2026-01-31
+                "username": "testuser"
+            }
+
+            app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+            client = TestClient(app)
+
+            response = client.post(
+                "/v1/auth/login",
+                json={"username": "testuser", "password": "SecurePass123!"}
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["access_token"] == "mock_access_token"
+            assert data["refresh_token"] == "mock_refresh_token"
+            assert data["token_type"] == "Bearer"
+            assert data["expires_in"] == 3600  # 1 hour in seconds
+            mock_cognito.authenticate_user.assert_called_once_with("testuser", "SecurePass123!")
+            mock_database.store_refresh_token.assert_called_once()
+
+    def test_login_invalid_credentials(self, mock_database, mock_cognito):
+        """Test login with invalid credentials returns 401."""
+        mock_cognito.authenticate_user.side_effect = CognitoServiceError(
+            "NotAuthorizedException: Incorrect username or password",
+            status_code=401
+        )
+
+        app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/auth/login",
+            json={"username": "testuser", "password": "wrongpassword"}
+        )
+
+        assert response.status_code == 401
+        assert "Invalid username or password" in response.json()["detail"]
+
+    def test_login_user_not_found(self, mock_database, mock_cognito):
+        """Test login with non-existent user."""
+        mock_cognito.authenticate_user.side_effect = UserNotFoundError("testuser")
+
+        app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/auth/login",
+            json={"username": "nonexistent", "password": "anypassword"}
+        )
+
+        assert response.status_code == 401
+        assert "Invalid username or password" in response.json()["detail"]
+
+    def test_refresh_token_success(self, mock_database, mock_cognito):
+        """Test successful token refresh."""
+        with patch("frank.management.api.decode_refresh_token") as mock_decode, \
+             patch("frank.management.api.hash_token") as mock_hash, \
+             patch("frank.management.api.generate_access_token") as mock_access, \
+             patch("frank.management.api.get_cognito_service") as mock_get_cognito:
+
+            refresh_token = "valid.refresh.token"
+            username = "testuser"
+
+            mock_decode.return_value = {
+                "jti": "test-token-id",
+                "username": username,
+                "exp": 1738281600
+            }
+            mock_hash.return_value = "token_hash_123"
+            mock_access.return_value = "new_access_token"
+            mock_get_cognito.return_value = mock_cognito
+            mock_cognito.get_user_groups.return_value = ["FRANK_OBSERVER"]
+
+            # Mock database returning valid stored token
+            mock_database.get_refresh_token.return_value = {
+                "token_id": "test-token-id",
+                "user_id": username,
+                "token_hash": "token_hash_123",
+                "expires_at": "2026-02-28T00:00:00Z"
+            }
+
+            app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+            client = TestClient(app)
+
+            response = client.post(
+                "/v1/auth/refresh",
+                json={"refresh_token": refresh_token}
+            )
+
+            assert response.status_code == 200
+            data = response.json()
+            assert data["access_token"] == "new_access_token"
+            assert data["token_type"] == "Bearer"
+            assert data["expires_in"] == 3600
+
+    def test_refresh_token_invalid(self, mock_database, mock_cognito):
+        """Test refresh with invalid token."""
+        with patch("frank.management.api.decode_refresh_token") as mock_decode:
+            mock_decode.return_value = None  # Invalid token returns None
+
+            app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+            client = TestClient(app)
+
+            response = client.post(
+                "/v1/auth/refresh",
+                json={"refresh_token": "invalid.token.here"}
+            )
+
+            assert response.status_code == 401
+            assert "Invalid or expired refresh token" in response.json()["detail"]
+
+    def test_refresh_token_revoked(self, mock_database, mock_cognito):
+        """Test refresh with revoked token."""
+        with patch("frank.management.api.decode_refresh_token") as mock_decode:
+            mock_decode.return_value = {
+                "jti": "revoked-token-id",
+                "username": "testuser",
+                "exp": 1738281600
+            }
+
+            # Token not found in database (revoked)
+            mock_database.get_refresh_token.return_value = None
+
+            app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+            client = TestClient(app)
+
+            response = client.post(
+                "/v1/auth/refresh",
+                json={"refresh_token": "valid.but.revoked.token"}
+            )
+
+            assert response.status_code == 401
+            assert "revoked or expired" in response.json()["detail"]
+
+    def test_refresh_token_hash_mismatch(self, mock_database, mock_cognito):
+        """Test refresh when stored hash doesn't match."""
+        with patch("frank.management.api.decode_refresh_token") as mock_decode, \
+             patch("frank.management.api.hash_token") as mock_hash:
+
+            mock_decode.return_value = {
+                "jti": "test-token-id",
+                "username": "testuser",
+                "exp": 1738281600
+            }
+            mock_hash.return_value = "actual_hash_value"
+
+            # Mock database with mismatched hash
+            mock_database.get_refresh_token.return_value = {
+                "token_id": "test-token-id",
+                "user_id": "testuser",
+                "token_hash": "wrong-hash-value",
+                "expires_at": "2026-02-28T00:00:00Z"
+            }
+
+            app = create_management_app(database=mock_database, cognito_service=mock_cognito)
+            client = TestClient(app)
+
+            response = client.post(
+                "/v1/auth/refresh",
+                json={"refresh_token": "valid.token.wrong.hash"}
+            )
+
+            assert response.status_code == 401
+            assert "Invalid refresh token" in response.json()["detail"]
+
+    def test_logout_success(self, mock_database, mock_cognito, core_member_user):
+        """Test successful logout revokes tokens."""
+        mock_database.revoke_all_user_refresh_tokens.return_value = 3  # 3 tokens revoked
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post("/v1/auth/logout")
+
+        assert response.status_code == 204
+        mock_database.revoke_all_user_refresh_tokens.assert_called_once_with(core_member_user.username)
+
+    def test_logout_no_tokens(self, mock_database, mock_cognito, core_member_user):
+        """Test logout when user has no refresh tokens."""
+        mock_database.revoke_all_user_refresh_tokens.return_value = 0
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post("/v1/auth/logout")
+
+        assert response.status_code == 204
+
+
+class TestApiKeyEndpoints:
+    """Tests for API key management endpoints."""
+
+    def test_create_api_key_success(self, mock_database, mock_cognito, core_member_user):
+        """Test creating an API key."""
+        mock_database.create_api_key.return_value = {
+            "key_id": "key-123",
+            "user_id": core_member_user.username,
+            "name": "Production API Key",
+            "expires_at": "2026-12-31T23:59:59Z",
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "last_used_at": None
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/api-keys",
+            json={"name": "Production API Key", "expires_in_days": 365}
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["key_id"] == "key-123"
+        assert data["name"] == "Production API Key"
+        assert "key" in data  # Full key returned only at creation
+        assert data["key"].startswith("frank_")
+        assert "key_prefix" in data
+        mock_database.create_api_key.assert_called_once()
+
+    def test_create_api_key_without_expiry(self, mock_database, mock_cognito, core_member_user):
+        """Test creating an API key without expiration."""
+        mock_database.create_api_key.return_value = {
+            "key_id": "key-124",
+            "user_id": core_member_user.username,
+            "name": "Non-expiring Key",
+            "expires_at": None,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+            "last_used_at": None
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/api-keys",
+            json={"name": "Non-expiring Key"}
+        )
+
+        assert response.status_code == 201
+        data = response.json()
+        assert data["expires_at"] is None
+
+    def test_create_api_key_duplicate_name(self, mock_database, mock_cognito, core_member_user):
+        """Test creating API key with duplicate name fails."""
+        mock_database.create_api_key.side_effect = FRANKStorageError("API key name already exists")
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.post(
+            "/v1/api-keys",
+            json={"name": "Existing Key"}
+        )
+
+        assert response.status_code == 409
+
+    def test_list_api_keys_success(self, mock_database, mock_cognito, core_member_user):
+        """Test listing API keys."""
+        mock_database.list_api_keys.return_value = [
+            {
+                "key_id": "key-1",
+                "key_prefix": "frank_abc...",
+                "user_id": core_member_user.username,
+                "name": "Key 1",
+                "expires_at": "2026-12-31T23:59:59Z",
+                "created_at": "2026-01-01T00:00:00Z",
+                "last_used_at": "2026-01-15T12:00:00Z"
+            },
+            {
+                "key_id": "key-2",
+                "key_prefix": "frank_xyz...",
+                "user_id": core_member_user.username,
+                "name": "Key 2",
+                "expires_at": None,
+                "created_at": "2026-01-10T00:00:00Z",
+                "last_used_at": None
+            }
+        ]
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/api-keys")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 2
+        assert len(data["api_keys"]) == 2
+        assert data["api_keys"][0]["key_id"] == "key-1"
+        assert data["api_keys"][0]["key"] is None  # Full key not returned in list (only at creation)
+        mock_database.list_api_keys.assert_called_once_with(core_member_user.username)
+
+    def test_list_api_keys_empty(self, mock_database, mock_cognito, core_member_user):
+        """Test listing API keys when user has none."""
+        mock_database.list_api_keys.return_value = []
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.get("/v1/api-keys")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["total"] == 0
+        assert data["api_keys"] == []
+
+    def test_update_api_key_success(self, mock_database, mock_cognito, core_member_user):
+        """Test updating an API key."""
+        mock_database.update_api_key.return_value = {
+            "key_id": "key-123",
+            "key_prefix": "frank_abc...",
+            "user_id": core_member_user.username,
+            "name": "Updated Key Name",
+            "expires_at": "2027-01-01T00:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_used_at": None
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.put(
+            "/v1/api-keys/key-123",
+            json={"name": "Updated Key Name"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["key_id"] == "key-123"
+        assert data["name"] == "Updated Key Name"
+        mock_database.update_api_key.assert_called_once()
+
+    def test_update_api_key_not_found(self, mock_database, mock_cognito, core_member_user):
+        """Test updating non-existent API key."""
+        mock_database.update_api_key.return_value = None
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.put(
+            "/v1/api-keys/nonexistent",
+            json={"name": "New Name"}
+        )
+
+        assert response.status_code == 404
+        assert "API key not found" in response.json()["detail"]
+
+    def test_update_api_key_extend_expiration(self, mock_database, mock_cognito, core_member_user):
+        """Test extending API key expiration."""
+        mock_database.update_api_key.return_value = {
+            "key_id": "key-123",
+            "key_prefix": "frank_abc...",
+            "user_id": core_member_user.username,
+            "name": "Production Key",
+            "expires_at": "2027-06-01T00:00:00Z",
+            "created_at": "2026-01-01T00:00:00Z",
+            "last_used_at": None
+        }
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.put(
+            "/v1/api-keys/key-123",
+            json={"expires_in_days": 500}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["expires_at"] is not None
+
+    def test_revoke_api_key_success(self, mock_database, mock_cognito, core_member_user):
+        """Test revoking an API key."""
+        mock_database.revoke_api_key.return_value = True
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.delete("/v1/api-keys/key-123")
+
+        assert response.status_code == 204
+        mock_database.revoke_api_key.assert_called_once_with("key-123", core_member_user.username)
+
+    def test_revoke_api_key_not_found(self, mock_database, mock_cognito, core_member_user):
+        """Test revoking non-existent API key."""
+        mock_database.revoke_api_key.return_value = False
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.delete("/v1/api-keys/nonexistent")
+
+        assert response.status_code == 404
+        assert "API key not found" in response.json()["detail"]
+
+    def test_revoke_api_key_wrong_owner(self, mock_database, mock_cognito, core_member_user):
+        """Test that user cannot revoke another user's API key."""
+        # Simulate revoke returning False when user doesn't own the key
+        mock_database.revoke_api_key.return_value = False
+
+        app = create_test_app(mock_database, mock_cognito, core_member_user)
+        client = TestClient(app)
+
+        response = client.delete("/v1/api-keys/other-user-key")
+
+        assert response.status_code == 404
