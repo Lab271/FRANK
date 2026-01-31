@@ -384,6 +384,16 @@ USERS_DB = {
     }
 }
 
+# Save initial state for reset functionality
+import copy
+INITIAL_USERS_DB = copy.deepcopy(USERS_DB)
+
+def reset_users_db():
+    """Reset USERS_DB to initial fixture state"""
+    global USERS_DB
+    USERS_DB = copy.deepcopy(INITIAL_USERS_DB)
+    logger.info("Reset USERS_DB to initial fixture state")
+
 # Request/Response Models
 class AuthRequest(BaseModel):
     username: str
@@ -678,11 +688,22 @@ def create_app() -> FastAPI:
         """Health check endpoint"""
         logger.info("Health check endpoint accessed")
         return {
-            "status": "healthy", 
-            "service": "mock-cognito", 
+            "status": "healthy",
+            "service": "mock-cognito",
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "user_pool_id": current_config.user_pool_id,
             "region": current_config.region
+        }
+
+    @app.post("/admin/reset")
+    async def reset_database() -> Dict[str, Any]:
+        """Reset USERS_DB to initial fixture state (for testing)"""
+        reset_users_db()
+        return {
+            "status": "reset",
+            "message": "User database reset to initial fixtures",
+            "user_count": len(USERS_DB),
+            "timestamp": datetime.now(timezone.utc).isoformat()
         }
 
     @app.get("/{user_pool_id}/.well-known/jwks.json")
@@ -770,16 +791,28 @@ def create_app() -> FastAPI:
         # Validate user exists and password is correct
         if username not in USERS_DB:
             logger.warning(f"Login failed: User not found: {username}")
-            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-        
+            raise AWSCognitoException(
+                "UserNotFoundException",
+                f"User {username} not found",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         user = USERS_DB[username]
         if not user["enabled"]:
             logger.warning(f"Login failed: User account disabled: {username}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User account is disabled")
-        
+            raise AWSCognitoException(
+                "NotAuthorizedException",
+                "User account is disabled",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
+
         if user["password"] != password:
             logger.warning(f"Login failed: Invalid password for user: {username}")
-            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid password")
+            raise AWSCognitoException(
+                "NotAuthorizedException",
+                "Incorrect username or password",
+                status_code=status.HTTP_400_BAD_REQUEST
+            )
         
         # Generate tokens
         groups = user["groups"]
@@ -893,23 +926,35 @@ def create_app() -> FastAPI:
         Create a new user in the mock user pool (admin API).
         Used by Management API for user creation.
         """
-        body = await request.json()
+        try:
+            body = await request.json()
+        except Exception as e:
+            logger.error(f"Failed to parse JSON: {e}")
+            raise HTTPException(status_code=400, detail=f"Invalid JSON: {str(e)}")
         username = body.get("username")
         email = body.get("email")
         password = body.get("password", "TempPass123!")
         groups = body.get("groups", [])
         temporary_password = body.get("temporary_password", True)
 
+        logger.info(f"Creating user: username={username}, email={email}, groups={groups}")
+
         if not username:
+            logger.error("User creation failed: username is required")
             raise HTTPException(status_code=400, detail="username is required")
         if not email:
+            logger.error("User creation failed: email is required")
             raise HTTPException(status_code=400, detail="email is required")
 
         if username in USERS_DB:
             raise HTTPException(status_code=409, detail=f"User {username} already exists")
 
-        # Create the user
-        USERS_DB[username] = {
+        # Handle groups - convert string to list if needed
+        if isinstance(groups, str):
+            groups = [groups]
+
+        # Create the user with base attributes
+        user_data = {
             "username": username,
             "password": password,
             "email": email,
@@ -917,6 +962,19 @@ def create_app() -> FastAPI:
             "enabled": True,
             "user_status": "FORCE_CHANGE_PASSWORD" if temporary_password else "CONFIRMED"
         }
+
+        # Add custom attributes with custom: prefix
+        for key, value in body.items():
+            if key in ["username", "email", "password", "groups", "temporary_password", "enabled", "user_status"]:
+                continue  # Skip standard attributes
+            # Add with custom: prefix if not already prefixed
+            if key.startswith("custom:"):
+                user_data[key] = value
+            else:
+                # Standard custom attributes: organisation_id, organisation_name, role
+                user_data[f"custom:{key}"] = value
+
+        USERS_DB[username] = user_data
 
         logger.info(f"Admin created user: {username} with groups: {groups}")
 

@@ -26,6 +26,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import os
 import logging
+import requests
 from urllib.parse import urlparse
 
 # Configure logging for behave
@@ -69,6 +70,17 @@ def before_all(context):
     else:
         context.cognito_url = os.environ.get('COGNITO_URL', 'http://localhost:8100')
 
+    # Management API configuration
+    management_url = context.config.userdata.get('management_url')
+    management_port = context.config.userdata.get('management_port')
+
+    if management_url:
+        context.management_url = management_url
+    elif management_port:
+        context.management_url = f"http://{server_host}:{management_port}"
+    else:
+        context.management_url = os.environ.get('MANAGEMENT_URL', 'http://localhost:8200')
+
     # Test tokens (for authentication)
     context.test_tokens = {
         "observer": context.config.userdata.get('observer_token', 'observer_test_token'),
@@ -87,6 +99,7 @@ def before_all(context):
     logger.info("=" * 60)
     logger.info(f"API Base URL: {context.api_base_url}")
     logger.info(f"Cognito URL: {context.cognito_url}")
+    logger.info(f"Management URL: {context.management_url}")
     logger.info(f"Timeout: {context.timeout}s")
     logger.info(f"Verify SSL: {context.verify_ssl}")
     logger.info("=" * 60)
@@ -113,6 +126,33 @@ def before_scenario(context, scenario):
     """
     Setup before each scenario.
     """
+    # Reset Mock Cognito database to initial fixtures
+    if hasattr(context, 'cognito_url'):
+        try:
+            reset_url = f"{context.cognito_url}/admin/reset"
+            response = requests.post(reset_url, timeout=5)
+            if response.status_code == 200:
+                logger.debug("Reset Mock Cognito database to initial fixtures")
+        except Exception as e:
+            logger.warning(f"Could not reset Mock Cognito: {e}")
+
+    # Reset Management API database (reseed with initial data)
+    if hasattr(context, 'management_url'):
+        try:
+            # Force reseed to reset database to known state
+            seed_url = f"{context.management_url}/admin/seed?force=true"
+            response = requests.post(seed_url, timeout=5)
+            if response.status_code == 200:
+                logger.debug("Reset Management API database to initial fixtures")
+            elif response.status_code == 401:
+                # Need authentication for seed endpoint - try with admin credentials
+                logger.debug("Seed endpoint requires authentication, attempting with admin token")
+                # This will be handled by the test setup if needed
+            else:
+                logger.warning(f"Could not seed Management API database: {response.status_code}")
+        except Exception as e:
+            logger.warning(f"Could not seed Management API database: {e}")
+
     # Reset any scenario-specific state
     context.last_response = None
     context.last_submission_id = None

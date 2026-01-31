@@ -132,13 +132,13 @@ Feature: Mock Cognito User and Organisation Management
   Scenario: Failed authentication with wrong password
     When I authenticate with username "admin" and password "wrongpassword"
     Then authentication should fail
-    And I should receive a "NotAuthorizedException" error
+    And I should receive an AWS "NotAuthorizedException" error
 
   @authentication @cognito
   Scenario: Failed authentication with non-existent user
     When I authenticate with username "nonexistent" and password "anypassword"
     Then authentication should fail
-    And I should receive a "UserNotFoundException" error
+    And I should receive an AWS "UserNotFoundException" error
 
   @organisations @cognito
   Scenario: Query organisation members through user filtering
@@ -165,17 +165,17 @@ Feature: Mock Cognito User and Organisation Management
     Given user "admin" exists in the system
     When I attempt to create a user with username "admin"
     Then the user creation should fail
-    And I should receive a "409" conflict error
+    And I should receive a "409" status code
 
   @edge-cases @cognito
   Scenario: Get non-existent user returns 404
     When I attempt to get user details for "nonexistent"
-    Then I should receive a "404" error
+    Then I should receive a "404" status code
 
   @edge-cases @cognito
   Scenario: Update non-existent user returns 404
     When I attempt to update user "nonexistent" with new email
-    Then I should receive a "404" error
+    Then I should receive a "404" status code
 
   @aws-compatibility @cognito
   Scenario: AdminListUsers returns AWS Cognito compatible format

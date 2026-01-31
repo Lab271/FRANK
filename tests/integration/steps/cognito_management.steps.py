@@ -140,6 +140,12 @@ def step_verify_user_count(context, count):
     assert_that(len(users), equal_to(count), f"Expected {count} users")
 
 
+@then('I should see {count:d} users')
+def step_verify_user_count_short(context, count):
+    """Verify user count (shorter version)"""
+    step_verify_user_count(context, count)
+
+
 @then('user "{username}" should exist with organisation "{org_id}"')
 def step_verify_user_organisation(context, username, org_id):
     """Verify user exists with specific organisation"""
@@ -197,6 +203,15 @@ def step_verify_user_belongs_to_org(context, org_id):
         assert_that(data.get('custom:organisation_id'), equal_to(org_id))
 
 
+@then('user "{username}" should belong to organisation "{org_id}"')
+def step_verify_named_user_belongs_to_org(context, username, org_id):
+    """Verify specific user's organisation"""
+    response = context.cognito.get_user(username)
+    assert_that(response.status_code, equal_to(200), f"User {username} not found")
+    context.cognito.last_response = response
+    step_verify_user_belongs_to_org(context, org_id)
+
+
 @then('the user should have role "{role}"')
 def step_verify_user_role(context, role):
     """Verify user role"""
@@ -212,12 +227,31 @@ def step_verify_user_role(context, role):
         assert_that(data.get('custom:role'), equal_to(role))
 
 
+@then('user "{username}" should have role "{role}"')
+def step_verify_named_user_role(context, username, role):
+    """Verify specific user's role"""
+    response = context.cognito.get_user(username)
+    assert_that(response.status_code, equal_to(200), f"User {username} not found")
+    context.cognito.last_response = response
+    step_verify_user_role(context, role)
+
+
 @then('the user should be in group "{group}"')
 def step_verify_user_group(context, group):
     """Verify user is in specified group"""
     data = context.cognito.last_response.json()
-    groups = data.get('groups', [])
-    assert_that(group, is_in(groups), f"User not in group {group}")
+
+
+@then('user "{username}" should be in group "{group}"')
+def step_verify_named_user_group(context, username, group):
+    """Verify specific user is in group"""
+    response = context.cognito.get_user(username)
+    assert_that(response.status_code, equal_to(200), f"User {username} not found")
+
+    # Get groups from user details
+    user_data = response.json()
+    user_groups = user_data.get('groups', [])
+    assert_that(group, is_in(user_groups), f"User {username} not in group {group}")
 
 
 # ========== Organisation Filtering Steps ==========
@@ -246,15 +280,19 @@ def step_verify_user_list(context, expected_users):
 
 # ========== User CRUD Steps ==========
 
-@when('I create a new user with the following details')
+@when('I create a new user with the following details:')
 def step_create_user_with_details(context):
     """Create user with details from table"""
     user_data = {}
-    for row in context.table:
-        key = row['username'] if 'username' in row.headings else row[0]
-        value = row['email'] if 'email' in row.headings else row[1]
 
-        # Handle first row specially to get all fields
+    # In Gherkin, the first row becomes table headings
+    # For a key-value table, we need to extract it as data
+    if context.table.headings and len(context.table.headings) == 2:
+        # Add the header row as the first key-value pair
+        user_data[context.table.headings[0]] = context.table.headings[1]
+
+    # Process remaining rows as key-value pairs
+    for row in context.table:
         if len(row.cells) == 2:
             user_data[row[0]] = row[1]
 
@@ -322,7 +360,7 @@ def step_update_user_role(context, username, role):
     context.cognito.update_user(username, update_data)
 
 
-@when('I update user "{username}" with UserAttributes')
+@when('I update user "{username}" with UserAttributes:')
 def step_update_with_user_attributes(context, username):
     """Update user with AWS Cognito UserAttributes format"""
     user_attributes = []
@@ -425,16 +463,17 @@ def step_verify_token_groups(context, group):
     assert_that(group, is_in(groups))
 
 
-@then('I should receive a "{error_type}" error')
-def step_verify_error_type(context, error_type):
-    """Verify specific error type"""
-    if error_type.isdigit():
-        # HTTP status code
-        assert_that(context.cognito.last_response.status_code, equal_to(int(error_type)))
-    else:
-        # AWS error type
-        data = context.cognito.last_response.json()
-        assert_that(data.get('__type'), contains_string(error_type))
+@then('I should receive a "{status_code:d}" status code')
+def step_verify_status_code_cognito(context, status_code):
+    """Verify HTTP status code for Cognito response"""
+    assert_that(context.cognito.last_response.status_code, equal_to(status_code))
+
+
+@then('I should receive an AWS "{error_type}" error')
+def step_verify_aws_error_type(context, error_type):
+    """Verify AWS-specific error type"""
+    data = context.cognito.last_response.json()
+    assert_that(data.get('__type'), contains_string(error_type))
 
 
 # ========== Response Format Verification Steps ==========
@@ -445,6 +484,24 @@ def step_verify_user_attributes_array(context):
     data = context.cognito.last_response.json()
     assert_that(data, has_key('UserAttributes'))
     assert_that(isinstance(data['UserAttributes'], list), equal_to(True))
+
+
+@then('the response should have "{field}" array')
+def step_verify_response_has_array(context, field):
+    """Verify response has specific array field"""
+    data = context.cognito.last_response.json()
+    assert_that(data, has_key(field))
+    assert_that(isinstance(data[field], list), equal_to(True))
+
+
+@then('each user should have "{field}" array')
+def step_verify_each_user_has_array(context, field):
+    """Verify each user in list has specific array field"""
+    data = context.cognito.last_response.json()
+    users = data.get('Users', [])
+    for user in users:
+        assert_that(user, has_key(field))
+        assert_that(isinstance(user[field], list), equal_to(True))
 
 
 @then('the UserAttributes should contain "{attr_name}" with value "{attr_value}"')

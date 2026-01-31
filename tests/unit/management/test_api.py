@@ -1177,221 +1177,100 @@ class TestAuthenticationEndpoints:
         assert response.status_code == 204
 
 
-class TestApiKeyEndpoints:
-    """Tests for API key management endpoints."""
+class TestServiceAccountCreation:
+    """Tests for service account creation via user endpoints."""
 
-    def test_create_api_key_success(self, mock_database, mock_cognito, core_member_user):
-        """Test creating an API key."""
-        mock_database.create_api_key.return_value = {
-            "key_id": "key-123",
-            "user_id": core_member_user.username,
-            "name": "Production API Key",
-            "expires_at": "2026-12-31T23:59:59Z",
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "last_used_at": None
+    def test_create_service_account_auto_password(self, mock_database, mock_cognito, core_member_user):
+        """Test creating service account with auto-generated password."""
+        # Mock organisation exists
+        mock_database.get_organisation.return_value = {"organisation_id": "identity--rabobank"}
+
+        # Mock Cognito user creation
+        mock_cognito.create_user.return_value = {
+            "username": "service-rabobank-ingestion",
+            "email": "service-rabobank@example.com",
+            "enabled": True
         }
 
         app = create_test_app(mock_database, mock_cognito, core_member_user)
         client = TestClient(app)
 
+        # Create service account without password (should auto-generate)
         response = client.post(
-            "/v1/api-keys",
-            json={"name": "Production API Key", "expires_in_days": 365}
-        )
-
-        assert response.status_code == 201
-        data = response.json()
-        assert data["key_id"] == "key-123"
-        assert data["name"] == "Production API Key"
-        assert "key" in data  # Full key returned only at creation
-        assert data["key"].startswith("frank_")
-        assert "key_prefix" in data
-        mock_database.create_api_key.assert_called_once()
-
-    def test_create_api_key_without_expiry(self, mock_database, mock_cognito, core_member_user):
-        """Test creating an API key without expiration."""
-        mock_database.create_api_key.return_value = {
-            "key_id": "key-124",
-            "user_id": core_member_user.username,
-            "name": "Non-expiring Key",
-            "expires_at": None,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "last_used_at": None
-        }
-
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
-
-        response = client.post(
-            "/v1/api-keys",
-            json={"name": "Non-expiring Key"}
-        )
-
-        assert response.status_code == 201
-        data = response.json()
-        assert data["expires_at"] is None
-
-    def test_create_api_key_duplicate_name(self, mock_database, mock_cognito, core_member_user):
-        """Test creating API key with duplicate name fails."""
-        mock_database.create_api_key.side_effect = FRANKStorageError("API key name already exists")
-
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
-
-        response = client.post(
-            "/v1/api-keys",
-            json={"name": "Existing Key"}
-        )
-
-        assert response.status_code == 409
-
-    def test_list_api_keys_success(self, mock_database, mock_cognito, core_member_user):
-        """Test listing API keys."""
-        mock_database.list_api_keys.return_value = [
-            {
-                "key_id": "key-1",
-                "key_prefix": "frank_abc...",
-                "user_id": core_member_user.username,
-                "name": "Key 1",
-                "expires_at": "2026-12-31T23:59:59Z",
-                "created_at": "2026-01-01T00:00:00Z",
-                "last_used_at": "2026-01-15T12:00:00Z"
-            },
-            {
-                "key_id": "key-2",
-                "key_prefix": "frank_xyz...",
-                "user_id": core_member_user.username,
-                "name": "Key 2",
-                "expires_at": None,
-                "created_at": "2026-01-10T00:00:00Z",
-                "last_used_at": None
+            "/v1/organisations/identity--rabobank/users",
+            json={
+                "username": "service-rabobank-ingestion",
+                "email": "service-rabobank@example.com",
+                "groups": ["contributor"]
             }
-        ]
+        )
 
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
-
-        response = client.get("/v1/api-keys")
-
-        assert response.status_code == 200
+        assert response.status_code == 201
         data = response.json()
-        assert data["total"] == 2
-        assert len(data["api_keys"]) == 2
-        assert data["api_keys"][0]["key_id"] == "key-1"
-        assert data["api_keys"][0]["key"] is None  # Full key not returned in list (only at creation)
-        mock_database.list_api_keys.assert_called_once_with(core_member_user.username)
+        assert data["username"] == "service-rabobank-ingestion"
 
-    def test_list_api_keys_empty(self, mock_database, mock_cognito, core_member_user):
-        """Test listing API keys when user has none."""
-        mock_database.list_api_keys.return_value = []
+        # Verify Cognito create_user was called with auto-generated password
+        mock_cognito.create_user.assert_called_once()
+        call_kwargs = mock_cognito.create_user.call_args[1]
+        assert call_kwargs["username"] == "service-rabobank-ingestion"
+        assert call_kwargs["password"] is not None  # Password was auto-generated
+        assert len(call_kwargs["password"]) >= 32  # Strong password
 
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
+    def test_create_service_account_explicit_password(self, mock_database, mock_cognito, core_member_user):
+        """Test creating service account with explicit password."""
+        mock_database.get_organisation.return_value = {"organisation_id": "identity--ing"}
 
-        response = client.get("/v1/api-keys")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["total"] == 0
-        assert data["api_keys"] == []
-
-    def test_update_api_key_success(self, mock_database, mock_cognito, core_member_user):
-        """Test updating an API key."""
-        mock_database.update_api_key.return_value = {
-            "key_id": "key-123",
-            "key_prefix": "frank_abc...",
-            "user_id": core_member_user.username,
-            "name": "Updated Key Name",
-            "expires_at": "2027-01-01T00:00:00Z",
-            "created_at": "2026-01-01T00:00:00Z",
-            "last_used_at": None
+        mock_cognito.create_user.return_value = {
+            "username": "service-ing-scanner",
+            "email": "service-ing@example.com",
+            "enabled": True
         }
 
         app = create_test_app(mock_database, mock_cognito, core_member_user)
         client = TestClient(app)
 
-        response = client.put(
-            "/v1/api-keys/key-123",
-            json={"name": "Updated Key Name"}
+        # Create service account with explicit password
+        response = client.post(
+            "/v1/organisations/identity--ing/users",
+            json={
+                "username": "service-ing-scanner",
+                "email": "service-ing@example.com",
+                "password": "ExplicitPassword123!",
+                "groups": ["observer"]
+            }
         )
 
-        assert response.status_code == 200
+        assert response.status_code == 201
         data = response.json()
-        assert data["key_id"] == "key-123"
-        assert data["name"] == "Updated Key Name"
-        mock_database.update_api_key.assert_called_once()
+        assert data["username"] == "service-ing-scanner"
 
-    def test_update_api_key_not_found(self, mock_database, mock_cognito, core_member_user):
-        """Test updating non-existent API key."""
-        mock_database.update_api_key.return_value = None
+        # Verify explicit password was used
+        mock_cognito.create_user.assert_called_once()
+        call_kwargs = mock_cognito.create_user.call_args[1]
+        assert call_kwargs["password"] == "ExplicitPassword123!"
 
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
+    def test_create_regular_user_requires_password(self, mock_database, mock_cognito, core_member_user):
+        """Test creating regular user without password should fail at Cognito level."""
+        mock_database.get_organisation.return_value = {"organisation_id": "identity--kpn"}
 
-        response = client.put(
-            "/v1/api-keys/nonexistent",
-            json={"name": "New Name"}
+        # Cognito will reject user creation without password
+        mock_cognito.create_user.side_effect = CognitoServiceError(
+            "Password required for user creation",
+            status_code=400
         )
 
-        assert response.status_code == 404
-        assert "API key not found" in response.json()["detail"]
-
-    def test_update_api_key_extend_expiration(self, mock_database, mock_cognito, core_member_user):
-        """Test extending API key expiration."""
-        mock_database.update_api_key.return_value = {
-            "key_id": "key-123",
-            "key_prefix": "frank_abc...",
-            "user_id": core_member_user.username,
-            "name": "Production Key",
-            "expires_at": "2027-06-01T00:00:00Z",
-            "created_at": "2026-01-01T00:00:00Z",
-            "last_used_at": None
-        }
-
         app = create_test_app(mock_database, mock_cognito, core_member_user)
         client = TestClient(app)
 
-        response = client.put(
-            "/v1/api-keys/key-123",
-            json={"expires_in_days": 500}
+        # Try to create regular user without password
+        response = client.post(
+            "/v1/organisations/identity--kpn/users",
+            json={
+                "username": "regular_user",
+                "email": "regular@example.com",
+                "groups": ["observer"]
+            }
         )
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["expires_at"] is not None
-
-    def test_revoke_api_key_success(self, mock_database, mock_cognito, core_member_user):
-        """Test revoking an API key."""
-        mock_database.revoke_api_key.return_value = True
-
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
-
-        response = client.delete("/v1/api-keys/key-123")
-
-        assert response.status_code == 204
-        mock_database.revoke_api_key.assert_called_once_with("key-123", core_member_user.username)
-
-    def test_revoke_api_key_not_found(self, mock_database, mock_cognito, core_member_user):
-        """Test revoking non-existent API key."""
-        mock_database.revoke_api_key.return_value = False
-
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
-
-        response = client.delete("/v1/api-keys/nonexistent")
-
-        assert response.status_code == 404
-        assert "API key not found" in response.json()["detail"]
-
-    def test_revoke_api_key_wrong_owner(self, mock_database, mock_cognito, core_member_user):
-        """Test that user cannot revoke another user's API key."""
-        # Simulate revoke returning False when user doesn't own the key
-        mock_database.revoke_api_key.return_value = False
-
-        app = create_test_app(mock_database, mock_cognito, core_member_user)
-        client = TestClient(app)
-
-        response = client.delete("/v1/api-keys/other-user-key")
-
-        assert response.status_code == 404
+        # Should fail
+        assert response.status_code == 400
