@@ -70,6 +70,14 @@ COPY ${PACKAGE_CONTEXT}/src/ ./src/.
 RUN pip install --no-cache-dir .
 
 COPY ${BUILD_CONTEXT}/simple_api_010.py simple_api.py
+COPY ${BUILD_CONTEXT}/init_fixtures.py .
+COPY ${BUILD_CONTEXT}/docker-entrypoint.sh /usr/local/bin/
+
+# Make entrypoint executable
+RUN chmod +x /usr/local/bin/docker-entrypoint.sh
+
+# Create data directory for database
+RUN mkdir -p /data && chown -R frankuser:frankuser /data
 
 # Change ownership to frankuser
 RUN chown -R frankuser:frankuser /app
@@ -80,6 +88,10 @@ USER frankuser
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
 ENV PORT=8000
+ENV DB_PATH=/data/frank.db
+
+# Use entrypoint script
+ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
 
 # Run the application
 CMD ["python", "simple_api.py"]

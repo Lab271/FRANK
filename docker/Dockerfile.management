@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y \
     gcc \
     g++ \
     curl \
+    libpq-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python dependencies
@@ -46,16 +47,18 @@ RUN pip install --no-cache-dir --user \
     httpx==0.28.1 \
     python-multipart==0.0.20 \
     cryptography==45.0.0 \
-    pydantic==2.12.0
+    pydantic==2.12.0 \
+    'psycopg[binary]>=3.2.0'
 
 # ===================================
 # Production Stage
 # ===================================
 FROM base AS production
 
-# Install curl for healthcheck
+# Install runtime dependencies (curl for healthcheck, libpq for PostgreSQL)
 RUN apt-get update && apt-get install -y \
     curl \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
 # Create non-root user
@@ -75,9 +78,6 @@ COPY src/ ./src/
 # Install the frank package
 RUN pip install --no-cache-dir .
 
-# Create data directory for SQLite
-RUN mkdir -p /data && chown -R frankuser:frankuser /data
-
 # Change ownership to frankuser
 RUN chown -R frankuser:frankuser /app
 
@@ -87,9 +87,10 @@ USER frankuser
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
 ENV PORT=8001
-ENV FRANK_DB_PATH=/data/frank.db
 ENV FRANK_AUTH_MODE=mock
 ENV COGNITO_URL=http://localhost:8100
+# DATABASE_URL takes precedence over FRANK_DB_PATH if set
+# Example: postgresql://frank:password@postgres:5432/frank_management
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \

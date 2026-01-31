@@ -23,7 +23,9 @@ import frank
 from frank.auth.config import AuthConfig
 from frank.management.api import create_management_app
 from frank.management.cognito_service import get_cognito_service
+from frank.management.seed import auto_seed_on_startup
 from frank.storage.sqlite import create_sqlite_database
+from frank.storage.postgresql import create_postgresql_database
 
 
 def setup_logging(log_level: str = "info"):
@@ -67,10 +69,22 @@ def create_app():
     # Initialize auth config from environment
     AuthConfig.configure()
 
-    # Create database
-    db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_management.db")
+    # Create database (PostgreSQL if DATABASE_URL set, otherwise SQLite)
     logger = logging.getLogger(__name__)
-    database = create_sqlite_database(db_path, logger=logger)
+    database_url = os.getenv("DATABASE_URL")
+
+    if database_url:
+        # Use PostgreSQL
+        logger.info(f"Using PostgreSQL database: {database_url.split('@')[1] if '@' in database_url else 'configured'}")
+        database = create_postgresql_database(database_url, logger=logger)
+    else:
+        # Fallback to SQLite for local development
+        db_path = os.getenv("FRANK_DB_PATH", "/tmp/frank_management.db")
+        logger.info(f"Using SQLite database: {db_path}")
+        database = create_sqlite_database(db_path, logger=logger)
+
+    # Seed database with initial data if empty
+    auto_seed_on_startup(database)
 
     # Create Cognito service
     cognito_service = get_cognito_service()

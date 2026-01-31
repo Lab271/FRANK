@@ -49,6 +49,126 @@ class SampleDataSeeder(FRANKDatabaseSeeder):
         return True
 
 
+class ComprehensiveFixtureSeeder(FRANKDatabaseSeeder):
+    """
+    Comprehensive fixture seeder that matches mock_cognito user data.
+
+    Creates organizations and links them to Cognito users for a complete
+    development environment with realistic data.
+    """
+
+    def seed(self, db_client: BaseFRANKDatabase) -> None:
+        """
+        Seed the database with comprehensive fixture data.
+
+        Creates:
+        - Schuberg Philis (Core Member) - linked to admin, ijsbrand
+        - S-Unit (Partner) - linked to s_unit_analyst
+        - Rabobank (Contributor) - linked to rabobank_security
+        - ING (Contributor) - linked to ing_soc
+        - Gemeente Amsterdam (Observer) - linked to amsterdam_monitor
+        - KPN (Observer) - linked to kpn_observer
+        """
+
+        # Organization definitions matching mock_cognito.py
+        organisations = [
+            {
+                "organisation_id": "identity--schuberg-philis",
+                "name": "Schuberg Philis",
+                "access_level": "core_member",
+                "organisation_type": "cyber_partner",
+                "sector": "cybersecurity_services",
+                "region": "netherlands",
+                "client_count": 150
+            },
+            {
+                "organisation_id": "identity--s-unit",
+                "name": "S-Unit",
+                "access_level": "partner",
+                "organisation_type": "cyber_partner",
+                "sector": "law_enforcement",
+                "region": "netherlands",
+                "client_count": 0
+            },
+            {
+                "organisation_id": "identity--rabobank",
+                "name": "Rabobank",
+                "access_level": "contributor",
+                "organisation_type": "customer",
+                "sector": "financial",
+                "region": "netherlands",
+                "client_count": 0
+            },
+            {
+                "organisation_id": "identity--ing",
+                "name": "ING Bank",
+                "access_level": "contributor",
+                "organisation_type": "customer",
+                "sector": "financial",
+                "region": "netherlands",
+                "client_count": 0
+            },
+            {
+                "organisation_id": "identity--gemeente-amsterdam",
+                "name": "Gemeente Amsterdam",
+                "access_level": "observer",
+                "organisation_type": "customer",
+                "sector": "government",
+                "region": "netherlands",
+                "client_count": 0
+            },
+            {
+                "organisation_id": "identity--kpn",
+                "name": "KPN",
+                "access_level": "observer",
+                "organisation_type": "customer",
+                "sector": "telecommunications",
+                "region": "netherlands",
+                "client_count": 0
+            }
+        ]
+
+        # Create organizations
+        for org in organisations:
+            db_client.upsert_organisation(org)
+
+        # Link users to organizations (matching mock_cognito.py)
+        memberships = [
+            # Schuberg Philis - Core Member
+            {"organisation_id": "identity--schuberg-philis", "username": "admin", "role": "owner"},
+            {"organisation_id": "identity--schuberg-philis", "username": "ijsbrand", "role": "admin"},
+
+            # S-Unit - Partner
+            {"organisation_id": "identity--s-unit", "username": "s_unit_analyst", "role": "member"},
+
+            # Rabobank - Contributor
+            {"organisation_id": "identity--rabobank", "username": "rabobank_security", "role": "member"},
+
+            # ING - Contributor
+            {"organisation_id": "identity--ing", "username": "ing_soc", "role": "member"},
+
+            # Gemeente Amsterdam - Observer
+            {"organisation_id": "identity--gemeente-amsterdam", "username": "amsterdam_monitor", "role": "member"},
+
+            # KPN - Observer
+            {"organisation_id": "identity--kpn", "username": "kpn_observer", "role": "member"}
+        ]
+
+        # Add organization members
+        for membership in memberships:
+            try:
+                db_client.add_organisation_member(
+                    organisation_id=membership["organisation_id"],
+                    username=membership["username"],
+                    role=membership["role"]
+                )
+            except Exception:
+                # Member might already exist, ignore
+                pass
+
+        return True
+
+
 def get_default_observables() -> List[Dict[str, Any]]:
     """
     Generate default sample observables for testing/demo purposes.

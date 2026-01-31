@@ -16,6 +16,29 @@
 # SPDX-License-Identifier: Apache-2.0
 
 services:
+  # PostgreSQL database for Management API
+  postgres:
+    image: postgres:16-alpine
+    container_name: frank-postgres
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    environment:
+      - POSTGRES_DB=${POSTGRES_DB:-frank_management}
+      - POSTGRES_USER=${POSTGRES_USER:-frank}
+      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD:-frank_dev}
+      - POSTGRES_HOST_AUTH_METHOD=md5
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U frank -d frank_management"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 5s
+    networks:
+      - frank-net
+
   # Mock Cognito service for authentication
   mock-cognito:
     build:
@@ -57,16 +80,16 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - RELOAD=${RELOAD:-false}
       - PORT=8001
-      - FRANK_DB_PATH=/data/frank.db
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-frank}:${POSTGRES_PASSWORD:-frank_dev}@postgres:5432/${POSTGRES_DB:-frank_management}
       - FRANK_AUTH_MODE=mock
       - COGNITO_URL=http://mock-cognito:8100
       - JWT_ALGORITHM=${JWT_ALGORITHM:-RS256}
       - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
       - REGION=${REGION:-eu-west-1}
       - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-local_only}
-    volumes:
-      - frank-data:/data
     depends_on:
+      postgres:
+        condition: service_healthy
       mock-cognito:
         condition: service_healthy
     restart: unless-stopped
@@ -109,7 +132,7 @@ services:
       - frank-net
 
 volumes:
-  frank-data:
+  postgres-data:
     driver: local
 
 networks:

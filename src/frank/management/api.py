@@ -9,6 +9,8 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import logging
+import secrets
+import string
 from datetime import datetime, timezone
 from typing import Any, Dict
 
@@ -22,9 +24,7 @@ from frank.auth.tokens import (
     ACCESS_TOKEN_LIFETIME_HOURS,
     decode_refresh_token,
     generate_access_token,
-    generate_api_key,
     generate_refresh_token,
-    get_expiry_datetime,
     hash_token,
 )
 from frank.core.enum import AccessTier
@@ -38,10 +38,6 @@ from frank.management.cognito_service import (
     get_cognito_service,
 )
 from frank.management.models import (
-    ApiKeyCreate,
-    ApiKeyListResponse,
-    ApiKeyResponse,
-    ApiKeyUpdate,
     LoginRequest,
     LoginResponse,
     MFASetupResponse,
@@ -61,6 +57,7 @@ from frank.management.models import (
     UserResponse,
     UserUpdate,
 )
+from frank.management.seed import check_seed_status, seed_database
 from frank.storage.base import BaseFRANKDatabase
 from frank.storage.exceptions import FRANKStorageError
 
@@ -140,6 +137,36 @@ def create_management_app(
                 result["database"] = "unhealthy"
                 result["database_error"] = str(e)
 
+        return result
+
+    # ========== Admin Endpoints ==========
+
+    @app.get("/admin/seed/status", tags=["Admin"])
+    async def get_seed_status(
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> Dict[str, Any]:
+        """
+        Check database seed status.
+
+        Returns information about whether the database has been seeded with initial data.
+        """
+        return check_seed_status(db)
+
+    @app.post("/admin/seed", tags=["Admin"])
+    async def seed_db(
+        force: bool = False,
+        current_user: TokenPayload = Depends(require_access_tier(AccessTier.CORE_MEMBER)),
+        db: BaseFRANKDatabase = Depends(get_database)
+    ) -> Dict[str, Any]:
+        """
+        Seed the database with initial organisations and members.
+
+        Requires CORE_MEMBER access level.
+
+        Args:
+            force: If true, reseed even if data exists (recreates all data)
+        """
+        result = seed_database(db, force=force)
         return result
 
     # ========== Organisation Endpoints ==========
@@ -392,6 +419,9 @@ def create_management_app(
         """
         Create a new user and add them to the organisation.
 
+        Service accounts: Use naming convention 'service-{org}-{purpose}' for service accounts.
+        Service accounts are Cognito users that authenticate with JWT tokens for automated access.
+
         Requires CORE_MEMBER access level or admin role in the organisation.
         """
         # Verify organisation exists
@@ -401,12 +431,23 @@ def create_management_app(
                 detail=f"Organisation not found: {organisation_id}"
             )
 
+        # Detect service account by naming convention
+        is_service_account = user_data.username.startswith("service-")
+
+        # Auto-generate secure password for service accounts if not provided
+        password = user_data.password
+        if is_service_account and not password:
+            # Generate cryptographically secure random password (32 chars)
+            alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
+            password = ''.join(secrets.choice(alphabet) for _ in range(32))
+            logger.info(f"Auto-generated secure password for service account: {user_data.username}")
+
         try:
             # Create user in Cognito
             result = await cognito.create_user(
                 username=user_data.username,
                 email=user_data.email,
-                password=user_data.password,
+                password=password,
                 groups=user_data.groups,
                 temporary_password=user_data.temporary_password
             )
@@ -418,8 +459,9 @@ def create_management_app(
                 # User already a member, that's OK
                 pass
 
+            account_type = "service account" if is_service_account else "user"
             logger.info(
-                f"User {user_data.username} created in org {organisation_id} "
+                f"{account_type.capitalize()} {user_data.username} created in org {organisation_id} "
                 f"by {current_user.username}"
             )
             return UserResponse(**result)
@@ -900,137 +942,6 @@ def create_management_app(
         """
         count = db.revoke_all_user_refresh_tokens(current_user.username)
         logger.info(f"User {current_user.username} logged out, {count} refresh tokens revoked")
-
-    # ========== API Key Endpoints ==========
-
-    @app.post(
-        "/v1/api-keys",
-        response_model=ApiKeyResponse,
-        status_code=status.HTTP_201_CREATED,
-        tags=["API Keys"]
-    )
-    async def create_api_key_endpoint(
-        key_data: ApiKeyCreate,
-        current_user: TokenPayload = Depends(get_current_user),
-        db: BaseFRANKDatabase = Depends(get_database)
-    ) -> ApiKeyResponse:
-        """
-        Generate a new API key for the authenticated user.
-
-        The full API key is only returned once at creation.
-        Store it securely - it cannot be retrieved later.
-        """
-        # Generate API key
-        plain_key = generate_api_key()
-        key_hash = hash_token(plain_key)
-
-        # Calculate expiry
-        expires_at = None
-        if key_data.expires_in_days:
-            expires_at = get_expiry_datetime(key_data.expires_in_days).isoformat()
-
-        try:
-            result = db.create_api_key(
-                user_id=current_user.username,
-                key_hash=key_hash,
-                name=key_data.name,
-                expires_at=expires_at
-            )
-
-            logger.info(f"API key {result['key_id']} created for user {current_user.username}")
-
-            # Return with the plain key (only shown once!)
-            return ApiKeyResponse(
-                key_id=result["key_id"],
-                key=plain_key,  # Only returned at creation
-                key_prefix=plain_key[:12] + "...",
-                name=result["name"],
-                user_id=result["user_id"],
-                expires_at=result.get("expires_at"),
-                created_at=result["created_at"],
-                last_used_at=result.get("last_used_at")
-            )
-
-        except FRANKStorageError as e:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=str(e)
-            )
-
-    @app.get(
-        "/v1/api-keys",
-        response_model=ApiKeyListResponse,
-        tags=["API Keys"]
-    )
-    async def list_api_keys_endpoint(
-        current_user: TokenPayload = Depends(get_current_user),
-        db: BaseFRANKDatabase = Depends(get_database)
-    ) -> ApiKeyListResponse:
-        """
-        List all API keys for the authenticated user.
-
-        Note: The full key values are not returned - only prefixes.
-        """
-        keys = db.list_api_keys(current_user.username)
-        return ApiKeyListResponse(
-            api_keys=[ApiKeyResponse(**k) for k in keys],
-            total=len(keys)
-        )
-
-    @app.put(
-        "/v1/api-keys/{key_id}",
-        response_model=ApiKeyResponse,
-        tags=["API Keys"]
-    )
-    async def update_api_key_endpoint(
-        key_id: str,
-        updates: ApiKeyUpdate,
-        current_user: TokenPayload = Depends(get_current_user),
-        db: BaseFRANKDatabase = Depends(get_database)
-    ) -> ApiKeyResponse:
-        """
-        Update an API key's metadata (name, expiration).
-
-        Only the key owner can update their keys.
-        """
-        result = db.update_api_key(
-            key_id=key_id,
-            user_id=current_user.username,
-            updates=updates.model_dump(exclude_none=True)
-        )
-
-        if not result:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"API key not found: {key_id}"
-            )
-
-        logger.info(f"API key {key_id} updated by {current_user.username}")
-        return ApiKeyResponse(**result)
-
-    @app.delete(
-        "/v1/api-keys/{key_id}",
-        status_code=status.HTTP_204_NO_CONTENT,
-        tags=["API Keys"]
-    )
-    async def revoke_api_key_endpoint(
-        key_id: str,
-        current_user: TokenPayload = Depends(get_current_user),
-        db: BaseFRANKDatabase = Depends(get_database)
-    ):
-        """
-        Revoke an API key.
-
-        The key will immediately stop working for authentication.
-        Only the key owner can revoke their keys.
-        """
-        if not db.revoke_api_key(key_id, current_user.username):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail=f"API key not found: {key_id}"
-            )
-
-        logger.info(f"API key {key_id} revoked by {current_user.username}")
 
     # ========== Root Endpoint ==========
 
