@@ -436,10 +436,12 @@ def create_management_app(
 
         # Auto-generate secure password for service accounts if not provided
         password = user_data.password
+        generated_password = None
         if is_service_account and not password:
             # Generate cryptographically secure random password (32 chars)
             alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
             password = ''.join(secrets.choice(alphabet) for _ in range(32))
+            generated_password = password  # Store for response
             logger.info(f"Auto-generated secure password for service account: {user_data.username}")
 
         try:
@@ -464,7 +466,13 @@ def create_management_app(
                 f"{account_type.capitalize()} {user_data.username} created in org {organisation_id} "
                 f"by {current_user.username}"
             )
-            return UserResponse(**result)
+
+            # Include generated password in response for service accounts
+            response_data = {**result}
+            if generated_password:
+                response_data["generated_password"] = generated_password
+
+            return UserResponse(**response_data)
 
         except UserAlreadyExistsError as e:
             raise HTTPException(
