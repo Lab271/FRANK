@@ -64,7 +64,7 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling) 
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                         FRANK Platform Architecture                         │
+│                         FRANK Platform Architecture                        │
 └────────────────────────────────────────────────────────────────────────────┘
 
                                     Users & Services
@@ -129,54 +129,54 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling) 
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Request Flow                                    │
+│                              Request Flow                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 1. Human User Login (Web GUI)
-   ┌──────────┐  POST /login      ┌─────────────┐  InitiateAuth  ┌──────────┐
+   ┌──────────┐  POST /login     ┌─────────────┐  InitiateAuth   ┌──────────┐
    │ Web GUI  │ ───────────────▶ │ Mgmt API    │ ──────────────▶ │ Cognito  │
    │          │ ◀─────────────── │             │ ◀────────────── │          │
-   └──────────┘  JWT Token        └─────────────┘  JWT + Refresh  └──────────┘
+   └──────────┘  JWT Token       └─────────────┘  JWT + Refresh  └──────────┘
 
 2. Service Authentication (Ingestion)
-   ┌──────────┐  POST /login      ┌─────────────┐  InitiateAuth  ┌──────────┐
+   ┌──────────┐  POST /login     ┌─────────────┐  InitiateAuth   ┌──────────┐
    │ Service  │ ───────────────▶ │ Sightings   │ ──────────────▶ │ Cognito  │
    │ (script) │ ◀─────────────── │    API      │ ◀────────────── │          │
-   └──────────┘  JWT Token        └─────────────┘  JWT Token      └──────────┘
+   └──────────┘  JWT Token       └─────────────┘  JWT Token      └──────────┘
 
    Service credentials: username="service-rabobank-ingestion", password=[secret]
 
 3. API Request with JWT (Management API)
-   ┌──────────┐  GET /orgs        ┌─────────────┐  Validate JWT  ┌──────────┐
+   ┌──────────┐  GET /orgs       ┌─────────────┐  Validate JWT   ┌──────────┐
    │  Client  │ ───────────────▶ │ Mgmt API    │ ──────────────▶ │ JWKS     │
-   │          │   Authorization:  │             │ ◀────────────── │ Endpoint │
-   │          │   Bearer <JWT>    │             │  Valid/Invalid  └──────────┘
-   │          │                   │             │
+   │          │   Authorization: │             │ ◀────────────── │ Endpoint │
+   │          │   Bearer <JWT>   │             │  Valid/Invalid  └──────────┘
+   │          │                  │             │
    │          │ ◀─────────────── │             │ ───▶ PostgreSQL Query
-   └──────────┘  Response         └─────────────┘ ◀─── organisations
+   └──────────┘  Response        └─────────────┘ ◀─── organisations
 
 4. API Request with JWT (Sightings API)
-   ┌──────────┐  POST /submit     ┌─────────────┐  Validate JWT  ┌──────────┐
+   ┌──────────┐  POST /submit    ┌─────────────┐  Validate JWT   ┌──────────┐
    │  Client  │ ───────────────▶ │ Sightings   │ ──────────────▶ │ JWKS     │
-   │          │   Authorization:  │    API      │ ◀────────────── │ Endpoint │
-   │          │   Bearer <JWT>    │             │  Valid/Invalid  └──────────┘
-   │          │                   │             │
+   │          │   Authorization: │    API      │ ◀────────────── │ Endpoint │
+   │          │   Bearer <JWT>   │             │  Valid/Invalid  └──────────┘
+   │          │                  │             │
    │          │ ◀─────────────── │             │ ───▶ DynamoDB Write
-   └──────────┘  Response         └─────────────┘ ◀─── submission_id
+   └──────────┘  Response        └─────────────┘ ◀─── submission_id
 
 5. Token Refresh (Stateless Proxy)
-   ┌──────────┐  POST /refresh    ┌─────────────┐  RefreshToken  ┌──────────┐
+   ┌──────────┐  POST /refresh   ┌─────────────┐  RefreshToken   ┌──────────┐
    │  Client  │ ───────────────▶ │   API       │ ──────────────▶ │ Cognito  │
-   │          │   refresh_token   │             │ ◀────────────── │          │
+   │          │   refresh_token  │             │ ◀────────────── │          │
    │          │ ◀─────────────── │             │  New JWT        └──────────┘
-   └──────────┘  New JWT Token    └─────────────┘
+   └──────────┘  New JWT Token   └─────────────┘
 
 6. Logout (Stateless Proxy)
-   ┌──────────┐  POST /logout     ┌─────────────┐  GlobalSignOut ┌──────────┐
+   ┌──────────┐  POST /logout    ┌─────────────┐  GlobalSignOut  ┌──────────┐
    │  Client  │ ───────────────▶ │   API       │ ──────────────▶ │ Cognito  │
-   │          │   access_token    │             │ ◀────────────── │          │
+   │          │   access_token   │             │ ◀────────────── │          │
    │          │ ◀─────────────── │             │  Success        └──────────┘
-   └──────────┘  200 OK           └─────────────┘
+   └──────────┘  200 OK          └─────────────┘
 ```
 
 ---
@@ -483,40 +483,40 @@ frank users create        # Create user (admin)
 ┌─────────────────────────────────────────────────────────────────┐
 │           What Cognito Handles (AWS manages this)               │
 ├─────────────────────────────────────────────────────────────────┤
-│  ✅ Password storage (hashed, salted)                            │
-│  ✅ Password validation                                          │
-│  ✅ MFA (TOTP, SMS)                                              │
-│  ✅ Account lockout after failed attempts                        │
-│  ✅ JWT token issuance                                           │
-│  ✅ JWT token signing (RS256)                                    │
-│  ✅ Token refresh                                                │
-│  ✅ Token revocation (logout)                                    │
-│  ✅ User CRUD operations                                         │
-│  ✅ Group membership                                             │
-│  ✅ JWKS public key rotation                                     │
+│  ✅ Password storage (hashed, salted)                           │
+│  ✅ Password validation                                         │
+│  ✅ MFA (TOTP, SMS)                                             │
+│  ✅ Account lockout after failed attempts                       │
+│  ✅ JWT token issuance                                          │
+│  ✅ JWT token signing (RS256)                                   │
+│  ✅ Token refresh                                               │
+│  ✅ Token revocation (logout)                                   │
+│  ✅ User CRUD operations                                        │
+│  ✅ Group membership                                            │
+│  ✅ JWKS public key rotation                                    │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │           What FRANK Handles (Application logic)                │
 ├─────────────────────────────────────────────────────────────────┤
-│  ✅ JWT token validation (JWKS endpoint)                         │
-│  ✅ Extract access tier from JWT groups                          │
-│  ✅ Enforce access tier permissions                              │
-│  ✅ Organisation membership (PostgreSQL)                         │
-│  ✅ Organisation-level roles (member/admin/owner)                │
-│  ✅ Business logic authorization                                 │
+│  ✅ JWT token validation (JWKS endpoint)                        │
+│  ✅ Extract access tier from JWT groups                         │
+│  ✅ Enforce access tier permissions                             │
+│  ✅ Organisation membership (PostgreSQL)                        │
+│  ✅ Organisation-level roles (member/admin/owner)               │
+│  ✅ Business logic authorization                                │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │           What FRANK Does NOT Store                             │
 ├─────────────────────────────────────────────────────────────────┤
-│  ❌ Passwords or password hashes                                 │
-│  ❌ MFA secrets                                                  │
-│  ❌ API keys or API key hashes                                   │
-│  ❌ Refresh tokens or refresh token hashes                       │
-│  ❌ User credentials of any kind                                 │
-│  ❌ Authentication state                                         │
-│  ❌ Token revocation lists                                       │
+│  ❌ Passwords or password hashes                                │
+│  ❌ MFA secrets                                                 │
+│  ❌ API keys or API key hashes                                  │
+│  ❌ Refresh tokens or refresh token hashes                      │
+│  ❌ User credentials of any kind                                │
+│  ❌ Authentication state                                        │
+│  ❌ Token revocation lists                                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
