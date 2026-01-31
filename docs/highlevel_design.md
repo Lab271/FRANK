@@ -64,119 +64,122 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling) 
 
 ```
 ┌────────────────────────────────────────────────────────────────────────────┐
-│                         FRANK Platform Architecture                         │
+│                         FRANK Platform Architecture                        │
 └────────────────────────────────────────────────────────────────────────────┘
 
-                                    Users & Services
-                                           │
-                ┌──────────────────────────┼──────────────────────────┐
-                │                          │                          │
-         Human Users                       │                   Service Accounts
-    (Web GUI / TUI / CLI)                  │              (Ingestion Services)
-                │                          │                          │
-                └──────────────────────────┼──────────────────────────┘
-                                           │
-                                           ▼
-                              ┌─────────────────────────┐
-                              │    AWS Cognito          │
-                              │  (ONE Auth System)      │
-                              │                         │
-                              │  • User Pool            │
-                              │  • JWT Tokens           │
-                              │  • Groups (Tiers)       │
-                              │  • Service Accounts     │
-                              │  • Token Refresh        │
-                              │  • Logout               │
-                              └─────────────────────────┘
-                                           │
-                                    JWT Tokens
-                                           │
-                ┌──────────────────────────┼──────────────────────────┐
-                │                          │                          │
-                ▼                          ▼                          ▼
-    ┌────────────────────┐    ┌────────────────────┐    ┌────────────────────┐
-    │   Web GUI          │    │  Management API    │    │   Sightings API    │
-    │   (FastAPI/React)  │    │   (FastAPI)        │    │   (FastAPI)        │
-    │                    │    │                    │    │                    │
-    │  • User Management │    │  • User CRUD       │    │  • Submit          │
-    │  • Org Admin       │    │  • Organisation    │    │  • Query           │
-    │  • Dashboards      │    │    Management      │    │  • Statistics      │
-    │  • Reports         │    │  • Member Roles    │    │  • Aggregations    │
-    └────────────────────┘    └────────────────────┘    └────────────────────┘
-                │                          │                          │
-                │                          ▼                          ▼
-                │              ┌────────────────────┐    ┌────────────────────┐
-                │              │   PostgreSQL       │    │   DynamoDB         │
-                │              │   (AWS RDS)        │    │                    │
-                │              │                    │    │  • submissions     │
-                │              │  • organisations   │    │  • observables     │
-                │              │  • members         │    │  • sightings       │
-                │              │                    │    │  • statistics      │
-                │              └────────────────────┘    └────────────────────┘
-                │
-                └─────────────────────┐
-                                      │
-                           ┌──────────▼──────────┐
-                           │  Local Development  │
-                           │                     │
-                           │  • Mock Cognito     │
-                           │  • PostgreSQL       │
-                           │  • SQLite (Stage 1) │
-                           └─────────────────────┘
+         Human Users                                      Service Accounts
+    (Web GUI / TUI / CLI)                              (Ingestion Services)
+                │                                                  │
+                │                                                  │
+                ▼                                                  ▼
+    ┌────────────────────┐                            ┌────────────────────┐
+    │   Web GUI          │                            │   Sightings API    │
+    │   (FastAPI/React)  │                            │   (FastAPI)        │
+    │                    │                            │                    │
+    │  • User Management │                            │  • Submit          │
+    │  • Org Admin       │                            │  • Query           │
+    │  • Dashboards      │                            │  • Statistics      │
+    │  • Reports         │                            │  • Aggregations    │
+    └────────┬───────────┘                            └────────┬───────────┘
+             │                                                 │
+             │ HTTP/REST API                                   ├─────────────┐
+             │                                                 │             │
+             ▼                                                 ▼             │
+    ┌────────────────────┐                            ┌────────────────────┐│
+    │  Management API    │                            │   DynamoDB         ││
+    │   (FastAPI)        │                            │                    ││
+    │                    │                            │  • submissions     ││
+    │  • User CRUD       │                            │  • observables     ││
+    │  • Organisation    │                            │  • sightings       ││
+    │    Management      │                            │  • statistics      ││
+    │  • Member Roles    │                            │  • target orgs     ││
+    │  • Auth Proxy      │                            └────────────────────┘│
+    └────────┬───────────┘                                                  │
+             │                                                              │
+             ├──────────────────────────────┐                               │
+             │                              │                               │
+             ▼                              ▼                               │
+    ┌────────────────────┐     ┌─────────────────────────┐                 │
+    │   PostgreSQL       │     │    AWS Cognito          │◀────────────────┘
+    │   (AWS RDS)        │     │  (Auth Backend)         │  JWT validation
+    │                    │     │                         │  (JWKS endpoint)
+    │  • organisations   │     │  • User Pool            │
+    │  • members         │     │  • JWT Tokens           │
+    └────────────────────┘     │  • Groups (Tiers)       │
+                               │  • Service Accounts     │
+                               │  • MFA & Logout         │
+                               └─────────────────────────┘
+                                         ▲
+                                         │
+                        Auth operations (login, user mgmt, MFA)
+
+┌─────────────────────────────────────────────────────────────┐
+│  Local Development Environment                              │
+│  • Mock Cognito (port 8100)                                 │
+│  • PostgreSQL (port 5432)                                   │
+│  • SQLite fallback (Stage 1)                                │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+**Key Architecture Points:**
+- **Web GUI connects ONLY to Management API** (no direct Cognito access)
+- **Management API → Cognito**: Auth operations (login, MFA, user management)
+- **Sightings API → Cognito JWKS**: JWT validation (stateless, read-only)
+- **Service accounts → Sightings API**: Data operations with JWT tokens
+- **Both APIs connect to Cognito** but for different purposes (auth ops vs validation)
 
 ### Data Flow Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│                              Request Flow                                    │
+│                              Request Flow                                   │
 └─────────────────────────────────────────────────────────────────────────────┘
 
 1. Human User Login (Web GUI)
-   ┌──────────┐  POST /login      ┌─────────────┐  InitiateAuth  ┌──────────┐
+   ┌──────────┐  POST /login     ┌─────────────┐  InitiateAuth   ┌──────────┐
    │ Web GUI  │ ───────────────▶ │ Mgmt API    │ ──────────────▶ │ Cognito  │
    │          │ ◀─────────────── │             │ ◀────────────── │          │
-   └──────────┘  JWT Token        └─────────────┘  JWT + Refresh  └──────────┘
+   └──────────┘  JWT Token       └─────────────┘  JWT + Refresh  └──────────┘
 
 2. Service Authentication (Ingestion)
-   ┌──────────┐  POST /login      ┌─────────────┐  InitiateAuth  ┌──────────┐
+   ┌──────────┐  POST /login     ┌─────────────┐  InitiateAuth   ┌──────────┐
    │ Service  │ ───────────────▶ │ Sightings   │ ──────────────▶ │ Cognito  │
    │ (script) │ ◀─────────────── │    API      │ ◀────────────── │          │
-   └──────────┘  JWT Token        └─────────────┘  JWT Token      └──────────┘
+   └──────────┘  JWT Token       └─────────────┘  JWT Token      └──────────┘
 
    Service credentials: username="service-rabobank-ingestion", password=[secret]
 
 3. API Request with JWT (Management API)
-   ┌──────────┐  GET /orgs        ┌─────────────┐  Validate JWT  ┌──────────┐
+   ┌──────────┐  GET /orgs       ┌─────────────┐  Validate JWT   ┌──────────┐
    │  Client  │ ───────────────▶ │ Mgmt API    │ ──────────────▶ │ JWKS     │
-   │          │   Authorization:  │             │ ◀────────────── │ Endpoint │
-   │          │   Bearer <JWT>    │             │  Valid/Invalid  └──────────┘
-   │          │                   │             │
+   │          │   Authorization: │             │ ◀────────────── │ Endpoint │
+   │          │   Bearer <JWT>   │             │  Valid/Invalid  └──────────┘
+   │          │                  │             │
    │          │ ◀─────────────── │             │ ───▶ PostgreSQL Query
-   └──────────┘  Response         └─────────────┘ ◀─── organisations
+   └──────────┘  Response        └─────────────┘ ◀─── organisations
 
 4. API Request with JWT (Sightings API)
-   ┌──────────┐  POST /submit     ┌─────────────┐  Validate JWT  ┌──────────┐
+   ┌──────────┐  POST /submit    ┌─────────────┐  Validate JWT   ┌──────────┐
    │  Client  │ ───────────────▶ │ Sightings   │ ──────────────▶ │ JWKS     │
-   │          │   Authorization:  │    API      │ ◀────────────── │ Endpoint │
-   │          │   Bearer <JWT>    │             │  Valid/Invalid  └──────────┘
-   │          │                   │             │
+   │          │   Authorization: │    API      │ ◀────────────── │ Endpoint │
+   │          │   Bearer <JWT>   │             │  Valid/Invalid  └──────────┘
+   │          │                  │             │
    │          │ ◀─────────────── │             │ ───▶ DynamoDB Write
-   └──────────┘  Response         └─────────────┘ ◀─── submission_id
+   └──────────┘  Response        └─────────────┘ ◀─── submission_id
 
 5. Token Refresh (Stateless Proxy)
-   ┌──────────┐  POST /refresh    ┌─────────────┐  RefreshToken  ┌──────────┐
+   ┌──────────┐  POST /refresh   ┌─────────────┐  RefreshToken   ┌──────────┐
    │  Client  │ ───────────────▶ │   API       │ ──────────────▶ │ Cognito  │
-   │          │   refresh_token   │             │ ◀────────────── │          │
+   │          │   refresh_token  │             │ ◀────────────── │          │
    │          │ ◀─────────────── │             │  New JWT        └──────────┘
-   └──────────┘  New JWT Token    └─────────────┘
+   └──────────┘  New JWT Token   └─────────────┘
 
 6. Logout (Stateless Proxy)
-   ┌──────────┐  POST /logout     ┌─────────────┐  GlobalSignOut ┌──────────┐
+   ┌──────────┐  POST /logout    ┌─────────────┐  GlobalSignOut  ┌──────────┐
    │  Client  │ ───────────────▶ │   API       │ ──────────────▶ │ Cognito  │
-   │          │   access_token    │             │ ◀────────────── │          │
+   │          │   access_token   │             │ ◀────────────── │          │
    │          │ ◀─────────────── │             │  Success        └──────────┘
-   └──────────┘  200 OK           └─────────────┘
+   └──────────┘  200 OK          └─────────────┘
 ```
 
 ---
@@ -483,40 +486,40 @@ frank users create        # Create user (admin)
 ┌─────────────────────────────────────────────────────────────────┐
 │           What Cognito Handles (AWS manages this)               │
 ├─────────────────────────────────────────────────────────────────┤
-│  ✅ Password storage (hashed, salted)                            │
-│  ✅ Password validation                                          │
-│  ✅ MFA (TOTP, SMS)                                              │
-│  ✅ Account lockout after failed attempts                        │
-│  ✅ JWT token issuance                                           │
-│  ✅ JWT token signing (RS256)                                    │
-│  ✅ Token refresh                                                │
-│  ✅ Token revocation (logout)                                    │
-│  ✅ User CRUD operations                                         │
-│  ✅ Group membership                                             │
-│  ✅ JWKS public key rotation                                     │
+│  ✅ Password storage (hashed, salted)                           │
+│  ✅ Password validation                                         │
+│  ✅ MFA (TOTP, SMS)                                             │
+│  ✅ Account lockout after failed attempts                       │
+│  ✅ JWT token issuance                                          │
+│  ✅ JWT token signing (RS256)                                   │
+│  ✅ Token refresh                                               │
+│  ✅ Token revocation (logout)                                   │
+│  ✅ User CRUD operations                                        │
+│  ✅ Group membership                                            │
+│  ✅ JWKS public key rotation                                    │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │           What FRANK Handles (Application logic)                │
 ├─────────────────────────────────────────────────────────────────┤
-│  ✅ JWT token validation (JWKS endpoint)                         │
-│  ✅ Extract access tier from JWT groups                          │
-│  ✅ Enforce access tier permissions                              │
-│  ✅ Organisation membership (PostgreSQL)                         │
-│  ✅ Organisation-level roles (member/admin/owner)                │
-│  ✅ Business logic authorization                                 │
+│  ✅ JWT token validation (JWKS endpoint)                        │
+│  ✅ Extract access tier from JWT groups                         │
+│  ✅ Enforce access tier permissions                             │
+│  ✅ Organisation membership (PostgreSQL)                        │
+│  ✅ Organisation-level roles (member/admin/owner)               │
+│  ✅ Business logic authorization                                │
 └─────────────────────────────────────────────────────────────────┘
 
 ┌─────────────────────────────────────────────────────────────────┐
 │           What FRANK Does NOT Store                             │
 ├─────────────────────────────────────────────────────────────────┤
-│  ❌ Passwords or password hashes                                 │
-│  ❌ MFA secrets                                                  │
-│  ❌ API keys or API key hashes                                   │
-│  ❌ Refresh tokens or refresh token hashes                       │
-│  ❌ User credentials of any kind                                 │
-│  ❌ Authentication state                                         │
-│  ❌ Token revocation lists                                       │
+│  ❌ Passwords or password hashes                                │
+│  ❌ MFA secrets                                                 │
+│  ❌ API keys or API key hashes                                  │
+│  ❌ Refresh tokens or refresh token hashes                      │
+│  ❌ User credentials of any kind                                │
+│  ❌ Authentication state                                        │
+│  ❌ Token revocation lists                                      │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
@@ -1389,26 +1392,18 @@ async def get_organisation(
 
 **Validation**: Spike 014 validated Cognito integration patterns.
 
-### ADR-0007: Single Source of Truth for Business Logic
-
-**Relevance**: All business logic in unified core library (`src/frank/`) - infrastructure adapters contain no business rules.
-
-**Key Principle**: Infrastructure changes (SQLite → DynamoDB → ScyllaDB) do NOT affect business logic.
-
-**Application**: Authentication logic (JWT validation, access tier mapping) is in core library, works across all infrastructure stages.
-
-### ADR-0015: PostgreSQL for Management API Data Storage
+### ADR-0009: PostgreSQL for Management API Data Storage
 
 **Relevance**: Defines PostgreSQL schema for Management API - explicitly excludes authentication tables.
 
 **Key Schema**:
-- `organisations` - Business entities
-- `organisation_members` - User-to-org relationships
-- NO `users` table
-- NO `api_keys` table
-- NO `refresh_tokens` table
+- `organisations` - Member organisations (identity--{uuid4})
+- `organisation_members` - User-to-org relationships (includes service accounts)
+- `refresh_tokens` (optional) - Logout revocation tracking
+- NO `users` table (Cognito only)
+- NO `api_keys` table (never intended per ADR-0005)
 
-**Rationale**: Authentication is Cognito's responsibility, not PostgreSQL's.
+**Rationale**: PostgreSQL stores only business data (member orgs, memberships). Authentication data stored in Cognito.
 
 ---
 

@@ -286,7 +286,7 @@ docker compose -f docker-compose.local.yml up
 
 ## Production Deployment (AWS RDS)
 
-See [ADR-0015](adr/0015-postgresql-management-api.md) for complete AWS deployment guide including:
+See [ADR-0009](adr/0009-postgresql-management-api.md) for complete AWS deployment guide including:
 - RDS PostgreSQL configuration
 - Multi-AZ setup
 - Security groups
