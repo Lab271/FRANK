@@ -7,6 +7,9 @@ INTEGRATED
 ## Integrated Into
 - `stages/stage3/` - AWS Cognito authentication
 - Authentication patterns for FRANK platform APIs
+- `tests/stubs/cognito/stub_cognito.py` - Stub service for testing (moved from `mock_cognito.py`)
+
+**Note:** The Mock Cognito service has been moved to `tests/stubs/cognito/stub_cognito.py` for centralized stub management. See `tests/stubs/README.md` for usage documentation.
 
 ---
 

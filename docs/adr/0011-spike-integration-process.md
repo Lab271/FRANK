@@ -228,7 +228,7 @@ Example: "AWS Cognito can provide JWT-based authentication for FRANK APIs with r
 - `src/frank/auth/jwt.py` - JWT validation with RS256 (JWKS) and HS256
 - `src/frank/auth/cognito.py` - Cognito client wrapper
 - `src/frank/auth/dependencies.py` - FastAPI dependencies for auth
-- `tests/spikes/014_cognito/mock_cognito.py` - Stub Cognito service (to be moved to `tests/stubs/`)
+- `tests/stubs/cognito/stub_cognito.py` - Stub Cognito service for local testing
 
 **Learnings:**
 - Mock Cognito service essential for local development

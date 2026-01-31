@@ -53,8 +53,8 @@ echo -e "${GREEN}✓ Management API is running${NC}"
 # Check if Mock Cognito is running
 echo -e "${YELLOW}Checking Mock Cognito availability...${NC}"
 if ! curl -s -f "http://localhost:$COGNITO_PORT/health" > /dev/null 2>&1; then
-    echo -e "${RED}ERROR: Mock Cognito is not running on port $COGNITO_PORT${NC}"
-    echo -e "${YELLOW}Start it with: cd tests/spikes/014_cognito && uv run python mock_cognito.py${NC}"
+    echo -e "${RED}ERROR: Cognito stub is not running on port $COGNITO_PORT${NC}"
+    echo -e "${YELLOW}Start it with: uv run python tests/stubs/cognito/stub_cognito.py${NC}"
     exit 1
 fi
 echo -e "${GREEN}✓ Mock Cognito is running${NC}"

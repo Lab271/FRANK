@@ -139,8 +139,9 @@ tests/spikes/
 **Example:**
 ```python
 def test_cognito_jwt_validation():
-    """Spike validation: Mock Cognito generates valid JWTs"""
-    token = mock_cognito.create_token(username="test", groups=["contributor"])
+    """Spike validation: Cognito stub generates valid JWTs"""
+    from tests.stubs.cognito import create_jwt_token
+    token = create_jwt_token(username="test", groups=["contributor"])
     payload = validate_token_locally(token)
     assert payload.username == "test"
     assert "contributor" in payload.groups
@@ -189,9 +190,9 @@ def test_cognito_jwt_validation():
 
 ### Stub Services in FRANK
 
-#### Mock Cognito (Stub Service)
+#### Cognito Stub Service
 
-**Location:** `tests/stubs/cognito/stub_cognito.py` (to be moved from `tests/spikes/014_cognito/mock_cognito.py`)
+**Location:** `tests/stubs/cognito/stub_cognito.py`
 
 **Purpose:** Local AWS Cognito emulation for development and testing without AWS costs.
 
@@ -460,5 +461,6 @@ pytest tests/unit/ --cov=src/frank --cov-report=term-missing
 - [ADR-0011: Spike Integration Process](0011-spike-integration-process.md) - How spike tests feed production
 - [ADR-0002: Repository Pattern and Database Abstraction](0002-repository-pattern-database-abstraction.md) - Testing database implementations
 - `tests/spikes/015_fastapi_testing/README.md` - FastAPI testing patterns
-- `tests/spikes/014_cognito/README.md` - Mock Cognito stub service
-- Future: Issue #83 - Move stub services to `tests/stubs/` directory
+- `tests/spikes/014_cognito/README.md` - Cognito authentication spike (origin of stub)
+- `tests/stubs/README.md` - Centralized stub services documentation
+- `tests/stubs/cognito/` - Cognito stub service implementation

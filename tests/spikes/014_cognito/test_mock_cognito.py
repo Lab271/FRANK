@@ -16,11 +16,11 @@ from datetime import datetime, timezone, timedelta
 from fastapi import status
 from fastapi.testclient import TestClient
 
-# Import the module under test
-from mock_cognito import (
-    create_app, 
-    create_jwt_token, 
-    verify_jwt_token, 
+# Import the stub service under test
+from tests.stubs.cognito.stub_cognito import (
+    create_app,
+    create_jwt_token,
+    verify_jwt_token,
     handle_cognito_action,
     handle_initiate_auth,
     handle_admin_initiate_auth,
@@ -614,7 +614,7 @@ class TestCognitoActionHandlers(unittest.TestCase):
         self.assertIn("AuthenticationResult", result)
         
         # Test unknown action
-        from mock_cognito import AWSCognitoException
+        from tests.stubs.cognito.stub_cognito import AWSCognitoException
         with self.assertRaises(AWSCognitoException):
             handle_cognito_action("UnknownAction", {})
 
