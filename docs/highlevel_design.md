@@ -71,79 +71,47 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling) 
     (Web GUI / TUI / CLI)                              (Ingestion Services)
                 │                                                  │
                 │                                                  │
-                ▼                                                  │
-    ┌────────────────────┐                                        │
-    │   Web GUI          │                                        │
-    │   (FastAPI/React)  │                                        │
-    │                    │                                        │
-    │  • User Management │                                        │
-    │  • Org Admin       │                                        │
-    │  • Dashboards      │                                        │
-    │  • Reports         │                                        │
-    └────────┬───────────┘                                        │
-             │                                                    │
-             │ HTTP/REST API                                      │
-             │                                                    │
-             ▼                                                    │
-    ┌────────────────────┐                                        │
-    │  Management API    │                                        │
-    │   (FastAPI)        │                                        │
-    │                    │                                        │
-    │  • User CRUD       │                                        │
-    │  • Organisation    │                                        │
-    │    Management      │                                        │
-    │  • Member Roles    │                                        │
-    │  • Auth Proxy      │◀────────┐                              │
-    └────────┬───────────┘         │                              │
-             │                     │                              │
-             ▼                     │                              │
-    ┌────────────────────┐         │                              │
-    │   PostgreSQL       │         │                              │
-    │   (AWS RDS)        │         │                              │
-    │                    │         │                              │
-    │  • organisations   │         │                              │
-    │  • members         │         │                              │
-    └────────────────────┘         │                              │
-                                   │                              │
-                                   │  Auth operations             │
-                                   │  (login, MFA, etc)           │
-                                   │                              │
-                                   ▼                              │
-                      ┌─────────────────────────┐                 │
-                      │    AWS Cognito          │◀────────────────┘
-                      │  (ONE Auth System)      │  Direct auth
-                      │                         │  (services only)
-                      │  • User Pool            │
-                      │  • JWT Tokens           │
-                      │  • Groups (Tiers)       │
-                      │  • Service Accounts     │
-                      │  • Token Refresh        │
-                      │  • Logout & MFA         │
-                      └────────┬────────────────┘
-                               │
-                               │ JWT validation (JWKS)
-                               │
-                               ▼
-                    ┌────────────────────┐
-                    │   Sightings API    │
-                    │   (FastAPI)        │
-                    │                    │
-                    │  • Submit          │
-                    │  • Query           │
-                    │  • Statistics      │
-                    │  • Aggregations    │
-                    └────────┬───────────┘
-                             │
-                             ▼
-                    ┌────────────────────┐
-                    │   DynamoDB         │
-                    │                    │
-                    │  • submissions     │
-                    │  • observables     │
-                    │  • sightings       │
-                    │  • statistics      │
-                    │  • target orgs     │
-                    └────────────────────┘
+                ▼                                                  ▼
+    ┌────────────────────┐                            ┌────────────────────┐
+    │   Web GUI          │                            │   Sightings API    │
+    │   (FastAPI/React)  │                            │   (FastAPI)        │
+    │                    │                            │                    │
+    │  • User Management │                            │  • Submit          │
+    │  • Org Admin       │                            │  • Query           │
+    │  • Dashboards      │                            │  • Statistics      │
+    │  • Reports         │                            │  • Aggregations    │
+    └────────┬───────────┘                            └────────┬───────────┘
+             │                                                 │
+             │ HTTP/REST API                                   ├─────────────┐
+             │                                                 │             │
+             ▼                                                 ▼             │
+    ┌────────────────────┐                            ┌────────────────────┐│
+    │  Management API    │                            │   DynamoDB         ││
+    │   (FastAPI)        │                            │                    ││
+    │                    │                            │  • submissions     ││
+    │  • User CRUD       │                            │  • observables     ││
+    │  • Organisation    │                            │  • sightings       ││
+    │    Management      │                            │  • statistics      ││
+    │  • Member Roles    │                            │  • target orgs     ││
+    │  • Auth Proxy      │                            └────────────────────┘│
+    └────────┬───────────┘                                                  │
+             │                                                              │
+             ├──────────────────────────────┐                               │
+             │                              │                               │
+             ▼                              ▼                               │
+    ┌────────────────────┐     ┌─────────────────────────┐                 │
+    │   PostgreSQL       │     │    AWS Cognito          │◀────────────────┘
+    │   (AWS RDS)        │     │  (Auth Backend)         │  JWT validation
+    │                    │     │                         │  (JWKS endpoint)
+    │  • organisations   │     │  • User Pool            │
+    │  • members         │     │  • JWT Tokens           │
+    └────────────────────┘     │  • Groups (Tiers)       │
+                               │  • Service Accounts     │
+                               │  • MFA & Logout         │
+                               └─────────────────────────┘
+                                         ▲
+                                         │
+                        Auth operations (login, user mgmt, MFA)
 
 ┌─────────────────────────────────────────────────────────────┐
 │  Local Development Environment                              │
@@ -154,10 +122,11 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling) 
 ```
 
 **Key Architecture Points:**
-- **Web GUI connects ONLY to Management API** (not directly to Cognito)
-- **Management API proxies auth** to Cognito (login, MFA, user management)
-- **Service accounts authenticate directly** with Cognito, then use Sightings API
-- **Sightings API validates JWT** directly with Cognito JWKS endpoint (stateless)
+- **Web GUI connects ONLY to Management API** (no direct Cognito access)
+- **Management API → Cognito**: Auth operations (login, MFA, user management)
+- **Sightings API → Cognito JWKS**: JWT validation (stateless, read-only)
+- **Service accounts → Sightings API**: Data operations with JWT tokens
+- **Both APIs connect to Cognito** but for different purposes (auth ops vs validation)
 
 ### Data Flow Architecture
 
