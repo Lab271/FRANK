@@ -63,8 +63,12 @@ echo -e "${BLUE}============================================================${NC
 echo -e "${YELLOW}Running BDD tests...${NC}"
 echo ""
 
+# Get script directory and change to tests/integration
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 # Build behave command
-BEHAVE_CMD="behave features/management_api_users.feature -D management_port=$MANAGEMENT_PORT -D cognito_port=$COGNITO_PORT"
+BEHAVE_CMD="uv run behave features/management_api_users.feature -D management_port=$MANAGEMENT_PORT -D cognito_port=$COGNITO_PORT"
 
 if [ -n "$TAGS" ]; then
     BEHAVE_CMD="$BEHAVE_CMD --tags=$TAGS"

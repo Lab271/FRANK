@@ -126,18 +126,32 @@ def before_scenario(context, scenario):
     """
     Setup before each scenario.
     """
-    # Reset Mock Cognito database to initial fixtures
-    if hasattr(context, 'cognito_url'):
+    # Debug: Log scenario tags
+    logger.debug(f"Scenario: {scenario.name}, Tags: {scenario.effective_tags}")
+
+    # Only seed Mock Cognito if running cognito-related tests
+    if 'cognito' in scenario.effective_tags and hasattr(context, 'cognito_url'):
         try:
             reset_url = f"{context.cognito_url}/admin/reset"
             response = requests.post(reset_url, timeout=5)
             if response.status_code == 200:
                 logger.debug("Reset Mock Cognito database to initial fixtures")
         except Exception as e:
-            logger.warning(f"Could not reset Mock Cognito: {e}")
+            logger.debug(f"Could not reset Mock Cognito: {e}")
 
-    # Reset Management API database (reseed with initial data)
-    if hasattr(context, 'management_url'):
+    # Only seed Management API if running management-related tests
+    if 'management' in scenario.effective_tags and hasattr(context, 'management_url'):
+        # First check if Management API is available
+        try:
+            health_check = requests.get(f"{context.management_url}/health", timeout=2)
+            if health_check.status_code != 200:
+                logger.debug(f"Management API not available, skipping database seed")
+                return
+        except Exception:
+            logger.debug(f"Management API not available, skipping database seed")
+            return
+
+        # Management API is available, proceed with seeding
         try:
             # Get admin token for authenticated seed endpoint
             auth_response = requests.post(
@@ -160,11 +174,11 @@ def before_scenario(context, scenario):
                 if response.status_code == 200:
                     logger.debug("Reset Management API database to initial fixtures")
                 else:
-                    logger.warning(f"Could not seed Management API database: {response.status_code}")
+                    logger.debug(f"Could not seed Management API database: {response.status_code}")
             else:
-                logger.warning("Could not authenticate for database seed")
+                logger.debug("Could not authenticate for database seed")
         except Exception as e:
-            logger.warning(f"Could not seed Management API database: {e}")
+            logger.debug(f"Could not seed Management API database: {e}")
 
     # Reset any scenario-specific state
     context.last_response = None
