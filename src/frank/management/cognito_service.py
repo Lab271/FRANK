@@ -391,7 +391,17 @@ class MockCognitoService(BaseCognitoService):
                     response.status_code
                 )
 
-            return response.json()
+            user_data = response.json()
+
+            # Extract custom attributes from UserAttributes array and add to top level
+            user_attributes = user_data.get("UserAttributes", [])
+            for attr in user_attributes:
+                attr_name = attr.get("Name", "")
+                if attr_name.startswith("custom:"):
+                    # Add custom attributes with their custom: prefix as keys
+                    user_data[attr_name] = attr.get("Value")
+
+            return user_data
 
         except httpx.RequestError as e:
             logger.error(f"Error connecting to Mock Cognito: {e}")

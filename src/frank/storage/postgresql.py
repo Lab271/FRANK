@@ -269,8 +269,10 @@ class PostgreSQLFRANKDatabase(BaseFRANKDatabase):
 
     # ========== Organisation Member Management ==========
 
-    def add_organisation_member(self, organisation_id: str, username: str, role: str = "member") -> bool:
+    def add_organisation_member(self, organisation_id: str, username: str, role: str = "member") -> Dict[str, Any]:
         """Add a user to an organisation."""
+        from datetime import datetime, timezone
+
         try:
             with psycopg.connect(self.connection_string) as conn:
                 with conn.cursor() as cur:
@@ -279,13 +281,23 @@ class PostgreSQLFRANKDatabase(BaseFRANKDatabase):
                         VALUES (%s, %s, %s)
                         ON CONFLICT (organisation_id, username) DO UPDATE SET
                             role = EXCLUDED.role
+                        RETURNING organisation_id, username, role, joined_at
                     """, (organisation_id, username, role))
+
+                    row = cur.fetchone()
                     conn.commit()
-                    return True
+
+                    return {
+                        "organisation_id": row[0],
+                        "username": row[1],
+                        "role": row[2],
+                        "joined_at": row[3].isoformat() if row[3] else datetime.now(timezone.utc).isoformat()
+                    }
 
         except psycopg.Error as e:
             self.logger.error(f"Error adding organisation member: {e}")
-            return False
+            from frank.storage.base import FRANKStorageError
+            raise FRANKStorageError(f"Failed to add organisation member: {e}")
 
     def remove_organisation_member(self, organisation_id: str, username: str) -> bool:
         """Remove a user from an organisation."""
@@ -303,17 +315,25 @@ class PostgreSQLFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error removing organisation member: {e}")
             return False
 
-    def get_organisation_members(self, organisation_id: str) -> List[Dict[str, Any]]:
-        """Get all members of an organisation."""
+    def get_organisation_members(self, organisation_id: str, role: str = None) -> List[Dict[str, Any]]:
+        """Get all members of an organisation, optionally filtered by role."""
         try:
             with psycopg.connect(self.connection_string, row_factory=dict_row) as conn:
                 with conn.cursor() as cur:
-                    cur.execute("""
-                        SELECT username, role, joined_at
-                        FROM organisation_members
-                        WHERE organisation_id = %s
-                        ORDER BY joined_at DESC
-                    """, (organisation_id,))
+                    if role:
+                        cur.execute("""
+                            SELECT organisation_id, username, role, joined_at
+                            FROM organisation_members
+                            WHERE organisation_id = %s AND role = %s
+                            ORDER BY joined_at DESC
+                        """, (organisation_id, role))
+                    else:
+                        cur.execute("""
+                            SELECT organisation_id, username, role, joined_at
+                            FROM organisation_members
+                            WHERE organisation_id = %s
+                            ORDER BY joined_at DESC
+                        """, (organisation_id,))
                     return cur.fetchall()
 
         except psycopg.Error as e:
@@ -374,15 +394,15 @@ class PostgreSQLFRANKDatabase(BaseFRANKDatabase):
             self.logger.error(f"Error storing refresh token: {e}")
             return False
 
-    def get_refresh_token(self, token_hash: str) -> Optional[Dict[str, Any]]:
-        """Get refresh token by hash."""
+    def get_refresh_token(self, token_id: str) -> Optional[Dict[str, Any]]:
+        """Get refresh token by token ID."""
         try:
             with psycopg.connect(self.connection_string, row_factory=dict_row) as conn:
                 with conn.cursor() as cur:
                     cur.execute("""
                         SELECT * FROM refresh_tokens
-                        WHERE token_hash = %s AND is_revoked = FALSE
-                    """, (token_hash,))
+                        WHERE token_id = %s AND is_revoked = FALSE
+                    """, (token_id,))
                     return cur.fetchone()
 
         except psycopg.Error as e:
