@@ -182,7 +182,7 @@ However, note that:
 
 ## References
 
-- ADR-0015: PostgreSQL for Management API
+- ADR-0009: PostgreSQL for Management API
 - `docs/highlevel_design.md`: Unified Cognito Architecture
 - `src/frank/storage/postgresql.py`: Updated schema (no api_keys)
 - `src/frank/management/api.py`: API key endpoints removed

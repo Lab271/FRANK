@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-01-28
 - **Decision Makers:** FRANK Architecture Team
-- **Related:** [ADR-0007](0013-forgiving-input-strong-output.md)
+- **Related:** [ADR-0007](0007-forgiving-input-strong-output.md)
 
 ## Context and Problem Statement
 
@@ -415,6 +415,6 @@ def test_api_error_response_structure():
 
 ## Links
 
-- Enables [ADR-0007: Forgiving Input, Strong Output](0013-forgiving-input-strong-output.md)
+- Enables [ADR-0007: Forgiving Input, Strong Output](0007-forgiving-input-strong-output.md)
 - Implementation: [src/frank/core/exceptions.py](../../src/frank/core/exceptions.py)
 - API Documentation: [docs/api/error-handling.md](../api/error-handling.md) (to be created)

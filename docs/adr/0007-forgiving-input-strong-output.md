@@ -3,7 +3,7 @@
 - **Status:** accepted
 - **Date:** 2026-01-28
 - **Decision Makers:** FRANK Architecture Team
-- **Related:** [ADR-0008](0014-explicit-error-communication.md)
+- **Related:** [ADR-0008](0008-explicit-error-communication.md)
 
 ## Context and Problem Statement
 

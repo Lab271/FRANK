@@ -1,4 +1,4 @@
-# ADR-0015: PostgreSQL for Management API Data Storage
+# ADR-0009: PostgreSQL for Management API Data Storage
 
 **Status:** Accepted
 **Date:** 2026-01-31

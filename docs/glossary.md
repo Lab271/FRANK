@@ -245,7 +245,8 @@ The mapping table (anonymized UUID → real organisation) is kept secure and sep
 
 **Last Updated:** 2026-01-31
 **Related Documentation:**
-- ADR-0004: Access Tiers and Observable Filtering
-- ADR-0005: Observable Access Control
+- ADR-0003: Tiered Access Control Model
+- ADR-0005: AWS Cognito Authentication Strategy
+- ADR-0009: PostgreSQL for Management API
 - docs/highlevel_design.md: Platform Architecture
 - src/frank/core/models.py: Data Models

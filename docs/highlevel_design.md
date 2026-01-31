@@ -1389,26 +1389,18 @@ async def get_organisation(
 
 **Validation**: Spike 014 validated Cognito integration patterns.
 
-### ADR-0007: Single Source of Truth for Business Logic
-
-**Relevance**: All business logic in unified core library (`src/frank/`) - infrastructure adapters contain no business rules.
-
-**Key Principle**: Infrastructure changes (SQLite → DynamoDB → ScyllaDB) do NOT affect business logic.
-
-**Application**: Authentication logic (JWT validation, access tier mapping) is in core library, works across all infrastructure stages.
-
-### ADR-0015: PostgreSQL for Management API Data Storage
+### ADR-0009: PostgreSQL for Management API Data Storage
 
 **Relevance**: Defines PostgreSQL schema for Management API - explicitly excludes authentication tables.
 
 **Key Schema**:
-- `organisations` - Business entities
-- `organisation_members` - User-to-org relationships
-- NO `users` table
-- NO `api_keys` table
-- NO `refresh_tokens` table
+- `organisations` - Member organisations (identity--{uuid4})
+- `organisation_members` - User-to-org relationships (includes service accounts)
+- `refresh_tokens` (optional) - Logout revocation tracking
+- NO `users` table (Cognito only)
+- NO `api_keys` table (never intended per ADR-0005)
 
-**Rationale**: Authentication is Cognito's responsibility, not PostgreSQL's.
+**Rationale**: PostgreSQL stores only business data (member orgs, memberships). Authentication data stored in Cognito.
 
 ---
 

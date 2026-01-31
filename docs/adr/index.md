@@ -29,9 +29,7 @@ Each ADR includes:
 
 ## ADR Index
 
-### Implementation Decisions (0001-0006)
-
-Specific implementation and technology choices:
+All architectural decisions in chronological order:
 
 | ADR | Title | Status | Category | Date |
 |-----|-------|--------|----------|------|
@@ -41,92 +39,29 @@ Specific implementation and technology choices:
 | [0004](0004-three-layer-testing-strategy.md) | Three-Layer Testing Strategy | ✅ Accepted | Testing | 2026-01-23 |
 | [0005](0005-cognito-authentication.md) | AWS Cognito Authentication Strategy | ✅ Accepted | Security | 2026-01-29 |
 | [0006](0006-admin-mvc-architecture.md) | MVC Architecture for Admin Module | ✅ Accepted | Architecture | 2026-01-29 |
+| [0007](0007-forgiving-input-strong-output.md) | Forgiving Input, Strong Output | ✅ Accepted | Data Quality | 2026-01-28 |
+| [0008](0008-explicit-error-communication.md) | Explicit Error Communication | ✅ Accepted | Data Quality | 2026-01-28 |
+| [0009](0009-postgresql-management-api.md) | PostgreSQL for Management API | ✅ Accepted | Infrastructure | 2026-01-31 |
 
-### Architecture Principles (0007-0014)
+## Quick Reference
 
-Foundational design principles that guide all decisions:
+### Core Architecture Decisions
+- **ADR-0001**: Four stages of infrastructure evolution (SQLite → DynamoDB → ECS → K8s)
+- **ADR-0002**: Repository pattern for database abstraction
+- **ADR-0003**: Five-tier access control (public → observer → contributor → partner → core_member)
+- **ADR-0004**: Three-layer testing (unit, integration, spikes)
 
-| ADR | Title | Status | Date | Related ADRs |
-|-----|-------|--------|------|--------------|
-| [0007](0007-single-source-of-truth.md) | Single Source of Truth | ✅ Accepted | 2026-01-28 | ADR-0008 |
-| [0008](0008-infrastructure-agnosticism.md) | Infrastructure Agnosticism | ✅ Accepted | 2026-01-28 | ADR-0007, ADR-0009 |
-| [0009](0009-controlled-complexity-introduction.md) | Controlled Complexity Introduction | ✅ Accepted | 2026-01-28 | ADR-0008, ADR-0010 |
-| [0010](0010-test-driven-technology-transitions.md) | Test-Driven Technology Transitions | ✅ Accepted | 2026-01-28 | ADR-0008, ADR-0009 |
-| [0011](0011-immutable-versioned-evolution.md) | Immutable Versioned Evolution | ✅ Accepted | 2026-01-28 | ADR-0009 |
-| [0012](0012-documentation-as-code.md) | Documentation as Code | ✅ Accepted | 2026-01-28 | ADR-0010, ADR-0011 |
-| [0013](0013-forgiving-input-strong-output.md) | Forgiving Input, Strong Output | ✅ Accepted | 2026-01-28 | ADR-0014 |
-| [0014](0014-explicit-error-communication.md) | Explicit Error Communication | ✅ Accepted | 2026-01-28 | ADR-0013 |
+### Security & Authentication
+- **ADR-0005**: Cognito for ALL authentication (humans + services), no custom API keys
+- **ADR-0003**: Tiered access control with progressive disclosure
 
-## Core Architecture Principles Summary
+### Data Management
+- **ADR-0007**: Forgiving input, strong output (Postel's Law)
+- **ADR-0008**: Explicit error communication with field-level validation
+- **ADR-0009**: PostgreSQL for member organisations, DynamoDB for threat intelligence
 
-### ADR-0007: Single Source of Truth
-All business logic resides in the unified core library (`src/frank/`) ensuring identical behavior across all infrastructure implementations (SQLite, DynamoDB, ScyllaDB).
-
-**Key Takeaway:** Business logic is tested once and works everywhere. Infrastructure adapters implement interfaces but contain no business rules.
-
-### ADR-0008: Infrastructure Agnosticism
-The system operates across diverse infrastructure environments (local SQLite, cloud DynamoDB, Kubernetes ScyllaDB) through abstract repository patterns, preventing vendor lock-in.
-
-**Key Takeaway:** Database technology, compute platforms, and deployment environments remain interchangeable through abstraction layers.
-
-### ADR-0009: Controlled Complexity Introduction
-Each evolutionary stage introduces exactly one major complexity dimension (SQLite → DynamoDB → ECS → Kubernetes) while maintaining fully working systems at every step.
-
-**Key Takeaway:** Infrastructure learning happens in early stages with simple data models. Complex features introduced only after infrastructure stabilizes.
-
-### ADR-0010: Test-Driven Technology Transitions
-Every infrastructure change validated through spike tests, performance benchmarks, and migration validation before production adoption.
-
-**Key Takeaway:** Three-layer testing strategy (unit, integration, spikes) enables confident technology evolution with minimal risk.
-
-### ADR-0011: Immutable Versioned Evolution
-Each functional milestone tagged with semantic version, representing complete deployable system with aligned Git tags, Docker tags, and database schema versions.
-
-**Key Takeaway:** No "work in progress" in version tags. Every tagged version is immediately deployable and represents real value.
-
-### ADR-0012: Documentation as Code
-Documentation colocated with code and versioned together, capturing knowledge at multiple abstraction levels (docstrings, spike READMEs, ADRs, guides).
-
-**Key Takeaway:** Documentation is integral to development, not an afterthought. Preserves decision rationale and supports AI-assisted development.
-
-### ADR-0013: Forgiving Input, Strong Output
-System accepts flexible input formats (multiple date formats, field ordering, optional fields) while producing consistent, well-structured output following strict schemas.
-
-**Key Takeaway:** Postel's Law - "Be conservative in what you send, be liberal in what you accept." Maximizes submission success while maintaining internal consistency.
-
-### ADR-0014: Explicit Error Communication
-All errors provide clear, actionable feedback with field-level validation failures, suggested corrections, and examples of valid formats.
-
-**Key Takeaway:** Users can self-correct submission errors without support intervention. Machine-readable error structure for automation.
-
-## Decision Relationships
-
-```
-┌─────────────────────────────────────────────────────────────┐
-│                    Foundation Decisions                      │
-│                                                               │
-│  ADR-0007: Single Source of Truth                           │
-│          ↓                                                    │
-│  ADR-0008: Infrastructure Agnosticism                       │
-│          ↓                                                    │
-│  ADR-0009: Controlled Complexity Introduction               │
-│                                                               │
-└─────────────────────────────────────────────────────────────┘
-                      ↓                    ↓
-        ┌─────────────────────┐  ┌─────────────────────┐
-        │  Evolution Support  │  │  Quality Assurance  │
-        │                     │  │                     │
-        │  ADR-0010: Testing  │  │  ADR-0012: Docs    │
-        │  ADR-0011: Versions │  │                     │
-        └─────────────────────┘  └─────────────────────┘
-                                          ↓
-                          ┌───────────────────────────┐
-                          │   Data Quality            │
-                          │                           │
-                          │  ADR-0013: Forgiving I/O │
-                          │  ADR-0014: Error Comms   │
-                          └───────────────────────────┘
-```
+### Admin & Tools
+- **ADR-0006**: MVC architecture for admin module (Web GUI, TUI)
 
 ## When to Create an ADR
 
@@ -189,30 +124,31 @@ When changing a previous decision:
 
 Reference ADRs to ensure consistency:
 ```
-This change violates ADR-0007 (Single Source of Truth) by
+This change violates ADR-0002 (Repository Pattern) by
 placing business logic in the infrastructure adapter.
 Please move the logic to src/frank/core/.
 ```
 
 ### When Making Design Decisions
 
-Consult relevant ADRs:
-- Infrastructure evolution → ADR-0001 (Four-Stage Evolution)
-- Database changes → ADR-0002, ADR-0008 (Repository Pattern, Infrastructure Agnosticism)
-- Access control → ADR-0003 (Tiered Access Control)
-- Testing strategy → ADR-0004, ADR-0010 (Three-Layer Testing, Test-Driven Transitions)
-- Authentication → ADR-0005 (Cognito Authentication)
-- Error handling → ADR-0014 (Explicit Error Communication)
-- Input validation → ADR-0013 (Forgiving Input, Strong Output)
-- Version releases → ADR-0011 (Immutable Versioned Evolution)
+Consult relevant ADRs before implementing:
+- Infrastructure evolution → ADR-0001
+- Database abstraction → ADR-0002
+- Access control → ADR-0003
+- Testing strategy → ADR-0004
+- Authentication → ADR-0005
+- Admin interface → ADR-0006
+- Input validation → ADR-0007
+- Error handling → ADR-0008
+- Database selection → ADR-0009
 
 ### For AI-Assisted Development
 
-ADRs provide architectural constraints for AI tools (see [CLAUDE.md](../../CLAUDE.md)):
+ADRs provide architectural constraints for AI tools:
 - Prevents violations of design principles
-- Provides rationale for seemingly arbitrary decisions
+- Provides rationale for decisions
 - Guides technology selection within constraints
-- Enables consistent code generation
+- Ensures consistent implementation
 
 ## Further Reading
 
@@ -222,5 +158,5 @@ ADRs provide architectural constraints for AI tools (see [CLAUDE.md](../../CLAUD
 
 ---
 
-*Last updated: 2026-01-29*
-*Total ADRs: 14 accepted (6 implementation, 8 principles), 0 proposed, 0 rejected*
+*Last updated: 2026-01-31*
+*Total ADRs: 9 accepted, 0 proposed, 0 rejected*

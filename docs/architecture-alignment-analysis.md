@@ -156,7 +156,7 @@ Key requirements met:
 - `tests/spikes/014_cognito/mock_cognito.py` - Mock implementation
 - `docs/highlevel_design.md` - Architecture documentation
 
-### ADR-0015: PostgreSQL for Management API ✅
+### ADR-0009: PostgreSQL for Management API ✅
 
 **Status:** COMPLIANT (after PR #74)
 
@@ -316,7 +316,7 @@ See PR #74 for unified Cognito authentication implementation.
 After reviewing:
 - ADR-0003: Access Tiers ✅
 - ADR-0005: Cognito Auth ✅
-- ADR-0015: PostgreSQL ✅
+- ADR-0009: PostgreSQL ✅
 - Issue #54: Outdated but identified
 - Glossary: Aligned ✅
 - High-Level Design: Aligned ✅
