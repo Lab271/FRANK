@@ -285,44 +285,86 @@ def get_config() -> AppConfig:
 
 
 # In-memory user store (simulates Cognito User Pool)
+# Organisation IDs for reference
+ORG_SCHUBERG_PHILIS = "identity--schuberg-philis"
+ORG_S_UNIT = "identity--s-unit"
+ORG_RABOBANK = "identity--rabobank"
+ORG_ING = "identity--ing"
+ORG_GEMEENTE_AMSTERDAM = "identity--gemeente-amsterdam"
+ORG_KPN = "identity--kpn"
+
 USERS_DB = {
+    # Schuberg Philis - Core Member (us) - 2 users including admin
     "admin": {
         "username": "admin",
         "password": "admin123",
-        "email": "admin@frank.local",
+        "email": "admin@schubergphilis.com",
         "groups": ["core_member"],
+        "organisation_id": ORG_SCHUBERG_PHILIS,
         "enabled": True,
         "user_status": "CONFIRMED"
     },
-    "testuser_observer": {
-        "username": "testuser_observer",
+    "ijsbrand": {
+        "username": "ijsbrand",
         "password": "TempPass123!",
-        "email": "observer@example.com",
-        "groups": ["observer"],
+        "email": "ijsbrand.heitlager@schubergphilis.com",
+        "groups": ["core_member"],
+        "organisation_id": ORG_SCHUBERG_PHILIS,
         "enabled": True,
         "user_status": "CONFIRMED"
     },
-    "testuser_contributor": {
-        "username": "testuser_contributor",
+
+    # S-Unit - Partner - 1 user
+    "s_unit_analyst": {
+        "username": "s_unit_analyst",
         "password": "TempPass123!",
-        "email": "contributor@example.com",
-        "groups": ["contributor"],
-        "enabled": True,
-        "user_status": "CONFIRMED"
-    },
-    "testuser_partner": {
-        "username": "testuser_partner",
-        "password": "TempPass123!",
-        "email": "partner@example.com",
+        "email": "analyst@s-unit.nl",
         "groups": ["partner"],
+        "organisation_id": ORG_S_UNIT,
         "enabled": True,
         "user_status": "CONFIRMED"
     },
-    "testuser_core_member": {
-        "username": "testuser_core_member",
+
+    # Rabobank - Contributor - 1 user
+    "rabobank_security": {
+        "username": "rabobank_security",
         "password": "TempPass123!",
-        "email": "core_member@example.com",
-        "groups": ["core_member"],
+        "email": "security@rabobank.nl",
+        "groups": ["contributor"],
+        "organisation_id": ORG_RABOBANK,
+        "enabled": True,
+        "user_status": "CONFIRMED"
+    },
+
+    # ING - Contributor - 1 user
+    "ing_soc": {
+        "username": "ing_soc",
+        "password": "TempPass123!",
+        "email": "soc@ing.nl",
+        "groups": ["contributor"],
+        "organisation_id": ORG_ING,
+        "enabled": True,
+        "user_status": "CONFIRMED"
+    },
+
+    # Gemeente Amsterdam - Observer - 1 user
+    "amsterdam_monitor": {
+        "username": "amsterdam_monitor",
+        "password": "TempPass123!",
+        "email": "monitor@amsterdam.nl",
+        "groups": ["observer"],
+        "organisation_id": ORG_GEMEENTE_AMSTERDAM,
+        "enabled": True,
+        "user_status": "CONFIRMED"
+    },
+
+    # KPN - Observer - 1 user
+    "kpn_observer": {
+        "username": "kpn_observer",
+        "password": "TempPass123!",
+        "email": "security@kpn.com",
+        "groups": ["observer"],
+        "organisation_id": ORG_KPN,
         "enabled": True,
         "user_status": "CONFIRMED"
     }
@@ -1048,9 +1090,35 @@ def main():
     logger.info(f"Region: {config.region}")
     logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
     logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")
-    logger.info("Available test users:")
+
+    # Log organizations
+    logger.info("=== Organisations ===")
+    orgs_by_tier = {}
     for username, user in USERS_DB.items():
-        logger.info(f"  - {username} (groups: {user['groups']})")
+        org_id = user.get("organisation_id", "unknown")
+        tier = user["groups"][0] if user["groups"] else "unknown"
+        if org_id not in orgs_by_tier:
+            orgs_by_tier[org_id] = {"tier": tier, "users": []}
+        orgs_by_tier[org_id]["users"].append(username)
+
+    # Display organizations grouped by tier
+    tier_order = ["core_member", "partner", "contributor", "observer"]
+    for tier in tier_order:
+        tier_orgs = {org_id: data for org_id, data in orgs_by_tier.items() if data["tier"] == tier}
+        if tier_orgs:
+            logger.info(f"\n{tier.upper().replace('_', ' ')}:")
+            for org_id, data in tier_orgs.items():
+                org_name = org_id.replace("identity--", "").replace("-", " ").title()
+                logger.info(f"  {org_name} ({org_id})")
+                logger.info(f"    Users: {', '.join(data['users'])}")
+
+    # Log users summary
+    logger.info("\n=== Users Summary ===")
+    logger.info(f"Total users: {len(USERS_DB)}")
+    for username, user in USERS_DB.items():
+        org_id = user.get("organisation_id", "unknown")
+        org_name = org_id.replace("identity--", "").replace("-", " ").title()
+        logger.info(f"  {username:20} | {user['email']:35} | {user['groups'][0]:15} | {org_name}")
     
     # Run uvicorn server
     uvicorn.run(
