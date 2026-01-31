@@ -139,17 +139,30 @@ def before_scenario(context, scenario):
     # Reset Management API database (reseed with initial data)
     if hasattr(context, 'management_url'):
         try:
-            # Force reseed to reset database to known state
-            seed_url = f"{context.management_url}/admin/seed?force=true"
-            response = requests.post(seed_url, timeout=5)
-            if response.status_code == 200:
-                logger.debug("Reset Management API database to initial fixtures")
-            elif response.status_code == 401:
-                # Need authentication for seed endpoint - try with admin credentials
-                logger.debug("Seed endpoint requires authentication, attempting with admin token")
-                # This will be handled by the test setup if needed
+            # Get admin token for authenticated seed endpoint
+            auth_response = requests.post(
+                f"{context.management_url}/v1/auth/login",
+                json={"username": "admin", "password": "admin123"},
+                timeout=5
+            )
+
+            if auth_response.status_code == 200:
+                token = auth_response.json().get("access_token")
+
+                # Force reseed to reset database to known state
+                seed_url = f"{context.management_url}/admin/seed?force=true"
+                response = requests.post(
+                    seed_url,
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=5
+                )
+
+                if response.status_code == 200:
+                    logger.debug("Reset Management API database to initial fixtures")
+                else:
+                    logger.warning(f"Could not seed Management API database: {response.status_code}")
             else:
-                logger.warning(f"Could not seed Management API database: {response.status_code}")
+                logger.warning("Could not authenticate for database seed")
         except Exception as e:
             logger.warning(f"Could not seed Management API database: {e}")
 
@@ -162,6 +175,16 @@ def after_scenario(context, scenario):
     """
     Cleanup after each scenario.
     """
+    # Clean up test users created during the scenario
+    if hasattr(context, 'created_test_users') and hasattr(context, 'management'):
+        for username in context.created_test_users:
+            try:
+                context.management.delete_user(username)
+                logger.debug(f"Cleaned up test user: {username}")
+            except Exception as e:
+                logger.warning(f"Could not clean up test user {username}: {e}")
+        context.created_test_users = []
+
     if scenario.status == "failed":
         logger.error(f"Scenario failed: {scenario.name}")
         # Log last response for debugging
