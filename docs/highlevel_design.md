@@ -67,63 +67,97 @@ FRANK (Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling) 
 │                         FRANK Platform Architecture                        │
 └────────────────────────────────────────────────────────────────────────────┘
 
-                                    Users & Services
-                                           │
-                ┌──────────────────────────┼──────────────────────────┐
-                │                          │                          │
-         Human Users                       │                   Service Accounts
-    (Web GUI / TUI / CLI)                  │              (Ingestion Services)
-                │                          │                          │
-                └──────────────────────────┼──────────────────────────┘
-                                           │
-                                           ▼
-                              ┌─────────────────────────┐
-                              │    AWS Cognito          │
-                              │  (ONE Auth System)      │
-                              │                         │
-                              │  • User Pool            │
-                              │  • JWT Tokens           │
-                              │  • Groups (Tiers)       │
-                              │  • Service Accounts     │
-                              │  • Token Refresh        │
-                              │  • Logout               │
-                              └─────────────────────────┘
-                                           │
-                                    JWT Tokens
-                                           │
-                ┌──────────────────────────┼──────────────────────────┐
-                │                          │                          │
-                ▼                          ▼                          ▼
-    ┌────────────────────┐    ┌────────────────────┐    ┌────────────────────┐
-    │   Web GUI          │    │  Management API    │    │   Sightings API    │
-    │   (FastAPI/React)  │    │   (FastAPI)        │    │   (FastAPI)        │
-    │                    │    │                    │    │                    │
-    │  • User Management │    │  • User CRUD       │    │  • Submit          │
-    │  • Org Admin       │    │  • Organisation    │    │  • Query           │
-    │  • Dashboards      │    │    Management      │    │  • Statistics      │
-    │  • Reports         │    │  • Member Roles    │    │  • Aggregations    │
-    └────────────────────┘    └────────────────────┘    └────────────────────┘
-                │                          │                          │
-                │                          ▼                          ▼
-                │              ┌────────────────────┐    ┌────────────────────┐
-                │              │   PostgreSQL       │    │   DynamoDB         │
-                │              │   (AWS RDS)        │    │                    │
-                │              │                    │    │  • submissions     │
-                │              │  • organisations   │    │  • observables     │
-                │              │  • members         │    │  • sightings       │
-                │              │                    │    │  • statistics      │
-                │              └────────────────────┘    └────────────────────┘
-                │
-                └─────────────────────┐
-                                      │
-                           ┌──────────▼──────────┐
-                           │  Local Development  │
-                           │                     │
-                           │  • Mock Cognito     │
-                           │  • PostgreSQL       │
-                           │  • SQLite (Stage 1) │
-                           └─────────────────────┘
+         Human Users                                      Service Accounts
+    (Web GUI / TUI / CLI)                              (Ingestion Services)
+                │                                                  │
+                │                                                  │
+                ▼                                                  │
+    ┌────────────────────┐                                        │
+    │   Web GUI          │                                        │
+    │   (FastAPI/React)  │                                        │
+    │                    │                                        │
+    │  • User Management │                                        │
+    │  • Org Admin       │                                        │
+    │  • Dashboards      │                                        │
+    │  • Reports         │                                        │
+    └────────┬───────────┘                                        │
+             │                                                    │
+             │ HTTP/REST API                                      │
+             │                                                    │
+             ▼                                                    │
+    ┌────────────────────┐                                        │
+    │  Management API    │                                        │
+    │   (FastAPI)        │                                        │
+    │                    │                                        │
+    │  • User CRUD       │                                        │
+    │  • Organisation    │                                        │
+    │    Management      │                                        │
+    │  • Member Roles    │                                        │
+    │  • Auth Proxy      │◀────────┐                              │
+    └────────┬───────────┘         │                              │
+             │                     │                              │
+             ▼                     │                              │
+    ┌────────────────────┐         │                              │
+    │   PostgreSQL       │         │                              │
+    │   (AWS RDS)        │         │                              │
+    │                    │         │                              │
+    │  • organisations   │         │                              │
+    │  • members         │         │                              │
+    └────────────────────┘         │                              │
+                                   │                              │
+                                   │  Auth operations             │
+                                   │  (login, MFA, etc)           │
+                                   │                              │
+                                   ▼                              │
+                      ┌─────────────────────────┐                 │
+                      │    AWS Cognito          │◀────────────────┘
+                      │  (ONE Auth System)      │  Direct auth
+                      │                         │  (services only)
+                      │  • User Pool            │
+                      │  • JWT Tokens           │
+                      │  • Groups (Tiers)       │
+                      │  • Service Accounts     │
+                      │  • Token Refresh        │
+                      │  • Logout & MFA         │
+                      └────────┬────────────────┘
+                               │
+                               │ JWT validation (JWKS)
+                               │
+                               ▼
+                    ┌────────────────────┐
+                    │   Sightings API    │
+                    │   (FastAPI)        │
+                    │                    │
+                    │  • Submit          │
+                    │  • Query           │
+                    │  • Statistics      │
+                    │  • Aggregations    │
+                    └────────┬───────────┘
+                             │
+                             ▼
+                    ┌────────────────────┐
+                    │   DynamoDB         │
+                    │                    │
+                    │  • submissions     │
+                    │  • observables     │
+                    │  • sightings       │
+                    │  • statistics      │
+                    │  • target orgs     │
+                    └────────────────────┘
+
+┌─────────────────────────────────────────────────────────────┐
+│  Local Development Environment                              │
+│  • Mock Cognito (port 8100)                                 │
+│  • PostgreSQL (port 5432)                                   │
+│  • SQLite fallback (Stage 1)                                │
+└─────────────────────────────────────────────────────────────┘
 ```
+
+**Key Architecture Points:**
+- **Web GUI connects ONLY to Management API** (not directly to Cognito)
+- **Management API proxies auth** to Cognito (login, MFA, user management)
+- **Service accounts authenticate directly** with Cognito, then use Sightings API
+- **Sightings API validates JWT** directly with Cognito JWKS endpoint (stateless)
 
 ### Data Flow Architecture
 
