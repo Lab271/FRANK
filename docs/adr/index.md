@@ -42,6 +42,9 @@ All architectural decisions in chronological order:
 | [0007](0007-forgiving-input-strong-output.md) | Forgiving Input, Strong Output | ✅ Accepted | Data Quality | 2026-01-28 |
 | [0008](0008-explicit-error-communication.md) | Explicit Error Communication | ✅ Accepted | Data Quality | 2026-01-28 |
 | [0009](0009-postgresql-management-api.md) | PostgreSQL for Management API | ✅ Accepted | Infrastructure | 2026-01-31 |
+| [0010](0010-stages-vs-environments.md) | Stages vs Environments Architecture | ✅ Accepted | Architecture | 2026-01-31 |
+| [0011](0011-spike-integration-process.md) | Spike Integration Process | ✅ Accepted | Process | 2026-01-31 |
+| [0012](0012-testing-philosophy.md) | Testing Philosophy and Local Services | ✅ Accepted | Testing | 2026-01-31 |
 
 ## Quick Reference
 
@@ -49,11 +52,16 @@ All architectural decisions in chronological order:
 - **ADR-0001**: Four stages of infrastructure evolution (SQLite → DynamoDB → ECS → K8s)
 - **ADR-0002**: Repository pattern for database abstraction
 - **ADR-0003**: Five-tier access control (public → observer → contributor → partner → core_member)
-- **ADR-0004**: Three-layer testing (unit, integration, spikes)
+- **ADR-0010**: Stages vs Environments - infrastructure complexity vs deployment target
 
 ### Security & Authentication
 - **ADR-0005**: Cognito for ALL authentication (humans + services), no custom API keys
 - **ADR-0003**: Tiered access control with progressive disclosure
+
+### Testing & Validation
+- **ADR-0004**: Three-layer testing (unit, integration, spikes)
+- **ADR-0011**: Spike integration process - hypothesis validation to production
+- **ADR-0012**: Testing philosophy with local service stubs
 
 ### Data Management
 - **ADR-0007**: Forgiving input, strong output (Postel's Law)
@@ -85,7 +93,7 @@ Create a new ADR when:
 
 1. **Check existing ADRs** - Ensure decision not already covered
 2. **Copy template** - Use [0000-template.md](0000-template.md)
-3. **Assign number** - Next sequential number (currently 0015)
+3. **Assign number** - Next sequential number (currently 0013)
 4. **Name file** - Format: `NNNN-descriptive-title.md`
 5. **Fill sections** - Complete all required sections
 6. **Set status** - Start as "proposed"
@@ -132,15 +140,18 @@ Please move the logic to src/frank/core/.
 ### When Making Design Decisions
 
 Consult relevant ADRs before implementing:
-- Infrastructure evolution → ADR-0001
+- Infrastructure evolution → ADR-0001, ADR-0010
 - Database abstraction → ADR-0002
 - Access control → ADR-0003
-- Testing strategy → ADR-0004
+- Testing strategy → ADR-0004, ADR-0012
 - Authentication → ADR-0005
 - Admin interface → ADR-0006
 - Input validation → ADR-0007
 - Error handling → ADR-0008
 - Database selection → ADR-0009
+- Stages vs environments → ADR-0010
+- Spike integration → ADR-0011
+- Local service stubs → ADR-0012
 
 ### For AI-Assisted Development
 
@@ -159,4 +170,4 @@ ADRs provide architectural constraints for AI tools:
 ---
 
 *Last updated: 2026-01-31*
-*Total ADRs: 9 accepted, 0 proposed, 0 rejected*
+*Total ADRs: 12 accepted, 0 proposed, 0 rejected*
