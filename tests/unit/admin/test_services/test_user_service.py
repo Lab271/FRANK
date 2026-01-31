@@ -78,6 +78,28 @@ class TestUserServiceList:
         assert result.success is False
         assert "not found" in result.error.lower()
 
+    @pytest.mark.asyncio
+    async def test_list_users_client_error(self, mock_client):
+        """Test listing users with AdminClientError."""
+        mock_client.list_users.side_effect = AdminClientError("Server error")
+
+        service = UserService(mock_client)
+        result = await service.list_users("org-123")
+
+        assert result.success is False
+        assert "Server error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_list_users_generic_exception(self, mock_client):
+        """Test listing users with generic exception."""
+        mock_client.list_users.side_effect = Exception("Unexpected error")
+
+        service = UserService(mock_client)
+        result = await service.list_users("org-123")
+
+        assert result.success is False
+        assert "Unexpected error" in result.error
+
 
 class TestUserServiceGet:
     """Tests for UserService get operations."""
@@ -118,6 +140,28 @@ class TestUserServiceGet:
 
         assert result.success is False
         assert "not found" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_get_user_client_error(self, mock_client):
+        """Test getting user with AdminClientError."""
+        mock_client.get_user.side_effect = AdminClientError("Server error")
+
+        service = UserService(mock_client)
+        result = await service.get_user("testuser")
+
+        assert result.success is False
+        assert "Server error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_get_user_generic_exception(self, mock_client):
+        """Test getting user with generic exception."""
+        mock_client.get_user.side_effect = Exception("Unexpected error")
+
+        service = UserService(mock_client)
+        result = await service.get_user("testuser")
+
+        assert result.success is False
+        assert "Unexpected error" in result.error
 
 
 class TestUserServiceCreate:
@@ -225,6 +269,51 @@ class TestUserServiceCreate:
         assert result.success is False
         assert "already exists" in result.error.lower()
 
+    @pytest.mark.asyncio
+    async def test_create_user_org_not_found(self, mock_client):
+        """Test creating user for non-existent organisation."""
+        mock_client.create_user.side_effect = NotFoundError("Organisation not found", 404)
+
+        service = UserService(mock_client)
+        result = await service.create_user(
+            organisation_id="nonexistent",
+            username="newuser",
+            email="new@example.com",
+        )
+
+        assert result.success is False
+        assert "not found" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_create_user_client_error(self, mock_client):
+        """Test creating user with AdminClientError."""
+        mock_client.create_user.side_effect = AdminClientError("Server error")
+
+        service = UserService(mock_client)
+        result = await service.create_user(
+            organisation_id="org-123",
+            username="newuser",
+            email="new@example.com",
+        )
+
+        assert result.success is False
+        assert "Server error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_create_user_generic_exception(self, mock_client):
+        """Test creating user with generic exception."""
+        mock_client.create_user.side_effect = Exception("Unexpected error")
+
+        service = UserService(mock_client)
+        result = await service.create_user(
+            organisation_id="org-123",
+            username="newuser",
+            email="new@example.com",
+        )
+
+        assert result.success is False
+        assert "Unexpected error" in result.error
+
 
 class TestUserServiceUpdate:
     """Tests for UserService update operations."""
@@ -291,6 +380,28 @@ class TestUserServiceUpdate:
         assert result.success is False
         assert "not found" in result.error.lower()
 
+    @pytest.mark.asyncio
+    async def test_update_user_client_error(self, mock_client):
+        """Test updating user with AdminClientError."""
+        mock_client.update_user.side_effect = AdminClientError("Server error")
+
+        service = UserService(mock_client)
+        result = await service.update_user("testuser", email="new@example.com")
+
+        assert result.success is False
+        assert "Server error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_update_user_generic_exception(self, mock_client):
+        """Test updating user with generic exception."""
+        mock_client.update_user.side_effect = Exception("Unexpected error")
+
+        service = UserService(mock_client)
+        result = await service.update_user("testuser", email="new@example.com")
+
+        assert result.success is False
+        assert "Unexpected error" in result.error
+
 
 class TestUserServiceDelete:
     """Tests for UserService delete operations."""
@@ -324,6 +435,28 @@ class TestUserServiceDelete:
 
         assert result.success is False
         assert "not found" in result.error.lower()
+
+    @pytest.mark.asyncio
+    async def test_delete_user_client_error(self, mock_client):
+        """Test deleting user with AdminClientError."""
+        mock_client.delete_user.side_effect = AdminClientError("Server error")
+
+        service = UserService(mock_client)
+        result = await service.delete_user("testuser")
+
+        assert result.success is False
+        assert "Server error" in result.error
+
+    @pytest.mark.asyncio
+    async def test_delete_user_generic_exception(self, mock_client):
+        """Test deleting user with generic exception."""
+        mock_client.delete_user.side_effect = Exception("Unexpected error")
+
+        service = UserService(mock_client)
+        result = await service.delete_user("testuser")
+
+        assert result.success is False
+        assert "Unexpected error" in result.error
 
 
 class TestUserServiceHelpers:
