@@ -31,7 +31,7 @@ class TestAuthConfig:
 
         assert config.cognito_url == "http://localhost:8100/"
         assert config.jwt_secret == "mock-cognito-secret-key"
-        assert config.jwt_algorithm == "RS256"
+        assert config.jwt_algorithm == "HS256"
         assert config.validation_strategy == "local_only"
         assert config.region == "eu-west-1"
         assert config.user_pool_id == "eu-west-1_MOCKPOOL"
