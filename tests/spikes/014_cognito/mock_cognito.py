@@ -300,7 +300,9 @@ USERS_DB = {
         "password": "admin123",
         "email": "admin@schubergphilis.com",
         "groups": ["core_member"],
-        "organisation_id": ORG_SCHUBERG_PHILIS,
+        "custom:organisation_id": ORG_SCHUBERG_PHILIS,
+        "custom:organisation_name": "Schuberg Philis",
+        "custom:role": "owner",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -309,7 +311,9 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "ijsbrand.heitlager@schubergphilis.com",
         "groups": ["core_member"],
-        "organisation_id": ORG_SCHUBERG_PHILIS,
+        "custom:organisation_id": ORG_SCHUBERG_PHILIS,
+        "custom:organisation_name": "Schuberg Philis",
+        "custom:role": "admin",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -320,7 +324,9 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "analyst@s-unit.nl",
         "groups": ["partner"],
-        "organisation_id": ORG_S_UNIT,
+        "custom:organisation_id": ORG_S_UNIT,
+        "custom:organisation_name": "S-Unit",
+        "custom:role": "member",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -331,7 +337,9 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "security@rabobank.nl",
         "groups": ["contributor"],
-        "organisation_id": ORG_RABOBANK,
+        "custom:organisation_id": ORG_RABOBANK,
+        "custom:organisation_name": "Rabobank",
+        "custom:role": "member",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -342,7 +350,9 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "soc@ing.nl",
         "groups": ["contributor"],
-        "organisation_id": ORG_ING,
+        "custom:organisation_id": ORG_ING,
+        "custom:organisation_name": "ING Bank",
+        "custom:role": "member",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -353,7 +363,9 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "monitor@amsterdam.nl",
         "groups": ["observer"],
-        "organisation_id": ORG_GEMEENTE_AMSTERDAM,
+        "custom:organisation_id": ORG_GEMEENTE_AMSTERDAM,
+        "custom:organisation_name": "Gemeente Amsterdam",
+        "custom:role": "member",
         "enabled": True,
         "user_status": "CONFIRMED"
     },
@@ -364,7 +376,9 @@ USERS_DB = {
         "password": "TempPass123!",
         "email": "security@kpn.com",
         "groups": ["observer"],
-        "organisation_id": ORG_KPN,
+        "custom:organisation_id": ORG_KPN,
+        "custom:organisation_name": "KPN",
+        "custom:role": "member",
         "enabled": True,
         "user_status": "CONFIRMED"
     }
@@ -813,6 +827,64 @@ def create_app() -> FastAPI:
             ]
         }
 
+    @app.get("/admin/users")
+    async def admin_list_users(
+        filter: Optional[str] = None,
+        limit: int = 60
+    ) -> Dict[str, Any]:
+        """
+        AWS Cognito compatible ListUsers endpoint.
+
+        Supports filtering by custom attributes:
+        - filter='custom:organisation_id = "identity--schuberg-philis"'
+        - filter='email = "admin@example.com"'
+        """
+        logger.info(f"Admin list users requested with filter: {filter}")
+
+        users = []
+        for username, user_data in USERS_DB.items():
+            # Apply filter if provided
+            if filter:
+                # Parse simple filter: attribute = "value"
+                if " = " in filter:
+                    attr_name, attr_value = filter.split(" = ")
+                    attr_name = attr_name.strip()
+                    attr_value = attr_value.strip().strip('"')
+
+                    # Check if user matches filter
+                    if attr_name in user_data:
+                        if user_data[attr_name] != attr_value:
+                            continue
+                    else:
+                        continue
+
+            # Build AWS Cognito format response
+            user_attributes = [
+                {"Name": "sub", "Value": username},
+                {"Name": "email", "Value": user_data["email"]},
+                {"Name": "email_verified", "Value": "true"}
+            ]
+
+            # Add custom attributes
+            for key, value in user_data.items():
+                if key.startswith("custom:"):
+                    user_attributes.append({"Name": key, "Value": value})
+
+            users.append({
+                "Username": user_data["username"],
+                "Attributes": user_attributes,
+                "UserStatus": user_data["user_status"],
+                "Enabled": user_data["enabled"],
+                "UserCreateDate": datetime.now(timezone.utc).isoformat()
+            })
+
+            if len(users) >= limit:
+                break
+
+        return {
+            "Users": users
+        }
+
     # ========== Admin User Management Endpoints ==========
 
     @app.post("/admin/users", status_code=201)
@@ -861,6 +933,7 @@ def create_app() -> FastAPI:
     async def admin_get_user(username: str) -> Dict[str, Any]:
         """
         Get user details from the mock user pool (admin API).
+        Returns AWS Cognito compatible format with UserAttributes array.
         """
         if username not in USERS_DB:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
@@ -868,7 +941,26 @@ def create_app() -> FastAPI:
         user = USERS_DB[username]
         logger.info(f"Admin retrieved user: {username}")
 
+        # Convert to AWS Cognito AdminGetUser format
+        user_attributes = [
+            {"Name": "sub", "Value": username},
+            {"Name": "email", "Value": user["email"]},
+            {"Name": "email_verified", "Value": "true"}
+        ]
+
+        # Add custom attributes
+        for key, value in user.items():
+            if key.startswith("custom:"):
+                user_attributes.append({"Name": key, "Value": value})
+
         return {
+            "Username": user["username"],
+            "UserAttributes": user_attributes,
+            "UserStatus": user["user_status"],
+            "Enabled": user["enabled"],
+            "UserCreateDate": datetime.now(timezone.utc).isoformat(),
+            "UserLastModifiedDate": datetime.now(timezone.utc).isoformat(),
+            # Legacy format for backward compatibility
             "username": user["username"],
             "email": user["email"],
             "groups": user["groups"],
@@ -880,6 +972,7 @@ def create_app() -> FastAPI:
     async def admin_update_user(username: str, request: Request) -> Dict[str, Any]:
         """
         Update user in the mock user pool (admin API).
+        Supports both legacy format and AWS Cognito UserAttributes format.
         """
         if username not in USERS_DB:
             raise HTTPException(status_code=404, detail=f"User {username} not found")
@@ -887,7 +980,20 @@ def create_app() -> FastAPI:
         body = await request.json()
         user = USERS_DB[username]
 
-        # Update allowed fields
+        # Support AWS Cognito AdminUpdateUserAttributes format
+        if "UserAttributes" in body:
+            for attr in body["UserAttributes"]:
+                attr_name = attr.get("Name")
+                attr_value = attr.get("Value")
+
+                # Update standard attributes
+                if attr_name == "email":
+                    user["email"] = attr_value
+                # Update custom attributes
+                elif attr_name.startswith("custom:"):
+                    user[attr_name] = attr_value
+
+        # Support legacy format
         if "email" in body:
             user["email"] = body["email"]
         if "enabled" in body:
@@ -896,6 +1002,11 @@ def create_app() -> FastAPI:
             user["groups"] = body["groups"]
         if "password" in body:
             user["password"] = body["password"]
+
+        # Support custom attribute updates in legacy format
+        for key, value in body.items():
+            if key.startswith("custom:"):
+                user[key] = value
 
         logger.info(f"Admin updated user: {username}")
 
@@ -1091,14 +1202,15 @@ def main():
     logger.info(f"JWT Algorithm: {config.jwt_algorithm}")
     logger.info(f"JWT Secret: {config.jwt_secret[:4]}... (length: {len(config.jwt_secret)})")
 
-    # Log organizations
+    # Log organizations (using AWS Cognito custom attribute format)
     logger.info("=== Organisations ===")
     orgs_by_tier = {}
     for username, user in USERS_DB.items():
-        org_id = user.get("organisation_id", "unknown")
+        org_id = user.get("custom:organisation_id", "unknown")
+        org_name = user.get("custom:organisation_name", "Unknown")
         tier = user["groups"][0] if user["groups"] else "unknown"
         if org_id not in orgs_by_tier:
-            orgs_by_tier[org_id] = {"tier": tier, "users": []}
+            orgs_by_tier[org_id] = {"tier": tier, "name": org_name, "users": []}
         orgs_by_tier[org_id]["users"].append(username)
 
     # Display organizations grouped by tier
@@ -1108,17 +1220,16 @@ def main():
         if tier_orgs:
             logger.info(f"\n{tier.upper().replace('_', ' ')}:")
             for org_id, data in tier_orgs.items():
-                org_name = org_id.replace("identity--", "").replace("-", " ").title()
-                logger.info(f"  {org_name} ({org_id})")
+                logger.info(f"  {data['name']} ({org_id})")
                 logger.info(f"    Users: {', '.join(data['users'])}")
 
     # Log users summary
     logger.info("\n=== Users Summary ===")
     logger.info(f"Total users: {len(USERS_DB)}")
     for username, user in USERS_DB.items():
-        org_id = user.get("organisation_id", "unknown")
-        org_name = org_id.replace("identity--", "").replace("-", " ").title()
-        logger.info(f"  {username:20} | {user['email']:35} | {user['groups'][0]:15} | {org_name}")
+        org_name = user.get("custom:organisation_name", "Unknown")
+        role = user.get("custom:role", "member")
+        logger.info(f"  {username:20} | {user['email']:35} | {user['groups'][0]:15} | {org_name:25} | {role}")
     
     # Run uvicorn server
     uvicorn.run(
