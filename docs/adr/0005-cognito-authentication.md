@@ -28,34 +28,71 @@ Critical decision points:
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                     AWS Cognito                              │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ User Pool                                            │    │
-│  │  - username, email, password                         │    │
-│  │  - groups: FRANK_OBSERVER, FRANK_CONTRIBUTOR, etc.  │    │
-│  │  - custom attributes (future)                        │    │
-│  └─────────────────────────────────────────────────────┘    │
+│                     AWS Cognito (User Pool)                  │
+│                                                              │
+│  Human Users:                                                │
+│    - username: "admin"                                       │
+│    - email: "admin@schubergphilis.com"                       │
+│    - password: [hashed by Cognito]                           │
+│    - groups: ["FRANK_CORE_MEMBER"]                           │
+│    - MFA: enabled/disabled                                   │
+│                                                              │
+│  Service Accounts:                                           │
+│    - username: "service-rabobank-ingestion"                  │
+│    - email: "service-rabobank@example.com"                   │
+│    - password: [auto-generated, hashed by Cognito]           │
+│    - groups: ["FRANK_CONTRIBUTOR"]                           │
+│                                                              │
+│  JWT Tokens (RS256 in AWS, HS256 in Mock)                   │
+│  Token Refresh, Logout, MFA                                  │
 └─────────────────────────────────────────────────────────────┘
                               │
                               │ JWT Token
+                              │
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
-│                     FRANK Database                           │
-│  ┌─────────────────────────────────────────────────────┐    │
-│  │ organisation_members                                 │    │
-│  │  - organisation_id (FK to organisations)            │    │
-│  │  - username (from Cognito)                          │    │
-│  │  - role (member, admin, owner)                      │    │
-│  │  - joined_at                                         │    │
-│  └─────────────────────────────────────────────────────┘    │
+│                FRANK Database (PostgreSQL/SQLite)            │
+│                                                              │
+│  organisations                                               │
+│    - organisation_id: identity--{uuid4}                      │
+│    - organisation_type: cyber_partner | customer            │
+│    - access_level: observer | contributor | partner | core  │
+│    - sector, region, metadata                                │
+│                                                              │
+│  organisation_members                                        │
+│    - organisation_id (FK to organisations)                   │
+│    - username (from Cognito, includes service-*)             │
+│    - role: member | admin | owner                            │
+│    - joined_at                                               │
+│                                                              │
+│  [Optional] refresh_tokens                                   │
+│    - token_id, user_id, token_hash                           │
+│    - For logout tracking (Cognito can handle this too)       │
 └─────────────────────────────────────────────────────────────┘
 ```
 
+### Database Role: Business Data Only
+
+**What IS stored in FRANK database:**
+- ✅ **Organisations**: Business entities (member orgs only, NOT targets)
+- ✅ **Organisation Members**: Mapping of Cognito usernames to organisations with roles
+- ✅ **Refresh Tokens** (optional): For manual logout tracking
+
+**What is NOT stored in FRANK database:**
+- ❌ **Users**: No users table (Cognito only)
+- ❌ **Passwords**: Never stored anywhere in FRANK
+- ❌ **Email/Attributes**: Always fetched from Cognito
+- ❌ **API Keys**: No custom API key system (removed, was never intended per this ADR)
+- ❌ **Access Tokens**: Stateless JWT validation via JWKS (no storage)
+- ❌ **Target Organisations**: Victim orgs stored in DynamoDB with sightings
+
 **Rationale**:
-- Cognito handles password hashing, MFA, account lockout
-- No credential storage in FRANK reduces security risk
-- User attributes (email, groups) always authoritative from Cognito
-- Organisation membership is a FRANK concept, stored locally
+- **Security**: No credential storage in FRANK eliminates credential breach risk
+- **Single Source of Truth**: User data always authoritative from Cognito
+- **Simplicity**: No user synchronization needed between systems
+- **Cognito Features**: MFA, password reset, account lockout handled by Cognito
+- **Organisation Context**: Organisation membership is FRANK business logic, stored locally
+- **Service Accounts**: Same as human users, just different naming convention in Cognito
 
 ### Dual-Mode Authentication
 
@@ -116,6 +153,31 @@ AuthConfig.configure(
 )
 ```
 
+### Service Accounts
+
+Service accounts are Cognito users with special naming convention:
+
+**Naming:** `service-{organisation}-{purpose}`
+
+**Examples:**
+- `service-rabobank-ingestion` - Rabobank's data ingestion service
+- `service-ing-threat-feed` - ING's threat feed automation
+- `service-sunit-scanner` - S-Unit's automated scanning
+
+**Authentication Flow:**
+1. Service authenticates with Cognito using username/password
+2. Cognito returns JWT access token (same as human users)
+3. Service uses JWT token for all API calls
+4. APIs validate JWT via JWKS endpoint (stateless)
+
+**Password Management:**
+- Passwords auto-generated during service account creation (32+ chars, secure)
+- Stored only in Cognito (hashed)
+- Rotated via Management API (generates new password)
+
+**No Custom API Keys:**
+Service accounts do NOT use custom API keys. They use Cognito JWT tokens exactly like human users. This eliminates the need for custom token management, key rotation, and key storage.
+
 ### Cognito Groups → AccessTier Mapping
 
 Cognito groups map directly to FRANK AccessTier:
@@ -132,6 +194,10 @@ def get_access_tier_from_groups(groups: List[str]) -> AccessTier:
     """Return highest tier from user's groups."""
     # Hierarchy: CORE_MEMBER > PARTNER > CONTRIBUTOR > OBSERVER
 ```
+
+**Applies to both:**
+- Human users: Access tier based on their Cognito groups
+- Service accounts: Access tier based on their Cognito groups (same mechanism)
 
 ### Auth Module Structure
 
@@ -203,11 +269,30 @@ Maintain users table with hashed passwords.
 
 **Rejected**: Security responsibility for credentials. No benefit over Cognito. Duplicates user management.
 
-### API Keys Only
+### Custom API Keys
 
-Skip user authentication, use API keys for service-to-service auth.
+Use custom API keys (separate from Cognito) for service-to-service authentication.
 
-**Rejected**: Doesn't support human users for admin interface. No audit trail per user.
+**Rejected**: This alternative was explicitly rejected for multiple reasons:
+
+1. **Doesn't support human users**: API keys alone can't handle Web GUI/TUI authentication
+2. **No audit trail**: API keys don't identify individual users, only services
+3. **Dual authentication systems**: Would require maintaining both Cognito (humans) and custom keys (services)
+4. **Token management complexity**: Key generation, hashing, storage, rotation, revocation
+5. **Security risk**: Another credential store to secure and audit
+6. **No MFA**: API keys can't enforce multi-factor authentication
+
+**Why Cognito for services too:**
+Service accounts as Cognito users provide:
+- ✅ Single authentication system for everything
+- ✅ Same JWT token format (standard OAuth2)
+- ✅ Stateless validation via JWKS
+- ✅ No custom token management needed
+- ✅ Same access tier enforcement
+- ✅ Audit trail (username in JWT claims)
+
+**Implementation Note:**
+If custom API keys appear in any part of FRANK, they represent architectural drift from this ADR and should be removed. All authentication must flow through Cognito.
 
 ### Firebase Auth
 
@@ -256,3 +341,39 @@ Future considerations:
 - Cognito triggers for user lifecycle events
 - Multi-factor authentication enforcement
 - Federation with external identity providers (Azure AD, Okta)
+
+---
+
+## Update Log
+
+### 2026-01-31: Architecture Cleanup and Validation
+
+**Issue Identified:**
+During implementation, custom API keys were added to the Management API, contradicting this ADR's explicit rejection of custom API keys. This created architectural drift.
+
+**Actions Taken:**
+1. Removed custom API key system (PR #74)
+   - Deleted `api_keys` table from PostgreSQL
+   - Removed API key management endpoints
+   - Removed API key generation and validation code
+
+2. Implemented service accounts as Cognito users
+   - Naming convention: `service-{org}-{purpose}`
+   - Auto-generated passwords
+   - Same JWT authentication as human users
+
+3. Updated documentation
+   - Issue #54 updated to remove API key references
+   - Created `docs/glossary.md` defining all concepts
+   - Created `docs/architecture-alignment-analysis.md` validating consistency
+
+**Current State:**
+Architecture now fully compliant with this ADR:
+- ✅ Cognito only for all authentication
+- ✅ No custom API keys
+- ✅ Service accounts = Cognito users
+- ✅ Stateless JWT validation
+- ✅ Database stores only business data (organisations, members)
+
+**Lesson:**
+New features must validate against existing ADRs. If requirements change, either update the ADR explicitly or create a new ADR that supersedes it. Implementing features that contradict ADRs leads to architectural drift and wasted effort.
