@@ -23,6 +23,7 @@ from frank.web.dependencies import get_current_session
 from frank.web.middleware.session import SessionData, SessionManager
 from frank.web.routes.auth import create_auth_routes
 from frank.web.routes.organisations import create_organisation_routes
+from frank.web.routes.service_accounts import create_service_account_routes
 from frank.web.routes.users import create_user_routes
 
 logger = logging.getLogger(__name__)
@@ -88,6 +89,9 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
 
     user_router = create_user_routes(config, templates)
     app.include_router(user_router)
+
+    service_account_router = create_service_account_routes(config, templates)
+    app.include_router(service_account_router)
 
     # Health check endpoint
     @app.get("/health")

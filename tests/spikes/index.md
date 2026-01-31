@@ -1,6 +1,8 @@
 # Spike Index
 
-Spikes are time-boxed experiments validating hypotheses before integration into the main codebase.
+Spikes are time-boxed experiments (1-4 hours) validating hypotheses before integration into the main codebase.
+
+**For complete spike process documentation, see [ADR-0011: Spike Integration Process](../docs/adr/0011-spike-integration-process.md)**
 
 ## Status Legend
 
@@ -45,22 +47,26 @@ Foundation (001-007)     AWS Infrastructure (009-013)     Advanced (014-015)
 
 ## Spike Development Process
 
-### Creating a New Spike
+**See [ADR-0011: Spike Integration Process](../docs/adr/0011-spike-integration-process.md) for complete lifecycle documentation.**
+
+### Quick Reference: Creating a New Spike
 
 1. Create folder with next sequential number: `NNN_descriptive_name/`
 2. Add `README.md` with:
-   - Hypothesis to validate
-   - Expected outcomes
-   - Validation criteria
+   - Clear hypothesis to validate
+   - Expected outcomes and validation criteria
+   - Time box (1-4 hours)
 3. Implement validation code (tests ending in `_test.py` or `test_*.py`)
 4. Document results and learnings
 
-### Completing a Spike
+### Quick Reference: Completing a Spike
 
-1. Update README with final status
-2. Document "Integrated Into" paths
-3. Capture key learnings
-4. Update this index
+1. Update README with final status (INTEGRATED, ARCHIVED, ABANDONED)
+2. Document "Integrated Into" paths with specific files
+3. Capture key learnings and gotchas
+4. Update this index with integration status
+
+**Important:** Never directly promote spike code to production. Extract patterns and implement them properly in main codebase.
 
 ## Directory Structure
 

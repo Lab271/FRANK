@@ -215,6 +215,10 @@ class UserResponse(BaseModel):
     user_status: Optional[str] = Field(None, description="User status in Cognito")
     created_at: Optional[datetime] = Field(None, description="User creation timestamp")
     last_modified: Optional[datetime] = Field(None, description="Last modification timestamp")
+    generated_password: Optional[str] = Field(
+        None,
+        description="Auto-generated password for service accounts (only returned on creation)"
+    )
 
     @field_serializer("created_at", "last_modified", when_used="always")
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
