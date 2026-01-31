@@ -41,8 +41,9 @@ def main():
 
     logger.info("=== FRANK Comprehensive Fixture Initialization ===\n")
 
-    # Create SQLite database (default location)
-    db_path = "/tmp/frank_stage1.db"
+    # Create SQLite database (use environment variable or default location)
+    import os
+    db_path = os.environ.get("DB_PATH", "/tmp/frank_stage1.db")
     logger.info(f"Using database: {db_path}")
 
     db = SQLiteFRANKDatabase({"db_path": db_path}, logger=logger)

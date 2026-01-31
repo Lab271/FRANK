@@ -50,7 +50,7 @@ services:
       dockerfile: tests/spikes/014_cognito/Dockerfile.api
       args:
         BUILD_CONTEXT: tests/spikes/014_cognito
-        PACKAGE_CONTEXT: .      
+        PACKAGE_CONTEXT: .
     container_name: simple-api
     ports:
       - "${SIMPLE_API_PORT:-8080}:8000" # Direct HTTP access to Simple API (exposed to localhost)
@@ -63,6 +63,10 @@ services:
       - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-server_first}
       - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
       - REGION=${REGION:-eu-west-1}
+      - LOAD_FIXTURES=${LOAD_FIXTURES:-true}
+      - DB_PATH=${DB_PATH:-/data/frank.db}
+    volumes:
+      - frank-data:/data
     depends_on:
       - mock-cognito
     restart: unless-stopped
@@ -77,3 +81,7 @@ services:
 networks:
   cognito-net:
     driver: bridge
+
+volumes:
+  frank-data:
+    driver: local
