@@ -17,17 +17,11 @@ from behave import given, when, then
 from hamcrest import assert_that, equal_to, greater_than, contains_string, has_key, not_none, less_than_or_equal_to
 
 
-# Configuration
-API_BASE_URL = "http://localhost:8000"
-TEST_TOKENS = {
-    "observer": "observer_test_token",
-    "contributor": "contributor_test_token", 
-    "partner": "partner_test_token",
-    "core_member": "core_test_token"
-}
+# Configuration (now provided by environment.py via context)
+# API_BASE_URL and context.test_tokens are set in context by environment.py
 
 class APIClient:
-    def __init__(self, base_url=API_BASE_URL):
+    def __init__(self, base_url):
         self.base_url = base_url
         self.session = requests.Session()
         self.last_response = None
@@ -52,7 +46,8 @@ class APIClient:
 
 @given('the FRANK API is running')
 def step_api_running(context):
-    context.api = APIClient()
+    # Use configuration from environment.py
+    context.api = APIClient(base_url=context.api_base_url)
     # Test that API is accessible
     response = context.api.get("/v1/health")
     assert_that(response.status_code, equal_to(200))
@@ -63,7 +58,7 @@ def step_api_running(context):
 def step_database_initialized(context):
     # The API should initialize demo data on startup
     # We can verify this by checking statistics
-    context.api.set_auth_token(TEST_TOKENS["partner"])
+    context.api.set_auth_token(context.test_tokens["partner"])
     response = context.api.get("/v1/statistics")
     assert_that(response.status_code, equal_to(200))
 
@@ -71,7 +66,7 @@ def step_database_initialized(context):
 @given('I am authenticated as {article} {user_type} user')
 def step_authenticated_user(context, article, user_type):
     context.user_type = user_type
-    context.api.set_auth_token(TEST_TOKENS[user_type])
+    context.api.set_auth_token(context.test_tokens[user_type])
 
 
 @given('I am not authenticated')
@@ -83,7 +78,7 @@ def step_not_authenticated(context):
 @given('there are threat sightings in the database')
 def step_sightings_exist(context):
     # Submit a test sighting to ensure data exists
-    context.api.set_auth_token(TEST_TOKENS["partner"])
+    context.api.set_auth_token(context.test_tokens["partner"])
     test_submission = create_test_submission("185.220.102.45", 85)
     response = context.api.post("/v1/submission", json_data=test_submission)
     # Allow some time for processing
@@ -92,7 +87,7 @@ def step_sightings_exist(context):
 
 @given('there are sightings with various confidence levels')
 def step_sightings_various_confidence(context):
-    context.api.set_auth_token(TEST_TOKENS["partner"])
+    context.api.set_auth_token(context.test_tokens["partner"])
     confidence_levels = [60, 75, 85, 95]
     
     for i, confidence in enumerate(confidence_levels):
@@ -104,7 +99,7 @@ def step_sightings_various_confidence(context):
 
 @given('there are sightings from different sectors and dates')
 def step_sightings_different_sectors(context):
-    context.api.set_auth_token(TEST_TOKENS["core_member"])
+    context.api.set_auth_token(context.test_tokens["core_member"])
     
     # Create submissions for different scenarios
     sectors = ["financial", "healthcare", "retail"]
