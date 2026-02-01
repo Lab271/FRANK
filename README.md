@@ -52,6 +52,36 @@ cp .env.stage1.example .env
 ./run-stage1.sh
 ```
 
+### Environment Configuration
+
+FRANK uses environment-based configuration to adapt behavior across deployment targets:
+
+```python
+from frank.config import Environment, EnvironmentConfig
+
+# Get current environment configuration
+config = EnvironmentConfig.get()
+
+# Check environment type
+if config.is_local:
+    print(f"Running in {config.environment.value} (Stage {config.stage})")
+elif config.is_production:
+    print("Running in production - AWS")
+```
+
+**Environment Variables:**
+- `FRANK_ENVIRONMENT`: Deployment target (`local-python`, `local-docker`, `aws-dev`, `aws-preprod`, `aws-prod`)
+- `FRANK_STAGE`: Infrastructure stage (1-4)
+
+**Available Environments:**
+- `Environment.LOCAL_PYTHON` - Native Python execution
+- `Environment.LOCAL_DOCKER` - Docker Compose stack
+- `Environment.AWS_DEV` - AWS development account
+- `Environment.AWS_PREPROD` - AWS pre-production
+- `Environment.AWS_PROD` - AWS production
+
+See `src/frank/config/environments.py` for the complete API and helper properties (`is_local`, `is_aws`, `is_production`, etc.).
+
 ## Architecture
 
 Start to understand the [evolutionary design](docs/evolutionary_design.md) principles, before you continue coding on FRANK. 
