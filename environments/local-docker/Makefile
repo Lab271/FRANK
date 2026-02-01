@@ -33,12 +33,12 @@ help:
 # Stage-specific targets
 stage1:
 	@echo "🚀 Starting FRANK Stage 1 (SQLite only)"
-	docker compose --profile stage1 up -d
+	docker-compose --profile stage1 up -d
 	@echo "✅ Stage 1 running. Access Management API at http://localhost:8001/docs"
 
 stage2:
 	@echo "🚀 Starting FRANK Stage 2 (PostgreSQL + DynamoDB)"
-	docker compose --profile stage2 up -d
+	docker-compose --profile stage2 up -d
 	@echo "✅ Stage 2 running. Access:"
 	@echo "   - Management API: http://localhost:8001/docs"
 	@echo "   - PostgreSQL: localhost:5432"
@@ -47,7 +47,7 @@ stage2:
 
 stage3:
 	@echo "🚀 Starting FRANK Stage 3 (Full stack)"
-	docker compose --profile stage3 up -d
+	docker-compose --profile stage3 up -d
 	@echo "✅ Stage 3 running. Access:"
 	@echo "   - Web GUI: http://localhost:3000"
 	@echo "   - Management API: http://localhost:8001/docs"
@@ -60,50 +60,50 @@ stage3:
 up: stage3
 
 down:
-	docker compose down
+	docker-compose down
 
 restart:
-	docker compose restart
+	docker-compose restart
 
 health:
 	@echo "🏥 Checking service health..."
-	@docker compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
+	@docker-compose ps --format "table {{.Name}}\t{{.Status}}\t{{.Health}}"
 
 ps:
-	docker compose ps
+	docker-compose ps
 
 # Log commands
 logs:
-	docker compose logs -f
+	docker-compose logs -f
 
 logs-api:
-	docker compose logs -f frank-management-api
+	docker-compose logs -f frank-management-api
 
 logs-web:
-	docker compose logs -f frank-web-gui
+	docker-compose logs -f frank-web-gui
 
 logs-admin:
-	docker compose logs -f frank-admin-api
+	docker-compose logs -f frank-admin-api
 
 logs-cognito:
-	docker compose logs -f mock-cognito
+	docker-compose logs -f mock-cognito
 
 logs-postgres:
-	docker compose logs -f postgres
+	docker-compose logs -f postgres
 
 logs-localstack:
-	docker compose logs -f localstack
+	docker-compose logs -f localstack
 
 logs-dynamodb-admin:
-	docker compose logs -f frank-dynamodb-admin
+	docker-compose logs -f frank-dynamodb-admin
 
 # Cleanup and rebuild
 clean:
-	docker compose down -v --remove-orphans
+	docker-compose down -v --remove-orphans
 	@echo "✅ All containers, volumes, and networks removed"
 
 rebuild:
-	docker compose down
-	docker compose build --no-cache
-	docker compose --profile stage3 up -d
+	docker-compose down
+	docker-compose build --no-cache
+	docker-compose --profile stage3 up -d
 	@echo "✅ Services rebuilt and started"

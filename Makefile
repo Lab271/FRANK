@@ -94,7 +94,7 @@ env-help: ## Show environment deployment options
 
 docker-build: ## Build all Docker images
 	@echo "Building Docker images..."
-	@cd environments/local-docker && docker compose build
+	@cd environments/local-docker && docker-compose build
 
 docker-up: ## Start all services (Web GUI + Management API + Mock Cognito)
 	@echo "Starting FRANK platform services..."
