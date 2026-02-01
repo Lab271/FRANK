@@ -40,15 +40,29 @@ make clean        # Clean all build files and virtualenv
 make check        # Validate development dependencies (Python/pip/docker)
 ```
 
-### Running Individual Stages
+### Running FRANK Environments
 
 ```bash
-# Stage 1 - SQLite + FastAPI (local)
-python stages/stage1/server.py
+# Local Docker - Stage 3 (Full stack with Web GUI)
+cd environments/local-docker
+make stage3
 
-# Stage 3 - DynamoDB + ECS (AWS)
-ansible-playbook ansible/playbook.yml --tags create
+# Local Docker - Stage 1 (SQLite only)
+cd environments/local-docker
+make stage1
+
+# Local Python - Stage 1 (SQLite, native Python)
+cd environments/local-python
+cp .env.stage1.example .env
+./run-stage1.sh
+
+# AWS Deployment - Stage 3
+cd environments/aws-dev/stage3  # or aws-preprod, aws-prod
+cp .env.stage3.example .env.stage3
+ansible-playbook ../../ansible/playbook.yml --tags create
 ```
+
+See **[environments/README.md](environments/README.md)** for complete documentation.
 
 ## Architecture
 
@@ -77,7 +91,14 @@ src/frank/
 │   └── dynamodb.py    # DynamoDB implementation (Stages 2-3)
 └── util/              # Utilities (server, logging, filters, requests)
 
-stages/
+environments/
+├── local-docker/      # Docker Compose (all stages)
+├── local-python/      # Python virtualenv (all stages)
+├── aws-dev/           # AWS development (Stage 3)
+├── aws-preprod/       # AWS pre-production (Stage 3)
+└── aws-prod/          # AWS production (Stage 3)
+
+stages/                # Legacy: being migrated to environments/ and tests/spikes/
 ├── stage1/            # Local SQLite + FastAPI
 ├── stage2/            # LocalStack + Dual DB (MySQL/DynamoDB)
 ├── stage3/            # AWS Cloud + ECS + DynamoDB
