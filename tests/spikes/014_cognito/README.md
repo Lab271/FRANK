@@ -2,14 +2,18 @@ FRANK Application - Spike 014: Cognito Authentication Integration
 ================================================================
 
 ## Status
-INTEGRATED
+✅ **ACCEPTED AND INTEGRATED**
 
-## Integrated Into
-- `stages/stage3/` - AWS Cognito authentication
-- Authentication patterns for FRANK platform APIs
-- `tests/stubs/cognito/stub_cognito.py` - Stub service for testing (moved from `mock_cognito.py`)
+## Formal Implementation Location
+This spike has been accepted and moved to its formal place in the FRANK codebase:
 
-**Note:** The Mock Cognito service has been moved to `tests/stubs/cognito/stub_cognito.py` for centralized stub management. See `tests/stubs/README.md` for usage documentation.
+- **Stub Service**: `tests/stubs/cognito/stub_cognito.py`
+- **Documentation**: `tests/stubs/README.md`
+- **Integration**: `stages/stage3/` - AWS Cognito authentication patterns
+
+All code, Docker configurations, and test fixtures from this spike are now maintained in the centralized `tests/stubs/` directory. This README remains as historical documentation of the spike exploration process.
+
+**For current usage**, see: `tests/stubs/README.md`
 
 ---
 
