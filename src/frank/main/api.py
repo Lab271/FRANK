@@ -142,7 +142,7 @@ def create_main_app(
         # Check database connectivity
         if app.state.database:
             try:
-                db_health = await app.state.database.health_check()
+                db_health = app.state.database.health_check()
                 components["database"] = {
                     "status": "healthy" if db_health else "unhealthy",
                     "type": app.state.database.name if hasattr(app.state.database, 'name') else "unknown"

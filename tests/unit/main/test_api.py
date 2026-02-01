@@ -56,12 +56,11 @@ def client(mock_database, mock_cognito):
 def mock_user():
     """Mock authenticated user"""
     return TokenPayload(
-        sub="user-123",
         username="test-user",
-        email="test@example.com",
         groups=["FRANK_PARTNER"],
         access_tier=AccessTier.PARTNER,
-        organisation_id="identity--org-123"
+        organisation_id="identity--org-123",
+        validation_source="test"
     )
 
 
