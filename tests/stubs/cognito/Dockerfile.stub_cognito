@@ -1,4 +1,4 @@
-# FRANK Platform - Cognito Authentication Spike - Simple API Container
+# FRANK Platform - Cognito Stub Service Container
 # 
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
@@ -41,9 +41,9 @@ RUN pip install --no-cache-dir --user \
     fastapi==0.118.3 \
     uvicorn==0.37.0 \
     PyJWT==2.10.1 \
-    httpx==0.28.1 \
     python-multipart==0.0.20 \
     cryptography==46.0.2
+
 
 # ===================================
 # Production Stage
@@ -51,33 +51,29 @@ RUN pip install --no-cache-dir --user \
 
 FROM base AS production
 
+# Install curl for healthcheck
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/*
+
 # Create non-root user
 RUN groupadd -r frankuser && useradd -r -g frankuser frankuser
 
 # Copy Python dependencies from builder stage
 COPY --from=builder /root/.local /home/frankuser/.local
 
-ARG BUILD_CONTEXT=tests/spikes/014_cognito
+ARG BUILD_CONTEXT=tests/stubs/cognito
 ARG PACKAGE_CONTEXT=.
+
 
 # Set working directory
 WORKDIR /app
 
 COPY ${BUILD_CONTEXT}/README.md .
-COPY ${PACKAGE_CONTEXT}/setup.py .
+COPY ${PACKAGE_CONTEXT}/pyproject.toml .
 # Load frank package and install
 COPY ${PACKAGE_CONTEXT}/src/ ./src/.
 RUN pip install --no-cache-dir .
 
-COPY ${BUILD_CONTEXT}/simple_api_010.py simple_api.py
-COPY ${BUILD_CONTEXT}/init_fixtures.py .
-COPY ${BUILD_CONTEXT}/docker-entrypoint.sh /usr/local/bin/
-
-# Make entrypoint executable
-RUN chmod +x /usr/local/bin/docker-entrypoint.sh
-
-# Create data directory for database
-RUN mkdir -p /data && chown -R frankuser:frankuser /data
+COPY ${BUILD_CONTEXT}/stub_cognito.py .
 
 # Change ownership to frankuser
 RUN chown -R frankuser:frankuser /app
@@ -85,13 +81,12 @@ RUN chown -R frankuser:frankuser /app
 # Switch to non-root user
 USER frankuser
 
+# Expose port 8100 for internal communication
+EXPOSE 8100
+
 # Set environment variables
 ENV PATH=/home/frankuser/.local/bin:$PATH
-ENV PORT=8000
-ENV DB_PATH=/data/frank.db
-
-# Use entrypoint script
-ENTRYPOINT ["/usr/local/bin/docker-entrypoint.sh"]
+ENV PORT=8100
 
 # Run the application
-CMD ["python", "simple_api.py"]
+CMD ["python", "stub_cognito.py"]

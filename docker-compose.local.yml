@@ -39,13 +39,13 @@ services:
     networks:
       - frank-net
 
-  # Mock Cognito service for authentication
+  # Cognito stub service for authentication
   mock-cognito:
     build:
       context: .
-      dockerfile: tests/spikes/014_cognito/Dockerfile.cognito
+      dockerfile: tests/stubs/cognito/Dockerfile.stub_cognito
       args:
-        BUILD_CONTEXT: tests/spikes/014_cognito
+        BUILD_CONTEXT: tests/stubs/cognito
         PACKAGE_CONTEXT: .
     container_name: frank-mock-cognito
     ports:
