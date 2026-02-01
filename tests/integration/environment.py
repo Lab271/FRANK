@@ -126,32 +126,59 @@ def before_scenario(context, scenario):
     """
     Setup before each scenario.
     """
-    # Reset Mock Cognito database to initial fixtures
-    if hasattr(context, 'cognito_url'):
+    # Debug: Log scenario tags
+    logger.debug(f"Scenario: {scenario.name}, Tags: {scenario.effective_tags}")
+
+    # Only seed Mock Cognito if running cognito-related tests
+    if 'cognito' in scenario.effective_tags and hasattr(context, 'cognito_url'):
         try:
             reset_url = f"{context.cognito_url}/admin/reset"
             response = requests.post(reset_url, timeout=5)
             if response.status_code == 200:
                 logger.debug("Reset Mock Cognito database to initial fixtures")
         except Exception as e:
-            logger.warning(f"Could not reset Mock Cognito: {e}")
+            logger.debug(f"Could not reset Mock Cognito: {e}")
 
-    # Reset Management API database (reseed with initial data)
-    if hasattr(context, 'management_url'):
+    # Only seed Management API if running management-related tests
+    if 'management' in scenario.effective_tags and hasattr(context, 'management_url'):
+        # First check if Management API is available
         try:
-            # Force reseed to reset database to known state
-            seed_url = f"{context.management_url}/admin/seed?force=true"
-            response = requests.post(seed_url, timeout=5)
-            if response.status_code == 200:
-                logger.debug("Reset Management API database to initial fixtures")
-            elif response.status_code == 401:
-                # Need authentication for seed endpoint - try with admin credentials
-                logger.debug("Seed endpoint requires authentication, attempting with admin token")
-                # This will be handled by the test setup if needed
+            health_check = requests.get(f"{context.management_url}/health", timeout=2)
+            if health_check.status_code != 200:
+                logger.debug(f"Management API not available, skipping database seed")
+                return
+        except Exception:
+            logger.debug(f"Management API not available, skipping database seed")
+            return
+
+        # Management API is available, proceed with seeding
+        try:
+            # Get admin token for authenticated seed endpoint
+            auth_response = requests.post(
+                f"{context.management_url}/v1/auth/login",
+                json={"username": "admin", "password": "admin123"},
+                timeout=5
+            )
+
+            if auth_response.status_code == 200:
+                token = auth_response.json().get("access_token")
+
+                # Force reseed to reset database to known state
+                seed_url = f"{context.management_url}/admin/seed?force=true"
+                response = requests.post(
+                    seed_url,
+                    headers={"Authorization": f"Bearer {token}"},
+                    timeout=5
+                )
+
+                if response.status_code == 200:
+                    logger.debug("Reset Management API database to initial fixtures")
+                else:
+                    logger.debug(f"Could not seed Management API database: {response.status_code}")
             else:
-                logger.warning(f"Could not seed Management API database: {response.status_code}")
+                logger.debug("Could not authenticate for database seed")
         except Exception as e:
-            logger.warning(f"Could not seed Management API database: {e}")
+            logger.debug(f"Could not seed Management API database: {e}")
 
     # Reset any scenario-specific state
     context.last_response = None
@@ -162,6 +189,16 @@ def after_scenario(context, scenario):
     """
     Cleanup after each scenario.
     """
+    # Clean up test users created during the scenario
+    if hasattr(context, 'created_test_users') and hasattr(context, 'management'):
+        for username in context.created_test_users:
+            try:
+                context.management.delete_user(username)
+                logger.debug(f"Cleaned up test user: {username}")
+            except Exception as e:
+                logger.warning(f"Could not clean up test user {username}: {e}")
+        context.created_test_users = []
+
     if scenario.status == "failed":
         logger.error(f"Scenario failed: {scenario.name}")
         # Log last response for debugging

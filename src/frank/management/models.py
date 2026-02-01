@@ -219,6 +219,21 @@ class UserResponse(BaseModel):
         None,
         description="Auto-generated password for service accounts (only returned on creation)"
     )
+    organisation_id: Optional[str] = Field(
+        None,
+        description="User's primary organisation ID",
+        alias="custom:organisation_id"
+    )
+    organisation_name: Optional[str] = Field(
+        None,
+        description="User's organisation name",
+        alias="custom:organisation_name"
+    )
+    role: Optional[str] = Field(
+        None,
+        description="User's role in their organisation",
+        alias="custom:role"
+    )
 
     @field_serializer("created_at", "last_modified", when_used="always")
     def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:

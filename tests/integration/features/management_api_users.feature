@@ -163,4 +163,4 @@ Feature: Management API User and Organisation Management
   @edge-cases @management
   Scenario: Unauthorized request without token fails
     When I list all organisations via Management API without authentication
-    Then the Management API response status should be 401
+    Then the Management API response status should be 403

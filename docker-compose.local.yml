@@ -54,7 +54,7 @@ services:
       - LOG_LEVEL=${LOG_LEVEL:-info}
       - RELOAD=${RELOAD:-false}
       - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
-      - JWT_ALGORITHM=${JWT_ALGORITHM:-RS256}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
       - CLIENT_ID=${CLIENT_ID:-mock-client-id-123456}
       - REGION=${REGION:-eu-west-1}
@@ -83,7 +83,8 @@ services:
       - DATABASE_URL=postgresql://${POSTGRES_USER:-frank}:${POSTGRES_PASSWORD:-frank_dev}@postgres:5432/${POSTGRES_DB:-frank_management}
       - FRANK_AUTH_MODE=mock
       - COGNITO_URL=http://mock-cognito:8100
-      - JWT_ALGORITHM=${JWT_ALGORITHM:-RS256}
+      - JWT_SECRET=${JWT_SECRET:-mock-cognito-secret-key}
+      - JWT_ALGORITHM=${JWT_ALGORITHM:-HS256}
       - USER_POOL_ID=${USER_POOL_ID:-eu-west-1_MOCKPOOL}
       - REGION=${REGION:-eu-west-1}
       - VALIDATION_STRATEGY=${VALIDATION_STRATEGY:-local_only}

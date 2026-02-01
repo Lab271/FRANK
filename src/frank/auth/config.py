@@ -93,7 +93,7 @@ class AuthConfig:
         cls._instance = cls(
             cognito_url=cognito_url or os.getenv("COGNITO_URL", "http://localhost:8100"),
             jwt_secret=jwt_secret or os.getenv("JWT_SECRET", "mock-cognito-secret-key"),
-            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "RS256"),  # type: ignore[arg-type]
+            jwt_algorithm=jwt_algorithm or os.getenv("JWT_ALGORITHM", "HS256"),  # type: ignore[arg-type]
             validation_strategy=validation_strategy or os.getenv("VALIDATION_STRATEGY", "local_only"),  # type: ignore[arg-type]
             region=region or os.getenv("AWS_REGION", os.getenv("REGION", "eu-west-1")),
             user_pool_id=user_pool_id or os.getenv("USER_POOL_ID", "eu-west-1_MOCKPOOL"),

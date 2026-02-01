@@ -860,9 +860,17 @@ def create_management_app(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Invalid username or password"
                 )
+            logger.error(f"Cognito service error during login for {login_data.username}: {e}")
             raise HTTPException(
                 status_code=e.status_code,
                 detail=e.message
+            )
+        except Exception as e:
+            # Catch any other unexpected errors
+            logger.error(f"Unexpected error during login for {login_data.username}: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Internal server error during authentication"
             )
 
     @app.post(
