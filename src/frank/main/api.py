@@ -25,6 +25,11 @@ from frank.main.models import (
     SubmissionRequest,
     SubmissionResponse,
 )
+from frank.management.cognito_service import (
+    BaseCognitoService,
+    CognitoServiceError,
+    get_cognito_service,
+)
 from frank.management.models import (
     LoginRequest,
     LoginResponse,
@@ -38,12 +43,14 @@ logger = logging.getLogger(__name__)
 
 def create_main_app(
     database: Optional[BaseFRANKDatabase] = None,
+    cognito_service: Optional[BaseCognitoService] = None,
 ) -> FastAPI:
     """
     Create and configure the Main API (Sightings API) FastAPI application.
 
     Args:
         database: Database instance for threat intelligence storage
+        cognito_service: Cognito service for authentication
 
     Returns:
         Configured FastAPI application
@@ -66,8 +73,25 @@ def create_main_app(
         allow_headers=["*"],
     )
 
-    # Store database in app state
+    # Store services in app state
     app.state.database = database
+    app.state.cognito_service = cognito_service
+
+    def get_database() -> BaseFRANKDatabase:
+        """Dependency to get database instance"""
+        if app.state.database is None:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Database not configured"
+            )
+        return app.state.database
+
+    def get_cognito() -> BaseCognitoService:
+        """Dependency to get Cognito service instance"""
+        if app.state.cognito_service is None:
+            # Lazy initialization
+            app.state.cognito_service = get_cognito_service()
+        return app.state.cognito_service
 
     # Get environment configuration
     env_config = EnvironmentConfig.get()
@@ -157,7 +181,10 @@ def create_main_app(
         tags=["Authentication"],
         summary="Service account login"
     )
-    async def login(request: LoginRequest):
+    async def login(
+        request: LoginRequest,
+        cognito: BaseCognitoService = Depends(get_cognito)
+    ):
         """
         Authenticate service account and receive JWT tokens.
 
@@ -165,6 +192,7 @@ def create_main_app(
 
         Args:
             request: Login credentials (username/password)
+            cognito: Cognito service instance
 
         Returns:
             JWT access token and refresh token
@@ -172,12 +200,45 @@ def create_main_app(
         Raises:
             401: Invalid credentials
         """
-        # TODO: Implement Cognito authentication proxy
-        # For now, return a placeholder
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Authentication endpoint not yet implemented"
-        )
+        try:
+            # Authenticate with Cognito
+            auth_result = await cognito.authenticate_user(
+                username=request.username,
+                password=request.password
+            )
+
+            # Extract tokens from Cognito response
+            access_token = auth_result.get("AuthenticationResult", {}).get("AccessToken")
+            refresh_token = auth_result.get("AuthenticationResult", {}).get("RefreshToken")
+            expires_in = auth_result.get("AuthenticationResult", {}).get("ExpiresIn", 3600)
+
+            if not access_token:
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Authentication succeeded but no access token received"
+                )
+
+            logger.info(f"User authenticated: {request.username}")
+
+            return LoginResponse(
+                access_token=access_token,
+                refresh_token=refresh_token,
+                expires_in=expires_in
+            )
+
+        except CognitoServiceError as e:
+            logger.warning(f"Authentication failed for {request.username}: {e.message}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=e.message,
+                headers={"WWW-Authenticate": "Bearer"}
+            )
+        except Exception as e:
+            logger.error(f"Unexpected error during authentication: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication failed"
+            )
 
     @app.post(
         "/auth/refresh",
