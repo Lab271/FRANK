@@ -24,4 +24,34 @@ This will prep your machine to run FRANK locally. It assumes Docker/Python/uv/AW
 
 **Build System**: This project uses [Hatch](https://hatch.pypa.io/) as the build system and [uv](https://docs.astral.sh/uv/) as the package manager for fast dependency installation and Python version management.
 
+## Deployment Environments
+
+FRANK supports multiple deployment environments, each optimized for different use cases:
+
+### Local Development
+- **[local-docker](environments/local-docker/)** - Docker Compose for full-stack local development (recommended)
+- **[local-python](environments/local-python/)** - Python virtualenv for debugging and quick iteration
+
+### AWS Deployment
+- **[aws-dev](environments/aws-dev/)** - Development environment for testing AWS integrations
+- **[aws-preprod](environments/aws-preprod/)** - Pre-production environment for final validation
+- **[aws-prod](environments/aws-prod/)** - Production environment with high availability
+
+See **[environments/README.md](environments/README.md)** for complete deployment documentation.
+
+### Quick Start
+
+```bash
+# Local development with Docker (Stage 3 - Full stack)
+cd environments/local-docker
+make stage3
+
+# Or run natively in Python (Stage 1 - SQLite)
+cd environments/local-python
+cp .env.stage1.example .env
+./run-stage1.sh
+```
+
+## Architecture
+
 Start to understand the [evolutionary design](docs/evolutionary_design.md) principles, before you continue coding on FRANK. 

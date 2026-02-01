@@ -1,283 +1,165 @@
-# FRANK Platform - Docker Setup
+# FRANK Platform - Docker Containers
 
-Docker containers for local development and deployment.
+Shared Dockerfiles for FRANK application services.
+
+These Dockerfiles are used across all environments (local-docker, aws-dev, aws-preprod, aws-prod).
+
+## Container Images
+
+### Dockerfile.management
+Management API container (Port 8001)
+- FastAPI REST API for organisation and user CRUD
+- PostgreSQL/SQLite support
+- Mock/AWS Cognito authentication
+
+### Dockerfile.web
+Web GUI container (Port 3000)
+- Jinja2-templated user interface
+- Session-based authentication
+- Organisation and user management
+
+### Dockerfile.admin (Future)
+Admin API container (Port 8002)
+- Administrative operations
+- System configuration
 
 ## Quick Start
 
-### Start All Services
+For local development, use the environment-specific setups:
+
+### Local Docker Environment
 
 ```bash
-# Using make (recommended)
-make docker-up
+cd environments/local-docker
 
-# Or directly with docker-compose
-docker-compose -f docker-compose.local.yml up -d
+# Start Stage 3 (full stack)
+make stage3
+
+# Or start Stage 2 (PostgreSQL + DynamoDB)
+make stage2
+
+# Or start Stage 1 (SQLite only)
+make stage1
 ```
 
-### Access Points
-
-Once started, services are available at:
-
-- **Web GUI**: http://localhost:3000
-- **Management API**: http://localhost:8001/docs (OpenAPI documentation)
-- **Mock Cognito**: http://localhost:8100/health
-
-### View Logs
+### Local Python Environment
 
 ```bash
-# All services
-make docker-logs
+cd environments/local-python
 
-# Or specific service
-docker-compose -f docker-compose.local.yml logs -f web-gui
-docker-compose -f docker-compose.local.yml logs -f management-api
-docker-compose -f docker-compose.local.yml logs -f mock-cognito
+# Copy and configure .env
+cp .env.stage3.example .env
+vi .env
+
+# Run Stage 3
+./run-stage3.sh
 ```
 
-### Stop Services
+See [`environments/README.md`](../environments/README.md) for complete environment documentation.
 
-```bash
-make docker-down
-```
-
-## Services
-
-### Web GUI (frank-web-gui)
-
-Web-based user interface for organisation and user management.
-
-- **Port**: 3000
-- **Dockerfile**: `docker/Dockerfile.web`
-- **Image**: Based on Python 3.13-slim
-- **Dependencies**: Management API, Mock Cognito
+## Service Details
 
 ### Management API (frank-management-api)
-
-REST API for organisation and user CRUD operations.
-
 - **Port**: 8001
-- **Dockerfile**: `docker/Dockerfile.management`
-- **Image**: Based on Python 3.13-slim
-- **Database**: SQLite (persisted in docker volume)
-- **Documentation**: http://localhost:8001/docs
+- **Dockerfile**: `Dockerfile.management`
+- **Base Image**: Python 3.13-slim
+- **Database**: PostgreSQL or SQLite
+- **Authentication**: Mock Cognito or AWS Cognito
+- **API Docs**: http://localhost:8001/docs (when running)
 
-### Mock Cognito (frank-mock-cognito)
+### Web GUI (frank-web-gui)
+- **Port**: 3000
+- **Dockerfile**: `Dockerfile.web`
+- **Base Image**: Python 3.13-slim
+- **Dependencies**: Management API, Cognito
+- **Template Engine**: Jinja2
 
-Mock AWS Cognito service for local authentication.
-
-- **Port**: 8100
-- **Dockerfile**: `tests/spikes/014_cognito/Dockerfile.cognito`
-- **Features**: RS256 JWT signing, user pool simulation
+### Admin API (future)
+- **Port**: 8002
+- **Dockerfile**: `Dockerfile.admin`
+- **Purpose**: Administrative operations and system configuration
 
 ## Configuration
 
-### Environment Variables
+Environment-specific configuration is located in:
+- `environments/local-docker/.env.example` - Docker Compose configuration
+- `environments/local-python/.env.stage*.example` - Python virtualenv configuration
+- `environments/aws-*/stage3/.env.stage3.example` - AWS deployment configuration
 
-Copy `.env.example` to `.env` and customize:
-
-```bash
-cp .env.example .env
-```
-
-Key variables:
-
-```bash
-# Ports
-WEB_GUI_PORT=3000
-MANAGEMENT_API_PORT=8001
-MOCK_COGNITO_PORT=8100
-
-# Development
-LOG_LEVEL=info
-RELOAD=false                    # Hot-reload (true for development)
-TEMPLATE_AUTO_RELOAD=false      # Template hot-reload (true for web dev)
-
-# Session Security
-FRANK_SESSION_SECRET=your-secret-key-here  # Change in production!
-```
-
-### Hot-Reload Development
-
-Enable automatic code reloading:
-
-```bash
-# In .env file
-RELOAD=true
-TEMPLATE_AUTO_RELOAD=true
-
-# Then restart services
-make docker-down
-make docker-up
-```
-
-**Note**: Hot-reload requires mounting source code as volumes. Add to `docker-compose.local.yml`:
-
-```yaml
-services:
-  web-gui:
-    volumes:
-      - ./src:/app/src:ro
-      - ./src/frank/web/templates:/app/src/frank/web/templates:ro
-```
+See environment READMEs for detailed configuration options.
 
 ## Building Images
 
-### Build All Images
+### Build from Environment Directory
 
 ```bash
-make docker-build
+cd environments/local-docker
+docker compose build
 ```
 
 ### Build Specific Image
 
 ```bash
-docker build -f docker/Dockerfile.web -t frank-web:latest .
+# From project root
 docker build -f docker/Dockerfile.management -t frank-management:latest .
+docker build -f docker/Dockerfile.web -t frank-web:latest .
 ```
 
 ### Multi-Platform Builds
 
-Build for both AMD64 (AWS Fargate) and ARM64 (M1/M2 Mac, AWS Graviton):
+Build for AMD64 (AWS Fargate) and ARM64 (M1/M2 Mac, AWS Graviton):
 
 ```bash
+docker buildx build --platform linux/amd64,linux/arm64 \
+  -f docker/Dockerfile.management \
+  -t frank-management:latest .
+
 docker buildx build --platform linux/amd64,linux/arm64 \
   -f docker/Dockerfile.web \
   -t frank-web:latest .
 ```
 
-## Data Persistence
+## Container Features
 
-### SQLite Database
+### Multi-Stage Builds
+All Dockerfiles use multi-stage builds:
+- **Builder stage**: Compiles dependencies with gcc/g++
+- **Production stage**: Minimal runtime image with only necessary packages
 
-The Management API uses SQLite with data persisted in a Docker volume:
+### Non-Root User
+Containers run as `frankuser` (non-root) for security.
 
-```bash
-# View volume
-docker volume inspect frank-data
+### Health Checks
+Built-in health check endpoints:
+- Management API: `http://localhost:8001/health`
+- Web GUI: `http://localhost:3000/health`
 
-# Backup database
-docker cp frank-management-api:/data/frank.db ./backup-$(date +%Y%m%d).db
-
-# Restore database
-docker cp ./backup.db frank-management-api:/data/frank.db
-```
-
-### Reset Database
-
-```bash
-# Stop services
-make docker-down
-
-# Remove volume
-docker volume rm frank-data
-
-# Restart (creates fresh database)
-make docker-up
-```
-
-## Health Checks
-
-All services have health check endpoints:
-
-```bash
-# Web GUI
-curl http://localhost:3000/health
-
-# Management API
-curl http://localhost:8001/health
-
-# Mock Cognito
-curl http://localhost:8100/health
-```
-
-## Troubleshooting
-
-### Services Won't Start
-
-```bash
-# Check logs
-make docker-logs
-
-# Check container status
-docker-compose -f docker-compose.local.yml ps
-
-# Rebuild images
-make docker-build
-make docker-up
-```
-
-### Port Conflicts
-
-If ports are already in use, override in `.env`:
-
-```bash
-WEB_GUI_PORT=3001
-MANAGEMENT_API_PORT=8002
-MOCK_COGNITO_PORT=8101
-```
-
-### Permission Errors
-
-All containers run as non-root user (`frankuser`). If you see permission errors:
-
-```bash
-# Check volume permissions
-docker volume inspect frank-data
-
-# Recreate volume
-docker volume rm frank-data
-make docker-up
-```
-
-## Network Architecture
-
-Services communicate via internal Docker network (`frank-net`):
-
-```
-┌────────────────────────────────────────────────────────────┐
-│                    Docker Network: frank-net                │
-├────────────────────────────────────────────────────────────┤
-│                                                             │
-│  ┌──────────────┐           ┌─────────────────┐            │
-│  │   Web GUI    │──────────▶│ Management API  │            │
-│  │   :3000      │  HTTP/JSON│     :8001       │            │
-│  │  (public)    │           │   (internal)    │            │
-│  └──────────────┘           └────────┬────────┘            │
-│         │                             │                     │
-│         │                             │                     │
-│         │                    ┌────────▼────────┐            │
-│         └───────────────────▶│  Mock Cognito   │            │
-│                      Auth    │     :8100       │            │
-│                              │   (internal)    │            │
-│                              └─────────────────┘            │
-│                                                             │
-│  Volume: frank-data (SQLite database)                       │
-└────────────────────────────────────────────────────────────┘
-
-External Access:
-- localhost:3000  → web-gui (exposed)
-- localhost:8001  → management-api (exposed)
-- localhost:8100  → mock-cognito (exposed)
-```
+### Platform Support
+- **linux/amd64**: AWS Fargate, x86_64 servers
+- **linux/arm64**: Apple Silicon (M1/M2/M3), AWS Graviton
 
 ## Production Considerations
 
 ### Security
+- Change `FRANK_SESSION_SECRET` (min 32 chars)
+- Use HTTPS/TLS termination (ALB, nginx)
+- Use AWS Cognito (not mock Cognito)
+- Use AWS Secrets Manager for credentials
 
-- **Change session secret**: Set strong `FRANK_SESSION_SECRET` (min 32 chars)
-- **Use HTTPS**: Configure TLS termination (ALB, nginx, traefik)
-- **Disable mock Cognito**: Use real AWS Cognito in production
-- **Environment variables**: Use secrets management (AWS Secrets Manager, HashiCorp Vault)
+### Resource Limits
+Configure in ECS task definitions or Kubernetes:
+- CPU: 0.5-1 vCPU per container
+- Memory: 512MB-1GB per container
 
-### Deployment
-
-- Use multi-stage builds for smaller images
-- Set resource limits in production orchestration
-- Configure proper health checks and auto-restart policies
-- Use real database (RDS, Aurora) instead of SQLite volume
+### Database
+- **Development**: SQLite or PostgreSQL
+- **Production**: RDS PostgreSQL (Multi-AZ)
 
 ## Related Documentation
 
-- [Project README](../README.md) - Overall project documentation
-- [CLAUDE.md](../CLAUDE.md) - Development workflow and patterns
-- [Evolutionary Design](../docs/evolutionary_design.md) - Architecture philosophy
+- **[Environments Guide](../environments/README.md)** - Environment-specific deployment
+- **[Local Docker](../environments/local-docker/README.md)** - Docker Compose development
+- **[Local Python](../environments/local-python/README.md)** - Python virtualenv development
+- **[AWS Deployment](../environments/aws-prod/README.md)** - Production AWS deployment
+- **[Project README](../README.md)** - Overall project documentation
+- **[CLAUDE.md](../CLAUDE.md)** - Development workflow and patterns

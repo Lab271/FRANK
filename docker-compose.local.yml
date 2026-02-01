@@ -1,8 +1,20 @@
 # FRANK Platform - Local Development Stack
 #
-# Provides Mock Cognito + Management API + Web GUI for local development.
+# ⚠️  DEPRECATED: This file has been replaced by environments/local-docker/docker-compose.yml
 #
-# Usage:
+# Please migrate to the new environment-centric structure:
+#
+#   cd environments/local-docker
+#   make stage3  # Start full stack (Web GUI + Management API + Mock Cognito)
+#   make stage2  # Start PostgreSQL + DynamoDB + Management API
+#   make stage1  # Start SQLite + Management API (minimal)
+#
+# This file will be removed in a future version. See environments/README.md
+# for complete migration documentation.
+#
+# ---
+#
+# Old Usage (DEPRECATED):
 #   docker compose -f docker-compose.local.yml up -d
 #   docker compose -f docker-compose.local.yml logs -f
 #   docker compose -f docker-compose.local.yml down

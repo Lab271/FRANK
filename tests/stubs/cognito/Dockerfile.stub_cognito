@@ -67,8 +67,9 @@ ARG PACKAGE_CONTEXT=.
 # Set working directory
 WORKDIR /app
 
-COPY ${BUILD_CONTEXT}/README.md .
+# Copy project files for frank package installation
 COPY ${PACKAGE_CONTEXT}/pyproject.toml .
+COPY ${PACKAGE_CONTEXT}/README.md .
 # Load frank package and install
 COPY ${PACKAGE_CONTEXT}/src/ ./src/.
 RUN pip install --no-cache-dir .
