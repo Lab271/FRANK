@@ -4,7 +4,7 @@ VENV := .venv
 PYTHON_VERSION := 3.11
 PACKAGE := frank
 
-.PHONY: help version check env sync lock test lint format type-check clean docker-up docker-down docker-logs docker-build
+.PHONY: help version check env sync lock test lint format type-check clean docker-up docker-down docker-logs docker-build env-help
 
 version: ## Show project version
 	@uv run python -c "from $(PACKAGE) import __version__; print(f'version: {__version__}')"
@@ -74,30 +74,38 @@ clean: ## Clean up artifacts and caches
 	@find . -type f -name ".coverage" -delete
 	@echo "✓ Cleaned"
 
+env-help: ## Show environment deployment options
+	@echo "FRANK Deployment Environments"
+	@echo ""
+	@echo "Local Development:"
+	@echo "  environments/local-docker/   - Docker Compose (recommended)"
+	@echo "  environments/local-python/   - Python virtualenv (debugging)"
+	@echo ""
+	@echo "AWS Deployment:"
+	@echo "  environments/aws-dev/        - Development environment"
+	@echo "  environments/aws-preprod/    - Pre-production environment"
+	@echo "  environments/aws-prod/       - Production environment"
+	@echo ""
+	@echo "Quick Start:"
+	@echo "  cd environments/local-docker && make stage3"
+	@echo ""
+	@echo "Documentation:"
+	@echo "  cat environments/README.md"
+
 docker-build: ## Build all Docker images
 	@echo "Building Docker images..."
-	docker-compose -f docker-compose.local.yml build
+	@cd environments/local-docker && docker compose build
 
 docker-up: ## Start all services (Web GUI + Management API + Mock Cognito)
 	@echo "Starting FRANK platform services..."
-	@docker-compose -f docker-compose.local.yml up -d
-	@echo "✓ Services started"
-	@echo ""
-	@echo "Access points:"
-	@echo "  Web GUI:        http://localhost:3000"
-	@echo "  Management API: http://localhost:8001/docs"
-	@echo "  Mock Cognito:   http://localhost:8100/health"
-	@echo ""
-	@echo "View logs: make docker-logs"
-	@echo "Stop services: make docker-down"
+	@cd environments/local-docker && $(MAKE) stage3
 
 docker-down: ## Stop all services
 	@echo "Stopping FRANK platform services..."
-	@docker-compose -f docker-compose.local.yml down
-	@echo "✓ Services stopped"
+	@cd environments/local-docker && $(MAKE) down
 
 docker-logs: ## Follow logs from all services
-	@docker-compose -f docker-compose.local.yml logs -f
+	@cd environments/local-docker && $(MAKE) logs
 
 .DEFAULT_GOAL := help
 
