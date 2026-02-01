@@ -211,11 +211,27 @@ def test_submit_without_auth(client):
 def test_get_submission(app, client, mock_database, mock_user):
     """Test GET /submissions/{id} retrieves submission"""
     from frank.auth import get_current_user
+    from frank.core.models import Submitter, Sighting, Observables
+
     app.dependency_overrides[get_current_user] = lambda: mock_user
 
-    # Mock submission response
-    mock_submission = Mock(spec=Submission)
-    mock_submission.submission_id = "submission--test-123"
+    # Create a proper Submission object for response
+    from datetime import datetime, timezone
+    submitter = Submitter(
+        organisation_id="identity--test-org",
+        access_level=AccessTier.PARTNER,
+        organisation_type="cyber_partner"
+    )
+    sighting = Sighting(
+        observables=Observables(network=[], file=None, process=None),
+        confidence_score=0.8
+    )
+    mock_submission = Submission(
+        submission_id="submission--test-123",
+        timestamp=datetime.now(timezone.utc),
+        submitter=submitter,
+        sighting=sighting
+    )
     mock_database.get_submission_by_id.return_value = mock_submission
 
     response = client.get(

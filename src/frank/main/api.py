@@ -306,17 +306,18 @@ def create_main_app(
             organisation_id = user.organisation_id or f"identity--{uuid4()}"
 
             # Categorize observables by type
+            # Note: observable_type is already a string due to use_enum_values=True
             network_observables = [
                 obs for obs in request.observables
-                if obs.observable_type.value in ["ipv4", "ipv6", "domain", "url", "email"]
+                if obs.observable_type in ["ipv4", "ipv6", "domain", "url", "email"]
             ]
             file_observables = [
                 obs for obs in request.observables
-                if obs.observable_type.value in ["md5", "sha1", "sha256", "file_path"]
+                if obs.observable_type in ["md5", "sha1", "sha256", "file_path"]
             ]
             process_observables = [
                 obs for obs in request.observables
-                if obs.observable_type.value in ["process", "mutex", "registry_key"]
+                if obs.observable_type in ["process", "mutex", "registry_key"]
             ]
 
             # Create Observables container
