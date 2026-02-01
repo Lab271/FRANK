@@ -64,14 +64,75 @@ def create_database() -> BaseFRANKDatabase:
         Database instance (DynamoDB for cloud, SQLite for local)
     """
     env_config = EnvironmentConfig.get()
+    logger = logging.getLogger(__name__)
 
-    # For now, return None - database initialization will be added later
-    # TODO: Initialize DynamoDB or SQLite based on env_config.is_local
-    logging.info(
-        f"Database initialization for {env_config.environment.value} "
-        f"not yet implemented"
-    )
-    return None
+    # Determine database type based on environment
+    if env_config.is_local:
+        # Local development: Try DynamoDB (LocalStack), fallback to SQLite
+        dynamodb_endpoint = os.getenv("DYNAMODB_ENDPOINT")
+
+        if dynamodb_endpoint:
+            # Use DynamoDB (LocalStack)
+            try:
+                from frank.storage.dynamodb import DynamoDBFRANKDatabase
+
+                logger.info(
+                    f"Initializing DynamoDB for {env_config.environment.value} "
+                    f"(endpoint: {dynamodb_endpoint})"
+                )
+
+                connection_params = {
+                    "DYNAMODB_ENDPOINT": dynamodb_endpoint,
+                    "DYNAMODB_TABLE": os.getenv("DYNAMODB_TABLE", "frank-submissions"),
+                    "DYNAMODB_AUDIT_TABLE": os.getenv("DYNAMODB_AUDIT_TABLE", "frank-audit"),
+                    "AWS_ACCESS_KEY_ID": os.getenv("AWS_ACCESS_KEY_ID", "test"),
+                    "AWS_SECRET_ACCESS_KEY": os.getenv("AWS_SECRET_ACCESS_KEY", "test"),
+                    "AWS_REGION": os.getenv("AWS_REGION", "eu-west-1"),
+                }
+
+                return DynamoDBFRANKDatabase(connection_params=connection_params)
+
+            except Exception as e:
+                logger.warning(f"Failed to initialize DynamoDB: {e}")
+                logger.info("Falling back to SQLite")
+
+        # Fallback to SQLite for local development
+        try:
+            from frank.storage.sqlite import SQLiteFRANKDatabase
+
+            db_path = os.getenv("SQLITE_DB_PATH", "/tmp/frank_main.db")
+            logger.info(
+                f"Initializing SQLite for {env_config.environment.value} "
+                f"(path: {db_path})"
+            )
+
+            return SQLiteFRANKDatabase(connection_params={"SQLITE_DB_PATH": db_path})
+
+        except Exception as e:
+            logger.error(f"Failed to initialize SQLite: {e}")
+            raise
+
+    else:
+        # AWS environment: Use DynamoDB
+        try:
+            from frank.storage.dynamodb import DynamoDBFRANKDatabase
+
+            logger.info(
+                f"Initializing DynamoDB for {env_config.environment.value} "
+                f"(AWS {os.getenv('AWS_REGION', 'eu-west-1')})"
+            )
+
+            connection_params = {
+                "DYNAMODB_TABLE": os.getenv("DYNAMODB_TABLE", "frank-submissions"),
+                "DYNAMODB_AUDIT_TABLE": os.getenv("DYNAMODB_AUDIT_TABLE", "frank-audit"),
+                "AWS_REGION": os.getenv("AWS_REGION", "eu-west-1"),
+            }
+
+            return DynamoDBFRANKDatabase(connection_params=connection_params)
+
+        except Exception as e:
+            logger.error(f"Failed to initialize DynamoDB for AWS: {e}")
+            raise
 
 
 def create_app():
