@@ -437,13 +437,21 @@ def create_main_app(
         summary="Query observables"
     )
     async def query_observables(
-        user: TokenPayload = Depends(get_current_user)
+        observable_type: Optional[str] = None,
+        limit: int = 100,
+        offset: int = 0,
+        user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
     ):
         """
         Query threat observables with access filtering.
 
         Args:
+            observable_type: Filter by type (ipv4, domain, hash, etc.)
+            limit: Maximum results to return (default: 100)
+            offset: Offset for pagination (default: 0)
             user: Authenticated user from JWT token
+            db: Database instance
 
         Returns:
             Filtered list of observables
@@ -451,11 +459,37 @@ def create_main_app(
         Raises:
             401: Not authenticated
         """
-        # TODO: Implement observable query
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Observable query not yet implemented"
-        )
+        try:
+            # Query observables with access filtering
+            organisation_id = user.organisation_id or None
+
+            observables = db.query_observables(
+                org_id=organisation_id,
+                observable_type=observable_type,
+                access_level=user.access_tier,
+                limit=limit,
+                offset=offset
+            )
+
+            logger.info(
+                f"Observable query by {user.username} ({user.access_tier.value}): "
+                f"type={observable_type}, limit={limit}, offset={offset}"
+            )
+
+            return {
+                "observables": observables,
+                "total": len(observables),
+                "limit": limit,
+                "offset": offset,
+                "access_tier": user.access_tier.value
+            }
+
+        except Exception as e:
+            logger.error(f"Observable query failed for {user.username}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to query observables: {str(e)}"
+            )
 
     @app.get(
         "/statistics",
@@ -463,7 +497,9 @@ def create_main_app(
         summary="Platform statistics"
     )
     async def get_statistics(
-        user: TokenPayload = Depends(get_current_user)
+        days: int = 30,
+        user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
     ):
         """
         Get platform statistics.
@@ -471,7 +507,9 @@ def create_main_app(
         Access tier determines level of detail.
 
         Args:
+            days: Number of days to include in statistics (default: 30)
             user: Authenticated user from JWT token
+            db: Database instance
 
         Returns:
             Platform statistics
@@ -479,10 +517,33 @@ def create_main_app(
         Raises:
             401: Not authenticated
         """
-        # TODO: Implement statistics
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Statistics endpoint not yet implemented"
-        )
+        try:
+            # Get organisation ID (if available)
+            organisation_id = user.organisation_id or "platform"
+
+            # Get statistics summary
+            stats = db.get_statistics_summary(
+                org_id=organisation_id,
+                days=days
+            )
+
+            # Add metadata
+            stats["access_tier"] = user.access_tier.value
+            stats["requested_by"] = user.username
+            stats["period_days"] = days
+
+            logger.info(
+                f"Statistics requested by {user.username} ({user.access_tier.value}): "
+                f"org={organisation_id}, days={days}"
+            )
+
+            return stats
+
+        except Exception as e:
+            logger.error(f"Statistics query failed for {user.username}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve statistics: {str(e)}"
+            )
 
     return app
