@@ -6,7 +6,7 @@ Tests health checks, authentication, submission, and query endpoints.
 
 import pytest
 from datetime import datetime, timezone
-from unittest.mock import Mock, AsyncMock, patch
+from unittest.mock import Mock, AsyncMock
 from fastapi.testclient import TestClient
 
 from frank.main.api import create_main_app
@@ -46,9 +46,14 @@ def mock_cognito():
 
 
 @pytest.fixture
-def client(mock_database, mock_cognito):
+def app(mock_database, mock_cognito):
+    """FastAPI app instance with mocked dependencies"""
+    return create_main_app(database=mock_database, cognito_service=mock_cognito)
+
+
+@pytest.fixture
+def client(app):
     """Test client with mocked dependencies"""
-    app = create_main_app(database=mock_database, cognito_service=mock_cognito)
     return TestClient(app)
 
 
@@ -157,10 +162,10 @@ def test_refresh_not_implemented(client):
 
 # ==================== Submission Endpoints ====================
 
-@patch("frank.main.api.get_current_user")
-def test_submit_sighting(mock_get_user, client, mock_database, mock_user):
+def test_submit_sighting(app, client, mock_database, mock_user):
     """Test POST /submit creates submission"""
-    mock_get_user.return_value = mock_user
+    from frank.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: mock_user
 
     response = client.post(
         "/submit",
@@ -191,24 +196,22 @@ def test_submit_sighting(mock_get_user, client, mock_database, mock_user):
     assert submission.submitter.access_level == AccessTier.PARTNER
 
 
-@patch("frank.main.api.get_current_user")
-def test_submit_without_auth(mock_get_user, client):
+def test_submit_without_auth(client):
     """Test POST /submit without authentication fails"""
-    mock_get_user.side_effect = Exception("Not authenticated")
-
+    # No dependency override - auth will fail naturally
     response = client.post(
         "/submit",
         json={"observables": []}
     )
 
     # FastAPI dependency injection will handle auth error
-    assert response.status_code in [401, 500]
+    assert response.status_code in [401, 403, 500]
 
 
-@patch("frank.main.api.get_current_user")
-def test_get_submission(mock_get_user, client, mock_database, mock_user):
+def test_get_submission(app, client, mock_database, mock_user):
     """Test GET /submissions/{id} retrieves submission"""
-    mock_get_user.return_value = mock_user
+    from frank.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: mock_user
 
     # Mock submission response
     mock_submission = Mock(spec=Submission)
@@ -229,10 +232,10 @@ def test_get_submission(mock_get_user, client, mock_database, mock_user):
     )
 
 
-@patch("frank.main.api.get_current_user")
-def test_get_submission_not_found(mock_get_user, client, mock_database, mock_user):
+def test_get_submission_not_found(app, client, mock_database, mock_user):
     """Test GET /submissions/{id} returns 404 for missing submission"""
-    mock_get_user.return_value = mock_user
+    from frank.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: mock_user
     mock_database.get_submission_by_id.return_value = None
 
     response = client.get(
@@ -246,10 +249,10 @@ def test_get_submission_not_found(mock_get_user, client, mock_database, mock_use
 
 # ==================== Query Endpoints ====================
 
-@patch("frank.main.api.get_current_user")
-def test_query_observables(mock_get_user, client, mock_database, mock_user):
+def test_query_observables(app, client, mock_database, mock_user):
     """Test GET /observables queries with filtering"""
-    mock_get_user.return_value = mock_user
+    from frank.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: mock_user
 
     mock_observables = [
         {"observable_type": "ipv4", "value": "192.0.2.1"},
@@ -280,10 +283,10 @@ def test_query_observables(mock_get_user, client, mock_database, mock_user):
     )
 
 
-@patch("frank.main.api.get_current_user")
-def test_get_statistics(mock_get_user, client, mock_database, mock_user):
+def test_get_statistics(app, client, mock_database, mock_user):
     """Test GET /statistics returns platform metrics"""
-    mock_get_user.return_value = mock_user
+    from frank.auth import get_current_user
+    app.dependency_overrides[get_current_user] = lambda: mock_user
 
     response = client.get(
         "/statistics?days=7",
