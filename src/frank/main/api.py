@@ -11,6 +11,7 @@ SPDX-License-Identifier: Apache-2.0
 import logging
 from datetime import datetime, timezone
 from typing import Optional
+from uuid import uuid4
 
 from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
@@ -18,7 +19,8 @@ from fastapi.middleware.cors import CORSMiddleware
 import frank
 from frank.auth import TokenPayload, get_current_user
 from frank.config import EnvironmentConfig
-from frank.core.models import Submission
+from frank.core.enum import AccessTier
+from frank.core.models import Observable, Observables, Sighting, Submission, Submitter
 from frank.main.models import (
     DeepHealthResponse,
     HealthResponse,
@@ -278,7 +280,8 @@ def create_main_app(
     )
     async def submit_sighting(
         request: SubmissionRequest,
-        user: TokenPayload = Depends(get_current_user)
+        user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
     ):
         """
         Submit a threat intelligence sighting.
@@ -288,6 +291,7 @@ def create_main_app(
         Args:
             request: Submission data (observables, confidence, etc.)
             user: Authenticated user from JWT token
+            db: Database instance
 
         Returns:
             Submission ID and confirmation
@@ -296,11 +300,76 @@ def create_main_app(
             401: Not authenticated
             403: Insufficient permissions
         """
-        # TODO: Implement submission logic
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Submission endpoint not yet implemented"
-        )
+        try:
+            # Get user's access tier and organisation
+            access_tier = user.access_tier
+            organisation_id = user.organisation_id or f"identity--{uuid4()}"
+
+            # Categorize observables by type
+            network_observables = [
+                obs for obs in request.observables
+                if obs.observable_type.value in ["ipv4", "ipv6", "domain", "url", "email"]
+            ]
+            file_observables = [
+                obs for obs in request.observables
+                if obs.observable_type.value in ["md5", "sha1", "sha256", "file_path"]
+            ]
+            process_observables = [
+                obs for obs in request.observables
+                if obs.observable_type.value in ["process", "mutex", "registry_key"]
+            ]
+
+            # Create Observables container
+            observables = Observables(
+                network=network_observables if network_observables else None,
+                file=file_observables if file_observables else None,
+                process=process_observables if process_observables else None
+            )
+
+            # Create Sighting
+            sighting = Sighting(
+                observables=observables,
+                confidence_score=request.confidence_score,
+                severity_level=request.severity or "MEDIUM",
+                description=request.description
+            )
+
+            # Create Submitter
+            submitter = Submitter(
+                organisation_id=organisation_id,
+                access_level=access_tier,
+                organisation_type="cyber_partner"  # Default for API submissions
+            )
+
+            # Create Submission
+            submission = Submission(
+                submission_id=f"submission--{uuid4()}",
+                timestamp=request.timestamp or datetime.now(timezone.utc),
+                submitter=submitter,
+                sighting=sighting
+            )
+
+            # Store in database
+            db.store_submission(submission)
+
+            logger.info(
+                f"Submission stored: {submission.submission_id} "
+                f"by {user.username} ({access_tier.value})"
+            )
+
+            return SubmissionResponse(
+                submission_id=submission.submission_id,
+                timestamp=submission.timestamp,
+                status="accepted",
+                message=f"Submission accepted with {len(request.observables)} observables"
+            )
+
+        except Exception as e:
+            logger.error(f"Submission failed for {user.username}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to process submission: {str(e)}"
+            )
 
     @app.get(
         "/submissions/{submission_id}",
@@ -310,7 +379,8 @@ def create_main_app(
     )
     async def get_submission(
         submission_id: str,
-        user: TokenPayload = Depends(get_current_user)
+        user: TokenPayload = Depends(get_current_user),
+        db: BaseFRANKDatabase = Depends(get_database)
     ):
         """
         Retrieve a submission by ID with access filtering.
@@ -320,6 +390,7 @@ def create_main_app(
         Args:
             submission_id: Submission STIX ID
             user: Authenticated user from JWT token
+            db: Database instance
 
         Returns:
             Filtered submission data
@@ -329,11 +400,34 @@ def create_main_app(
             404: Submission not found
             403: Insufficient access tier
         """
-        # TODO: Implement submission retrieval
-        raise HTTPException(
-            status_code=status.HTTP_501_NOT_IMPLEMENTED,
-            detail="Submission retrieval not yet implemented"
-        )
+        try:
+            # Retrieve submission with access filtering
+            submission = db.get_submission_by_id(
+                submission_id=submission_id,
+                access_level=user.access_tier
+            )
+
+            if not submission:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Submission not found: {submission_id}"
+                )
+
+            logger.info(
+                f"Submission retrieved: {submission_id} "
+                f"by {user.username} ({user.access_tier.value})"
+            )
+
+            return submission
+
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Failed to retrieve submission {submission_id}: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Failed to retrieve submission: {str(e)}"
+            )
 
     # ==================== Query Endpoints ====================
 
