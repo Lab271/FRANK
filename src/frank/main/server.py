@@ -21,6 +21,7 @@ import uvicorn
 import frank
 from frank.config import EnvironmentConfig
 from frank.main.api import create_main_app
+from frank.management.cognito_service import BaseCognitoService, get_cognito_service
 from frank.storage.base import BaseFRANKDatabase
 
 
@@ -51,9 +52,10 @@ def setup_logging(log_level: str = "info"):
     return logging.getLogger("uvicorn")
 
 
-# Global app instance for uvicorn factory
+# Global instances for uvicorn factory
 _app_instance = None
 _database_instance = None
+_cognito_instance = None
 
 
 def create_database() -> BaseFRANKDatabase:
@@ -137,7 +139,7 @@ def create_database() -> BaseFRANKDatabase:
 
 def create_app():
     """Factory function for creating the app (used by uvicorn with --factory)"""
-    global _app_instance, _database_instance
+    global _app_instance, _database_instance, _cognito_instance
 
     if _app_instance is not None:
         return _app_instance
@@ -148,8 +150,15 @@ def create_app():
     # Create database
     _database_instance = create_database()
 
+    # Create Cognito service
+    _cognito_instance = get_cognito_service()
+    logging.info(f"Cognito service initialized for {env_config.environment.value}")
+
     # Create app
-    _app_instance = create_main_app(database=_database_instance)
+    _app_instance = create_main_app(
+        database=_database_instance,
+        cognito_service=_cognito_instance
+    )
 
     return _app_instance
 
