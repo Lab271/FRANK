@@ -108,7 +108,7 @@ def create_database() -> BaseFRANKDatabase:
                 f"(path: {db_path})"
             )
 
-            return SQLiteFRANKDatabase(connection_params={"SQLITE_DB_PATH": db_path})
+            return SQLiteFRANKDatabase(connection_params={"db_path": db_path})
 
         except Exception as e:
             logger.error(f"Failed to initialize SQLite: {e}")
