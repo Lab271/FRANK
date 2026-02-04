@@ -15,7 +15,7 @@ from typing import Optional
 from pydantic import BaseModel, ConfigDict
 
 # Import the enums (adjust import path as needed)
-from frank.core.enum import AccessTier, ObservableType, SeverityLevel, TLPLevel
+from frank.core.enum import AccessTier, ObservableType, SeverityLevel, TLPLevel, SubmissionLevel
 
 
 class TestTLPLevel(unittest.TestCase):
@@ -925,6 +925,109 @@ class TestEnumCompatibility(unittest.TestCase):
         self.assertIn("AccessTier", repr(AccessTier.PARTNER))
         self.assertIn("ObservableType", repr(ObservableType.IPV4))
         self.assertIn("SeverityLevel", repr(SeverityLevel.HIGH))
+
+
+class TestSubmissionLevel(unittest.TestCase):
+    """Test SubmissionLevel enumeration per HLD Section 3.2"""
+
+    def test_submission_level_values(self):
+        """Test all SubmissionLevel enum values"""
+        expected_values = {
+            SubmissionLevel.L1_RAW_OBSERVABLE: "L1",
+            SubmissionLevel.L2_CONTEXTUALIZED: "L2",
+            SubmissionLevel.L3_ATTRIBUTION: "L3",
+            SubmissionLevel.L4_SIGMA_DETECTION: "L4",
+            SubmissionLevel.L5_BEHAVIORAL_ANALYSIS: "L5",
+        }
+        for level_enum, expected_str in expected_values.items():
+            with self.subTest(level=level_enum):
+                self.assertEqual(level_enum.value, expected_str)
+                self.assertIsInstance(level_enum, SubmissionLevel)
+
+    def test_submission_level_string_comparison(self):
+        """Test that enum values can be compared with strings"""
+        self.assertEqual(SubmissionLevel.L1_RAW_OBSERVABLE, "L1")
+        self.assertEqual(SubmissionLevel.L4_SIGMA_DETECTION, "L4")
+        self.assertNotEqual(SubmissionLevel.L1_RAW_OBSERVABLE, "L2")
+
+    def test_submission_level_ordering(self):
+        """Test submission level logical ordering (L1 to L5)"""
+        levels_by_complexity = [
+            SubmissionLevel.L1_RAW_OBSERVABLE,
+            SubmissionLevel.L2_CONTEXTUALIZED,
+            SubmissionLevel.L3_ATTRIBUTION,
+            SubmissionLevel.L4_SIGMA_DETECTION,
+            SubmissionLevel.L5_BEHAVIORAL_ANALYSIS,
+        ]
+        level_values = [level.value for level in levels_by_complexity]
+        expected_values = ["L1", "L2", "L3", "L4", "L5"]
+        self.assertEqual(level_values, expected_values)
+
+    def test_from_string_method(self):
+        """Test SubmissionLevel.from_string() class method"""
+        test_cases = [
+            ("L1", SubmissionLevel.L1_RAW_OBSERVABLE),
+            ("l1", SubmissionLevel.L1_RAW_OBSERVABLE),
+            ("L2", SubmissionLevel.L2_CONTEXTUALIZED),
+            ("L3", SubmissionLevel.L3_ATTRIBUTION),
+            ("L4", SubmissionLevel.L4_SIGMA_DETECTION),
+            ("l4", SubmissionLevel.L4_SIGMA_DETECTION),
+            ("L5", SubmissionLevel.L5_BEHAVIORAL_ANALYSIS),
+            ("L1_RAW_OBSERVABLE", SubmissionLevel.L1_RAW_OBSERVABLE),
+            ("L4_SIGMA_DETECTION", SubmissionLevel.L4_SIGMA_DETECTION),
+        ]
+        for input_str, expected_enum in test_cases:
+            with self.subTest(input_str=input_str):
+                result = SubmissionLevel.from_string(input_str)
+                self.assertEqual(result, expected_enum)
+
+    def test_from_string_invalid_inputs(self):
+        """Test SubmissionLevel.from_string() with invalid inputs"""
+        invalid_inputs = ["L0", "L6", "invalid", "", "level1"]
+        for invalid_input in invalid_inputs:
+            with self.subTest(invalid_input=invalid_input):
+                with self.assertRaises(ValueError):
+                    SubmissionLevel.from_string(invalid_input)
+
+    def test_from_string_default_parameter(self):
+        """Test SubmissionLevel.from_string() with default parameter"""
+        # Invalid with default=False should raise
+        with self.assertRaises(ValueError):
+            SubmissionLevel.from_string("invalid", default=False)
+
+        # Invalid with default=True should return L1
+        result = SubmissionLevel.from_string("invalid", default=True)
+        self.assertEqual(result, SubmissionLevel.L1_RAW_OBSERVABLE)
+
+        # Non-string with default=True should return L1
+        result = SubmissionLevel.from_string(None, default=True)
+        self.assertEqual(result, SubmissionLevel.L1_RAW_OBSERVABLE)
+
+    def test_analytical_requirement_property(self):
+        """Test analytical_requirement property"""
+        requirements = {
+            SubmissionLevel.L1_RAW_OBSERVABLE: "Minimal",
+            SubmissionLevel.L2_CONTEXTUALIZED: "Operational",
+            SubmissionLevel.L3_ATTRIBUTION: "Expert analysis",
+            SubmissionLevel.L4_SIGMA_DETECTION: "Rule development expertise",
+            SubmissionLevel.L5_BEHAVIORAL_ANALYSIS: "Advanced research capability",
+        }
+        for level, expected_req in requirements.items():
+            with self.subTest(level=level):
+                self.assertEqual(level.analytical_requirement, expected_req)
+
+    def test_community_value_property(self):
+        """Test community_value property"""
+        values = {
+            SubmissionLevel.L1_RAW_OBSERVABLE: "Basic IoC distribution",
+            SubmissionLevel.L2_CONTEXTUALIZED: "Operational intelligence",
+            SubmissionLevel.L3_ATTRIBUTION: "Strategic threat intelligence",
+            SubmissionLevel.L4_SIGMA_DETECTION: "Automated detection capability",
+            SubmissionLevel.L5_BEHAVIORAL_ANALYSIS: "Innovation and discovery",
+        }
+        for level, expected_value in values.items():
+            with self.subTest(level=level):
+                self.assertEqual(level.community_value, expected_value)
 
 
 if __name__ == "__main__":
