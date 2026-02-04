@@ -33,28 +33,29 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
+import logging
 import os
 import uuid
-from datetime import datetime, timezone
-import logging
-from typing import Optional, List, Dict, Any
-
-from fastapi import FastAPI, HTTPException, Depends, Query, Body, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 import uvicorn
+from fastapi import Body, Depends, FastAPI, HTTPException, Query, Request
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+from frank import __version__
 
 # Import enums from FRANK core
-from frank.core.enum import ObservableType, TLPLevel, AccessTier
+from frank.core.enum import AccessTier, ObservableType, TLPLevel
 from frank.core.models import Submission
 
 # Import our FRANK database
 from frank.storage.sqlite import create_sqlite_database
+from frank.util.requests import SightingSearchResponse, SubmissionRequest, SubmissionResponse
 from frank.util.sample_builder import generate_minimal_submission
-from frank.util.requests import SubmissionRequest, SubmissionResponse, SightingSearchResponse
-from frank import __version__
 
 # curl -H "Authorization: Bearer observer_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
 # curl -H "Authorization: Bearer contributor_test_token" "http://localhost:8000/v1/sighting?observable=185.220.102.45"
@@ -67,9 +68,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize database on startup"""
-    logger.info(f"Starting FRANK Platform")
+    logger.info("Starting FRANK Platform")
     initialize_dataset()
-    logger.info(f"Database Initialization complete")
+    logger.info("Database Initialization complete")
     yield
 
 
@@ -554,27 +555,27 @@ async def general_exception_handler(request: Request, exc: Exception):
 def test_run_spike():
     """Test function for pytest to validate the server spike functionality."""
     from fastapi.testclient import TestClient
-    
+
     # Create test client
     client = TestClient(app)
-    
+
     # Test health endpoint (correct path)
     response = client.get("/v1/health")
     assert response.status_code == 200
     assert "status" in response.json()
-    
+
     # Test that the server can be imported and initialized
     assert app is not None
     assert hasattr(app, "routes")
-    
+
     # Test authentication (should fail without token)
     response = client.get("/v1/sighting")
     assert response.status_code == 401
-    
+
     # Test statistics endpoint without auth (should fail)
     response = client.get("/v1/statistics")
     assert response.status_code == 401
-    
+
     # Test with mock token for sighting endpoint
     headers = {"Authorization": "Bearer observer_test_token"}
     response = client.get("/v1/sighting", headers=headers)

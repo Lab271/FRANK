@@ -16,8 +16,8 @@ from frank.admin.client import AdminClient
 from frank.admin.config import AdminConfig
 from frank.admin.screens.dashboard import DashboardScreen
 from frank.admin.screens.login import LoginScreen
-from frank.admin.screens.organisations import OrganisationDetailScreen, OrganisationsScreen
-from frank.admin.screens.users import UserDetailScreen, UsersScreen
+from frank.admin.screens.organisations import OrganisationsScreen
+from frank.admin.screens.users import UsersScreen
 
 logger = logging.getLogger(__name__)
 

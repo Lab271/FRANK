@@ -15,6 +15,7 @@ from unittest.mock import MagicMock
 from frank.core.enum import AccessTier
 from frank.storage import BaseFRANKDatabase
 
+
 class DummyDatabase(BaseFRANKDatabase):
     """
     Minimal concrete implementation for testing BaseFRANKDatabase.
@@ -60,7 +61,7 @@ class DummyDatabase(BaseFRANKDatabase):
         # Not recommended: calling super() abstract method for coverage only
         super().search_observables_by_value(self, org_id, search_value, access_level)
         return [{"value":0}]
-    
+
     def log_access(self, org_id, action, resource_type=None, details=None) -> None:
         # Not recommended: calling super() abstract method for coverage only
         super().log_access(org_id, action, resource_type, details)
@@ -161,7 +162,7 @@ class TestBaseFRANKDatabaseAbstractMethods(unittest.TestCase):
         """Set up DummyDatabase instance."""
         connection_params = {"test_param": "value"}
         self.db = DummyDatabase(connection_params=connection_params)
-        
+
     def test_logger_injection(self):
         """Test DummyDatabase instantiation with a mock logger."""
         class MockLogger:

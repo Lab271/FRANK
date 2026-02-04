@@ -21,7 +21,7 @@ Expected Outcomes:
     ✓ Container auto-restart on failure
     ✓ Seamless image updates through ECR
     ✓ Basic logging and monitoring through CloudWatch
-    
+
 Known Limitations:
     ⚠ IP address changes on task restart (volatility)
     ⚠ No health checking or automatic failover
@@ -57,13 +57,13 @@ Example Usage:
     ```python
     # Deploy Stage 1 infrastructure
     from frank_stage1 import deploy_minimal_setup
-    
+
     deployment = deploy_minimal_setup(
         cluster_name="frank-stage1",
         service_name="frank-app",
         image_uri="123456789012.dkr.ecr.us-east-1.amazonaws.com/frank:latest"
     )
-    
+
     print(f"Application accessible at: http://{deployment.public_ip}")
     ```
 
@@ -71,10 +71,10 @@ Validation Commands:
     ```bash
     # Health check
     curl http://<public-ip>/v1/health
-    
+
     # Application status
     curl http://<public-ip>/
-    
+
     # Logs inspection
     aws logs tail /ecs/frank-stage1-task --follow
     ```
@@ -87,32 +87,33 @@ production-ready enhancements.
 def validate_stage1_deployment(public_ip: str) -> dict:
     """
     Validate Stage 1 deployment meets hypothesis criteria.
-    
+
     Args:
         public_ip: The public IP address of the deployed ECS task
-        
+
     Returns:
         dict: Validation results with status and response times
-        
+
     Raises:
         ConnectionError: If application is not accessible
         TimeoutError: If response time exceeds acceptable limits
     """
-    import requests
     import time
-    
+
+    import requests
+
     validation_results = {
         "deployment_stage": "Stage 1 - Minimal Setup",
         "timestamp": time.time(),
         "tests": {}
     }
-    
+
     # Test root endpoint
     try:
         start_time = time.time()
         response = requests.get(f"http://{public_ip}/", timeout=10)
         response_time = time.time() - start_time
-        
+
         validation_results["tests"]["root_endpoint"] = {
             "status": "PASS" if response.status_code == 200 else "FAIL",
             "response_time": response_time,
@@ -125,13 +126,13 @@ def validate_stage1_deployment(public_ip: str) -> dict:
             "error": str(e),
             "hypothesis_met": False
         }
-    
+
     # Test health endpoint
     try:
         start_time = time.time()
         response = requests.get(f"http://{public_ip}/v1/health", timeout=10)
         response_time = time.time() - start_time
-        
+
         validation_results["tests"]["health_endpoint"] = {
             "status": "PASS" if response.status_code == 200 else "FAIL",
             "response_time": response_time,
@@ -144,16 +145,16 @@ def validate_stage1_deployment(public_ip: str) -> dict:
             "error": str(e),
             "hypothesis_met": False
         }
-    
+
     # Overall hypothesis validation
     all_tests_passed = all(
-        test.get("hypothesis_met", False) 
+        test.get("hypothesis_met", False)
         for test in validation_results["tests"].values()
     )
-    
+
     validation_results["hypothesis_validated"] = all_tests_passed
     validation_results["ready_for_stage2"] = all_tests_passed
-    
+
     return validation_results
 
 if __name__ == "__main__":

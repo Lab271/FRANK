@@ -12,22 +12,20 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
+import logging
+import os
 from datetime import datetime, timezone
 from functools import lru_cache
-import logging
-import sys
-import os
 
 # import boto3
 import aioboto3
 from fastapi import FastAPI, Request
-from fastapi.security import HTTPBearer
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPBearer
 
 import frank
 from frank.util import create_error_response
-
 
 # ===================================
 # Logging Setup
@@ -47,10 +45,10 @@ def get_client():
     audit_table_name = os.environ.get("DYNAMODB_AUDIT_TABLE", "frank-audit")
     region = os.environ.get("AWS_DEFAULT_REGION", "eu-west-1")
     endpoint = os.environ.get("ENDPOINT", "http://localhost:4566")
-    environment = os.environ.get("FRANK_ENVIRONMENT", "localstack")    
+    environment = os.environ.get("FRANK_ENVIRONMENT", "localstack")
     profile = os.environ.get("AWS_PROFILE", None)  # Fixed: was AWS_ACCOUNT_ID
     aws_access_key_id=os.environ.get("AWS_ACCESS_KEY_ID", "test"),
-    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test")        
+    aws_secret_access_key=os.environ.get("AWS_SECRET_ACCESS_KEY", "test")
 
 
     res = {
@@ -71,7 +69,7 @@ async def get_async_dynamodb_client():
     """Get async DynamoDB client using aioboto3"""
     config = get_client()  # Get cached configuration
     session = aioboto3.Session(profile_name=config["profile"] if config["profile"] else None)
-    
+
     # Use configuration from db_config
     if config["environment"] == "aws" and config["profile"]:
         # AWS with profile
@@ -170,7 +168,7 @@ async def env():
 async def database():
     """Database connection endpoint - uses async aioboto3"""
     config = get_client()  # Get cached configuration
-    
+
     # Get async DynamoDB client and resource
     dynamodb_client, dynamodb_resource = await get_async_dynamodb_client()
 
@@ -179,21 +177,21 @@ async def database():
         # List all tables
         response = await client.list_tables()
         table_names = response.get('TableNames', [])
-        
+
     async with dynamodb_resource as dynamodb:
         # Get table references
         main_table = await dynamodb.Table(config["table_name"])
         audit_table = await dynamodb.Table(config["audit_table_name"])
-        
+
         # Get item counts from both tables
         main_response = await main_table.scan(Select='COUNT', Limit=1)
         main_count = main_response.get('Count', 0)
         main_status = "accessible"
-        
+
         audit_response = await audit_table.scan(Select='COUNT', Limit=1)
         audit_count = audit_response.get('Count', 0)
         audit_status = "accessible"
-    
+
     return {
         "status": "connected",
         "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -226,8 +224,8 @@ async def database():
             "secret_key_set": bool(config["aws_secret_access_key"])
         }
     }
-        
-      
+
+
 
 @app.get("/v1/health")
 async def health():
@@ -256,12 +254,13 @@ def generic_exception_handler(request: Request, exc: Exception):
 
 if __name__ == "__main__":
     import argparse
+
     import uvicorn
 
     parser = argparse.ArgumentParser(description="FRANK Platform 009 - AWS - Stage 4 Server")
     parser.add_argument(
         "--environment", choices=["localstack", "aws"], default="localstack", help="Environment to run in"
-    )    
+    )
     parser.add_argument("--host", default=os.environ.get("HOST", "0.0.0.0"), help="Host to bind to")
     parser.add_argument("--port", type=int, default=int(os.environ.get("PORT", "8080")), help="Port to bind to")
     parser.add_argument("--debug", action="store_true", help="Enable debug mode")

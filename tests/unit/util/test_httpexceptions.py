@@ -9,14 +9,16 @@ SPDX-License-Identifier: Apache-2.0
 """
 import unittest
 from uuid import UUID
+
 from frank.util.http_exceptions import (
     BadRequestException,
     NotFoundException,
+    TooManyRequestsException,
     UnauthenticatedException,
     UnauthorizedException,
-    TooManyRequestsException,
-    create_error_response
+    create_error_response,
 )
+
 
 class TestHttpExceptions(unittest.TestCase):
     """Test custom HTTP exception classes."""

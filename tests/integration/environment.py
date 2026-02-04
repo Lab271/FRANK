@@ -24,10 +24,10 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import os
 import logging
+import os
+
 import requests
-from urllib.parse import urlparse
 
 # Configure logging for behave
 logging.basicConfig(
@@ -145,10 +145,10 @@ def before_scenario(context, scenario):
         try:
             health_check = requests.get(f"{context.management_url}/health", timeout=2)
             if health_check.status_code != 200:
-                logger.debug(f"Management API not available, skipping database seed")
+                logger.debug("Management API not available, skipping database seed")
                 return
         except Exception:
-            logger.debug(f"Management API not available, skipping database seed")
+            logger.debug("Management API not available, skipping database seed")
             return
 
         # Management API is available, proceed with seeding

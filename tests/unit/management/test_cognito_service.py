@@ -15,7 +15,6 @@ import pytest
 
 from frank.management.cognito_service import (
     AWSCognitoService,
-    BaseCognitoService,
     CognitoServiceError,
     MFASetupError,
     MFAVerificationError,
@@ -779,7 +778,7 @@ class TestAWSCognitoService:
         mock_client.admin_list_groups_for_user.return_value = {"Groups": []}
 
         service = AWSCognitoService(user_pool_id="test-pool", region="eu-west-1")
-        result = await service.update_user("testuser", email="new@example.com", enabled=False)
+        await service.update_user("testuser", email="new@example.com", enabled=False)
 
         mock_client.admin_update_user_attributes.assert_called_once()
         mock_client.admin_disable_user.assert_called_once()

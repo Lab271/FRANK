@@ -10,9 +10,10 @@ SPDX-License-Identifier: Apache-2.0
 import unittest
 from unittest.mock import MagicMock, patch
 
-from frank.util.server import create_server, calculate_contribution_score
-from frank.core.models import Submission, Submitter
 from frank.core.enum import AccessTier
+from frank.core.models import Submission, Submitter
+from frank.util.server import calculate_contribution_score, create_server
+
 
 class TestFRANKServer(unittest.TestCase):
     """Unit tests for FRANK server operations and threat intelligence processing."""
@@ -207,7 +208,7 @@ class TestHelperFunctions(unittest.TestCase):
 
     def test_create_server_factory(self):
         """Test server factory function creates proper FRANKServer instance."""
-        from frank.util.server import create_server, FRANKServer
+        from frank.util.server import FRANKServer, create_server
         db = MagicMock()
         logger = MagicMock()
         server = create_server(db, logger)

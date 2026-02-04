@@ -8,7 +8,7 @@ SPDX-License-Identifier: Apache-2.0
 
 import asyncio
 from datetime import datetime, timedelta, timezone
-from unittest.mock import AsyncMock, patch
+from unittest.mock import patch
 
 import jwt as pyjwt
 import pytest

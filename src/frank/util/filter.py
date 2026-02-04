@@ -10,12 +10,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from typing import Any, Dict
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
+from typing import Any, Dict
 
-from frank.core.enum import AccessTier  
-from frank.util.logger import NullLogger       
+from frank.core.enum import AccessTier
+from frank.util.logger import NullLogger
+
 
 class FRANKFilter:
     def __init__(self, logger: logging.Logger = None):
@@ -64,7 +65,7 @@ class FRANKFilter:
                     for obs in obs_list:
                         if 'value' in obs:
                             obs['value'] = obs['value'][:10] + "..." if len(obs['value']) > 10 else obs['value']
-            
+
             # Remove sensitive sections
             filtered.pop('hit_target', None)
             filtered.pop('tlp_level', None)
@@ -73,7 +74,7 @@ class FRANKFilter:
         elif access_level == AccessTier.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
-            
+
             # Anonymize hit target details
             if 'hit_target' in filtered:
                 hit_target = filtered['hit_target']
@@ -93,7 +94,7 @@ class FRANKFilter:
             return [self._deep_copy(item) for item in obj]
         else:
             return obj
-        
+
     def filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter observable data based on the provided access level.
@@ -125,7 +126,7 @@ class FRANKFilter:
                 value = filtered['observable_value']
                 filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
             return filtered
-        
+
         # Contributor and above get full access
         return observable
 
@@ -157,9 +158,9 @@ class FRANKFilter:
 
     #     return anonymized
 
- 
- 
- 
+
+
+
    # # 5. Demonstrate access-based anonymization
     # print("\n5. Testing tier-based anonymization...")
     # public_view = parsed.anonymize_for_tier(AccessTier.PUBLIC)

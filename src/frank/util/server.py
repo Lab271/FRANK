@@ -9,24 +9,24 @@ with database operations for easy integration into applications.
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-from typing import Dict, Any, List, Optional, Tuple
-
-from datetime import datetime, timezone
 import logging
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional, Tuple
 
-from frank.core.models import Submission, Submitter
+from frank import __version__
 from frank.core.enum import AccessTier
+from frank.core.models import Submission, Submitter
 from frank.storage import BaseFRANKDatabase
 from frank.util.filter import FRANKFilter
 
-from .sample_builder import FRANKDatabaseSeeder
 from .logger import NullLogger
-from frank import __version__
-    
+from .sample_builder import FRANKDatabaseSeeder
+
+
 class FRANKServer:
     """
     High-level FRANK server that combines submission handling with database operations.
-    
+
     This is the main interface most users should interact with, providing a simple
     API that handles both submission processing and storage automatically.
 
@@ -34,7 +34,7 @@ class FRANKServer:
         - submit_threat_intelligence: Submission of threat intelligence data
         - query_threats: Querying of threat intelligence records
         - get_observations: Retrieve observable statistics and details
-        - get_platform_statistics: Retrieve platform usage statistics   
+        - get_platform_statistics: Retrieve platform usage statistics
         - check_health: Perform health checks on the database backend
         - seed_database: Seed the database with initial data
     """
@@ -48,29 +48,29 @@ class FRANKServer:
     def submit_threat_intelligence(self, user_id: str, submission: Submission) -> int:
         """
         Submit threat intelligence to the FRANK platform.
-        
+
         Args:
             user_id (str): Identifier for the user submitting the threat intelligence.
             submission: Threat intelligence submission dictionary
-            
+
         Returns:
-            True if successful     
+            True if successful
         """
-        
+
         # Store in database
         self.database.store_submission(submission)
-            
+
         # Calculate contribution score impact (simplified)
         score_impact = calculate_contribution_score(submission)
-                
+
         self.database.log_access(user_id, 'SUBMIT', 'submission', submission.submission_id)
 
         # Extract submission ID
         return score_impact
 
 
-    def query_threats(self, user_id: str, access_level: AccessTier, 
-        limit: int, offset: int, format: Optional[str], 
+    def query_threats(self, user_id: str, access_level: AccessTier,
+        limit: int, offset: int, format: Optional[str],
         observable: Optional[str] = None, **filters) -> "Tuple[int, List[Dict], Dict[str, Any], Dict[str, Any]]":
         """
         Query threat intelligence records for a given user, applying access level filtering, pagination, and formatting.
@@ -181,7 +181,7 @@ class FRANKServer:
                 'count': count
             })
         return observations[:limit], stats
-        
+
 
     def get_platform_statistics(self, user_id: str, access_level: AccessTier, days: int) -> Dict[str, Any]:
         """
@@ -275,14 +275,14 @@ class FRANKServer:
         passing in the database handler. It handles any exceptions and logs errors if seeding fails.
 
         Args:
-            seeder (FRANKDatabaseSeeder): An instance of a database seeder class.  
+            seeder (FRANKDatabaseSeeder): An instance of a database seeder class.
         """
         try:
             seeder.seed(self.database)
             return True
         except Exception as e:
             self.logger.error(f"Database seeding failed: {e}")
-            return False 
+            return False
 
 # ===============================
 # Helper functions
@@ -419,13 +419,13 @@ def calculate_contribution_score(submission: Submission) -> int:
 def create_server(db: BaseFRANKDatabase, logger: logging.Logger = None) -> FRANKServer:
     """
     Factory function to create a complete FRANK server with database backend.
-    
+
     Args:
         config: Configuration dictionary (uses defaults if None)
-        
+
     Returns:
         Configured FRANK server instance
-        
+
     Example:
         >>> import frank
         >>> server = frank.create_server(db, logger)

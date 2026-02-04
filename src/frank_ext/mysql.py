@@ -10,17 +10,18 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import json
-import pymysql
+import logging
 import uuid
 from datetime import datetime, timezone
-from typing import Dict, Any, List, Optional
+from typing import Any, Dict, List, Optional
 
-import logging
+import pymysql
 
-from frank.core.models import Submission, Sighting, Submitter
-from frank.core.enum import ObservableType, AccessTier
-from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from frank.core.enum import AccessTier, ObservableType
+from frank.core.models import Sighting, Submission, Submitter
+
 from .base import BaseFRANKDatabase
+from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
 
 
 class MySQLFRANKDatabase(BaseFRANKDatabase):
@@ -29,7 +30,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     Provides full functionality with relational database storage and supports
     the complete FRANK access tier model.
     """
-       
+
     def get_connection(self) -> pymysql.Connection:
         """Get a fresh database connection."""
         try:
@@ -37,17 +38,17 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         except pymysql.Error as e:
             self.logger.error(f"Failed to connect to MySQL: {e}")
             raise FRANKConnectionError(f"Database connection failed: {e}")
-    
+
     def initialize(self) -> None:
         """Initialize the MySQL database with FRANK schema."""
         self.name = 'mysql'
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             # Set SQL mode for strict operations
             cursor.execute("SET SESSION sql_mode = 'STRICT_TRANS_TABLES,NO_ZERO_DATE,NO_ZERO_IN_DATE,ERROR_FOR_DIVISION_BY_ZERO'")
-            
+
             # organisations table (cyber partners and customers)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS organisations (
@@ -66,7 +67,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     INDEX idx_organisations_active (last_active)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # Submissions table (main submission data)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS submissions (
@@ -88,7 +89,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     INDEX idx_submissions_tlp (tlp_level)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # Sightings table (individual threat sightings)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sightings (
@@ -112,7 +113,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     INDEX idx_sightings_observed (first_observed)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # Observables table (IoCs and artifacts)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS observables (
@@ -133,7 +134,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     INDEX idx_observables_value (observable_value(255))
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # Statistics table (aggregated sighting data)
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS observable_statistics (
@@ -155,7 +156,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     INDEX idx_statistics_updated (updated_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # Access logs for auditing
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS access_logs (
@@ -175,7 +176,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     INDEX idx_access_logs_action (action)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci
             """)
-            
+
             # SIGMA rules table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS sigma_rules (
@@ -193,7 +194,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             """)
             # FOREIGN KEY (created_by_org) REFERENCES organisations (organisation_id) ON DELETE SET NULL
 
-            
+
             # Campaign tracking table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS campaigns (
@@ -214,12 +215,12 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             conn.commit()
             cursor.close()
             conn.close()
-            self.logger.info(f"PyMySQL database initialized successfully")
-                
+            self.logger.info("PyMySQL database initialized successfully")
+
         except pymysql.Error as e:
             self.logger.error(f"Database initialization error: {e}")
             raise FRANKConnectionError(f"Failed to initialize database: {e}")
-    
+
     # def hash_observable(self, observable_type: str, observable_value: str) -> str:
     #     """Create a hash for observable deduplication and quick lookups."""
     #     combined = f"{observable_type}:{observable_value}".lower()
@@ -228,10 +229,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def store_submission(self, submission: Submission) -> bool:
         """
         Store a complete submission in the database with full normalization.
-        
+
         Args:
             submission: Complete FRANK submission dictionary
-            
+
         Returns:
             True if stored successfully, False otherwise
         """
@@ -240,7 +241,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             # Extract main submission data
             submitter = submission.submitter
             hit_target = submission.hit_target
@@ -250,7 +251,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             self._upsert_organisation(
                 cursor, submitter.model_dump(exclude_none=True, by_alias=True), org_type="cyber_partner"
             )
-            
+
             # Store hit target if present
             hit_target_id = None
             if hit_target:
@@ -258,11 +259,11 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     exclude_none=True,
                     by_alias=True), org_type='customer')
                 hit_target_id = hit_target.organisation_id
-            
+
             # Store main submission
             cursor.execute("""
-                INSERT INTO submissions 
-                (submission_id, submitter_org_id, hit_target_org_id, format_version, 
+                INSERT INTO submissions
+                (submission_id, submitter_org_id, hit_target_org_id, format_version,
                  submission_timestamp, confidence, severity, tlp_level, full_submission_json)
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                 ON DUPLICATE KEY UPDATE
@@ -285,11 +286,11 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 submission.tlp_level,
                 submission.model_dump_json(by_alias=True, exclude_none=True)
             ))
-            
+
             # Store sighting
             cursor.execute("""
-                INSERT INTO sightings 
-                (sighting_id, submission_id, first_observed, last_observed, 
+                INSERT INTO sightings
+                (sighting_id, submission_id, first_observed, last_observed,
                  observation_count, confidence, severity, sigma_rule_id, campaign_id,
                  affected_systems, compromised_accounts, containment_time, financial_impact_eur
                  )
@@ -308,7 +309,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 containment_time = VALUES(containment_time),
                 financial_impact_eur = VALUES(financial_impact_eur)
             """, (
-                sighting.sighting_id, 
+                sighting.sighting_id,
                 submission.submission_id,
                 sighting.first_observed,
                 sighting.last_observed,
@@ -320,15 +321,15 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 sighting.impact.affected_systems if sighting.impact else None,
                 sighting.impact.compromised_accounts if sighting.impact else None,
                 sighting.impact.containment_time if sighting.impact else None,
-                sighting.impact.financial_impact_eur if sighting.impact else None   
+                sighting.impact.financial_impact_eur if sighting.impact else None
             ))
-            
+
             # Store observables and update statistics
             self._store_observables(cursor, sighting, submitter) # type: ignore
-            
+
             # Store SIGMA rule if present
             self._store_sigma_rule(cursor, sighting, submitter) # type: ignore
-            
+
             # Store campaign if present
             self._store_campaign(cursor, sighting)
 
@@ -339,7 +340,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             cursor.close()
             self.logger.info(f"Stored submission {submission.submission_id}")
             return True
-                
+
         except pymysql.Error as e:
             if conn:
                 conn.rollback()
@@ -364,13 +365,13 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 for obs in obs_list:
                     if 'type' not in obs or 'value' not in obs:
                         continue
-                        
+
                     obs_hash = self.hash_observable(obs['type'], obs['value'])
-                    
+
                     # Store observable
                     cursor.execute("""
-                        INSERT INTO observables 
-                        (observable_id, sighting_id, observable_type, observable_value, 
+                        INSERT INTO observables
+                        (observable_id, sighting_id, observable_type, observable_value,
                          observable_hash, role, port, protocol, first_seen, metadata_json)
                         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                         ON DUPLICATE KEY UPDATE
@@ -393,10 +394,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                         obs.get('port'),
                         obs.get('protocol'),
                         obs.get('first_seen'),
-                        json.dumps({k: v for k, v in obs.items() 
+                        json.dumps({k: v for k, v in obs.items()
                                    if k not in ['id', 'type', 'value', 'role', 'port', 'protocol', 'first_seen']})
                     ))
-                    
+
                     # Update statistics
                     self._update_observable_statistics(cursor, obs, submitter)
 
@@ -405,10 +406,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         sigma_detection = sighting.sigma_detection
         if not sigma_detection:
             return
-            
+
         cursor.execute("""
-            INSERT INTO sigma_rules 
-            (rule_id, rule_name, rule_version, rule_status, sigma_yaml, 
+            INSERT INTO sigma_rules
+            (rule_id, rule_name, rule_version, rule_status, sigma_yaml,
              created_by_org, effectiveness_score, false_positive_rate)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
@@ -438,10 +439,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         campaign = sighting.threat_context.campaign
         if not campaign:
             return
-            
+
         cursor.execute("""
-            INSERT INTO campaigns 
-            (campaign_id, campaign_name, attribution, target_sectors_json, 
+            INSERT INTO campaigns
+            (campaign_id, campaign_name, attribution, target_sectors_json,
              attack_vector, payload_type, campaign_start, estimated_victims, confidence)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
@@ -468,12 +469,12 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def _upsert_organisation(self, cursor, org_data: Dict[str, Any], org_type: str = 'cyber_partner') -> None:
         """Insert or update organisation information."""
         self.logger.debug(f"Upserting organisation: {org_data}")
-        metadata = {k: v for k, v in org_data.items() 
+        metadata = {k: v for k, v in org_data.items()
                    if k not in ['organisation_id', 'organisation_type', 'access_level', 'sector', 'region', 'client_count']}
-        
+
         cursor.execute("""
-            INSERT INTO organisations 
-            (organisation_id, organisation_type, tier, sector, region, 
+            INSERT INTO organisations
+            (organisation_id, organisation_type, tier, sector, region,
              last_active, client_count, metadata_json)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
@@ -499,26 +500,26 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def _update_observable_statistics(self, cursor, observable: Dict[str, Any], submitter: Submitter) -> None:
         """Update aggregated statistics for observables."""
         obs_hash = self.hash_observable(observable['type'], observable['value'])
-        
+
         # Check if statistics record exists
         cursor.execute("""
-            SELECT total_sightings, unique_organisations, sectors_json, regions_json 
+            SELECT total_sightings, unique_organisations, sectors_json, regions_json
             FROM observable_statistics WHERE observable_hash = %s
         """, (obs_hash,))
-        
+
         existing = cursor.fetchone()
-        
+
         if existing:
             # Update existing record
-            total_sightings = existing['total_sightings']
+            existing['total_sightings']
             unique_orgs = existing['unique_organisations']
             sectors_json = existing['sectors_json']
             regions_json = existing['regions_json']
-            
+
             # Parse existing JSON data
             sectors = json.loads(sectors_json) if sectors_json else []
             regions = json.loads(regions_json) if regions_json else []
-            
+
             # Add new sector/region if not present
             if submitter.sector and submitter.sector not in sectors:
                 sectors.append(submitter.sector)
@@ -527,7 +528,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
 
             # Update statistics
             cursor.execute("""
-                UPDATE observable_statistics 
+                UPDATE observable_statistics
                 SET total_sightings = total_sightings + 1,
                     unique_organisations = %s,
                     last_seen = %s,
@@ -549,8 +550,8 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             regions = [submitter.region] if submitter.region else []
 
             cursor.execute("""
-                INSERT INTO observable_statistics 
-                (observable_hash, observable_type, observable_value, total_sightings, 
+                INSERT INTO observable_statistics
+                (observable_hash, observable_type, observable_value, total_sightings,
                  unique_organisations, first_seen, last_seen, sectors_json, regions_json)
                 VALUES (%s, %s, %s, 1, 1, %s, %s, %s, %s)
             """, (
@@ -566,12 +567,12 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
-        
+
         Args:
             submission_id: Submission ID to retrieve
             org_id: organisation ID making the request
             access_level: Access level for filtering
-            
+
         Returns:
             Filtered Submission or None if not found
         """
@@ -579,29 +580,29 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 SELECT s.*, o.access_level as submitter_tier
                 FROM submissions s
                 JOIN organisations o ON s.submitter_org_id = o.organisation_id
                 WHERE s.submission_id = %s
             """, (submission_id,))
-            
+
             row = cursor.fetchone()
             if not row:
                 return None
-            
+
             submission_dict = json.loads(row['full_submission_json'])
             # Apply access level filtering
             filtered_submission = self._filter_submission_by_access_level(submission_dict, access_level)
-            
+
             # Log access
             self._log_access(cursor, org_id, 'READ', 'submission', submission_id)
             conn.commit()
             cursor.close()
-            
+
             return Submission(**filtered_submission['submission'])
-                
+
         except pymysql.Error as e:
             if conn:
                 conn.rollback()
@@ -611,13 +612,13 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             if conn:
                 conn.close()
 
-    def query_observables(self, org_id: str, observable_type: ObservableType = None, 
+    def query_observables(self, org_id: str, observable_type: ObservableType = None,
                          limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
                          min_confidence: int = None, sectors: List[str] = None,
                          days_back: int = None) -> List[Dict[str, Any]]:
         """
         Query observables with access level filtering and advanced filters.
-        
+
         Args:
             org_id: organisation ID making the query
             observable_type: Filter by observable type
@@ -626,7 +627,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             min_confidence: Minimum confidence threshold
             sectors: Filter by affected sectors
             days_back: Only return observables from last N days
-            
+
         Returns:
             List of filtered observable statistics
         """
@@ -634,31 +635,31 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             # Build query based on access level and filters
             query_parts = ["""
                 SELECT os.observable_hash, os.observable_type, os.observable_value,
-                       os.total_sightings, os.unique_organisations, os.first_seen, 
+                       os.total_sightings, os.unique_organisations, os.first_seen,
                        os.last_seen, os.avg_confidence, os.sectors_json, os.regions_json
                 FROM observable_statistics os
             """]
-            
+
             where_clauses = []
             params = []
-            
+
             if observable_type:
                 where_clauses.append("os.observable_type = %s")
                 params.append(observable_type.value)
-            
+
             if min_confidence:
                 self.logger.info(f"finding min_confidence: {min_confidence}")
                 where_clauses.append("COALESCE(os.avg_confidence, 0) >= %s")
                 params.append(min_confidence)
-            
+
             if days_back:
                 where_clauses.append("os.last_seen >= DATE_SUB(NOW(), INTERVAL %s DAY)")
                 params.append(days_back)
-            
+
             if sectors:
                 # Use JSON functions for proper sector filtering
                 sector_conditions = []
@@ -666,42 +667,42 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                     sector_conditions.append("JSON_CONTAINS(COALESCE(os.sectors_json, '[]'), %s)")
                     params.append(json.dumps(sector))
                 where_clauses.append(f"({' OR '.join(sector_conditions)})")
-            
+
             if where_clauses:
                 query_parts.append(" WHERE " + " AND ".join(where_clauses))
-            
+
             query_parts.append(f" ORDER BY os.last_seen DESC LIMIT {limit}")
-            
+
             query = "".join(query_parts)
             cursor.execute(query, params)
             results = []
-            
+
             for row in cursor.fetchall():
                 result = dict(row)
-                
+
                 # Apply access level filtering
                 result = self._filter_observable_by_access_level(result, access_level)
-                
+
                 # Parse JSON fields
                 try:
                     result['sectors'] = json.loads(result['sectors_json']) if result['sectors_json'] else []
                     result['regions'] = json.loads(result['regions_json']) if result['regions_json'] else []
                     del result['sectors_json']
                     del result['regions_json']
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError):
                     result['sectors'] = []
                     result['regions'] = []
-                
+
                 results.append(result)
-            
+
             # Log access
             self._log_access(cursor, org_id, 'QUERY', 'observables')
             conn.commit()
             cursor.close()
-            
+
             self.logger.info(f"Retrieved {len(results)} observables for {org_id} (access: {access_level.value})")
             return results
-                
+
         except pymysql.Error as e:
             if conn:
                 conn.rollback()
@@ -714,11 +715,11 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
         Get platform statistics summary.
-        
+
         Args:
             org_id: organisation ID making the request
             days: Number of days to look back
-            
+
         Returns:
             Statistics summary dictionary
         """
@@ -726,22 +727,22 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             stats = {}
-            
+
             # Basic submission statistics
             cursor.execute("""
-                SELECT 
+                SELECT
                     COUNT(DISTINCT submission_id) as total_submissions,
                     COUNT(DISTINCT submitter_org_id) as active_organisations,
                     AVG(confidence) as avg_confidence
-                FROM submissions 
+                FROM submissions
                 WHERE submission_timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (days,))
-            
+
             basic_stats = cursor.fetchone()
             stats.update(basic_stats)
-            
+
             # Observable type distribution
             cursor.execute("""
                 SELECT observable_type, COUNT(*) as count,
@@ -754,10 +755,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             """, (days,))
 
             stats['observable_types'] = {
-                row['observable_type']: {'count': row['count'], 'avg_sightings': row['avg_sightings']} 
+                row['observable_type']: {'count': row['count'], 'avg_sightings': row['avg_sightings']}
                 for row in cursor.fetchall()
             }
-                            
+
             # Severity distribution
             cursor.execute("""
                 SELECT severity, COUNT(*) as count
@@ -766,9 +767,9 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 AND severity IS NOT NULL
                 GROUP BY severity
             """, (days,))
-            
+
             stats['severity_distribution'] = {row['severity']: row['count'] for row in cursor.fetchall()}
-            
+
             # Top sectors by activity
             cursor.execute("""
                 SELECT sector, COUNT(*) as submissions
@@ -780,9 +781,9 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 ORDER BY submissions DESC
                 LIMIT 5
             """, (days,))
-            
+
             stats['top_sectors'] = {row['sector']: row['submissions'] for row in cursor.fetchall()}
-            
+
             # Recent activity trend (daily counts)
             cursor.execute("""
                 SELECT DATE(submission_timestamp) as date, COUNT(*) as count
@@ -791,16 +792,16 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 GROUP BY DATE(submission_timestamp)
                 ORDER BY date DESC
             """, (days,))
-            
+
             stats['daily_activity'] = {str(row['date']): row['count'] for row in cursor.fetchall()}
-            
+
             # Log access
             self._log_access(cursor, org_id, 'STATS', 'summary')
             conn.commit()
             cursor.close()
-            
+
             return stats
-                
+
         except pymysql.Error as e:
             if conn:
                 conn.rollback()
@@ -813,10 +814,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
         """
         Insert or update organisation information.
-        
+
         Args:
             org_data: organisation data dictionary
-            
+
         Returns:
             True if successful
         """
@@ -838,16 +839,16 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 conn.close()
         return False
 
-    def search_observables_by_value(self, org_id: str, search_value: str, 
+    def search_observables_by_value(self, org_id: str, search_value: str,
                                 access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
         """
         Search for observables by partial value match.
-        
+
         Args:
             org_id: organisation performing the search
             search_value: Value to search for (supports wildcards)
             access_level: Access level for filtering
-            
+
         Returns:
             List of matching observables
         """
@@ -855,38 +856,38 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             cursor.execute("""
                 SELECT os.* FROM observable_statistics os
                 WHERE os.observable_value LIKE %s
                 ORDER BY os.total_sightings DESC
                 LIMIT 100
             """, (f"%{search_value}%",))
-            
+
             results = []
             for row in cursor.fetchall():
                 result = dict(row)
                 result = self._filter_observable_by_access_level(result, access_level)
-                
+
                 # Parse JSON fields
                 try:
                     result['sectors'] = json.loads(result['sectors_json']) if result['sectors_json'] else []
                     result['regions'] = json.loads(result['regions_json']) if result['regions_json'] else []
                     del result['sectors_json']
                     del result['regions_json']
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError):
                     result['sectors'] = []
                     result['regions'] = []
-                
+
                 results.append(result)
-            
+
             # Log access
             self._log_access(cursor, org_id, 'SEARCH', 'observables', details={'search_value': search_value})
             conn.commit()
             cursor.close()
-            
+
             return results
-                
+
         except pymysql.Error as e:
             if conn:
                 conn.rollback()
@@ -897,12 +898,12 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 conn.close()
 
 
-    def _log_access(self, cursor, org_id: str, action: str, 
-                   resource_type: str = None, resource_id: str = None, 
+    def _log_access(self, cursor, org_id: str, action: str,
+                   resource_type: str = None, resource_id: str = None,
                    details: Dict[str, Any] = None) -> None:
         """Internal method to log access."""
         cursor.execute("""
-            INSERT INTO access_logs 
+            INSERT INTO access_logs
             (organisation_id, action, resource_type, resource_id, details_json)
             VALUES (%s, %s, %s, %s, %s)
         """, (
@@ -913,19 +914,19 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
             json.dumps(details) if details else None
         ))
 
-    def log_access(self, org_id: str, action: str, 
-                   resource_type: str = None, resource_id: str = None, 
+    def log_access(self, org_id: str, action: str,
+                   resource_type: str = None, resource_id: str = None,
                    details: Dict[str, Any] = None) -> bool:
         """
         Log an access event for auditing purposes.
-        
+
         Args:
             org_id: organisation ID performing the action
             action: Action performed (e.g., 'READ', 'SUBMIT', 'QUERY')
             resource_type: Type of resource accessed (optional)
             resource_id: ID of the resource accessed (optional)
             details: Additional details as a dictionary (optional)
-        
+
         Returns:
             True if the log entry was successfully written, False otherwise
         """
@@ -976,7 +977,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     #                 for obs in obs_list:
     #                     if 'value' in obs:
     #                         obs['value'] = obs['value'][:10] + "..." if len(obs['value']) > 10 else obs['value']
-            
+
     #         # Remove sensitive sections
     #         filtered.pop('hit_target', None)
     #         filtered.pop('tlp_level', None)
@@ -985,7 +986,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     #     elif access_level == AccessTier.CONTRIBUTOR:
     #         # Remove only the most sensitive information
     #         filtered = self._deep_copy(submission)
-            
+
     #         # Anonymize hit target details
     #         if 'hit_target' in filtered:
     #             hit_target = filtered['hit_target']
@@ -1012,10 +1013,10 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     #             value = filtered['observable_value']
     #             filtered['observable_value'] = value[:10] + "..." if len(value) > 10 else value
     #         return filtered
-        
+
     #     # Contributor and above get full access
     #     return observable
-    
+
     # def _deep_copy(self, obj: Any) -> Any:
     #     """Create a deep copy of an object."""
     #     if isinstance(obj, dict):
@@ -1028,7 +1029,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
     def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the database.
-        
+
         Returns:
             Health status dictionary
         """
@@ -1036,33 +1037,33 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
         try:
             conn = self.get_connection()
             cursor = conn.cursor()
-            
+
             # Basic connectivity test
             cursor.execute("SELECT 1 as test")
             cursor.fetchone()
-            
+
             # Get database statistics
             table_counts = {}
-            tables = ['organisations', 'submissions', 'sightings', 'observables', 
+            tables = ['organisations', 'submissions', 'sightings', 'observables',
                      'observable_statistics', 'access_logs', 'sigma_rules', 'campaigns']
-            
+
             for table in tables:
                 cursor.execute(f"SELECT COUNT(*) as count FROM {table}")
                 result = cursor.fetchone()
                 table_counts[table] = result['count']
-            
+
             # Check database size
             cursor.execute("""
                 SELECT ROUND(SUM(data_length + index_length) / 1024 / 1024, 1) AS 'size_mb'
-                FROM information_schema.tables 
+                FROM information_schema.tables
                 WHERE table_schema = %s
             """, (self.connection_params['database'],))
-            
+
             size_result = cursor.fetchone()
             db_size_mb = size_result['size_mb'] if size_result['size_mb'] else 0
-            
+
             cursor.close()
-            
+
             return {
                 'status': 'healthy',
                 'database_host': self.connection_params['host'],
@@ -1070,7 +1071,7 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
                 'database_size_mb': float(db_size_mb),
                 'table_counts': table_counts
             }
-                
+
         except Exception as e:
             self.logger.error(f"Health check failed: {e}")
             return {
@@ -1083,20 +1084,20 @@ class MySQLFRANKDatabase(BaseFRANKDatabase):
 
 
 # Factory function for easy instantiation
-def create_mysql_database(host: str = "localhost", port: int = 3306, 
-                           database: str = "frank", user: str = "frank_user", 
+def create_mysql_database(host: str = "localhost", port: int = 3306,
+                           database: str = "frank", user: str = "frank_user",
                            password: str = "frank_password",
                            logger: Optional[logging.Logger] = None) -> MySQLFRANKDatabase:
     """
     Factory function to create a MySQLFRANKDatabase instance.
-    
+
     Args:
         host: MySQL server hostname
         port: MySQL server port
         database: Database name
         user: Database username
         password: Database password
-        
+
     Returns:
         Configured MySQLFRANKDatabase instance
     """

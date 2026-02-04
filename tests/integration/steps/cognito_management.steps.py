@@ -8,13 +8,18 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import json
-import requests
 import jwt
-from behave import given, when, then
+import requests
+from behave import given, then, when
 from hamcrest import (
-    assert_that, equal_to, greater_than, greater_than_or_equal_to,
-    contains_string, has_key, not_none, is_in, has_length
+    assert_that,
+    contains_string,
+    equal_to,
+    greater_than,
+    greater_than_or_equal_to,
+    has_key,
+    is_in,
+    not_none,
 )
 
 
@@ -239,7 +244,7 @@ def step_verify_named_user_role(context, username, role):
 @then('the user should be in group "{group}"')
 def step_verify_user_group(context, group):
     """Verify user is in specified group"""
-    data = context.cognito.last_response.json()
+    context.cognito.last_response.json()
 
 
 @then('user "{username}" should be in group "{group}"')
@@ -561,7 +566,7 @@ def step_verify_org_tier(context, tier):
 
     # Get the group from first user (all users in org should have same tier)
     if users:
-        first_user_attrs = users[0].get('Attributes', [])
+        users[0].get('Attributes', [])
         # Note: groups are not in Attributes, this is stored separately
         # For this test, we'll just verify we got users
         assert_that(len(users), greater_than(0))
@@ -653,6 +658,6 @@ def after_scenario(context, scenario):
         for username in context.test_users:
             try:
                 context.cognito.delete_user(username)
-            except:
+            except Exception:
                 pass  # User might already be deleted
         context.test_users = []

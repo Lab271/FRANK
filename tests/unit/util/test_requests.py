@@ -12,12 +12,8 @@ import unittest
 
 from frank.core.models import Submission
 from frank.util import requests
-from frank.util.requests import (
-    SubmissionRequest,
-    SubmissionResponse,
-    SightingSearchResponse,
-    ObservationsResponse
-)
+from frank.util.requests import ObservationsResponse, SightingSearchResponse, SubmissionRequest, SubmissionResponse
+
 
 class TestSubmissionRequest(unittest.TestCase):
     """Unit tests for SubmissionRequest model validation and field handling."""

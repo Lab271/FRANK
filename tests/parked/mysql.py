@@ -9,9 +9,10 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from frank.storage.mysql import MySQLFRANKDatabase
+
 
 class TestMySQLFRANKDatabaseLogAccess(unittest.TestCase):
     """Unit tests for MySQLFRANKDatabase.log_access and related access logging."""
@@ -47,7 +48,7 @@ class TestMySQLFRANKDatabaseLogAccess(unittest.TestCase):
         resource_id = 'sub456'
         details = {'foo': 'bar'}
         # Patch _log_access to avoid actual DB calls
-        with patch.object(self.db, '_log_access') as mock_log_access:
+        with patch.object(self.db, '_log_access'):
             self.db.log_access(org_id, action, resource_type, resource_id, details)
             self.assertGreaterEqual(self.mock_conn.close.call_count, 1)
 

@@ -6,7 +6,6 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import os
 import pytest
 
 from frank.web.config import WebConfig

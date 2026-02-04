@@ -12,7 +12,6 @@ SPDX-License-Identifier: Apache-2.0
 import os
 from typing import Literal, Optional
 
-
 ValidationStrategy = Literal["server_first", "local_only", "server_only"]
 JWTAlgorithm = Literal["RS256", "HS256"]
 Environment = Literal["mock", "aws"]

@@ -6,8 +6,8 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
+
 import pytest
-from datetime import datetime, timezone
 
 from frank.core.enum import AccessTier
 from frank.util.filter import FRANKFilter

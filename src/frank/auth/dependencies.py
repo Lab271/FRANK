@@ -25,7 +25,6 @@ from frank.auth.config import AuthConfig
 from frank.auth.jwt import InvalidTokenError, TokenExpiredError, TokenPayload, validate_token_locally
 from frank.core.enum import AccessTier
 
-
 logger = logging.getLogger(__name__)
 
 # Security scheme for Bearer token authentication

@@ -936,7 +936,6 @@ class TestMFAEndpoints:
 
     def test_verify_mfa_cognito_service_error(self, mock_database, mock_cognito, core_member_user):
         """Test MFA verification with generic Cognito service error."""
-        from frank.management.models import MFAVerifyRequest
 
         mock_cognito.verify_mfa_setup.side_effect = CognitoServiceError(
             "Internal service error",

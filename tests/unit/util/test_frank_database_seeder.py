@@ -10,8 +10,8 @@ SPDX-License-Identifier: Apache-2.0
 import unittest
 from unittest.mock import Mock, call
 
-from frank.util.sample_builder import SampleDataSeeder, create_demo_orgs, FRANKDatabaseSeeder
 from frank.storage.base import BaseFRANKDatabase
+from frank.util.sample_builder import FRANKDatabaseSeeder, SampleDataSeeder, create_demo_orgs
 
 
 class TestFRANKDatabaseSeeder(unittest.TestCase):

@@ -8,7 +8,9 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 import unittest
+
 from frank.core.exceptions import FRANKError
+
 
 class TestFRANKError(unittest.TestCase):
     def test_frank_error_message(self):

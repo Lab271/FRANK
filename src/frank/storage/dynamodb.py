@@ -30,7 +30,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     DynamoDB implementation of FRANK database using single table design.
     Provides full functionality with NoSQL scalability and supports
     the complete FRANK access tier model.
-    
+
     Single Table Design Pattern - General table:
     PK (Partition Key)  | SK (Sort Key)   | GSI1PK          | GSI1SK       | Entity Type     | Description
     ORG#{org_id}        | ORG             | TIER#{access_level}     | #{timestamp} | organisation    | organisation metadata
@@ -129,10 +129,10 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
     def _ensure_table_exists(self, table_name):
         """
         Create the FRANK DynamoDB table with proper indexes and TTL configuration.
-        
+
         Args:
-            table_name -> str: Name for the DynamoDB table 
-            
+            table_name -> str: Name for the DynamoDB table
+
         Returns:
             table -> DynamoDB.Table: The DynamoDB Table resource
         """
@@ -392,7 +392,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
                         'TTL': int((timestamp + timedelta(days=2555)).timestamp())
                     }
                     observables_list.append(observable_index_item)
-                    stats_item = self._upsert_observable_statistics(
+                    self._upsert_observable_statistics(
                         obs_hash=obs_hash,
                         obs_type=obs['type'],
                         obs_value=obs['value'],
@@ -755,7 +755,7 @@ class DynamoDBFRANKDatabase(BaseFRANKDatabase):
         - Total number of sightings within the time window.
         - Total number of observables indexed within the time window.
         - Breakdown of observables by type (e.g., ipv4, domain, url, etc.), using the ObservableType enum.
-        
+
         For each observable type, the count is calculated efficiently using DynamoDB's GSI and Select='COUNT'.
 
         Args:
@@ -1098,7 +1098,7 @@ def create_dynamodb_database(table_name: str = "frank_table",
                             logger: Optional[logging.Logger] = None) -> DynamoDBFRANKDatabase:
     """
     Factory function to create a DynamoDBFRANKDatabase instance.
-    
+
     Args:
         table_name: DynamoDB table name
         region: AWS region

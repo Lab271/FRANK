@@ -8,12 +8,13 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 import unittest
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock, patch
 
 from botocore.exceptions import ClientError
 
 from frank.storage.dynamodb import DynamoDBFRANKDatabase
-from frank.storage.exceptions import FRANKStorageError, FRANKQueryError
+from frank.storage.exceptions import FRANKQueryError, FRANKStorageError
+
 
 class TestDynamoDBFRANKDatabaseLogAccess(unittest.TestCase):
     """Unit tests for DynamoDBFRANKDatabase.log_access and related access logging."""
@@ -115,7 +116,7 @@ class TestDynamoDBFRANKDatabaseStoreSubmission(unittest.TestCase):
             self.db.store_submission(submission)
         except FRANKStorageError:
             return
-        self.fail("FRANKStorageError not raised")   
+        self.fail("FRANKStorageError not raised")
 
 
 class TestDynamoDBBatchWrite(unittest.TestCase):
@@ -225,7 +226,6 @@ class TestDynamoDBFRANKDatabaseGetSubmissionById(unittest.TestCase):
                 "tlp_level": "TLP:AMBER",
             # }
         }
-        import json
         self.db.table.get_item.return_value = {'Item': {'submission_data': minimal_submission}}
         result = self.db.get_submission_by_id('sub1')
         self.assertIsNotNone(result)

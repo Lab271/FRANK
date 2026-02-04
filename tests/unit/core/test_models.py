@@ -11,9 +11,10 @@ import unittest
 
 from frank.core.models import example_usage
 
+
 class TestExampleUsage(unittest.TestCase):
     """Unit tests for example_usage logic in models.py"""
-    
+
     def test_example_usage(self):
         """Test minimal submission creation via factory method."""
         try:
@@ -23,4 +24,4 @@ class TestExampleUsage(unittest.TestCase):
 
 
 if __name__ == "__main__":
-	unittest.main()
+    unittest.main()

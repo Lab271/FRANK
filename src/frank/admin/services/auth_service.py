@@ -74,7 +74,7 @@ class AuthService:
                 username=username,
                 expires_in=data.get("expires_in", 3600),
             )
-        except AuthenticationError as e:
+        except AuthenticationError:
             return AuthResult.failure_result("Invalid username or password")
         except AdminClientError as e:
             return AuthResult.failure_result(f"Connection error: {e.message}")

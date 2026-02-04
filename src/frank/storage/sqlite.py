@@ -297,10 +297,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def store_submission(self, submission: Submission) -> bool:
         """
         Store a complete submission in the database with full normalization.
-        
+
         Args:
             submission: Complete FRANK submission dictionary
-            
+
         Returns:
             True if stored successfully, False otherwise
         """
@@ -331,8 +331,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
                 # Store main submission
                 conn.execute("""
-                    INSERT OR REPLACE INTO submissions 
-                    (submission_id, submitter_org_id, hit_target_org_id, format_version, 
+                    INSERT OR REPLACE INTO submissions
+                    (submission_id, submitter_org_id, hit_target_org_id, format_version,
                      submission_timestamp, confidence, severity, tlp_level, full_submission_json)
                     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """, (
@@ -349,8 +349,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
                 # Store sighting
                 conn.execute("""
-                    INSERT OR REPLACE INTO sightings 
-                    (sighting_id, submission_id, first_observed, last_observed, 
+                    INSERT OR REPLACE INTO sightings
+                    (sighting_id, submission_id, first_observed, last_observed,
                      observation_count, confidence, severity, sigma_rule_id, campaign_id,
                      affected_systems, compromised_accounts, containment_time, financial_impact_eur
                      )
@@ -409,8 +409,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
                     # Store observable
                     conn.execute("""
-                        INSERT OR REPLACE INTO observables 
-                        (observable_id, sighting_id, observable_type, observable_value, 
+                        INSERT OR REPLACE INTO observables
+                        (observable_id, sighting_id, observable_type, observable_value,
                          observable_hash, role, port, protocol, first_seen, metadata_json)
                         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """, (
@@ -437,8 +437,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             return
 
         conn.execute("""
-            INSERT OR REPLACE INTO sigma_rules 
-            (rule_id, rule_name, rule_version, rule_status, sigma_yaml, 
+            INSERT OR REPLACE INTO sigma_rules
+            (rule_id, rule_name, rule_version, rule_status, sigma_yaml,
              created_by_org, effectiveness_score, false_positive_rate)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -462,8 +462,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             return
 
         conn.execute("""
-            INSERT OR REPLACE INTO campaigns 
-            (campaign_id, campaign_name, attribution, target_sectors_json, 
+            INSERT OR REPLACE INTO campaigns
+            (campaign_id, campaign_name, attribution, target_sectors_json,
              attack_vector, payload_type, campaign_start, estimated_victims, confidence)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -487,8 +487,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                    if k not in ['organisation_id', 'organisation_type', 'access_level', 'sector', 'region', 'client_count']}
 
         conn.execute("""
-            INSERT OR REPLACE INTO organisations 
-            (organisation_id, organisation_type, access_level, sector, region, 
+            INSERT OR REPLACE INTO organisations
+            (organisation_id, organisation_type, access_level, sector, region,
              last_active, client_count, metadata_json)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -580,12 +580,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def get_submission_by_id(self, submission_id: str, org_id: str, access_level: AccessTier = AccessTier.CONTRIBUTOR) -> Optional[Submission]:
         """
         Retrieve a specific submission with access level filtering.
-        
+
         Args:
             submission_id: Submission ID to retrieve
             org_id: organisation ID making the request
             access_level: Access level for filtering
-            
+
         Returns:
             Filtered Submission or None if not found
         """
@@ -626,7 +626,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                          days_back: int = None) -> List[Dict[str, Any]]:
         """
         Query observables with access level filtering and advanced filters.
-        
+
         Args:
             org_id: organisation ID making the query
             observable_type: Filter by observable type
@@ -635,7 +635,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
             min_confidence: Minimum confidence threshold
             sectors: Filter by affected sectors
             days_back: Only return observables from last N days
-            
+
         Returns:
             List of filtered observable statistics
         """
@@ -648,7 +648,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 # Build query based on access level and filters
                 query_parts = ["""
                     SELECT os.observable_hash, os.observable_type, os.observable_value,
-                           os.total_sightings, os.unique_organisations, os.first_seen, 
+                           os.total_sightings, os.unique_organisations, os.first_seen,
                            os.last_seen, os.avg_confidence, os.sectors_json, os.regions_json
                     FROM observable_statistics os
                 """]
@@ -697,7 +697,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         result['regions'] = json.loads(result['regions_json']) if result['regions_json'] else []
                         del result['sectors_json']
                         del result['regions_json']
-                    except:
+                    except (json.JSONDecodeError, KeyError, TypeError):
                         result['sectors'] = []
                         result['regions'] = []
 
@@ -717,11 +717,11 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
         Get platform statistics summary.
-        
+
         Args:
             org_id: organisation ID making the request
             days: Number of days to look back
-            
+
         Returns:
             Statistics summary dictionary
         """
@@ -735,11 +735,11 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
 
                 # Basic submission statistics
                 cursor = conn.execute("""
-                    SELECT 
+                    SELECT
                         COUNT(DISTINCT submission_id) as total_submissions,
                         COUNT(DISTINCT submitter_org_id) as active_organisations,
                         AVG(confidence) as avg_confidence
-                    FROM submissions 
+                    FROM submissions
                     WHERE submission_timestamp >= datetime('now', '-{} days')
                 """.format(days))
 
@@ -811,10 +811,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def upsert_organisation(self, org_data: Dict[str, Any]) -> bool:
         """
         Insert or update organisation information.
-        
+
         Args:
             org_data: organisation data dictionary
-            
+
         Returns:
             True if successful
         """
@@ -834,7 +834,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                    details: Dict[str, Any] = None) -> None:
         """Internal method to log access."""
         conn.execute("""
-            INSERT INTO access_logs 
+            INSERT INTO access_logs
             (organisation_id, action, resource_type, resource_id, details_json)
             VALUES (?, ?, ?, ?, ?)
         """, (
@@ -850,14 +850,14 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                    details: Dict[str, Any] = None) -> bool:
         """
         Log an access event for auditing purposes.
-        
+
         Args:
             org_id: organisation ID performing the action
             action: Action performed (e.g., 'READ', 'SUBMIT', 'QUERY')
             resource_type: Type of resource accessed (optional)
             resource_id: ID of the resource accessed (optional)
             details: Additional details as a dictionary (optional)
-        
+
         Returns:
             True if the log entry was successfully written, False otherwise
         """
@@ -952,12 +952,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                                    access_level: AccessTier = AccessTier.CONTRIBUTOR) -> List[Dict[str, Any]]:
         """
         Search for observables by partial value match.
-        
+
         Args:
             org_id: organisation performing the search
             search_value: Value to search for (supports wildcards)
             access_level: Access level for filtering
-            
+
         Returns:
             List of matching observables
         """
@@ -985,7 +985,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         result['regions'] = json.loads(result['regions_json']) if result['regions_json'] else []
                         del result['sectors_json']
                         del result['regions_json']
-                    except:
+                    except (json.JSONDecodeError, KeyError, TypeError):
                         result['sectors'] = []
                         result['regions'] = []
 
@@ -1004,10 +1004,10 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def get_organisation_info(self, org_id: str) -> Optional[Dict[str, Any]]:
         """
         Get organisation information.
-        
+
         Args:
             org_id: organisation ID to look up
-            
+
         Returns:
             organisation data or None if not found
         """
@@ -1032,7 +1032,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     metadata = json.loads(org_data['metadata_json']) if org_data['metadata_json'] else {}
                     org_data.update(metadata)
                     del org_data['metadata_json']
-                except:
+                except (json.JSONDecodeError, KeyError, TypeError):
                     del org_data['metadata_json']
 
                 return org_data
@@ -1045,12 +1045,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                        limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get SIGMA rules with optional filtering.
-        
+
         Args:
             org_id: organisation requesting the rules
             rule_status: Filter by rule status (stable, test, experimental)
             limit: Maximum number of rules to return
-            
+
         Returns:
             List of SIGMA rule dictionaries
         """
@@ -1086,12 +1086,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                      limit: int = 100) -> List[Dict[str, Any]]:
         """
         Get campaign information.
-        
+
         Args:
             org_id: organisation requesting campaigns
             active_only: Only return recently active campaigns
             limit: Maximum number of campaigns to return
-            
+
         Returns:
             List of campaign dictionaries
         """
@@ -1118,7 +1118,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                     try:
                         campaign['target_sectors'] = json.loads(campaign['target_sectors_json']) if campaign['target_sectors_json'] else []
                         del campaign['target_sectors_json']
-                    except:
+                    except (json.JSONDecodeError, KeyError, TypeError):
                         campaign['target_sectors'] = []
 
                     results.append(campaign)
@@ -1137,12 +1137,12 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                        actions: List[str] = None) -> List[Dict[str, Any]]:
         """
         Get access logs for auditing.
-        
+
         Args:
             org_id: organisation to get logs for
             days: Number of days to look back
             actions: Filter by specific actions
-            
+
         Returns:
             List of access log entries
         """
@@ -1153,8 +1153,8 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                 conn.row_factory = sqlite3.Row
 
                 query = """
-                    SELECT * FROM access_logs 
-                    WHERE organisation_id = ? 
+                    SELECT * FROM access_logs
+                    WHERE organisation_id = ?
                     AND timestamp >= datetime('now', '-{} days')
                 """.format(days)
 
@@ -1178,7 +1178,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
                         details = json.loads(log_entry['details_json']) if log_entry['details_json'] else {}
                         log_entry['details'] = details
                         del log_entry['details_json']
-                    except:
+                    except (json.JSONDecodeError, KeyError, TypeError):
                         log_entry['details'] = {}
                         del log_entry['details_json']
 
@@ -1193,7 +1193,7 @@ class SQLiteFRANKDatabase(BaseFRANKDatabase):
     def health_check(self) -> Dict[str, Any]:
         """
         Perform a health check on the database.
-        
+
         Returns:
             Health status dictionary
         """
@@ -2001,10 +2001,10 @@ def create_sqlite_database(db_path: str = "/tmp/frank_local.db",
                            logger: Optional[logging.Logger] = None) -> SQLiteFRANKDatabase:
     """
     Factory function to create a SQLiteFRANKDatabase instance.
-    
+
     Args:
         db_path: Path to SQLite database file
-        
+
     Returns:
         Configured SQLiteFRANKDatabase instance
     """

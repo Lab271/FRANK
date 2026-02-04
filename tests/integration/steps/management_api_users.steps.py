@@ -8,10 +8,12 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import requests
-import jwt
 import logging
-from hamcrest import assert_that, equal_to, greater_than, has_key, contains_string, is_in
+
+import jwt
+import requests
+from behave import given, then, when
+from hamcrest import assert_that, equal_to, greater_than, has_key
 
 logger = logging.getLogger(__name__)
 

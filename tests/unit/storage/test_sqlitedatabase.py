@@ -46,7 +46,7 @@ class TestSQLiteFRANKDatabase(unittest.TestCase):
         # Check if tables are created
         with sqlite3.connect(self.db_path) as conn:
             cursor = conn.execute("""
-                SELECT name FROM sqlite_master 
+                SELECT name FROM sqlite_master
                 WHERE type='table' AND name NOT LIKE 'sqlite_%'
             """)
             tables = [row[0] for row in cursor.fetchall()]
