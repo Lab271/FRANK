@@ -87,8 +87,9 @@ src/frank/
 │   └── exceptions.py  # Domain exceptions
 ├── storage/           # Database abstraction layer
 │   ├── base.py        # BaseFRANKDatabase abstract interface
-│   ├── sqlite.py      # SQLite implementation (Stage 1)
-│   └── dynamodb.py    # DynamoDB implementation (Stages 2-3)
+│   ├── sqlite.py      # SQLite implementation (Stage 1, all methods)
+│   ├── dynamodb.py    # DynamoDB implementation (Stages 2-3, threat intelligence only)
+│   └── postgresql.py  # PostgreSQL implementation (Management API only)
 └── util/              # Utilities (server, logging, filters, requests)
 
 environments/
@@ -116,6 +117,28 @@ All database implementations extend `BaseFRANKDatabase` (src/frank/storage/base.
 - `health_check()` - Database health status
 
 Access filtering is built into the base class (`_filter_submission_by_access_level`, `_filter_observable_by_access_level`) supporting PUBLIC, OBSERVER, CONTRIBUTOR, PARTNER, and CORE_MEMBER access tiers.
+
+#### Database Implementation Status
+
+**SQLite** (`sqlite.py`): ✅ All methods fully implemented
+- Complete implementation for all stages
+- Single-file database for local development
+- Supports all BaseFRANKDatabase methods
+
+**DynamoDB** (`dynamodb.py`): ⚠️ Partial implementation
+- ✅ Threat intelligence operations (submissions, observables, sightings)
+- ❌ 20 methods raise `NotImplementedError` with fallback guidance:
+  - Organisation CRUD (10 methods) - redirects to SQLite/PostgreSQL
+  - API key management (6 methods) - not needed (AWS Cognito handles auth)
+  - Refresh token management (4 methods) - not needed (AWS Cognito handles tokens)
+- **Design**: DynamoDB handles high-volume threat data; PostgreSQL handles management data
+
+**PostgreSQL** (`postgresql.py`): ✅ Management API operations
+- ✅ Organisation management (CRUD operations)
+- ✅ Organisation member management
+- ✅ Refresh token storage (for logout tracking)
+- ❌ Threat intelligence operations - use DynamoDB instead
+- **Purpose**: Management API backend (organisations, members) in cloud deployments
 
 ### Data Models (Pydantic v2)
 
@@ -155,7 +178,8 @@ FRANK uses three test layers for confident evolution:
    - Files ending in `*_test.py` are part of pytest suite
    - Each spike has README.md documenting hypothesis, approach, results, decisions
    - Run validation tests: `pytest tests/spikes/ -k "*_test.py"`
-   - Recent spikes: 010_cognito (AWS Cognito authentication), 011_fastapi (FastAPI testability patterns)
+   - **All spikes** (001-015): genparse, filter, pydantic, sqlite, server, dynamodb, fastapi, aws_tf, aws_ecs_basic, aws_alb, aws_ssl, aws_dynamodb, aws_observability, cognito, fastapi_testing
+   - See spike README files for hypothesis, results, and integration status
 
 **Test Philosophy**: Tests are the safety net enabling aggressive experimentation. Database abstraction ensures all implementations behave identically.
 
@@ -266,19 +290,32 @@ pytest tests/unit/ -v --cov=src/frank --cov-report=term-missing
 
 ## Recent Developments
 
-### Spike 010: AWS Cognito Authentication
-Time-boxed exploration of AWS Cognito integration for user authentication, token management, and secure API access patterns.
+### Completed Spikes (001-015)
 
-### Spike 011: FastAPI Testability Validation
-Established comprehensive patterns for:
-- Function-based FastAPI architecture for improved testability
-- Bearer token authentication with HTTPBearer security
-- Exception handling (standard and custom HTTPException extensions)
-- Uvicorn development workflow with hot-reload
-- Comprehensive pytest testing patterns with TestClient
-- Request/response logging middleware
+All 15 spikes have been completed and integrated into the FRANK platform. Key learnings:
 
-These patterns are now applicable across all FRANK API implementations.
+**Early Spikes (001-007)**: Core patterns and local development
+- 001_genparse: Submission generation and parsing
+- 002_filter: Access tier filtering logic
+- 003_pydantic: Pydantic v2 model validation
+- 004_sqlite: SQLite database implementation
+- 005_server: FastAPI server patterns
+- 006_dynamodb: DynamoDB integration basics
+- 007_fastapi: FastAPI application structure
+
+**AWS Infrastructure Spikes (008-013)**: Cloud deployment
+- 008_aws_tf: Terraform infrastructure as code
+- 009_aws_ecs_basic: ECS Fargate container orchestration
+- 010_aws_alb: Application Load Balancer setup
+- 011_aws_ssl: SSL/TLS certificate management
+- 012_aws_dynamodb: DynamoDB table design for threat intelligence
+- 013_aws_observability: CloudWatch logging and monitoring
+
+**Authentication & Testing Spikes (014-015)**: Production readiness
+- 014_cognito: AWS Cognito authentication integration, JWT validation, service accounts
+- 015_fastapi_testing: Comprehensive FastAPI testing patterns with TestClient
+
+See `tests/spikes/*/README.md` for detailed hypothesis, approach, and integration status for each spike.
 
 ## Evolutionary Design Philosophy
 
