@@ -9,16 +9,16 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import unittest
-
-from datetime import datetime, timezone
 import uuid
+from datetime import datetime, timezone
 
 from pydantic import ValidationError
 
-from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
-from frank.util.sample_builder import generate_minimal_submission
+from frank.core.models import Submission
 from frank.util import sample_builder
+from frank.util.sample_builder import generate_minimal_submission
+
 
 def stix_uuid(object_type: str) -> str:
     """Generate a STIX-compliant UUID for a given object type."""
@@ -47,28 +47,28 @@ class TestSubmission(unittest.TestCase):
     def test_generate_minimal_submission_defaults(self):
         """Test generating minimal submission with default values."""
         submission = generate_minimal_submission().model_dump()
-        
+
         # Check structure
         self.assertIn('submitter', submission)
         self.assertIn('sighting', submission)
-        
+
         # Check required fields
         submitter = submission['submitter']
         self.assertIn('organisation_id', submitter)
         self.assertEqual(submitter['access_level'], 'partner')  # default
-        
+
         sighting = submission['sighting']
         self.assertIn('sighting_id', sighting)
         self.assertIn('timestamp', sighting)
         self.assertEqual(sighting['confidence'], 69)  # default
         self.assertIn('observables', sighting)
-        
+
         # Check observables structure
         observables = sighting['observables']
         self.assertIn('network', observables)
         self.assertIsInstance(observables['network'], list)
         self.assertEqual(len(observables['network']), 2)  # default IP and domain
-    
+
     def test_generate_minimal_submission_custom_params(self):
         """Test generating minimal submission with custom parameters."""
         submission = generate_minimal_submission(
@@ -77,30 +77,30 @@ class TestSubmission(unittest.TestCase):
             observables=self.valid_observables,
             confidence=85
         ).model_dump()
-        
+
         submitter = submission['submitter']
         self.assertEqual(submitter['organisation_id'], self.valid_org_id)
         self.assertEqual(submitter['access_level'], self.valid_access_level)
-        
+
         sighting = submission['sighting']
         self.assertEqual(sighting['confidence'], 85)
         self.assertEqual(len(sighting['observables']['network']), 2)
-    
+
     def test_generate_minimal_submission_invalid_access_level(self):
         """Test generating submission with invalid access_level raises exception."""
         with self.assertRaises(FRANKValidationError) as context:
             generate_minimal_submission(access_level="invalid_access_level")
-        
+
         self.assertIn("Invalid access level", str(context.exception))
-    
+
     def test_generate_minimal_submission_invalid_confidence(self):
         """Test generating submission with invalid confidence raises exception."""
         with self.assertRaises(FRANKValidationError):
             generate_minimal_submission(confidence=150)
-        
+
         with self.assertRaises(FRANKValidationError):
             generate_minimal_submission(confidence=-10)
-    
+
     def test_generate_minimal_submission_invalid_observable_type(self):
         """Test generating submission with invalid observable type raises exception."""
         invalid_observables = [
@@ -110,10 +110,10 @@ class TestSubmission(unittest.TestCase):
                 "value": "some_value"
             }
         ]
-        
+
         with self.assertRaises(FRANKValidationError) as context:
             generate_minimal_submission(observables=invalid_observables)
-        
+
         self.assertIn("Invalid observable type", str(context.exception))
 
     def test_get_observables_by_category(self):
@@ -285,13 +285,13 @@ class TestSampleBuilderComprehensive(unittest.TestCase):
         self.assertIsNotNone(submission.sighting.impact)
         self.assertEqual(submission.sighting.threat_context.campaign.name, campaign_context['name'])
         self.assertEqual(submission.sighting.sigma_detection.rule_id, sigma_detection['rule_id'])
-        self.assertEqual(submission.sighting.impact.financial_impact_eur, impact_data['financial_impact_eur'])        
+        self.assertEqual(submission.sighting.impact.financial_impact_eur, impact_data['financial_impact_eur'])
         self.assertEqual(submission.tlp_level, tlp_level)
         # Robust check for hit_target
         self.assertIsNotNone(submission.hit_target)
         if submission.hit_target:
             self.assertEqual(submission.hit_target.organisation_id, hit_target_org)
-    
+
 class TestSampleBuilderAdditional(unittest.TestCase):
 
     def test_generate_sample_submission(self):
@@ -302,48 +302,6 @@ class TestSampleBuilderAdditional(unittest.TestCase):
         self.assertIsNotNone(getattr(submission, "submitter", None))
         sighting = getattr(submission, "sighting", None)
         self.assertTrue(sighting is not None and hasattr(sighting, "observables"))
-
-    def test_generate_comprehensive_submission_minimal_required(self):
-        """Test generate_comprehensive_submission with minimal required args."""
-        org_id = stix_uuid("identity")
-        hit_target_org = stix_uuid("identity")
-        observables = sample_builder.get_default_observables()
-        submission = sample_builder.generate_comprehensive_submission(
-            org_id=org_id,
-            access_level="partner",
-            hit_target_org=hit_target_org,
-            observables=observables,
-            severity="medium",
-            confidence=80
-        )
-        self.assertIsInstance(submission, Submission)
-        submitter = getattr(submission, "submitter", None)
-        self.assertIsNotNone(submitter)
-        self.assertEqual(getattr(submitter, "organisation_id", None), org_id)
-        sighting = getattr(submission, "sighting", None)
-        self.assertIsNotNone(sighting)
-        self.assertEqual(getattr(sighting, "severity", None), "medium")
-        self.assertEqual(getattr(sighting, "confidence", None), 80)
-
-    def test_generate_comprehensive_submission_missing_optional(self):
-        """Test generate_comprehensive_submission with missing optional fields."""
-        org_id = stix_uuid("identity")
-        observables = sample_builder.get_default_observables()
-        submission = sample_builder.generate_comprehensive_submission(
-            org_id=org_id,
-            access_level="partner",
-            observables=observables,
-            severity="low",
-            confidence=50
-        )
-        self.assertIsInstance(submission, Submission)
-        sighting = getattr(submission, "sighting", None)
-        self.assertIsNotNone(sighting)
-        self.assertEqual(getattr(sighting, "severity", None), "low")
-        self.assertEqual(getattr(sighting, "confidence", None), 50)
-        # Optional fields should be None or default
-        tc = getattr(sighting, "threat_context", None)
-        self.assertTrue(tc is None or hasattr(tc, "campaign"))
 
     def test_generate_comprehensive_submission_minimal_required(self):
         """Test generate_comprehensive_submission with minimal required args."""
@@ -382,7 +340,7 @@ class TestSampleBuilderAdditional(unittest.TestCase):
 
 class TestSampleBuilderCoverage(unittest.TestCase):
     """Unit tests for sample_builder utility functions and classes."""
-    
+
     def test_FRANKDatabaseSeeder_abstract(self):
         """Test abstract class cannot be instantiated."""
         # Should not instantiate directly

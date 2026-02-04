@@ -14,15 +14,15 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import os
 import logging
+import os
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Any, Dict
 
-from fastapi import FastAPI
-from fastapi.responses import HTMLResponse
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import HTMLResponse
 
 # Configure logging
 logging.basicConfig(
@@ -60,7 +60,7 @@ async def root():
     Root endpoint serving HTML "Hello World" response.
     """
     current_time = datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S UTC")
-    
+
     html_content = f"""
     <!DOCTYPE html>
     <html>
@@ -111,7 +111,7 @@ async def root():
     <body>
         <div class="container">
             <h1>🚀 Hello World from {APP_NAME}!</h1>
-            
+
             <div class="info">
                 <p><strong>Status:</strong> <span class="status">✅ Running Successfully</span></p>
                 <p><strong>Version:</strong> {APP_VERSION}</p>
@@ -119,7 +119,7 @@ async def root():
                 <p><strong>Current Time:</strong> {current_time}</p>
                 <p><strong>Description:</strong> This is a simple FastAPI application designed for AWS ECS deployment testing.</p>
             </div>
-            
+
             <h2>Available Endpoints:</h2>
             <ul>
                 <li><strong>GET /</strong> - This HTML page</li>
@@ -127,7 +127,7 @@ async def root():
                 <li><strong>GET /health</strong> - Health check endpoint</li>
                 <li><strong>GET /docs</strong> - Interactive API documentation</li>
             </ul>
-            
+
             <div class="links">
                 <a href="/v1/hello">JSON API</a>
                 <a href="/health">Health Check</a>
@@ -137,7 +137,7 @@ async def root():
     </body>
     </html>
     """
-    
+
     logger.info("Root endpoint accessed")
     return html_content
 
@@ -147,7 +147,7 @@ async def json_hello() -> Dict[str, Any]:
     JSON API endpoint returning hello world response.
     """
     current_time = datetime.now(timezone.utc).isoformat()
-    
+
     response = {
         "message": "Hello World from FRANK AWS Spike!",
         "service": APP_NAME,
@@ -166,7 +166,7 @@ async def json_hello() -> Dict[str, Any]:
             ]
         }
     }
-    
+
     logger.info("JSON API endpoint accessed")
     return response
 
@@ -174,12 +174,12 @@ async def json_hello() -> Dict[str, Any]:
 async def health_check() -> Dict[str, Any]:
     """
     Health check endpoint for load balancer monitoring.
-    
+
     Returns HTTP 200 with service status information.
     This endpoint is used by AWS Application Load Balancer for health checks.
     """
     current_time = datetime.now(timezone.utc).isoformat()
-    
+
     # Basic health checks
     health_status = {
         "status": "healthy",
@@ -194,7 +194,7 @@ async def health_check() -> Dict[str, Any]:
             "disk": "ok"
         }
     }
-    
+
     logger.info("Health check endpoint accessed")
     return health_status
 
@@ -202,7 +202,7 @@ async def health_check() -> Dict[str, Any]:
 async def app_info() -> Dict[str, Any]:
     """
     Application information endpoint.
-    
+
     Returns detailed information about the application and environment.
     """
     return {
@@ -276,9 +276,9 @@ if __name__ == "__main__":
     # Configuration
     host = os.getenv("HOST", "0.0.0.0")
     port = int(os.getenv("PORT", "8000"))
-    
+
     logger.info(f"Starting {APP_NAME} on {host}:{port}")
-    
+
     # Run the application
     uvicorn.run(
         "008_aws_spike:app",

@@ -9,10 +9,11 @@ SPDX-License-Identifier: Apache-2.0
 import logging
 import os
 import tempfile
+
 import pytest
 
-from frank.storage.sqlite import create_sqlite_database
 from frank.storage.exceptions import FRANKStorageError
+from frank.storage.sqlite import create_sqlite_database
 
 
 @pytest.fixture

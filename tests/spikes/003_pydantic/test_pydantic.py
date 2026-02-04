@@ -5,11 +5,11 @@ Handles parsing and generation of FRANK sighting submissions in YAML format.
 Second attemtpt using Pydantic models (v2 compatible).
 """
 
-import yaml
 import uuid
 from datetime import datetime, timezone
 from typing import List, Optional
 
+import yaml
 from pydantic import BaseModel, Field, field_validator, model_validator
 
 # ================================
@@ -47,8 +47,8 @@ class Observable(BaseModel):
             role=role,
             port=port
         )
-    
-    @classmethod 
+
+    @classmethod
     def create_domain(cls, value: str, role: str = None):
         """Factory method for domain observables"""
         return cls(
@@ -82,12 +82,12 @@ class Sighting(BaseModel):
             self.sighting_id = f"sighting--{uuid.uuid4()}"
         if not self.timestamp:
             self.timestamp = datetime.utcnow()
-            
+
         # Validate observation times
         if self.first_observed and self.last_observed and self.first_observed > self.last_observed:
             raise ValueError("first_observed cannot be after last_observed")
         return self
-    
+
     @classmethod
     def create(cls, observables: Observables = None, confidence: int = 69, severity: str = None, observation_count: int = 1):
         """Factory method for creating sightings"""
@@ -104,7 +104,7 @@ class Submitter(BaseModel):
     organisation_type: str = Field(default="cyber_partner", description="organisation type")
     access_level: Optional[str] = Field(None, description="organisation tier")
     sector: Optional[str] = Field(None, description="Industry sector")
-    region: Optional[str] = Field(None, description="Geographic region")    
+    region: Optional[str] = Field(None, description="Geographic region")
 
     @field_validator('access_level', mode='before')
     def validate_type(cls, v):
@@ -112,8 +112,8 @@ class Submitter(BaseModel):
         if v not in allowed_types:
             raise ValueError(f'Tier type must be one of: {allowed_types}')
         return v
-    
-    @model_validator(mode='after') 
+
+    @model_validator(mode='after')
     def ensure_org_id(self):
         """Ensure organisation ID is always set"""
         if not self.organisation_id:
@@ -131,15 +131,15 @@ class Submitter(BaseModel):
         )
 
 class HitTarget(BaseModel):
-    """Affected organisation with privacy controls. """   
-    organisation_id: Optional[str] = Field(None, description="STIX identity for affected organisation") 
+    """Affected organisation with privacy controls. """
+    organisation_id: Optional[str] = Field(None, description="STIX identity for affected organisation")
     sector: str = Field(..., min_length=1, description="Industry sector of target")
     organisation_type: Optional[str] = Field(default="customer", description="organisation type")
     organisation_size: Optional[str] = Field(None, description="organisation size category")
     region: Optional[str] = Field(None, description="Geographic region")
     anonymization_level: Optional[str] = Field(default="high", description="Data anonymization level")
-    
-    @model_validator(mode='after') 
+
+    @model_validator(mode='after')
     def ensure_org_id(self):
         """Ensure organisation ID is always set"""
         if not self.organisation_id:
@@ -152,7 +152,7 @@ class HitTarget(BaseModel):
         """Normalize organisation size categories"""
         if v is None:
             return v
-            
+
         size_mappings = {
             'small': 'small',
             'sme': 'small',
@@ -163,7 +163,7 @@ class HitTarget(BaseModel):
             'enterprise': 'large',
             'multinational': 'large'
         }
-        
+
         normalized = v.lower().strip()
         return size_mappings.get(normalized, v)
 
@@ -186,11 +186,11 @@ class Submission(BaseModel):
     tlp_level: Optional[str] = Field('GREEN', description="TLP classification")
 
     submitter: Submitter = Field(..., description="Submitting organisation")
-    hit_target: Optional[HitTarget] = Field(None, description="Affected organisation")  
+    hit_target: Optional[HitTarget] = Field(None, description="Affected organisation")
     sighting: Sighting = Field(..., description="Sighting details")
 
-    
-    @model_validator(mode='after') 
+
+    @model_validator(mode='after')
     def ensure_org_id(self):
         """Ensure organisation ID is always set"""
         if not self.submission_id:
@@ -232,11 +232,11 @@ class Submission(BaseModel):
         data = yaml.safe_load(yaml_string)
         if 'submission' not in data:
             raise ValueError("YAML does not contain 'submission' key")
-        return cls.model_validate(data['submission'])   
+        return cls.model_validate(data['submission'])
 
 class FrankSightingGenerator:
     """Generator for creating FRANK sightings programmatically."""
-    
+
     @staticmethod
     def create_minimal_sighting(
         access_level: str,
@@ -246,7 +246,7 @@ class FrankSightingGenerator:
         domain: str = None
     ) -> Submission:
         """Create a minimal FRANK sighting submission."""
-        
+
         submitter = Submitter.create(access_level=access_level)
         if target_sector:
             hit_target = HitTarget.create(sector=target_sector)
@@ -258,7 +258,7 @@ class FrankSightingGenerator:
             network_observables.append(Observable.create_domain(domain))
 
         sighting = Sighting.create(confidence=confidence, observables=Observables(network=network_observables))
-        
+
         return Submission(
             submitter=submitter,
             hit_target=hit_target,
@@ -271,25 +271,25 @@ class FrankSightingGenerator:
     #     confidence: int = 87
     # ) -> FrankSubmission:
     #     """Create a sample banking threat sighting."""
-        
+
     #     submitter = Submitter.create(
     #         access_level=submitter_tier,
     #         sector="cybersecurity_services",
     #         region="nl_north_holland"
     #     )
-        
+
     #     hit_target = HitTarget.create(
     #         sector="financial_services",
     #         organisation_size="medium",
     #         region="nl_north_holland"
     #     )
-        
+
     #     sighting = Sighting.create(
     #         confidence=confidence,
     #         severity="high",
     #         observation_count=23
     #     )
-        
+
     #     network_observables = [
     #         NetworkObservable.create_ipv4(
     #             value="185.220.102.45",
@@ -301,7 +301,7 @@ class FrankSightingGenerator:
     #             role="phishing_domain"
     #         )
     #     ]
-        
+
     #     return FrankSubmission(
     #         submitter=submitter,
     #         hit_target=hit_target,
@@ -312,41 +312,41 @@ class FrankSightingGenerator:
 
 # class FrankSightingParser:
 #     """Parser for processing FRANK sighting submissions."""
-    
+
 #     @staticmethod
 #     def validate_submission(submission: FrankSubmission) -> List[str]:
 #         """Validate a FRANK submission and return list of errors."""
 #         errors = []
-        
+
 #         # Validate required fields
 #         if not submission.submitter.organisation_id:
 #             errors.append("Submitter organisation_id is required")
-        
+
 #         if not submission.hit_target.organisation_id:
 #             errors.append("Hit target organisation_id is required")
-        
+
 #         if not submission.sighting.sighting_id:
 #             errors.append("Sighting ID is required")
-        
+
 #         # Validate confidence range
 #         if not 0 <= submission.sighting.confidence <= 100:
 #             errors.append("Confidence must be between 0 and 100")
-        
+
 #         # Validate tier
 #         valid_tiers = ["public", "observer", "contributor", "partner", "core_member"]
 #         if submission.submitter.access_level not in valid_tiers:
 #             errors.append(f"Invalid access_level: {submission.submitter.access_level}")
-        
+
 #         # Validate network observables
 #         if not submission.observables.get("network"):
 #             errors.append("At least one network observable is required")
-        
+
 #         for obs in submission.observables.get("network", []):
 #             if not obs.value:
 #                 errors.append("Network observable value is required")
 #             if obs.type not in ["ipv4", "ipv6", "domain", "url"]:
 #                 errors.append(f"Invalid network observable type: {obs.type}")
-        
+
 #         return errors
 
 #     @staticmethod
@@ -357,7 +357,7 @@ class FrankSightingGenerator:
 #             "domains": [],
 #             "urls": []
 #         }
-        
+
 #         for obs in submission.observables.get("network", []):
 #             if obs.type in ["ipv4", "ipv6"]:
 #                 iocs["ip_addresses"].append(obs.value)
@@ -365,7 +365,7 @@ class FrankSightingGenerator:
 #                 iocs["domains"].append(obs.value)
 #             elif obs.type == "url":
 #                 iocs["urls"].append(obs.value)
-        
+
 #         return iocs
 
 #     @staticmethod
@@ -374,12 +374,12 @@ class FrankSightingGenerator:
 #         # Create a copy to avoid modifying original
 #         import copy
 #         anonymized = copy.deepcopy(submission)
-        
+
 #         if access_level == "public":
 #             # Hash all observables for public access
 #             for obs in anonymized.observables.get("network", []):
 #                 obs.value = f"hash_{hash(obs.value) % 10000:04d}"
-        
+
 #         elif access_level == "observer":
 #             # Partial anonymization for observers
 #             for obs in anonymized.observables.get("network", []):
@@ -387,7 +387,7 @@ class FrankSightingGenerator:
 #                     parts = obs.value.split(".")
 #                     if len(parts) == 4:
 #                         obs.value = f"{parts[0]}.{parts[1]}.x.x"
-        
+
 #         # Contributors and above get full data
 #         return anonymized
 
@@ -400,10 +400,10 @@ def test_run_spike():
         ip_address="185.220.102.45",
         domain="secure-bank-verify.nl"
     )
-    
+
     print("=== Minimal Sighting YAML No Hit Target ===")
     print(minimal_sighting.to_yaml())
-    
+
     minimal_sighting = generator.create_minimal_sighting(
         access_level="partner",
         target_sector="financial_services",
@@ -411,7 +411,7 @@ def test_run_spike():
         ip_address="185.220.102.45",
         domain="secure-bank-verify.nl"
     )
-    
+
     print("=== Minimal Sighting YAML With Hit Target ===")
     print(minimal_sighting.to_yaml())
 

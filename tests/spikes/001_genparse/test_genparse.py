@@ -2,11 +2,11 @@
 """
 FRANK Platform - Sighting Parser and Generator
 
-DESCRIPTION:    
-Handles parsing and generation of FRANK sighting submissions in YAML format.    
+DESCRIPTION:
+Handles parsing and generation of FRANK sighting submissions in YAML format.
 
 SPIKE HYPOTHESIS:
-Can Python dataclasses provide a more maintainable and type-safe foundation for FRANK 
+Can Python dataclasses provide a more maintainable and type-safe foundation for FRANK
 threat intelligence data models compared to traditional dictionary-based approaches?
 
 RATIONALE:
@@ -31,11 +31,12 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import yaml
 import uuid
-from typing import Dict, List, Optional, Any
-from dataclasses import dataclass, asdict
+from dataclasses import asdict, dataclass
 from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
+import yaml
 
 
 @dataclass
@@ -168,17 +169,17 @@ class FrankSubmission:
     def from_dict(cls, data: Dict[str, Any]) -> 'FrankSubmission':
         """Create FrankSubmission from dictionary."""
         submission_data = data["submission"]
-        
+
         submitter = Submitter(**submission_data["submitter"])
         hit_target = HitTarget(**submission_data["hit_target"])
         sighting = Sighting(**submission_data["sighting"])
-        
+
         observables = {"network": []}
         if "observables" in submission_data and "network" in submission_data["observables"]:
             observables["network"] = [
                 NetworkObservable(**obs) for obs in submission_data["observables"]["network"]
             ]
-        
+
         return cls(
             submitter=submitter,
             hit_target=hit_target,
@@ -195,7 +196,7 @@ class FrankSubmission:
 
 class FrankSightingGenerator:
     """Generator for creating FRANK sightings programmatically."""
-    
+
     @staticmethod
     def create_minimal_sighting(
         submitter_access_level: str,
@@ -205,15 +206,15 @@ class FrankSightingGenerator:
         domain: str = None
     ) -> FrankSubmission:
         """Create a minimal FRANK sighting submission."""
-        
+
         submitter = Submitter.create(access_level=submitter_access_level)
         hit_target = HitTarget.create(sector=target_sector)
         sighting = Sighting.create(confidence=confidence)
-        
+
         network_observables = [NetworkObservable.create_ipv4(ip_address)]
         if domain:
             network_observables.append(NetworkObservable.create_domain(domain))
-        
+
         return FrankSubmission(
             submitter=submitter,
             hit_target=hit_target,
@@ -227,25 +228,25 @@ class FrankSightingGenerator:
         confidence: int = 87
     ) -> FrankSubmission:
         """Create a sample banking threat sighting."""
-        
+
         submitter = Submitter.create(
             access_level=submitter_access_level,
             sector="cybersecurity_services",
             region="nl_north_holland"
         )
-        
+
         hit_target = HitTarget.create(
             sector="financial_services",
             organisation_size="medium",
             region="nl_north_holland"
         )
-        
+
         sighting = Sighting.create(
             confidence=confidence,
             severity="high",
             observation_count=23
         )
-        
+
         network_observables = [
             NetworkObservable.create_ipv4(
                 value="185.220.102.45",
@@ -257,7 +258,7 @@ class FrankSightingGenerator:
                 role="phishing_domain"
             )
         ]
-        
+
         return FrankSubmission(
             submitter=submitter,
             hit_target=hit_target,
@@ -268,41 +269,41 @@ class FrankSightingGenerator:
 
 class FrankSightingParser:
     """Parser for processing FRANK sighting submissions."""
-    
+
     @staticmethod
     def validate_submission(submission: FrankSubmission) -> List[str]:
         """Validate a FRANK submission and return list of errors."""
         errors = []
-        
+
         # Validate required fields
         if not submission.submitter.organisation_id:
             errors.append("Submitter organisation_id is required")
-        
+
         if not submission.hit_target.organisation_id:
             errors.append("Hit target organisation_id is required")
-        
+
         if not submission.sighting.sighting_id:
             errors.append("Sighting ID is required")
-        
+
         # Validate confidence range
         if not 0 <= submission.sighting.confidence <= 100:
             errors.append("Confidence must be between 0 and 100")
-        
+
         # Validate tier
         valid_tiers = ["public", "observer", "contributor", "partner", "core_member"]
         if submission.submitter.access_level not in valid_tiers:
             errors.append(f"Invalid access_level: {submission.submitter.access_level}")
-        
+
         # Validate network observables
         if not submission.observables.get("network"):
             errors.append("At least one network observable is required")
-        
+
         for obs in submission.observables.get("network", []):
             if not obs.value:
                 errors.append("Network observable value is required")
             if obs.type not in ["ipv4", "ipv6", "domain", "url"]:
                 errors.append(f"Invalid network observable type: {obs.type}")
-        
+
         return errors
 
     @staticmethod
@@ -313,7 +314,7 @@ class FrankSightingParser:
             "domains": [],
             "urls": []
         }
-        
+
         for obs in submission.observables.get("network", []):
             if obs.type in ["ipv4", "ipv6"]:
                 iocs["ip_addresses"].append(obs.value)
@@ -321,7 +322,7 @@ class FrankSightingParser:
                 iocs["domains"].append(obs.value)
             elif obs.type == "url":
                 iocs["urls"].append(obs.value)
-        
+
         return iocs
 
     @staticmethod
@@ -330,12 +331,12 @@ class FrankSightingParser:
         # Create a copy to avoid modifying original
         import copy
         anonymized = copy.deepcopy(submission)
-        
+
         if access_level == "public":
             # Hash all observables for public access
             for obs in anonymized.observables.get("network", []):
                 obs.value = f"hash_{hash(obs.value) % 10000:04d}"
-        
+
         elif access_level == "observer":
             # Partial anonymization for observers
             for obs in anonymized.observables.get("network", []):
@@ -343,7 +344,7 @@ class FrankSightingParser:
                     parts = obs.value.split(".")
                     if len(parts) == 4:
                         obs.value = f"{parts[0]}.{parts[1]}.x.x"
-        
+
         # Contributors and above get full data
         return anonymized
 
@@ -358,47 +359,47 @@ def test_run_spike():
         ip_address="185.220.102.45",
         domain="secure-bank-verify.nl"
     )
-    
+
     print("=== Minimal Sighting YAML ===")
     print(minimal_sighting.to_yaml())
-    
+
     # Generate a complete banking threat sighting
     banking_sighting = generator.create_banking_threat_sighting()
-    
+
     print("\n=== Banking Threat Sighting YAML ===")
     print(banking_sighting.to_yaml())
-    
+
     # Parse YAML back to object
     yaml_string = minimal_sighting.to_yaml()
     parsed_sighting = FrankSubmission.from_yaml(yaml_string)
-    
+
     print("\n=== Parsed Sighting (Round-trip test) ===")
     print(f"Submitter Tier: {parsed_sighting.submitter.access_level}")
     print(f"Target Sector: {parsed_sighting.hit_target.sector}")
     print(f"Confidence: {parsed_sighting.sighting.confidence}")
     print(f"Network Observables: {len(parsed_sighting.observables['network'])}")
-    
+
     # Validate submission
     parser = FrankSightingParser()
     errors = parser.validate_submission(parsed_sighting)
-    
-    print(f"\n=== Validation Results ===")
+
+    print("\n=== Validation Results ===")
     if errors:
         print("Validation errors:")
         for error in errors:
             print(f"- {error}")
     else:
         print("Submission is valid")
-    
+
     # Extract IoCs
     iocs = parser.extract_iocs(parsed_sighting)
-    print(f"\n=== Extracted IoCs ===")
+    print("\n=== Extracted IoCs ===")
     print(f"IP Addresses: {iocs['ip_addresses']}")
     print(f"Domains: {iocs['domains']}")
-    
+
     # Test anonymization
     anonymized = parser.anonymize_submission(parsed_sighting, "observer")
-    print(f"\n=== Anonymized for Observer ===")
+    print("\n=== Anonymized for Observer ===")
     print(anonymized.to_yaml())
     assert True
 

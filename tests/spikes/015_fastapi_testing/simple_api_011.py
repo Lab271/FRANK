@@ -28,18 +28,19 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import argparse
-from functools import lru_cache
 import logging
 import os
-from pathlib import Path
 import time
-from typing import Dict, Any, Optional
+from functools import lru_cache
+from pathlib import Path
+from typing import Any, Dict
 
-from fastapi import FastAPI, HTTPException, Depends, status, Request
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from fastapi.responses import JSONResponse
-from fastapi.middleware.cors import CORSMiddleware
 import uvicorn
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
 
 # ===================================
 # Configuration
@@ -51,17 +52,17 @@ def get_config():
         "SETTING_A": os.environ["SETTING_A"],
         "SETTING_N": os.environ["SETTING_N"],
     }
-  
+
 
 # ===================================
 # Logging Setup
 # ===================================
 def setup_logging(silent=False):
     """Setup logging to match Uvicorn's colored output, a bit over the top but nice for dev"""
-    
+
     if silent:
         # Silent mode - disable ALL logging
-       
+
         # Specifically silence known loggers
         for logger_name in ['uvicorn', 'uvicorn.access', 'uvicorn.error', 'fastapi', 'root']:
             logger = logging.getLogger(logger_name)
@@ -70,34 +71,34 @@ def setup_logging(silent=False):
             # Remove all handlers
             for handler in logger.handlers[:]:
                 logger.removeHandler(handler)
-        
+
         return logging.getLogger("uvicorn")  # Return a silenced logger
-    
+
     # Try to use Uvicorn's colored formatter
     try:
         from uvicorn.logging import DefaultFormatter
-        
+
         # Create a colored formatter like Uvicorn uses
         formatter = DefaultFormatter(fmt="%(levelprefix)s %(message)s")
-        
+
         # Setup root logger with the colored formatter
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
-        
+
         # Remove existing handlers
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-        
+
         # Add new handler with colored formatter
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
-        
+
         # Also setup uvicorn logger specifically
         uvicorn_logger = logging.getLogger("uvicorn")
         uvicorn_logger.setLevel(logging.INFO)
         return uvicorn_logger
-        
+
     except ImportError:
         # Fallback to basic colored format if Uvicorn formatter not available
         logging.basicConfig(
@@ -115,7 +116,7 @@ def setup_logging(silent=False):
 
 class UnauthenticatedError(HTTPException):
     """Custom HTTPException extension for authentication errors"""
-    
+
     def __init__(self, detail: str = "Custom unauthorized error"):
         super().__init__(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -129,7 +130,7 @@ class InternalError(HTTPException):
     def __init__(self, detail: str = "Custom internal server error"):
         super().__init__(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=detail   
+            detail=detail
         )
 
 # ====================================
@@ -139,7 +140,7 @@ class InternalError(HTTPException):
 def create_app() -> FastAPI:
     """
     Create and configure FastAPI application
-    
+
     Returns:
         FastAPI: Configured FastAPI application instance
     """
@@ -150,7 +151,7 @@ def create_app() -> FastAPI:
     def verify_token(credentials: HTTPAuthorizationCredentials = Depends(security)) -> str:
         """
         Verify Bearer token authentication
-        
+
         For testing purposes, accepts 'valid-token' as a valid token.
         In production, this would validate against a real authentication system.
         """
@@ -163,7 +164,7 @@ def create_app() -> FastAPI:
         description="Spike for validating FastAPI testability patterns",
         version="0.11.0"
     )
-    
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -180,22 +181,22 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start_time = time.time()
-               
+
         response = await call_next(request)
-        
+
         process_time = time.time() - start_time
         logger.info(
             f"Time: {process_time:.4f}s"
         )
-        
+
         return response
-    
+
     # 1. Public endpoint - no authentication required
     @app.get("/")
     async def public_endpoint() -> Dict[str, Any]:
         """
         Public endpoint accessible without authentication
-        
+
         Returns:
             Dict containing success message and endpoint info
         """
@@ -206,16 +207,16 @@ def create_app() -> FastAPI:
             "authenticated": False,
             "timestamp": time.time()
         }
-    
+
     # 2. Protected endpoint - Bearer token authentication required
     @app.get("/protected")
     async def protected_endpoint(token: str = Depends(verify_token)) -> Dict[str, Any]:
         """
         Protected endpoint requiring Bearer token authentication
-        
+
         Args:
             token: Validated Bearer token from verify_token dependency
-            
+
         Returns:
             Dict containing success message and user info
         """
@@ -228,65 +229,65 @@ def create_app() -> FastAPI:
             "user_id": "test-user",
             "timestamp": time.time()
         }
-    
+
     # 3. Exception endpoint - raises standard exception leading to 500
     @app.get("/error")
     async def exception_endpoint() -> Dict[str, Any]:
         """
         Exception endpoint that raises a controlled exception
-        
+
         Raises:
             HTTPException: HTTP 500 exception for testing purposes
         """
         logger.error("Exception endpoint accessed - raising controlled exception")
         # Use HTTPException instead of generic Exception for proper handling
         raise InternalError(detail="This is a controlled exception for testing purposes")
-    
+
     # 3b. Python exception endpoint - raises Python exception that gets handled
     @app.get("/python-error")
     async def python_exception_endpoint() -> Dict[str, Any]:
         """
         Python exception endpoint that raises a raw Python exception
-        
+
         This demonstrates how the global exception handler converts Python
         exceptions into proper HTTP 500 responses.
-        
+
         Raises:
             ValueError: Python exception that gets caught by global handler
         """
         logger.error("Python exception endpoint accessed - raising ValueError")
         # This will be caught by the global exception handler
         raise ValueError("This is a Python exception converted to HTTP 500")
-    
+
     # 4. Custom error endpoint - raises custom HTTPException extension
     @app.get("/unauthorized")
     async def custom_error_endpoint() -> Dict[str, Any]:
         """
         Custom error endpoint that raises UnauthenticatedError
-        
+
         Raises:
             UnauthenticatedError: Custom HTTPException extension
         """
         logger.warning("Custom error endpoint accessed - raising UnauthenticatedError")
         raise UnauthenticatedError("Custom unauthorized error from endpoint")
-    
+
     # Global exception handler for unhandled exceptions
     @app.exception_handler(Exception)
     async def global_exception_handler(request: Request, exc: Exception):
         """
         Global exception handler for unhandled exceptions
-        
+
         Args:
             request: The request that caused the exception
             exc: The exception that was raised
-            
+
         Returns:
             JSONResponse with error details
         """
         # Don't handle HTTPExceptions - let FastAPI handle those
         if isinstance(exc, HTTPException):
             raise exc
-            
+
         logger.error(f"Unhandled exception: {str(exc)}")
         return JSONResponse(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -298,13 +299,13 @@ def create_app() -> FastAPI:
                 "timestamp": time.time()
             }
         )
-    
+
     # Health check endpoint for monitoring
     @app.get("/health")
     async def health_check() -> Dict[str, Any]:
         """
         Health check endpoint for monitoring and load balancing
-        
+
         Returns:
             Dict containing health status information
         """
@@ -319,7 +320,7 @@ def create_app() -> FastAPI:
             "SETTING_N": current_config['SETTING_N'],
             "filename": Path(__file__).name, # "simple_api_011.py"
         }
-    
+
     return app
 
 
@@ -355,30 +356,30 @@ def main():
 
     ### Example configuration settings for the AppConfig
     parser.add_argument("--setting_a", type=str, default=os.getenv("SETTING_A", "default_value_a"), help="Configuration setting A (default: SETTING_A or 'default_value_a')")
-    parser.add_argument("--setting_n", type=str, default=os.getenv("SETTING_N", "default_value_n"), help="Configuration setting N (default: SETTING_N or 'default_value_n')")   
+    parser.add_argument("--setting_n", type=str, default=os.getenv("SETTING_N", "default_value_n"), help="Configuration setting N (default: SETTING_N or 'default_value_n')")
 
     args = parser.parse_args()
-    
+
     # Set environment variables with command-line overrides
     # This way get_config() will pick them up when called
     os.environ["SETTING_A"] = args.setting_a
     os.environ["SETTING_N"] = args.setting_n
-    
+
     # Setup logging based on silent flag
     if args.silent:
         logger = setup_logging(silent=True)
         # Set uvicorn log level to critical+ to silence it completely
         args.log_level = "critical"
-        # Also disable uvicorn's own logging       
+        # Also disable uvicorn's own logging
     else:
         logger = setup_logging(silent=False)
         logger.info(f"Starting FastAPI server on {args.host}:{args.port}")
         logger.info(f"Reload enabled: {args.reload}")
         logger.info(f"Log level: {args.log_level}")
         logger.info(f"Module: {CURRENT_MODULE}")
-        
+
     logging.getLogger('uvicorn').setLevel(getattr(logging, args.log_level.upper()))
-    
+
     # Run uvicorn server with dynamic module name
     uvicorn.run(
         f"{CURRENT_MODULE}:create_app",

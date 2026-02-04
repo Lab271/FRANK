@@ -9,7 +9,8 @@ SPDX-License-Identifier: Apache-2.0
 
 import unittest
 
-from frank.storage.exceptions import FRANKStorageError, FRANKConnectionError, FRANKQueryError
+from frank.storage.exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+
 
 class TestFRANKStorageExceptions(unittest.TestCase):
     """Unit tests for FRANK storage exception classes."""

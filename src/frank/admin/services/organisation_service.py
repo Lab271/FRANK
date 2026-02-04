@@ -273,9 +273,9 @@ class OrganisationService:
             data = await self.client.add_member(organisation_id, username, role)
             return ServiceResult.ok(MemberDTO.from_dict(data))
         except NotFoundError:
-            return ServiceResult.fail(f"Organisation or user not found")
+            return ServiceResult.fail("Organisation or user not found")
         except ConflictError:
-            return ServiceResult.fail(f"User is already a member")
+            return ServiceResult.fail("User is already a member")
         except AdminClientError as e:
             return ServiceResult.fail(e.message)
         except Exception as e:
@@ -296,7 +296,7 @@ class OrganisationService:
             await self.client.remove_member(organisation_id, username)
             return ServiceResult.ok()
         except NotFoundError:
-            return ServiceResult.fail(f"Member not found")
+            return ServiceResult.fail("Member not found")
         except AdminClientError as e:
             return ServiceResult.fail(e.message)
         except Exception as e:

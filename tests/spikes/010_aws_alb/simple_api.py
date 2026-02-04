@@ -12,10 +12,9 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from fastapi import FastAPI
 from datetime import datetime, timezone
-import sys
-import os
+
+from fastapi import FastAPI
 
 import frank
 

@@ -10,26 +10,26 @@ with a consistent API.
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List, Optional
-
 import hashlib
 import logging
+from abc import ABC, abstractmethod
+from typing import Any, Dict, List, Optional
 
-from frank.core.models import Submission, Observable
-from frank.core.enum import ObservableType, AccessTier
+from frank.core.enum import AccessTier, ObservableType
+from frank.core.models import Observable, Submission
+
 
 class BaseFRANKDatabase(ABC):
     """
     Abstract base class defining the interface for FRANK database operations.
     Supports both SQLite and DynamoDB implementations with consistent API.
     """
-    
+
     def __init__(self, connection_params: Dict[str, Any], logger: Optional[logging.Logger] = None):
         self.connection_params = connection_params
         self.logger = logger
         self.initialize()
-    
+
     @abstractmethod
     def initialize(self) -> None:
         """
@@ -42,7 +42,7 @@ class BaseFRANKDatabase(ABC):
             None
         """
         pass
-    
+
     @abstractmethod
     def store_submission(self, submission: Submission) -> None:
         """
@@ -68,7 +68,7 @@ class BaseFRANKDatabase(ABC):
             bool: True if the operation was successful, False otherwise.
         """
         pass
-    
+
     @abstractmethod
     def get_submission_by_id(self, submission_id: str) -> Dict[str, Any]:
         """
@@ -83,7 +83,7 @@ class BaseFRANKDatabase(ABC):
             Dict[str, Any]: The filtered Submission object, or None if not found.
         """
         pass
-    
+
     @abstractmethod
     def query_observables(self, org_id: str, observable_type: ObservableType = None,
                          limit: int = 100, access_level: AccessTier = AccessTier.CONTRIBUTOR,
@@ -104,7 +104,7 @@ class BaseFRANKDatabase(ABC):
             List[Observable]: List of filtered Observable objects matching the filters.
         """
         pass
-    
+
     @abstractmethod
     def get_statistics_summary(self, org_id: str, days: int = 30) -> Dict[str, Any]:
         """
@@ -136,7 +136,7 @@ class BaseFRANKDatabase(ABC):
         pass
 
     @abstractmethod
-    def log_access(self, org_id: str, action: str, 
+    def log_access(self, org_id: str, action: str,
                    resource_type: str = None, details: Dict[str, Any] = None) -> None:
         """
         Log an access event for auditing purposes.
@@ -161,7 +161,7 @@ class BaseFRANKDatabase(ABC):
             Dict[str, Any]: Dictionary containing health status and metadata.
         """
         pass
-     
+
     def hash_observable(self, observable_type: str, observable_value: str) -> str:
         """
         Create a SHA-256 hash for observable deduplication and quick lookups.
@@ -175,7 +175,7 @@ class BaseFRANKDatabase(ABC):
         """
         combined = f"{observable_type}:{observable_value}".lower()
         return hashlib.sha256(combined.encode()).hexdigest()
-    
+
     def _filter_submission_by_access_level(self, submission: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter submission data based on the provided access level.
@@ -219,7 +219,7 @@ class BaseFRANKDatabase(ABC):
                     for obs in obs_list:
                         if 'value' in obs:
                             obs['value'] = obs['value'][:10] + "..." if len(obs['value']) > 10 else obs['value']
-            
+
             # Remove sensitive sections
             filtered.pop('hit_target', None)
             filtered.pop('tlp_level', None)
@@ -228,7 +228,7 @@ class BaseFRANKDatabase(ABC):
         elif access_level == AccessTier.CONTRIBUTOR:
             # Remove only the most sensitive information
             filtered = self._deep_copy(submission)
-            
+
             # Anonymize hit target details
             if 'hit_target' in filtered:
                 hit_target = filtered['hit_target']
@@ -248,7 +248,7 @@ class BaseFRANKDatabase(ABC):
             return [self._deep_copy(item) for item in obj]
         else:
             return obj
-        
+
     def _filter_observable_by_access_level(self, observable: Dict[str, Any], access_level: AccessTier) -> Dict[str, Any]:
         """
         Filter observable data based on the provided access level.

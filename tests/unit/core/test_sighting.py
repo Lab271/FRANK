@@ -9,18 +9,26 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import unittest
-from unittest.mock import patch
-import pytest
-
-import uuid
-from datetime import datetime, timezone, timedelta
 import json
+import unittest
+import uuid
+from datetime import datetime, timedelta, timezone
+from unittest.mock import patch
+
+import pytest
+from pydantic import ValidationError
 
 # Import the models (adjust import path as needed)
-from frank.core.models import Sighting, SeverityLevel, Observables, Observable
-from frank.core.models import ThreatContext, Impact, Campaign, SigmaDetection
-from pydantic import ValidationError
+from frank.core.models import (
+    Campaign,
+    Impact,
+    Observable,
+    Observables,
+    SeverityLevel,
+    Sighting,
+    SigmaDetection,
+    ThreatContext,
+)
 
 
 class TestSighting(unittest.TestCase):
@@ -59,14 +67,14 @@ class TestSighting(unittest.TestCase):
         # Check that default values are set
         self.assertEqual(sighting.confidence, 69)  # Default confidence
         self.assertEqual(sighting.observation_count, 1)  # Default count
-        
+
         # Check that auto-generated fields are populated
         self.assertIsNotNone(sighting.sighting_id)
         self.assertTrue(sighting.sighting_id.startswith("sighting--"))
         self.assertIsInstance(uuid.UUID(sighting.sighting_id.split("--")[1]), uuid.UUID)
         self.assertIsNotNone(sighting.timestamp)
         self.assertIsInstance(sighting.timestamp, datetime)
-        
+
         # Optional fields should be None
         self.assertIsNone(sighting.first_observed)
         self.assertIsNone(sighting.last_observed)
@@ -81,7 +89,7 @@ class TestSighting(unittest.TestCase):
         timestamp = datetime(2024, 1, 15, 10, 30, 0, tzinfo=timezone.utc)
         first_observed = datetime(2024, 1, 15, 9, 0, 0, tzinfo=timezone.utc)
         last_observed = datetime(2024, 1, 15, 11, 0, 0, tzinfo=timezone.utc)
-        
+
         sighting = Sighting(
             sighting_id=sighting_id,
             timestamp=timestamp,
@@ -92,7 +100,7 @@ class TestSighting(unittest.TestCase):
             severity=SeverityLevel.CRITICAL,
             observables=Observables(network=self.valid_network_observables)
         )
-        
+
         self.assertIsInstance(sighting.observables, Observables)
         self.assertEqual(sighting.sighting_id, sighting_id)
         self.assertEqual(sighting.timestamp, timestamp)
@@ -108,19 +116,19 @@ class TestSighting(unittest.TestCase):
         sighting1 = Sighting(observables=Observables(network=self.valid_network_observables))
         self.assertIsNotNone(sighting1.sighting_id)
         self.assertTrue(sighting1.sighting_id.startswith("sighting--"))
-        
+
         # Test with None
         sighting1 = Sighting(sighting_id=None,
                 observables=Observables(network=self.valid_network_observables))
         self.assertIsNotNone(sighting1.sighting_id)
         self.assertTrue(sighting1.sighting_id.startswith("sighting--"))
-        
+
         # Test with empty string
         sighting2 = Sighting(sighting_id="",
                 observables=Observables(network=self.valid_network_observables))
         self.assertIsNotNone(sighting2.sighting_id)
         self.assertTrue(sighting2.sighting_id.startswith("sighting--"))
-        
+
         # Test different IDs are generated
         self.assertNotEqual(sighting1.sighting_id, sighting2.sighting_id)
 
@@ -164,7 +172,7 @@ class TestSighting(unittest.TestCase):
         # Mock the current time
         mock_now = datetime(2024, 2, 1, 12, 0, 0, tzinfo=timezone.utc)
         mock_datetime.now.return_value = mock_now
-        
+
         # Test with not provided
         sighting1 = Sighting(observables=Observables(network=self.valid_network_observables))
         self.assertEqual(sighting1.timestamp, mock_now)
@@ -194,8 +202,8 @@ class TestSighting(unittest.TestCase):
         # Verify timestamps are recent (between before and after)
         self.assertGreaterEqual(sighting1.timestamp, before)
         self.assertLessEqual(sighting1.timestamp, after)
-        
-        self.assertGreaterEqual(sighting2.timestamp, before) 
+
+        self.assertGreaterEqual(sighting2.timestamp, before)
         self.assertLessEqual(sighting2.timestamp, after)
 
     def test_timestamp_string_parsing(self):
@@ -206,7 +214,7 @@ class TestSighting(unittest.TestCase):
             ("2024-01-15T14:30:00+00:00", datetime(2024, 1, 15, 14, 30, 0)),
             ("2024-01-15T14:30:00", datetime(2024, 1, 15, 14, 30, 0)),
         ]
-        
+
         for timestamp_str, expected_dt in test_cases:
             with self.subTest(timestamp_str=timestamp_str):
                 sighting = Sighting(timestamp=timestamp_str,
@@ -221,22 +229,22 @@ class TestSighting(unittest.TestCase):
         """Test that invalid timestamp strings fall back to current time"""
         # Instead of mocking, test that we get a reasonable timestamp (recent)
         before_test = datetime.now(timezone.utc)
-        
+
         invalid_timestamps = [
             "invalid-date",
             "2024-13-45",  # Invalid date
             "not-a-date-at-all",
             "2024/01/15",  # Wrong format
         ]
-        
+
         for invalid_ts in invalid_timestamps:
             with self.subTest(invalid_timestamp=invalid_ts):
-                with self.assertRaises(ValidationError) as cm:
+                with self.assertRaises(ValidationError):
                     sighting = Sighting(timestamp=invalid_ts,
                                         observables=Observables(network=self.valid_network_observables))
- 
+
                     after_test = datetime.now(timezone.utc)
-                
+
                     # Verify the timestamp is between before and after the test
                     # (i.e., it was set to "now" during the test)
                     self.assertGreaterEqual(sighting.timestamp, before_test)
@@ -278,7 +286,7 @@ class TestSighting(unittest.TestCase):
                 sighting = Sighting(confidence=score,
                                     observables=Observables(network=self.valid_network_observables))
                 self.assertEqual(sighting.confidence, score)
-        
+
         # Invalid confidence scores (out of range)
         invalid_scores = [-1, 101, 150, -50]
         for score in invalid_scores:
@@ -295,7 +303,7 @@ class TestSighting(unittest.TestCase):
                 sighting = Sighting(observation_count=count,
                                     observables=Observables(network=self.valid_network_observables))
                 self.assertEqual(sighting.observation_count, count)
-        
+
         # Invalid observation counts (zero or negative)
         invalid_counts = [0, -1, -10]
         for count in invalid_counts:
@@ -313,18 +321,18 @@ class TestSighting(unittest.TestCase):
             SeverityLevel.HIGH,
             SeverityLevel.CRITICAL
         ]
-        
+
         for severity in valid_severities:
             with self.subTest(severity=severity):
                 sighting = Sighting(severity=severity,
                                     observables=Observables(network=self.valid_network_observables))
                 self.assertEqual(sighting.severity, severity)
-        
+
         # Test with string values (should work with enum)
         sighting = Sighting(severity="high",
                             observables=Observables(network=self.valid_network_observables))
         self.assertEqual(sighting.severity, SeverityLevel.HIGH)
-        
+
         # Test None (should be allowed)
         sighting = Sighting(severity=None,
                             observables=Observables(network=self.valid_network_observables))
@@ -334,7 +342,7 @@ class TestSighting(unittest.TestCase):
         """Test that invalid severity raises validation error"""
         with self.assertRaises(ValidationError) as context:
             Sighting(severity="invalid_severity")
-        
+
         self.assertIn("severity", str(context.exception))
 
     def test_observation_times_validation(self):
@@ -348,7 +356,7 @@ class TestSighting(unittest.TestCase):
             last_observed=last,
             observables=Observables(network=self.valid_network_observables)
         )
-        
+
         self.assertEqual(sighting.first_observed, first)
         self.assertEqual(sighting.last_observed, last)
 
@@ -363,19 +371,19 @@ class TestSighting(unittest.TestCase):
                 last_observed=last,
                 observables=Observables(network=self.valid_network_observables)
             )
-        
+
         self.assertIn("first_observed cannot be after last_observed", str(context.exception))
 
     def test_observation_times_same_time(self):
         """Test that same first_observed and last_observed is allowed"""
         same_time = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
-        
+
         sighting = Sighting(
             first_observed=same_time,
             last_observed=same_time,
             observables=Observables(network=self.valid_network_observables)
         )
-        
+
         self.assertEqual(sighting.first_observed, same_time)
         self.assertEqual(sighting.last_observed, same_time)
 
@@ -386,7 +394,7 @@ class TestSighting(unittest.TestCase):
                               observables=Observables(network=self.valid_network_observables))
         self.assertIsNone(sighting1.first_observed)
         self.assertIsNone(sighting1.last_observed)
-        
+
         # One None
         time_val = datetime(2024, 1, 15, 10, 0, 0, tzinfo=timezone.utc)
         sighting2 = Sighting(first_observed=time_val, last_observed=None,
@@ -402,7 +410,7 @@ class TestSighting(unittest.TestCase):
             severity=SeverityLevel.HIGH,
             observation_count=3,
         )
-        
+
         self.assertEqual(sighting.confidence, 90)
         self.assertEqual(sighting.severity, SeverityLevel.HIGH)
         self.assertEqual(sighting.observation_count, 3)
@@ -431,18 +439,18 @@ class TestSighting(unittest.TestCase):
             observation_count=2,
             observables=Observables(network=self.valid_network_observables)
         )
-        
+
         data = sighting.model_dump()
-        
+
         # Check that all fields are present
         expected_fields = [
             "sighting_id", "timestamp", "confidence", "first_observed",
             "last_observed", "observation_count", "severity"
         ]
-        
+
         for field in expected_fields:
             self.assertIn(field, data)
-        
+
         # Check values
         self.assertEqual(data["confidence"], 85)
         self.assertEqual(data["severity"], "high")  # Enum value
@@ -455,12 +463,12 @@ class TestSighting(unittest.TestCase):
                             observables=Observables(network=self.valid_network_observables))  # Other optional fields will be None
 
         data = sighting.model_dump(exclude_none=True)
-        
+
         # Check that None fields are excluded
         self.assertNotIn("first_observed", data)
         self.assertNotIn("last_observed", data)
         self.assertNotIn("severity", data)
-        
+
         # Check that non-None fields are present
         self.assertIn("sighting_id", data)
         self.assertIn("timestamp", data)
@@ -476,7 +484,7 @@ class TestSighting(unittest.TestCase):
         # Test model_dump_json
         json_str = sighting.model_dump_json()
         self.assertIsInstance(json_str, str)
-        
+
         # Parse back to verify format
         data = json.loads(json_str)
         self.assertIn("2024-01-15T14:30:00", data["timestamp"])
@@ -490,7 +498,7 @@ class TestSighting(unittest.TestCase):
             another_extra_field=456,
             observables=Observables(network=self.valid_network_observables)
         )
-        
+
         self.assertEqual(sighting.confidence, 80)
         # Extra fields should not be accessible
         self.assertFalse(hasattr(sighting, 'unknown_field'))
@@ -504,16 +512,16 @@ class TestSighting(unittest.TestCase):
             sighting_id=sighting_id,
             timestamp=timestamp,
             confidence=85,
-            observables=Observables(network=self.valid_network_observables) 
+            observables=Observables(network=self.valid_network_observables)
         )
-        
+
         sighting2 = Sighting(
             sighting_id=sighting_id,
             timestamp=timestamp,
             confidence=85,
             observables=Observables(network=self.valid_network_observables)
         )
-      
+
         # Different instances with same data should be equal
         self.assertEqual(sighting1, sighting2)
 
@@ -534,7 +542,7 @@ class TestSighting(unittest.TestCase):
 
         repr_str = repr(sighting)
         str_str = str(sighting)
-        
+
         self.assertIsInstance(repr_str, str)
         self.assertIsInstance(str_str, str)
         self.assertIn("Sighting", repr_str)
@@ -548,12 +556,12 @@ class TestSighting(unittest.TestCase):
                                  observables=Observables(network=self.valid_network_observables))
         self.assertEqual(sighting_min.confidence, 0)
         self.assertEqual(sighting_max.confidence, 100)
-        
+
         # Large observation count
         sighting_large = Sighting(observation_count=999999,
                                    observables=Observables(network=self.valid_network_observables))
         self.assertEqual(sighting_large.observation_count, 999999)
-        
+
         # Very close timestamps (microsecond difference)
         base_time = datetime(2024, 1, 15, 10, 0, 0, 0, tzinfo=timezone.utc)
         close_time = datetime(2024, 1, 15, 10, 0, 0, 1, tzinfo=timezone.utc)  # 1 microsecond later
@@ -583,9 +591,9 @@ class TestSightingIntegration(unittest.TestCase):
             confidence=85,
             severity=SeverityLevel.HIGH,
             observation_count=3,
-            observables=Observables(network=self.valid_network_observables) 
+            observables=Observables(network=self.valid_network_observables)
         )
-        
+
         # Should be able to access all required properties for submission validation
         self.assertIsNotNone(sighting.sighting_id)
         self.assertIsNotNone(sighting.timestamp)
@@ -600,7 +608,7 @@ class TestSightingIntegration(unittest.TestCase):
         # All IDs should be unique
         ids = [s.sighting_id for s in sightings]
         self.assertEqual(len(ids), len(set(ids)))
-        
+
         # All IDs should follow the pattern
         for sighting_id in ids:
             self.assertTrue(sighting_id.startswith("sighting--"))
@@ -611,7 +619,7 @@ class TestSightingIntegration(unittest.TestCase):
     def test_sighting_timeline_consistency(self):
         """Test sighting with consistent timeline"""
         base_time = datetime(2024, 1, 15, 10, 0, 0)
-        
+
         sighting = Sighting(
             timestamp=base_time,
             first_observed=base_time - timedelta(minutes=5),
@@ -619,7 +627,7 @@ class TestSightingIntegration(unittest.TestCase):
             observation_count=10,
             observables=Observables(network=self.valid_network_observables)
         )
-        
+
         # Timeline should be logically consistent
         self.assertLess(sighting.first_observed, sighting.timestamp)
         self.assertGreater(sighting.last_observed, sighting.timestamp)
@@ -627,7 +635,7 @@ class TestSightingIntegration(unittest.TestCase):
 
 
 class TestSightingPerformance(unittest.TestCase):
-    """Performance-related tests for Sighting"""    
+    """Performance-related tests for Sighting"""
     def setUp(self):
         """Set up test fixtures"""
         self.valid_network_observables = [
@@ -639,26 +647,26 @@ class TestSightingPerformance(unittest.TestCase):
     def test_bulk_creation_performance(self):
         """Test creating many sightings (basic performance check)"""
         import time
-        
+
         start_time = time.time()
         sightings = []
-        
+
         for i in range(100):
             sighting = Sighting(
                 confidence=min(100, 50 + i),
                 severity=SeverityLevel.MEDIUM,
                 observation_count=i + 1,
-                observables=Observables(network=self.valid_network_observables) 
+                observables=Observables(network=self.valid_network_observables)
             )
             sightings.append(sighting)
-        
+
         end_time = time.time()
         elapsed = end_time - start_time
-        
+
         # Should be able to create 100 sightings quickly
         self.assertLess(elapsed, 1.0)  # Less than 1 second
         self.assertEqual(len(sightings), 100)
-        
+
         # All should have unique IDs
         ids = [s.sighting_id for s in sightings]
         self.assertEqual(len(ids), len(set(ids)))
@@ -666,24 +674,24 @@ class TestSightingPerformance(unittest.TestCase):
     def test_datetime_parsing_performance(self):
         """Test performance of datetime parsing"""
         import time
-        
+
         timestamp_strings = [
             "2024-01-15T10:30:00Z",
             "2024-01-15T11:30:00+00:00",
             "2024-01-15T12:30:00"
         ] * 50  # 150 total
-        
+
         start_time = time.time()
-        
+
         sightings = []
         for ts_str in timestamp_strings:
             sighting = Sighting(timestamp=ts_str, confidence=75,
                                 observables=Observables(network=self.valid_network_observables))
             sightings.append(sighting)
-        
+
         end_time = time.time()
         elapsed = end_time - start_time
-        
+
         # Should parse timestamps quickly
         self.assertLess(elapsed, 0.5)  # Less than 0.5 seconds
         self.assertEqual(len(sightings), 150)

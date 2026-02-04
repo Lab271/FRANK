@@ -9,20 +9,21 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
+import uuid
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
+
 from pydantic import (
     BaseModel,
+    ConfigDict,
     Field,
+    field_serializer,
     field_validator,
     model_validator,
-    field_serializer,
-    ConfigDict,
 )
-from typing import Dict, List, Optional, Any
-from datetime import datetime, timezone
-import uuid
 
-from frank.core.enum import ObservableType, AccessTier, SeverityLevel
 from frank import __version__
+from frank.core.enum import AccessTier, ObservableType, SeverityLevel
 
 
 class Observable(BaseModel):
@@ -244,7 +245,7 @@ class Campaign(BaseModel):
         extra="ignore",  # Be forgiving on input
         use_enum_values=True,
     )
-    
+
     id: str = Field(default_factory=lambda: f"campaign--{uuid.uuid4()}", description="Campaign identifier")
     name: Optional[str] = Field(None, description="Campaign name")
     attribution: Optional[str] = Field(None, description="Attributed threat actor")
@@ -265,7 +266,7 @@ class ThreatContext(BaseModel):
         extra="ignore",  # Be forgiving on input
         use_enum_values=True,
     )
-    
+
     campaign: Optional[Campaign] = Field(None, description="Campaign information")
     mitre_attack: Optional[Dict[str, Any]] = Field(None, description="MITRE ATT&CK mapping")
     malware_family: Optional[Dict[str, Any]] = Field(None, description="Malware family data")
@@ -500,7 +501,7 @@ class Submission(BaseModel):
             # Build observables - be forgiving on format
             obs = {}
             for obs_type in ["network", "file", "process"]:
-                obs[obs_type] = []  
+                obs[obs_type] = []
                 if observables_data.get(obs_type):
                     for obs_data in observables_data[obs_type]:
                         try:
@@ -528,7 +529,7 @@ def example_usage():
 
     # 1. Create minimal submission using factory method
     print("1. Creating minimal submission...")
-    minimal = Submission.create_minimal(
+    Submission.create_minimal(
         submitter_access_level=AccessTier.PARTNER,
         target_sector="financial",
         threat_ips=["192.168.1.100", "malicious.example.com"],
@@ -539,7 +540,7 @@ def example_usage():
     print("\n2. Testing validation...")
     try:
         # This should fail validation
-        invalid = Observable(
+        Observable(
             type=ObservableType.IPV4,
             value="not.an.ip.address",  # Invalid IP
         )
@@ -564,13 +565,13 @@ def example_usage():
     }
 
     parsed = Submission.from_legacy_dict(legacy_data)
-    print(f"✓ Legacy format parsed successfully")
+    print("✓ Legacy format parsed successfully")
     print(f"  - Generated org IDs: {parsed.submitter.organisation_id[:12]}...")
     print(f"  - Normalized sector: {parsed.hit_target.sector}")
 
     # 4. Demonstrate 'strong on return'
     print("\n4. Testing 'strong on return' output ...")
-    api_output = parsed.model_dump(exclude_none=True, by_alias=True)
+    parsed.model_dump(exclude_none=True, by_alias=True)
     print("✓ Strict API format generated")
 
     # 5. Demonstrate serialization
@@ -583,9 +584,9 @@ def example_usage():
     # 6. Demonstrate 'strong on return' output
     print("\n6. Testing 'strong on return' output ...")
     strong_output = parsed.model_dump(exclude_none=True, by_alias=True)
-    print("✓ Strong output format generated")  
+    print("✓ Strong output format generated")
     print(f"  - Keys in output: {list(strong_output.keys())}")
-    
+
 
     print("\n=== Pydantic v2 Benefits Demonstrated ===")
     print("✓ Updated validation with helpful error messages")

@@ -8,10 +8,12 @@ Implements "be forgiving on what you receive, strong on what you return" princip
 Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
-from typing import List, Optional, Dict, Any
-from pydantic import BaseModel, Field, ConfigDict
+from typing import Any, Dict, List, Optional
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from frank.core.models import Submission, Submitter
+
 
 # Request models
 class SubmissionRequest(BaseModel):
@@ -21,7 +23,7 @@ class SubmissionRequest(BaseModel):
     model_config = ConfigDict(
         extra="ignore"
     )
-    
+
     submission: Submission = Field(..., description="Submission data")
 
 class OrganisationRequest(BaseModel):
@@ -31,9 +33,9 @@ class OrganisationRequest(BaseModel):
     model_config = ConfigDict(
         extra="ignore"
     )
-    
+
     organisation: Submitter = Field(..., description="Submitter data")
-    
+
 
 # Response models
 class SubmissionResponse(BaseModel):

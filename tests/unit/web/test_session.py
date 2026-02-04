@@ -6,13 +6,14 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import pytest
 from datetime import datetime, timedelta
-from fastapi import Response
 from unittest.mock import MagicMock
 
+import pytest
+from fastapi import Response
+
 from frank.web.config import WebConfig
-from frank.web.middleware.session import SessionManager, SessionData
+from frank.web.middleware.session import SessionData, SessionManager
 
 
 @pytest.fixture

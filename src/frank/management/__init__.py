@@ -10,16 +10,16 @@ SPDX-License-Identifier: Apache-2.0
 
 from frank.management.models import (
     OrganisationCreate,
-    OrganisationUpdate,
-    OrganisationResponse,
     OrganisationListResponse,
-    UserCreate,
-    UserUpdate,
-    UserResponse,
-    UserListResponse,
     OrganisationMemberCreate,
-    OrganisationMemberResponse,
     OrganisationMemberListResponse,
+    OrganisationMemberResponse,
+    OrganisationResponse,
+    OrganisationUpdate,
+    UserCreate,
+    UserListResponse,
+    UserResponse,
+    UserUpdate,
 )
 
 __all__ = [

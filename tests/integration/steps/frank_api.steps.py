@@ -10,12 +10,12 @@ SPDX-License-Identifier: Apache-2.0
 
 # features/steps/frank_api_steps.py
 import json
-import requests
 import time
-from datetime import datetime, timezone, timedelta
-from behave import given, when, then
-from hamcrest import assert_that, equal_to, greater_than, contains_string, has_key, not_none, less_than_or_equal_to
+from datetime import datetime, timedelta, timezone
 
+import requests
+from behave import given, then, when
+from hamcrest import assert_that, contains_string, equal_to, greater_than, has_key, less_than_or_equal_to, not_none
 
 # Configuration (now provided by environment.py via context)
 # API_BASE_URL and context.test_tokens are set in context by environment.py
@@ -25,19 +25,19 @@ class APIClient:
         self.base_url = base_url
         self.session = requests.Session()
         self.last_response = None
-    
+
     def set_auth_token(self, token):
         self.session.headers.update({"Authorization": f"Bearer {token}"})
-    
+
     def clear_auth(self):
         if "Authorization" in self.session.headers:
             del self.session.headers["Authorization"]
-    
+
     def post(self, endpoint, data=None, json_data=None):
         url = f"{self.base_url}{endpoint}"
         self.last_response = self.session.post(url, data=data, json=json_data)
         return self.last_response
-    
+
     def get(self, endpoint, params=None):
         url = f"{self.base_url}{endpoint}"
         self.last_response = self.session.get(url, params=params)
@@ -80,7 +80,7 @@ def step_sightings_exist(context):
     # Submit a test sighting to ensure data exists
     context.api.set_auth_token(context.test_tokens["partner"])
     test_submission = create_test_submission("185.220.102.45", 85)
-    response = context.api.post("/v1/submission", json_data=test_submission)
+    context.api.post("/v1/submission", json_data=test_submission)
     # Allow some time for processing
     time.sleep(0.1)
 
@@ -89,24 +89,24 @@ def step_sightings_exist(context):
 def step_sightings_various_confidence(context):
     context.api.set_auth_token(context.test_tokens["partner"])
     confidence_levels = [60, 75, 85, 95]
-    
+
     for i, confidence in enumerate(confidence_levels):
         submission = create_test_submission(f"10.0.0.{i+1}", confidence)
         context.api.post("/v1/submission", json_data=submission)
-    
+
     time.sleep(0.2)  # Allow processing
 
 
 @given('there are sightings from different sectors and dates')
 def step_sightings_different_sectors(context):
     context.api.set_auth_token(context.test_tokens["core_member"])
-    
+
     # Create submissions for different scenarios
     sectors = ["financial", "healthcare", "retail"]
     for i, sector in enumerate(sectors):
         submission = create_test_submission(f"203.0.113.{i+1}", 80, sector=sector)
         context.api.post("/v1/submission", json_data=submission)
-    
+
     time.sleep(0.2)
 
 
@@ -153,7 +153,7 @@ def step_query_invalid_dates(context, start_date, end_date):
 #         responses.append(response)
 #         if response.status_code == 429:
 #             break
-    
+
 #     context.response = responses[-1]
 
 
@@ -184,7 +184,7 @@ def step_submit_comprehensive(context):
     sighting_data = {}
     for row in context.table:
         sighting_data[row['field']] = row['value']
-    
+
     submission = create_comprehensive_submission(sighting_data)
     context.response = context.api.post("/v1/submission", json_data=submission)
 
@@ -230,21 +230,21 @@ def step_error_contains_message(context, message):
 def step_receive_data_level(context, data_level):
     assert_that(context.response.status_code, equal_to(200))
     response_data = context.response.json()
-    
+
     if data_level == 'aggregated usage':
         # Check for basic statistics fields
         expected_fields = ["total_submissions", "observable_types"]
         for field in expected_fields:
             if field in response_data:
-                assert_that(response_data[field], not_none())        
+                assert_that(response_data[field], not_none())
     elif response_data.get("sightings"):
         sighting = response_data["sightings"][0]
-        
+
         if data_level == "masked":
             # Observer level should have masked values
             if "observable_value" in sighting:
                 assert_that(sighting["observable_value"], contains_string("*"))
-        
+
         elif data_level == "detailed":
             # Partner level should have full observables
             assert_that(sighting, has_key("observable"))
@@ -307,7 +307,7 @@ def step_include_db_status(context):
 @then('sensitive details should be filtered based on my access level')
 def step_sensitive_filtered(context):
     response_data = context.response.json()
-    
+
     # Observer should have limited data
     if context.user_type == "observer":
         # Should not have detailed organisation information

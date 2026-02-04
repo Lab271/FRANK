@@ -10,16 +10,15 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from abc import ABC, abstractmethod
-from typing import Dict, Any, List
-
 import uuid
+from abc import ABC, abstractmethod
 from datetime import datetime, timezone
+from typing import Any, Dict, List
 
 from frank import __version__
 from frank.core.enum import AccessTier, ObservableType
-from frank.core.models import Submission
 from frank.core.exceptions import FRANKValidationError
+from frank.core.models import Submission
 from frank.storage.base import BaseFRANKDatabase
 
 
@@ -29,7 +28,7 @@ class FRANKDatabaseSeeder(ABC):
     @abstractmethod
     def seed(self, db_client: BaseFRANKDatabase) -> None:
         """Seed the database with initial data."""
-        pass 
+        pass
 
 
 class SampleDataSeeder(FRANKDatabaseSeeder):
@@ -172,7 +171,7 @@ class ComprehensiveFixtureSeeder(FRANKDatabaseSeeder):
 def get_default_observables() -> List[Dict[str, Any]]:
     """
     Generate default sample observables for testing/demo purposes.
-    
+
     Returns:
         List of sample observable dictionaries
     """
@@ -184,11 +183,11 @@ def get_default_observables() -> List[Dict[str, Any]]:
         },
         {
             "id": f"domain--{uuid.uuid4()}",
-            "type": "domain", 
+            "type": "domain",
             "value": "secure-bank-verify.nl"
         }
     ]
-    
+
 def get_sample_malware_observables() -> List[Dict[str, Any]]:
     """Generate sample malware-related observables."""
     return [
@@ -203,7 +202,7 @@ def get_sample_malware_observables() -> List[Dict[str, Any]]:
             "value": "malicious-c2.example.com"
         }
     ]
-    
+
 def get_sample_phishing_observables() -> List[Dict[str, Any]]:
     """Generate sample phishing-related observables."""
     return [
@@ -218,14 +217,14 @@ def get_sample_phishing_observables() -> List[Dict[str, Any]]:
             "value": "noreply@fake-bank.suspicious.tld"
         }
     ]
-    
+
 def get_observables_by_category(cls, category: str) -> List[Dict[str, Any]]:
     """
     Get sample observables by category.
-    
+
     Args:
         category: Type of observables ('default', 'malware', 'phishing')
-        
+
     Returns:
         List of appropriate sample observables
     """
@@ -234,7 +233,7 @@ def get_observables_by_category(cls, category: str) -> List[Dict[str, Any]]:
         'malware': get_sample_malware_observables,
         'phishing': get_sample_phishing_observables
     }
-    
+
     generator = category_map.get(category, get_default_observables)
     return generator()
 
@@ -244,19 +243,19 @@ def generate_minimal_submission_dict(org_id: str = None,
                                 confidence: int = None) -> Dict[str, Any]:
     """
     Generate a minimal FRANK submission with only required fields.
-    
+
     Args:
         org_id: organisation identifier (generated if None)
         access_level: organisation tier level
         observables: List of observable objects (default generated if None)
         confidence: Confidence level 0-100 (uses default if None)
-        
+
     Returns:
         Dict containing minimal valid submission
-        
+
     Raises:
         FRANKValidationError: If invalid values provided
-    """ 
+    """
     # Validate inputs
     all_access_levels = [level.value for level in AccessTier]
     if access_level not in all_access_levels:
@@ -264,11 +263,11 @@ def generate_minimal_submission_dict(org_id: str = None,
 
     if confidence is not None and not (0 <= confidence <= 100):
         raise FRANKValidationError(f"Confidence {confidence} out of range [0-100]")
-    
+
     # Generate default values if not provided
     if org_id is None:
         org_id = f"identity--{uuid.uuid4()}"
-        
+
     if observables is None:
         observables = [
             {
@@ -278,11 +277,11 @@ def generate_minimal_submission_dict(org_id: str = None,
             },
             {
                 "id": f"domain--{uuid.uuid4()}",
-                "type": "domain", 
+                "type": "domain",
                 "value": "secure-bank-verify.nl"
             }
         ]
-    
+
     # Validate observables
     all_observable_types = [obs.value for obs in ObservableType]
     for obs in observables:
@@ -305,9 +304,9 @@ def generate_minimal_submission_dict(org_id: str = None,
             }
         }
     }
-    
+
     return submission
-    
+
 
 def generate_minimal_submission(org_id: str = None, access_level: str = "partner", observables: list = None, confidence: int = None) -> Submission:
     """
@@ -402,7 +401,7 @@ def generate_comprehensive_submission(
     }
     if hit_target_org:
         submission["hit_target"] = {
-            "organisation_id": hit_target_org, 
+            "organisation_id": hit_target_org,
             "sector": sector or "finance",
             "region": "europe",
             "anonymization_level": "low"
@@ -464,12 +463,12 @@ def create_demo_orgs(id_fixed: bool = True) -> List[Dict[str, Any]]:
 # Example usage and testing functions
 def example_usage():
     """Demonstrate Pydantic model usage"""
-    
+
     print("=== FRANK Pydantic Models Sample Generator (v2 Compatible) ===\n")
-    
+
     # 1. Create minimal submission using factory method
     print("1. Creating minimal submission...")
-    minimal = generate_minimal_submission(
+    generate_minimal_submission(
         org_id=f"identity--{uuid.uuid4()}",
         access_level="partner"
     )
@@ -477,7 +476,7 @@ def example_usage():
 
     # 2. Create sample submission
     print("2. Creating sample submission...")
-    sample = generate_sample_submission(
+    generate_sample_submission(
         org_id=f"identity--{uuid.uuid4()}",
         sample_type="malware",
         access_level="partner",
@@ -487,7 +486,7 @@ def example_usage():
 
     # 3. Create comprehensive submission
     print("3. Creating comprehensive submission...")
-    comprehensive = generate_comprehensive_submission(
+    generate_comprehensive_submission(
         org_id=f"identity--{uuid.uuid4()}",
         access_level="partner",
         hit_target_org=f"identity--{uuid.uuid4()}",
@@ -504,7 +503,7 @@ def example_usage():
     # 4. Demo organisations
     print("4. Creating demo organisations...")
     demo_orgs = create_demo_orgs()
-    print(f"✓ {len(demo_orgs)} demo organisations created")  
+    print(f"✓ {len(demo_orgs)} demo organisations created")
 
     # 5. Database seeding example (pseudo-code, requires actual db client)
     print("5. (Pseudo) Seeding database with sample data...")
@@ -512,4 +511,4 @@ def example_usage():
     # client = FRANKClient(db_client)  # Replace with actual database client
     # seeder = SampleDataSeeder()
     # client.seed_database(seeder)
-    print("✓ Database seeded with sample data (pseudo-code)")        
+    print("✓ Database seeded with sample data (pseudo-code)")

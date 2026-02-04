@@ -7,12 +7,10 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import pytest
-from fastapi import HTTPException, Request
 from fastapi.testclient import TestClient
 
 from frank.web.app import create_web_app
 from frank.web.config import WebConfig
-from frank.web.dependencies import get_current_session
 
 
 @pytest.fixture
@@ -45,8 +43,9 @@ class TestGetCurrentSession:
 
     def test_valid_session_allows_access(self, app, web_config):
         """Test that valid session allows access to protected endpoints."""
-        from frank.web.middleware.session import SessionManager
         from fastapi import Response
+
+        from frank.web.middleware.session import SessionManager
 
         session_manager = SessionManager(web_config)
         client = TestClient(app)

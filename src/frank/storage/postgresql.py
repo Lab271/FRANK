@@ -24,7 +24,7 @@ from frank.core.enum import AccessTier, ObservableType
 from frank.core.models import Observable, Submission
 
 from .base import BaseFRANKDatabase
-from .exceptions import FRANKConnectionError, FRANKQueryError, FRANKStorageError
+from .exceptions import FRANKConnectionError
 
 
 class PostgreSQLFRANKDatabase(BaseFRANKDatabase):
@@ -271,7 +271,7 @@ class PostgreSQLFRANKDatabase(BaseFRANKDatabase):
 
     def add_organisation_member(self, organisation_id: str, username: str, role: str = "member") -> Dict[str, Any]:
         """Add a user to an organisation."""
-        from datetime import datetime, timezone
+        from datetime import datetime
 
         try:
             with psycopg.connect(self.connection_string) as conn:

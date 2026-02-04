@@ -16,7 +16,7 @@ Our Mock Cognito implements a MINIMAL subset focused on authentication patterns:
 ✅ IMPLEMENTED IN OUR MOCK:
 - Basic user authentication (username/password)
 - JWT token generation (access, id, refresh tokens)
-- JWT token validation and verification  
+- JWT token validation and verification
 - User info retrieval from tokens
 - Role-based group membership (observer, contributor, partner, core_member)
 - Health check endpoint
@@ -63,26 +63,26 @@ For production or advanced testing, consider using:
 """
 
 import argparse
-import logging
-import time
-import os
-from pathlib import Path
-from typing import Optional, List, Dict, Any
-from datetime import datetime, timedelta, timezone
-
-import uvicorn
-import jwt
 import base64
-import json
-from cryptography.hazmat.primitives.asymmetric import rsa
-from cryptography.hazmat.primitives import serialization, hashes
+import copy
+import logging
+import os
+import time
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+import jwt
+import uvicorn
 from cryptography.hazmat.backends import default_backend
-from fastapi import FastAPI, HTTPException, Depends, Request, Header, status
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from cryptography.hazmat.primitives import serialization
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, status
 from fastapi.responses import JSONResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from pydantic import BaseModel
 
 import frank
+
 
 # Custom AWS-style exception for Cognito API compatibility
 class AWSCognitoException(Exception):
@@ -98,23 +98,23 @@ def setup_logging():
     """Setup logging to match Uvicorn's colored output"""
     try:
         from uvicorn.logging import DefaultFormatter
-        
+
         # Create a colored formatter like Uvicorn uses
         formatter = DefaultFormatter(fmt="%(levelprefix)s %(message)s")
-        
+
         # Setup root logger with the colored formatter
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
-        
+
         # Remove existing handlers
         for handler in root_logger.handlers[:]:
             root_logger.removeHandler(handler)
-        
+
         # Add new handler with colored formatter
         handler = logging.StreamHandler()
         handler.setFormatter(formatter)
         root_logger.addHandler(handler)
-        
+
     except ImportError:
         # Fallback to basic colored format if Uvicorn formatter not available
         logging.basicConfig(
@@ -142,7 +142,7 @@ class AppConfig:
         self.user_pool_id = user_pool_id
         self.client_id = client_id
         self.region = region
-        
+
         # Generate RSA key pair for RS256 if needed
         if jwt_algorithm == "RS256":
             self._generate_rsa_keys()
@@ -150,7 +150,7 @@ class AppConfig:
             self.private_key = None
             self.public_key = None
             self.jwks = None
-    
+
     def _generate_rsa_keys(self):
         """Generate RSA key pair for JWT signing"""
         # Use fixed RSA key for development to prevent signature verification errors
@@ -186,7 +186,6 @@ LSYraOIRCY6sXKZY1z+/RI6xBeQi4qi4BkMPbDc7fPC1F/GMRI1jPfs1RlboVW5t
 bHHufNA4TcOb6n+tmU5//nXB
 -----END PRIVATE KEY-----"""
 
-        from cryptography.hazmat.primitives import serialization
 
         # Load the fixed private key
         self.private_key = serialization.load_pem_private_key(
@@ -194,13 +193,13 @@ bHHufNA4TcOb6n+tmU5//nXB
             password=None,
             backend=default_backend()
         )
-        
+
         # Get public key
         self.public_key = self.private_key.public_key()
-        
+
         # Generate JWKS (JSON Web Key Set)
         public_numbers = self.public_key.public_numbers()
-        
+
         # Convert to base64url-encoded strings
         def int_to_base64url(value):
             """Convert integer to base64url string"""
@@ -209,10 +208,10 @@ bHHufNA4TcOb6n+tmU5//nXB
             value_bytes = value.to_bytes(byte_length, 'big')
             # Base64url encode (no padding)
             return base64.urlsafe_b64encode(value_bytes).rstrip(b'=').decode('ascii')
-        
+
         n = int_to_base64url(public_numbers.n)
         e = int_to_base64url(public_numbers.e)
-        
+
         # Create JWKS
         self.jwks = {
             "keys": [
@@ -226,14 +225,14 @@ bHHufNA4TcOb6n+tmU5//nXB
                 }
             ]
         }
-    
+
     def get_signing_key(self):
         """Get the key for JWT signing"""
         if self.jwt_algorithm == "RS256":
             return self.private_key
         else:
             return self.jwt_secret
-    
+
     def get_verification_key(self):
         """Get the key for JWT verification"""
         if self.jwt_algorithm == "RS256":
@@ -242,8 +241,8 @@ bHHufNA4TcOb6n+tmU5//nXB
             return self.jwt_secret
 
     @classmethod
-    def set_config(cls, 
-                   jwt_secret: str = None, 
+    def set_config(cls,
+                   jwt_secret: str = None,
                    jwt_algorithm: str = None,
                    user_pool_id: str = None,
                    client_id: str = None,
@@ -257,7 +256,7 @@ bHHufNA4TcOb6n+tmU5//nXB
             region=region or os.getenv("REGION", "eu-west-1")
         )
         return cls._instance
-    
+
     @classmethod
     def get_config(cls) -> "AppConfig":
         """Get the singleton AppConfig instance"""
@@ -280,7 +279,7 @@ bHHufNA4TcOb6n+tmU5//nXB
 
 def get_config() -> AppConfig:
     """Dependency to get AppConfig instance"""
-    return AppConfig.get_config()   
+    return AppConfig.get_config()
 
 
 
@@ -385,7 +384,6 @@ USERS_DB = {
 }
 
 # Save initial state for reset functionality
-import copy
 INITIAL_USERS_DB = copy.deepcopy(USERS_DB)
 
 def reset_users_db():
@@ -427,14 +425,14 @@ def create_jwt_token(username: str, groups: List[str], token_type: str = "access
         "username": username,
         "iss": f"https://cognito-idp.{current_config.region}.amazonaws.com/{current_config.user_pool_id}"
     }
-    
+
     # Add additional claims for ID tokens
     if token_type == "id":
         user = USERS_DB[username]
         payload["email"] = user["email"]
         payload["email_verified"] = True
         payload["aud"] = current_config.client_id
-    
+
     # Add kid (key ID) for RS256
     if current_config.jwt_algorithm == "RS256":
         headers = {"kid": "mock-cognito-key-1"}
@@ -450,9 +448,9 @@ def verify_jwt_token(token: str) -> dict:
     try:
         # Decode without audience verification for mock service simplicity
         payload = jwt.decode(
-            token, 
-            current_config.get_verification_key(), 
-            algorithms=[current_config.jwt_algorithm], 
+            token,
+            current_config.get_verification_key(),
+            algorithms=[current_config.jwt_algorithm],
             options={"verify_aud": False}
         )
         return payload
@@ -465,7 +463,7 @@ def verify_jwt_token(token: str) -> dict:
 def handle_cognito_action(action: str, body: Dict[str, Any]) -> Dict[str, Any]:
     """Route requests based on AWS Cognito action"""
     logger.info(f"Handling Cognito action: {action}")
-    
+
     if action == "InitiateAuth":
         return handle_initiate_auth(body)
     elif action == "AdminInitiateAuth":
@@ -488,41 +486,41 @@ def handle_initiate_auth(body: Dict[str, Any]) -> Dict[str, Any]:
     auth_flow = body.get("AuthFlow")
     auth_parameters = body.get("AuthParameters", {})
     client_id = body.get("ClientId")
-    
+
     logger.info(f"InitiateAuth: AuthFlow={auth_flow}, ClientId={client_id}")
-    
+
     if auth_flow != "USER_PASSWORD_AUTH":
         raise AWSCognitoException(
             "InvalidParameterException",
             f"Unsupported auth flow: {auth_flow}"
         )
-    
+
     username = auth_parameters.get("USERNAME")
     password = auth_parameters.get("PASSWORD")
-    
+
     if not username or not password:
         raise AWSCognitoException(
             "InvalidParameterException",
             "USERNAME and PASSWORD required in AuthParameters"
         )
-    
+
     # Validate credentials
     if username not in USERS_DB:
         logger.warning(f"InitiateAuth failed: User not found: {username}")
         raise AWSCognitoException(
-            "UserNotFoundException", 
+            "UserNotFoundException",
             "User does not exist"
         )
-    
+
     user = USERS_DB[username]
-    
+
     if not user["enabled"]:
         logger.warning(f"InitiateAuth failed: User account disabled: {username}")
         raise AWSCognitoException(
             "NotAuthorizedException",
             "User is disabled"
         )
-    
+
     if user["password"] != password:
         logger.warning(f"InitiateAuth failed: Invalid password for user: {username}")
         # AWS Cognito returns NotAuthorizedException for invalid passwords
@@ -530,15 +528,15 @@ def handle_initiate_auth(body: Dict[str, Any]) -> Dict[str, Any]:
             "NotAuthorizedException",
             "Incorrect username or password"
         )
-    
+
     # Generate tokens
     groups = user["groups"]
     access_token = create_jwt_token(username, groups, "access")
     id_token = create_jwt_token(username, groups, "id")
     refresh_token = create_jwt_token(username, groups, "refresh")
-    
+
     logger.info(f"InitiateAuth successful for user: {username} with groups: {groups}")
-    
+
     return {
         "AuthenticationResult": {
             "AccessToken": access_token,
@@ -561,13 +559,13 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
     """Handle GetUser request"""
     access_token = body.get("AccessToken")
     current_config = AppConfig.get_config()
-    
+
     if not access_token:
         raise AWSCognitoException(
             "InvalidParameterException",
             "AccessToken required"
         )
-    
+
     try:
         payload = jwt.decode(
             access_token,
@@ -576,20 +574,20 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
             options={"verify_aud": False}
         )
         username = payload.get("username") or payload.get("sub")
-        
+
         if username not in USERS_DB:
             raise AWSCognitoException(
                 "UserNotFoundException",
                 "User not found"
             )
-        
+
         user = USERS_DB[username]
-        
+
         logger.info(f"GetUser successful for user: {username}")
-        
+
         # Convert groups list to comma-separated string for AWS compatibility
         groups_str = ",".join(user["groups"])
-        
+
         return {
             "Username": username,
             "UserAttributes": [
@@ -606,7 +604,7 @@ def handle_get_user(body: Dict[str, Any]) -> Dict[str, Any]:
         )
     except jwt.InvalidTokenError:
         raise AWSCognitoException(
-            "NotAuthorizedException", 
+            "NotAuthorizedException",
             "Invalid token"
         )
 
@@ -629,7 +627,7 @@ def handle_global_sign_out(body: Dict[str, Any]) -> Dict[str, Any]:
 def create_app() -> FastAPI:
     """
     Create and configure FastAPI application
-    
+
     Returns:
         FastAPI: Configured FastAPI application instance
     """
@@ -659,17 +657,17 @@ def create_app() -> FastAPI:
     @app.middleware("http")
     async def log_requests(request: Request, call_next):
         start_time = time.time()
-        
+
         logger.info(f"Request: {request.method} {request.url}")
-        
+
         response = await call_next(request)
-        
+
         process_time = time.time() - start_time
         logger.info(
             f"Response: {response.status_code} "
             f"Time: {process_time:.4f}s"
         )
-        
+
         return response
 
     def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
@@ -677,10 +675,10 @@ def create_app() -> FastAPI:
         token = credentials.credentials
         payload = verify_jwt_token(token)
         username = payload.get("username")
-        
+
         if not username or username not in USERS_DB:
             raise HTTPException(status_code=401, detail="Invalid user")
-        
+
         return USERS_DB[username]
 
     @app.get("/health")
@@ -713,26 +711,26 @@ def create_app() -> FastAPI:
         This provides the public keys needed for JWT token verification
         """
         logger.info(f"JWKS endpoint accessed for user pool: {user_pool_id}")
-        
+
         # Validate user pool ID
         if user_pool_id != current_config.user_pool_id:
             raise HTTPException(
-                status_code=404, 
+                status_code=404,
                 detail=f"User pool {user_pool_id} not found"
             )
-        
+
         if current_config.jwt_algorithm != "RS256":
             raise HTTPException(
                 status_code=400,
                 detail="JWKS endpoint only available when using RS256 algorithm"
             )
-        
+
         if not current_config.jwks:
             raise HTTPException(
                 status_code=500,
                 detail="JWKS not available - RSA keys not generated"
             )
-        
+
         return current_config.jwks
 
     # AWS Cognito API Endpoint (for AWS CLI compatibility)
@@ -745,13 +743,13 @@ def create_app() -> FastAPI:
         Main AWS Cognito API endpoint for AWS CLI compatibility
         AWS CLI sends requests to / with X-Amz-Target header
         """
-        
+
         if not x_amz_target:
             raise AWSCognitoException(
                 "InvalidParameterException",
                 "Missing X-Amz-Target header"
             )
-        
+
         # Extract action from target header
         # Format: AWSCognitoIdentityProviderService.InitiateAuth
         try:
@@ -761,19 +759,19 @@ def create_app() -> FastAPI:
                 "InvalidParameterException",
                 "Invalid X-Amz-Target format"
             )
-        
+
         # Parse request body
         try:
             body = await request.json()
         except Exception:
             body = {}
-        
+
         logger.info(f"AWS Cognito API call - Action: {action}")
         logger.debug(f"Request body: {body}")
-        
+
         # Handle the action
         response = handle_cognito_action(action, body)
-        
+
         logger.debug(f"Response: {response}")
         return response
 
@@ -785,9 +783,9 @@ def create_app() -> FastAPI:
         """
         username = auth_request.username
         password = auth_request.password
-        
+
         logger.info(f"Login attempt for user: {username}")
-        
+
         # Validate user exists and password is correct
         if username not in USERS_DB:
             logger.warning(f"Login failed: User not found: {username}")
@@ -813,15 +811,15 @@ def create_app() -> FastAPI:
                 "Incorrect username or password",
                 status_code=status.HTTP_400_BAD_REQUEST
             )
-        
+
         # Generate tokens
         groups = user["groups"]
         access_token = create_jwt_token(username, groups, "access")
         id_token = create_jwt_token(username, groups, "id")
         refresh_token = create_jwt_token(username, groups, "refresh")
-        
+
         logger.info(f"Login successful for user: {username} with groups: {groups}")
-        
+
         return AuthResponse(
             access_token=access_token,
             id_token=id_token,
@@ -835,7 +833,7 @@ def create_app() -> FastAPI:
         """
         username = current_user["username"]
         logger.info(f"User info requested for: {username}")
-        
+
         return UserInfo(
             username=current_user["username"],
             email=current_user["email"],
@@ -1160,7 +1158,7 @@ def create_app() -> FastAPI:
             "region": current_config.region,
             "endpoints": {
                 "aws_api": "/",
-                "login": "/auth/login", 
+                "login": "/auth/login",
                 "jwks": "/{user_pool_id}/.well-known/jwks.json",
                 "userinfo": "/auth/userinfo",
                 "users": "/auth/users",
@@ -1169,7 +1167,7 @@ def create_app() -> FastAPI:
             },
             "supported_aws_operations": [
                 "InitiateAuth",
-                "AdminInitiateAuth", 
+                "AdminInitiateAuth",
                 "GetUser",
                 "GlobalSignOut"
             ],
@@ -1201,7 +1199,7 @@ def main():
         choices=["debug", "info", "warning", "error"],
         help="Logging level (default: debug)",
     )
-    
+
     # Configuration options
     parser.add_argument(
         "--jwt-secret",
@@ -1235,7 +1233,7 @@ def main():
     )
 
     args = parser.parse_args()
-    
+
     # Set environment variables for uvicorn worker processes
     # This ensures configuration survives process restarts and reloads
     os.environ["JWT_SECRET"] = args.jwt_secret
@@ -1246,11 +1244,11 @@ def main():
 
     # Create configuration from command line arguments and set as singleton
     config = AppConfig.get_config()
-    
+
     # Configure logging level
     setup_logging()
     logging.getLogger().setLevel(getattr(logging, args.log_level.upper()))
-       
+
     logger.info(f"Starting Mock Cognito server on {args.host}:{args.port}")
     logger.info(f"Version: {frank.__version__}")
     logger.info(f"Reload enabled: {args.reload}")
@@ -1288,7 +1286,7 @@ def main():
         org_name = user.get("custom:organisation_name", "Unknown")
         role = user.get("custom:role", "member")
         logger.info(f"  {username:20} | {user['email']:35} | {user['groups'][0]:15} | {org_name:25} | {role}")
-    
+
     # Run uvicorn server
     uvicorn.run(
         f"{CURRENT_MODULE}:create_app",

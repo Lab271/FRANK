@@ -10,7 +10,7 @@ SPDX-License-Identifier: Apache-2.0
 """
 
 import logging
-from typing import Dict, Any, List
+from typing import Any, Dict
 
 from frank.storage.base import BaseFRANKDatabase
 

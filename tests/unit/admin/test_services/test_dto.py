@@ -6,9 +6,7 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-from datetime import datetime
 
-import pytest
 
 from frank.admin.models import (
     HealthStatus,

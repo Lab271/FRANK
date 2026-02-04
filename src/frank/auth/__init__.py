@@ -48,7 +48,6 @@ from frank.auth.jwt import (
     validate_token_locally,
 )
 
-
 __all__ = [
     # Config
     "AuthConfig",

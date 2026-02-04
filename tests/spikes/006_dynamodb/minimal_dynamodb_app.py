@@ -4,13 +4,14 @@
 # ===================================
 
 import os
-import boto3
 import uuid
 from datetime import datetime
 from typing import Dict, List, Optional
+
+import boto3
+import uvicorn
 from fastapi import FastAPI, HTTPException
 from pydantic import BaseModel
-import uvicorn
 
 # ===================================
 # CONFIGURATION
@@ -54,7 +55,7 @@ class DynamoDBClient:
         self.table_name = TABLE_NAME
         self.table = None
         self._ensure_table()
-    
+
     def _ensure_table(self):
         """Create table if it doesn't exist"""
         try:
@@ -81,16 +82,16 @@ class DynamoDBClient:
                 ],
                 BillingMode='PAY_PER_REQUEST'
             )
-            
+
             # Wait for table to be created
             self.table.meta.client.get_waiter('table_exists').wait(TableName=self.table_name)
             print(f"✅ Table '{self.table_name}' created successfully")
-    
+
     def create_record(self, record: RecordCreate) -> RecordResponse:
         """Create a new record"""
         record_id = str(uuid.uuid4())
         timestamp = datetime.utcnow().isoformat()
-        
+
         item = {
             'id': record_id,
             'name': record.name,
@@ -98,27 +99,27 @@ class DynamoDBClient:
             'category': record.category,
             'created_at': timestamp
         }
-        
+
         try:
             self.table.put_item(Item=item)
             return RecordResponse(**item)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to create record: {str(e)}")
-    
+
     def get_record(self, record_id: str) -> RecordResponse:
         """Get a record by ID"""
         try:
             response = self.table.get_item(Key={'id': record_id})
-            
+
             if 'Item' not in response:
                 raise HTTPException(status_code=404, detail="Record not found")
-            
+
             return RecordResponse(**response['Item'])
         except HTTPException:
             raise
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to get record: {str(e)}")
-    
+
     def list_records(self) -> List[RecordResponse]:
         """List all records"""
         try:
@@ -127,13 +128,13 @@ class DynamoDBClient:
             return [RecordResponse(**item) for item in items]
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Failed to list records: {str(e)}")
-    
+
     def delete_record(self, record_id: str) -> Dict[str, str]:
         """Delete a record by ID"""
         try:
             # Check if record exists first
             self.get_record(record_id)  # This will raise 404 if not found
-            
+
             self.table.delete_item(Key={'id': record_id})
             return {"message": f"Record {record_id} deleted successfully"}
         except HTTPException:
@@ -192,7 +193,7 @@ async def health_check():
         dynamodb_status = "healthy"
     except Exception as e:
         dynamodb_status = f"unhealthy: {str(e)}"
-    
+
     return {
         "status": "ok" if dynamodb_status == "healthy" else "error",
         "dynamodb": dynamodb_status,
@@ -209,7 +210,7 @@ if __name__ == "__main__":
     print(f"📊 DynamoDB endpoint: {DYNAMODB_ENDPOINT}")
     print(f"🗃️  Table name: {TABLE_NAME}")
     print(f"🌍 Region: {AWS_REGION}")
-    
+
     uvicorn.run(
         app,
         host="0.0.0.0",

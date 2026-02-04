@@ -8,11 +8,9 @@ Copyright (c) 2025 Schuberg Philis B.V.
 SPDX-License-Identifier: Apache-2.0
 """
 
-import time
 from datetime import datetime, timedelta, timezone
 
 import jwt
-import pytest
 
 from frank.auth.tokens import (
     ACCESS_TOKEN_LIFETIME_HOURS,
