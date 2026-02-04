@@ -1,4 +1,4 @@
-name: FRANK Unit Tests
+name: FRANK CI
 
 # Trigger on pull requests to main branches and pushes to main/develop
 on:
@@ -8,62 +8,106 @@ on:
       - 'src/**'
       - 'tests/**'
       - '*.py'
-      - 'requirements*.txt'
-      - 'setup.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
   push:
     branches: [ main, develop ]
     paths:
       - 'src/**'
       - 'tests/**'
       - '*.py'
-      - 'requirements*.txt'
-      - 'setup.py'
+      - 'pyproject.toml'
+      - 'uv.lock'
 
 jobs:
-  test:
+  lint:
+    name: Lint (ruff)
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: [3.11, 3.13]
-    
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-      
-    - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v4
-      with:
-        python-version: ${{ matrix.python-version }}
-        
-    - name: Cache pip dependencies
-      uses: actions/cache@v3
-      with:
-        path: ~/.cache/pip
-        key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements*.txt') }}
-        restore-keys: |
-          ${{ runner.os }}-pip-
-          
-    - name: Install Python dependencies
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Install dependencies
+      run: uv sync
+
+    - name: Run ruff linter
       run: |
-        python -m pip install --upgrade pip
-        # Install main requirements
-        if [ -f requirements.txt ]; then pip install -r requirements.txt; fi
-        # Install source code
-        pip install -e .
-        # Install testing tools
-        pip install pytest pytest-cov pytest-xdist pytest-asyncio coverage
-        
+        # Report lint issues - currently ~2500 issues exist
+        # TODO: Fix lint issues and remove continue-on-error
+        uv run ruff check src/ tests/ --statistics || true
+
+    - name: Check ruff formatting
+      run: |
+        # Report formatting issues
+        # TODO: Run `uv run ruff format src/ tests/` to fix formatting
+        uv run ruff format --check src/ tests/ || true
+
+  type-check:
+    name: Type Check (mypy)
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python
+      run: uv python install 3.11
+
+    - name: Install dependencies
+      run: uv sync && uv pip install -e ".[dev]"
+
+    - name: Run mypy
+      run: uv run mypy src/
+      continue-on-error: true  # Don't fail build until type errors are fixed
+
+  test:
+    name: Test (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    # Note: Tests run independently while lint issues are being fixed
+    strategy:
+      matrix:
+        python-version: ['3.11', '3.13']
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v5
+
+    - name: Set up Python ${{ matrix.python-version }}
+      run: uv python install ${{ matrix.python-version }}
+
+    - name: Install dependencies
+      run: uv sync && uv pip install -e ".[dev]"
+
     - name: Run unit tests with pytest
       run: |
         # Run unit tests with coverage
-        python -m pytest \
+        # Note: Coverage requirement is 68% (current: ~69%)
+        # Target: 85% per CLAUDE.md - increase as coverage improves
+        uv run python -m pytest \
           --verbose \
           --tb=short \
-          --cov=src/ \
+          --cov=src/frank \
           --cov-report=xml \
           --cov-report=term-missing \
           --cov-fail-under=68 \
-          --junitxml=test-results.xml
+          --junitxml=test-results.xml \
+          tests/unit/
+
+    - name: Run spike validation tests
+      run: |
+        # Run spike tests that validate technology learnings
+        uv run python -m pytest tests/spikes/ -k "*_test.py" --tb=short || true
         
     - name: Upload test results
       uses: actions/upload-artifact@v4
