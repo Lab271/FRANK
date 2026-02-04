@@ -23,7 +23,7 @@ from pydantic import (
 )
 
 from frank import __version__
-from frank.core.enum import AccessTier, ObservableType, SeverityLevel
+from frank.core.enum import AccessTier, ObservableType, SeverityLevel, SubmissionLevel
 
 
 class Observable(BaseModel):
@@ -383,6 +383,12 @@ class Submission(BaseModel):
     format_version: Optional[str] = Field(default=__version__, description="FRANK format version")
     timestamp: datetime = Field(default_factory=lambda: datetime.now(timezone.utc),  description="Submission timestamp")
 
+    # Submission level per HLD Section 3.2 (L1-L5)
+    submission_level: SubmissionLevel = Field(
+        default=SubmissionLevel.L1_RAW_OBSERVABLE,
+        description="Analytical depth level of submission (L1-L5 per HLD)"
+    )
+
     # Optional metadata - be forgiving on input
     submitter: Optional[Submitter] = Field(None, description="Submitting organisation")
     submission_method: Optional[str] = Field(default="api", description="Submission method")
@@ -421,6 +427,45 @@ class Submission(BaseModel):
             raise ValueError("Submitter and hit_target cannot be the same organisation")
 
         return self
+
+    def calculate_submission_level(self) -> SubmissionLevel:
+        """
+        Calculate the submission level based on populated fields.
+
+        Per HLD Section 3.2:
+        - L1: Raw Observable (just observables with minimal metadata)
+        - L2: Contextualized (includes impact/operational context)
+        - L3: Attribution (includes threat_context with campaign/attribution)
+        - L4: SIGMA Detection (includes sigma_detection data)
+        - L5: Behavioral Analysis (requires explicit marking for novel research)
+
+        Returns:
+            SubmissionLevel: The calculated level based on content
+        """
+        if not self.sighting:
+            return SubmissionLevel.L1_RAW_OBSERVABLE
+
+        # L4: SIGMA Detection takes precedence if present
+        if self.sighting.sigma_detection:
+            return SubmissionLevel.L4_SIGMA_DETECTION
+
+        # L3: Threat Attribution (campaign/threat context)
+        if self.sighting.threat_context and (
+            self.sighting.threat_context.campaign
+            or self.sighting.threat_context.mitre_attack
+        ):
+            return SubmissionLevel.L3_ATTRIBUTION
+
+        # L2: Contextualized (operational impact data)
+        if self.sighting.impact and (
+            self.sighting.impact.affected_systems
+            or self.sighting.impact.containment_time
+            or self.sighting.impact.financial_impact_eur
+        ):
+            return SubmissionLevel.L2_CONTEXTUALIZED
+
+        # Default: L1 Raw Observable
+        return SubmissionLevel.L1_RAW_OBSERVABLE
 
     def to_yaml(self) -> str:
         """Convert to YAML with proper formatting"""
