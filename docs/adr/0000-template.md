@@ -65,7 +65,21 @@ Chosen option: "[option 1]", because [justification. e.g., only option that meet
 - Bad, because [argument c]
 - [...]
 
-## Links
+## Related Specifications
+
+<!-- Link to specifications that prompted, implement, or are impacted by this decision -->
+
+- **Originating Spec**: [Change Proposal XXX](../../specs/changes/XXX-name/proposal.md) - Proposal that identified this decision
+- **Implementing Specs**:
+  - [Spec Name](../../specs/category/name.spec.md) - Implements this decision
+  - [...]
+- **Impacted Specs**:
+  - [Spec Name](../../specs/category/name.spec.md) - Affected by this decision
+  - [...]
+
+## References
 
 - [Link type] [Link to ADR]
+- [External resource]
+- [Related spike] [Spike XXX](../../tests/spikes/XXX_name/README.md)
 - [...]

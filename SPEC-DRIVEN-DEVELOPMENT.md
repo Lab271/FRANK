@@ -852,6 +852,203 @@ Scenario Outline: Query threat intelligence with access level filtering
 - `specs/templates/` - Specification templates
 - `specs/examples/` - Example specifications
 
+## Spec-to-ADR Migration Strategy
+
+### When Specs Become ADRs
+
+Not every specification needs an ADR, but architectural decisions should be formally documented. Use this guide to determine when to create an ADR from a spec:
+
+**Create an ADR when:**
+- ✅ Spec contains a significant technology choice (e.g., SQS vs Celery, PostgreSQL vs DynamoDB)
+- ✅ Decision has system-wide consequences or trade-offs
+- ✅ Decision affects multiple components, stages, or teams
+- ✅ Decision requires stakeholder buy-in or approval
+- ✅ Multiple alternatives were seriously considered
+- ✅ Future team members need to understand "why" not just "what"
+
+**Skip ADR when:**
+- ❌ Spec is purely implementation details (no architectural choice)
+- ❌ Decision is obvious or follows established patterns
+- ❌ Change is temporary or experimental
+- ❌ Spec is about a single module with no broader impact
+
+### Bidirectional Linking
+
+ADRs and specs should reference each other for complete traceability:
+
+```
+Specification                    ADR
+┌─────────────────────────┐    ┌──────────────────────────┐
+│ specs/changes/001/      │───>│ docs/adr/0013-*.md       │
+│   proposal.md           │    │                          │
+│   design.md             │    │ ## Related Specs         │
+│   spec.md               │    │ - Originating: proposal  │
+│   adr.md                │    │ - Implementing: spec     │
+│                         │    │ - Impacted: other specs  │
+│ **Related ADR:**        │<───│                          │
+│ ADR-0013                │    └──────────────────────────┘
+└─────────────────────────┘
+```
+
+### Spec-to-ADR Workflow
+
+**Step 1: Create Change Proposal**
+```bash
+# Create change proposal with full documentation
+mkdir -p specs/changes/XXX-feature-name
+cd specs/changes/XXX-feature-name
+
+# Create proposal files
+touch proposal.md    # Problem statement, business case
+touch spec.md        # Functional/non-functional requirements
+touch design.md      # Technical architecture
+touch tasks.md       # Implementation breakdown
+touch adr.md         # Architectural decisions (draft)
+```
+
+**Step 2: Document Alternatives in adr.md**
+```markdown
+# specs/changes/XXX/adr.md
+
+## Alternatives Considered
+
+### Alternative 1: HTTP Long Polling
+**Pros**: Simple, no infrastructure
+**Cons**: Doesn't solve scalability
+**Decision**: ❌ Rejected
+
+### Alternative 2: SQS + Lambda
+**Pros**: Serverless, auto-scaling
+**Cons**: AWS-specific, cold starts
+**Decision**: ✅ Accepted
+```
+
+**Step 3: Review and Decision**
+- Team reviews change proposal
+- Stakeholders evaluate alternatives
+- Decision is made and documented in adr.md
+- Update adr.md with "Decision: Accepted"
+
+**Step 4: Extract ADR Using Tool**
+```bash
+# Extract ADR from change proposal
+python specs/adr-extract.py specs/changes/XXX-feature-name/design.md
+
+# Tool generates:
+# docs/adr/00XX-feature-name.md
+```
+
+**Step 5: Update Bidirectional Links**
+```bash
+# 1. Add ADR link to change proposal
+echo "**Related ADR**: ADR-00XX" >> specs/changes/XXX/proposal.md
+
+# 2. ADR already links back to specs (tool does this automatically)
+```
+
+**Step 6: Implement Following Both Spec + ADR**
+- Spec defines **what** and **how**
+- ADR explains **why** and **consequences**
+- Implementation follows both
+
+**Step 7: Update ADR Status After Deployment**
+```markdown
+# docs/adr/00XX-feature-name.md
+- **Status:** Accepted → Implemented (2026-03-15)
+```
+
+### Example: Background Task Processing
+
+**Change Proposal**: [specs/changes/001-background-tasks/](specs/changes/001-background-tasks/)
+- `proposal.md` - Problem: API timeouts, need async processing
+- `design.md` - Solution: SQS + Lambda (Stage 3), Celery (Stage 4)
+- `adr.md` - Alternatives: Long polling, WebSockets, Celery, SQS (draft)
+
+**Extracted ADR**: [docs/adr/0013-asynchronous-background-task-processing.md](docs/adr/0013-asynchronous-background-task-processing.md)
+- Context extracted from `proposal.md`
+- Decision extracted from `design.md`
+- Alternatives extracted from `adr.md`
+- Bidirectional links established
+
+**Links**:
+```
+Proposal → ADR: "Related ADR: ADR-0013"
+ADR → Proposal: "Originating Spec: Change Proposal 001"
+```
+
+### ADR Extraction Tool
+
+**Usage**:
+```bash
+# Preview ADR extraction (dry run)
+python specs/adr-extract.py specs/changes/001-background-tasks/design.md --dry-run
+
+# Create ADR file
+python specs/adr-extract.py specs/changes/001-background-tasks/design.md
+
+# Specify ADR number
+python specs/adr-extract.py specs/changes/001-background-tasks/design.md --number 15
+
+# Specify author
+python specs/adr-extract.py specs/changes/001-background-tasks/design.md --author "Backend Team"
+```
+
+**Tool Features**:
+- Reads change proposal design.md and proposal.md
+- Extracts alternatives, pros/cons, decision
+- Generates MADR-formatted ADR
+- Adds bidirectional links automatically
+- Suggests next available ADR number
+
+### Retroactive Linking
+
+For existing ADRs without spec links, add them retroactively:
+
+**Example: ADR-0005 Cognito Authentication**
+```markdown
+# docs/adr/0005-cognito-authentication.md
+
+## Related Specifications
+
+- **Implementing Specs**:
+  - [Authentication Spec](../../specs/apis/authentication.spec.md)
+  - [Management API Spec](../../specs/apis/management-api.spec.md)
+- **Related Spike**: [Spike 014: Cognito](../../tests/spikes/014_cognito/README.md)
+```
+
+Then update the spec to link back:
+```markdown
+# specs/apis/authentication.spec.md
+
+- **Related ADRs:** [ADR-0005: Cognito Authentication](../../docs/adr/0005-cognito-authentication.md)
+```
+
+### Validation
+
+The `specs/validate.py` tool checks ADR references:
+```bash
+# Validate all specs (checks ADR links)
+python specs/validate.py
+
+# Check for broken ADR references
+python specs/validate.py --strict
+```
+
+**Validation checks**:
+- ADR references in specs point to existing files
+- ADRs reference back to originating specs
+- Orphaned ADRs (no spec reference) are flagged
+- Orphaned specs (decision but no ADR) are warned
+
+### Benefits of Spec-to-ADR Linking
+
+1. **Complete Traceability**: `why (ADR) → what (spec) → how (code) → tests`
+2. **Context Preservation**: Future maintainers understand decisions
+3. **Design Review**: ADRs force evaluation of alternatives
+4. **Change Proposals**: Self-contained packages (proposal + spec + design + adr + tasks)
+5. **Knowledge Transfer**: Onboarding shows full decision history
+6. **AI Agent Support**: Specs + ADRs provide complete context for AI assistance
+
 ---
 
 **Last Updated:** 2026-02-06
