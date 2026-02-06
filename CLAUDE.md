@@ -87,8 +87,9 @@ src/frank/
 │   └── exceptions.py  # Domain exceptions
 ├── storage/           # Database abstraction layer
 │   ├── base.py        # BaseFRANKDatabase abstract interface
-│   ├── sqlite.py      # SQLite implementation (Stage 1)
-│   └── dynamodb.py    # DynamoDB implementation (Stages 2-3)
+│   ├── sqlite.py      # SQLite implementation (Stage 1, all methods)
+│   ├── dynamodb.py    # DynamoDB implementation (Stages 2-3, threat intelligence only)
+│   └── postgresql.py  # PostgreSQL implementation (Management API only)
 └── util/              # Utilities (server, logging, filters, requests)
 
 environments/
@@ -116,6 +117,28 @@ All database implementations extend `BaseFRANKDatabase` (src/frank/storage/base.
 - `health_check()` - Database health status
 
 Access filtering is built into the base class (`_filter_submission_by_access_level`, `_filter_observable_by_access_level`) supporting PUBLIC, OBSERVER, CONTRIBUTOR, PARTNER, and CORE_MEMBER access tiers.
+
+#### Database Implementation Status
+
+**SQLite** (`sqlite.py`): ✅ All methods fully implemented
+- Complete implementation for all stages
+- Single-file database for local development
+- Supports all BaseFRANKDatabase methods
+
+**DynamoDB** (`dynamodb.py`): ⚠️ Partial implementation
+- ✅ Threat intelligence operations (submissions, observables, sightings)
+- ❌ 20 methods raise `NotImplementedError` with fallback guidance:
+  - Organisation CRUD (10 methods) - redirects to SQLite/PostgreSQL
+  - API key management (6 methods) - not needed (AWS Cognito handles auth)
+  - Refresh token management (4 methods) - not needed (AWS Cognito handles tokens)
+- **Design**: DynamoDB handles high-volume threat data; PostgreSQL handles management data
+
+**PostgreSQL** (`postgresql.py`): ✅ Management API operations
+- ✅ Organisation management (CRUD operations)
+- ✅ Organisation member management
+- ✅ Refresh token storage (for logout tracking)
+- ❌ Threat intelligence operations - use DynamoDB instead
+- **Purpose**: Management API backend (organisations, members) in cloud deployments
 
 ### Data Models (Pydantic v2)
 
@@ -155,7 +178,8 @@ FRANK uses three test layers for confident evolution:
    - Files ending in `*_test.py` are part of pytest suite
    - Each spike has README.md documenting hypothesis, approach, results, decisions
    - Run validation tests: `pytest tests/spikes/ -k "*_test.py"`
-   - Recent spikes: 010_cognito (AWS Cognito authentication), 011_fastapi (FastAPI testability patterns)
+   - **All spikes** (001-015): genparse, filter, pydantic, sqlite, server, dynamodb, fastapi, aws_tf, aws_ecs_basic, aws_alb, aws_ssl, aws_dynamodb, aws_observability, cognito, fastapi_testing
+   - See spike README files for hypothesis, results, and integration status
 
 **Test Philosophy**: Tests are the safety net enabling aggressive experimentation. Database abstraction ensures all implementations behave identically.
 
@@ -253,6 +277,227 @@ pytest -k "observable"
 pytest tests/unit/ -v --cov=src/frank --cov-report=term-missing
 ```
 
+## Specification-Driven Development (SDD)
+
+FRANK uses **specification-driven development** to maintain context and build converging, high-quality systems. Specifications are written BEFORE code to define requirements, contracts, and behavior.
+
+**Core Principle**: specs → code + unit tests + BDD + ADRs
+
+### Directory Structure
+
+```
+specs/
+├── README.md              # SDD guide and usage
+├── _template.spec.md      # Standard specification template
+├── core/                  # Core data model specifications (5 specs)
+│   ├── submission.spec.md
+│   ├── observable.spec.md
+│   ├── sighting.spec.md
+│   ├── submitter-target.spec.md
+│   └── enums.spec.md
+├── apis/                  # API endpoint specifications (3 specs)
+│   ├── sightings-api.spec.md
+│   ├── management-api.spec.md
+│   └── authentication.spec.md
+├── storage/               # Database layer specifications (4 specs)
+│   ├── base-interface.spec.md
+│   ├── sqlite.spec.md
+│   ├── dynamodb.spec.md
+│   └── postgresql.spec.md
+└── changes/               # OpenSpec-style change proposals
+    ├── _template/         # Change proposal template
+    │   ├── proposal.md    # Why we need this change
+    │   ├── spec.md        # What it should do
+    │   ├── design.md      # How to implement it
+    │   ├── tasks.md       # Implementation checklist
+    │   └── adr.md         # Architectural decisions
+    └── archive/           # Completed changes
+```
+
+### When to Create Specs
+
+**ALWAYS create specs for**:
+- New features (API endpoints, data models, background jobs)
+- Significant refactoring affecting multiple files
+- Database schema changes or new storage implementations
+- Authentication/authorization changes
+- Performance-critical components
+- Any change affecting multiple FRANK stages
+
+**Skip specs for** (lightweight changes):
+- Bug fixes (unless architectural)
+- Documentation updates
+- Simple typo corrections
+- Minor test additions
+- Well-established patterns already documented
+
+### Workflow: Spec → Test → Code → ADR
+
+**Step 1: Create Specification**
+```bash
+# For core models, APIs, storage
+cp specs/_template.spec.md specs/core/new-model.spec.md
+
+# For new features (OpenSpec-style)
+cp -r specs/changes/_template specs/changes/001-background-tasks
+# Edit: proposal.md → spec.md → design.md → tasks.md → adr.md
+```
+
+**Step 2: Write Tests Based on Spec**
+```bash
+# Unit tests for requirements
+# FR1: Model validation → test_model_validation()
+# FR2: Factory methods → test_factory_methods()
+
+# BDD tests for behavior
+# Scenario: User submits threat intelligence
+# Given authenticated user with PARTNER tier
+# When POST /submit with observables
+# Then submission stored with STIX ID
+```
+
+**Step 3: Implement Code Following Spec**
+```python
+# Follow spec contracts exactly
+# Use Pydantic schemas from spec
+# Implement all methods listed in spec
+# Add docstrings referencing spec sections
+```
+
+**Step 4: Extract Decisions to ADR**
+```bash
+# If spec contains architectural decisions:
+# specs/changes/001-background-tasks/adr.md
+# → docs/adr/00XX-background-task-queue.md
+
+# Link spec ↔ ADR bidirectionally
+```
+
+**Step 5: Archive Completed Change**
+```bash
+# Move to archive with status update
+mv specs/changes/001-background-tasks specs/changes/archive/
+```
+
+### Using Existing Specs
+
+**Before modifying code**, check if spec exists:
+
+```bash
+# Find relevant spec
+ls specs/core/          # Data models
+ls specs/apis/          # API endpoints
+ls specs/storage/       # Database layers
+
+# Read spec before changing code
+cat specs/core/submission.spec.md
+
+# Verify implementation matches spec
+# Check: Requirements section
+# Check: API contracts
+# Check: Test coverage requirements
+```
+
+**Example: Adding Observable Type**
+
+```bash
+# 1. Read current spec
+cat specs/core/observable.spec.md
+
+# 2. Update spec with new type
+# Add to ObservableType enum: CERTIFICATE
+# Add validation rules for X.509 format
+# Update test coverage requirements
+
+# 3. Write tests
+pytest tests/unit/core/test_observable.py -k certificate
+
+# 4. Implement in code
+# src/frank/core/enum.py: Add CERTIFICATE to ObservableType
+# src/frank/core/models.py: Add certificate validation
+
+# 5. Verify against spec
+make test  # Must pass with ≥85% coverage
+```
+
+### Integration with Existing Workflows
+
+**With Evolutionary Design**:
+- Specs document evolution across stages (1 → 4)
+- Show which features work in which stages
+- Link to stage-specific implementations
+
+**With Spike Tests**:
+- Spike results inform spec creation
+- Validated patterns from spikes → formal specs
+- Spike READMEs reference resulting specs
+
+**With ADRs**:
+- Major spec decisions → ADR documents
+- ADRs explain "why", specs explain "what"
+- Bidirectional linking maintained
+
+**With Git Worktrees**:
+- Each worktree can work on separate change proposals
+- Specs in specs/changes/XXX-feature/ are isolated
+- Parallel development without conflicts
+
+### AI Agent Guidelines
+
+**For AI agents working on FRANK**:
+
+1. **Before implementing**, read relevant specs:
+   ```bash
+   # Implementing submission endpoint?
+   cat specs/apis/sightings-api.spec.md
+   cat specs/core/submission.spec.md
+   ```
+
+2. **Follow spec contracts exactly**:
+   - Request/response schemas must match
+   - Validation rules must be implemented
+   - Error responses must match documented codes
+   - Access tier filtering must work as specified
+
+3. **Update specs when requirements change**:
+   - Don't change code without updating spec
+   - Keep spec and implementation synchronized
+   - Link spec updates in commit messages
+
+4. **Create change proposals for new features**:
+   ```bash
+   # New feature: Background task processing
+   specs/changes/002-background-tasks/
+   ├── proposal.md   # Problem and business value
+   ├── spec.md       # Requirements and API contracts
+   ├── design.md     # Implementation approach
+   └── tasks.md      # Step-by-step checklist
+   ```
+
+5. **Validate implementations against specs**:
+   - All FR requirements implemented? ✅
+   - Test coverage ≥85%? ✅
+   - API contracts match exactly? ✅
+   - Access control working? ✅
+
+### Quick Reference
+
+**Comprehensive Guide**: See [SPEC-DRIVEN-DEVELOPMENT.md](SPEC-DRIVEN-DEVELOPMENT.md) for complete workflow documentation, diagrams, and examples.
+
+**Templates**:
+- Standard spec: `specs/_template.spec.md`
+- Change proposal: `specs/changes/_template/`
+
+**Existing Specs**:
+- Core models: `specs/core/` (5 specs)
+- APIs: `specs/apis/` (3 specs)
+- Storage: `specs/storage/` (4 specs)
+
+**Related Documentation**:
+- [specs/README.md](specs/README.md) - Directory structure and usage
+- [SPEC-DRIVEN-DEVELOPMENT.md](SPEC-DRIVEN-DEVELOPMENT.md) - Complete workflow guide
+- [docs/evolutionary_design.md](docs/evolutionary_design.md) - Evolutionary philosophy
+
 ## Important Notes
 
 - **Never break Stage 1**: It's the development baseline. All stages must maintain fallback capability.
@@ -266,19 +511,32 @@ pytest tests/unit/ -v --cov=src/frank --cov-report=term-missing
 
 ## Recent Developments
 
-### Spike 010: AWS Cognito Authentication
-Time-boxed exploration of AWS Cognito integration for user authentication, token management, and secure API access patterns.
+### Completed Spikes (001-015)
 
-### Spike 011: FastAPI Testability Validation
-Established comprehensive patterns for:
-- Function-based FastAPI architecture for improved testability
-- Bearer token authentication with HTTPBearer security
-- Exception handling (standard and custom HTTPException extensions)
-- Uvicorn development workflow with hot-reload
-- Comprehensive pytest testing patterns with TestClient
-- Request/response logging middleware
+All 15 spikes have been completed and integrated into the FRANK platform. Key learnings:
 
-These patterns are now applicable across all FRANK API implementations.
+**Early Spikes (001-007)**: Core patterns and local development
+- 001_genparse: Submission generation and parsing
+- 002_filter: Access tier filtering logic
+- 003_pydantic: Pydantic v2 model validation
+- 004_sqlite: SQLite database implementation
+- 005_server: FastAPI server patterns
+- 006_dynamodb: DynamoDB integration basics
+- 007_fastapi: FastAPI application structure
+
+**AWS Infrastructure Spikes (008-013)**: Cloud deployment
+- 008_aws_tf: Terraform infrastructure as code
+- 009_aws_ecs_basic: ECS Fargate container orchestration
+- 010_aws_alb: Application Load Balancer setup
+- 011_aws_ssl: SSL/TLS certificate management
+- 012_aws_dynamodb: DynamoDB table design for threat intelligence
+- 013_aws_observability: CloudWatch logging and monitoring
+
+**Authentication & Testing Spikes (014-015)**: Production readiness
+- 014_cognito: AWS Cognito authentication integration, JWT validation, service accounts
+- 015_fastapi_testing: Comprehensive FastAPI testing patterns with TestClient
+
+See `tests/spikes/*/README.md` for detailed hypothesis, approach, and integration status for each spike.
 
 ## Evolutionary Design Philosophy
 
