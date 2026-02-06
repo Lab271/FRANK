@@ -45,6 +45,7 @@ All architectural decisions in chronological order:
 | [0010](0010-stages-vs-environments.md) | Stages vs Environments Architecture | ✅ Accepted | Architecture | 2026-01-31 |
 | [0011](0011-spike-integration-process.md) | Spike Integration Process | ✅ Accepted | Process | 2026-01-31 |
 | [0012](0012-testing-philosophy.md) | Testing Philosophy and Local Services | ✅ Accepted | Testing | 2026-01-31 |
+| [0013](0013-c4-model-architecture-visualization.md) | C4 Model for Architecture Visualization | 🟡 Proposed | Documentation | 2026-02-06 |
 
 ## Quick Reference
 
@@ -169,5 +170,5 @@ ADRs provide architectural constraints for AI tools:
 
 ---
 
-*Last updated: 2026-01-31*
-*Total ADRs: 12 accepted, 0 proposed, 0 rejected*
+*Last updated: 2026-02-06*
+*Total ADRs: 12 accepted, 1 proposed, 0 rejected*
