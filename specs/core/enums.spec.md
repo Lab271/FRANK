@@ -1,18 +1,21 @@
 # FRANK Core Enumerations Specification
 
-- **Status:** APPROVED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Core Models / Enumerations
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
 - **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
 - **Implementation:** [src/frank/core/enum.py](../../src/frank/core/enum.py)
 - **Tests:** [tests/unit/core/test_enum.py](../../tests/unit/core/test_enum.py)
 
-## Purpose
+## Overview
 
 Defines core enumeration types for FRANK's data model including access control tiers, observable types, severity levels, and TLP classifications. All enums inherit from `str` and `Enum` to provide both type safety and JSON/YAML serialization compatibility.
 
-## Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: AccessTier - Access Control Hierarchy
 
