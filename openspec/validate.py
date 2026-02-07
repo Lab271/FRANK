@@ -48,9 +48,16 @@ class SpecMetadata:
 class SpecValidator:
     """Validates FRANK specification files."""
 
-    VALID_STATUSES = {"DRAFT", "REVIEW", "APPROVED", "IMPLEMENTED", "SUPERSEDED"}
+    # Support both old and new format status values
+    VALID_STATUSES = {
+        # Old format
+        "DRAFT", "REVIEW", "APPROVED", "IMPLEMENTED", "SUPERSEDED",
+        # New OpenSpec format
+        "Draft", "Proposed", "Implemented", "Deprecated"
+    }
 
-    REQUIRED_SECTIONS = [
+    # Support both old (numbered) and new (unnumbered) section headers
+    REQUIRED_SECTIONS_OLD = [
         "## 1. Purpose",
         "## 2. Functional Requirements",
         "## 3. Non-Functional Requirements",
@@ -61,6 +68,17 @@ class SpecValidator:
         "## 8. References",
     ]
 
+    REQUIRED_SECTIONS_NEW = [
+        "## Overview",
+        "## ADDED Requirements",
+        "## Non-Functional Requirements",
+        "## Data Model",
+        "## Test Coverage Requirements",
+        "## Implementation Status",
+        "## Evolution Path Across FRANK Stages",
+        "## References",
+    ]
+
     OPTIONAL_SECTIONS = [
         "## 9. Open Questions & Decisions Pending",
         "## 10. Appendix: Examples",
@@ -69,7 +87,7 @@ class SpecValidator:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.specs_dir = project_root / "specs"
+        self.specs_dir = project_root / "openspec"  # Updated to use openspec directory
         self.docs_dir = project_root / "docs"
         self.tests_dir = project_root / "tests"
         self.src_dir = project_root / "src"
@@ -97,31 +115,45 @@ class SpecValidator:
         return result
 
     def _extract_metadata(self, content: str) -> SpecMetadata:
-        """Extract metadata from specification header."""
+        """Extract metadata from specification header (supports both old and new OpenSpec formats)."""
         metadata = SpecMetadata()
 
-        # Extract status
-        status_match = re.search(r'- \*\*Status:\*\*.*?(DRAFT|REVIEW|APPROVED|IMPLEMENTED|SUPERSEDED)', content)
+        # Extract status - support both formats:
+        # Old: - **Status:** APPROVED
+        # New: **Status:** Implemented
+        status_match = re.search(
+            r'(?:- )?\*\*Status:\*\*\s*(.+?)(?:\n|$)',
+            content,
+            re.IGNORECASE | re.MULTILINE
+        )
         if status_match:
-            metadata.status = status_match.group(1)
+            status_value = status_match.group(1).strip()
+            # Extract just the status word (handles both "APPROVED" and "Implemented")
+            status_word_match = re.search(r'\b(DRAFT|REVIEW|APPROVED|IMPLEMENTED|SUPERSEDED|Draft|Proposed|Implemented|Deprecated)\b', status_value, re.IGNORECASE)
+            if status_word_match:
+                metadata.status = status_word_match.group(1)
 
-        # Extract version
-        version_match = re.search(r'- \*\*Version:\*\* ([\d.]+)', content)
+        # Extract version - support both formats:
+        # Old: - **Version:** 1.0
+        # New: **Version:** 1.0.0
+        version_match = re.search(r'(?:- )?\*\*Version:\*\*\s*([\d.]+)', content)
         if version_match:
             metadata.version = version_match.group(1)
 
-        # Extract owner
-        owner_match = re.search(r'- \*\*Owner:\*\* ⭐ (.+?)(?:\n|$)', content)
+        # Extract owner - support both formats:
+        # Old: - **Owner:** ⭐ Team Name
+        # New: **Owner:** FRANK Core Team (in FRANK-Specific Metadata section)
+        owner_match = re.search(r'(?:- )?\*\*Owner:\*\*\s*(?:⭐\s*)?(.+?)(?:\n|$)', content)
         if owner_match:
             metadata.owner = owner_match.group(1).strip()
 
-        # Extract issue number
+        # Extract issue number (old format only)
         issue_match = re.search(r'- \*\*Issue:\*\* ⭐ #(\d+)', content)
         if issue_match:
             metadata.issue = issue_match.group(1)
 
         # Extract related ADRs
-        adr_matches = re.findall(r'\[ADR[-\s](\d+)\]\(([^)]+)\)', content)
+        adr_matches = re.findall(r'\[ADR[-\s]?(\d+)[^\]]*\]\(([^)]+)\)', content)
         metadata.related_adrs = [adr_path for _, adr_path in adr_matches]
 
         # Extract GitHub PR
@@ -135,17 +167,18 @@ class SpecValidator:
         """Check metadata completeness and validity."""
         # Check required fields
         if not metadata.status:
-            result.errors.append("Missing required field: Status (marked with ⭐)")
+            result.warnings.append("Missing field: Status")
         elif metadata.status not in self.VALID_STATUSES:
-            result.errors.append(f"Invalid status: '{metadata.status}'. Must be one of: {', '.join(self.VALID_STATUSES)}")
+            result.warnings.append(f"Non-standard status: '{metadata.status}'. Recommended: {', '.join(sorted(self.VALID_STATUSES))}")
 
         if not metadata.owner:
-            result.errors.append("Missing required field: Owner (marked with ⭐)")
+            result.warnings.append("Missing field: Owner")
         elif metadata.owner.startswith("[") or "responsible" in metadata.owner.lower():
             result.warnings.append("Owner field appears to be placeholder text")
 
+        # Issue field is optional for new OpenSpec format
         if not metadata.issue:
-            result.errors.append("Missing required field: Issue (marked with ⭐)")
+            result.info.append("No Issue number specified (optional for OpenSpec format)")
 
         # Check optional fields
         if not metadata.version:
@@ -155,20 +188,35 @@ class SpecValidator:
             result.warnings.append("Implemented spec should have GitHub PR link")
 
     def _check_required_sections(self, content: str, result: ValidationResult):
-        """Check that all required sections are present."""
-        for section in self.REQUIRED_SECTIONS:
-            if section not in content:
-                result.errors.append(f"Missing required section: {section}")
+        """Check that all required sections are present (supports both old and new formats)."""
+        # Check if spec uses old or new format
+        uses_old_format = "## 1. Purpose" in content
+        uses_new_format = "## Overview" in content
 
-        # Check for purpose content
-        if "## 1. Purpose" in content:
+        if not uses_old_format and not uses_new_format:
+            result.errors.append("Could not determine spec format (missing both '## 1. Purpose' and '## Overview')")
+            return
+
+        # Check appropriate required sections
+        required_sections = self.REQUIRED_SECTIONS_OLD if uses_old_format else self.REQUIRED_SECTIONS_NEW
+        missing_sections = []
+
+        for section in required_sections:
+            if section not in content:
+                missing_sections.append(section)
+
+        if missing_sections:
+            result.warnings.append(f"Missing {len(missing_sections)} sections: {', '.join(missing_sections[:3])}{'...' if len(missing_sections) > 3 else ''}")
+
+        # Check for purpose/overview content
+        if uses_old_format and "## 1. Purpose" in content:
             purpose_section = self._extract_section(content, "## 1. Purpose", "## 2.")
             if len(purpose_section.strip()) < 100:
                 result.warnings.append("Purpose section seems too short (< 100 chars)")
-
-            # Check for star marking
-            if "⭐" not in purpose_section:
-                result.warnings.append("Purpose section missing ⭐ marker for required fields")
+        elif uses_new_format and "## Overview" in content:
+            overview_section = self._extract_section(content, "## Overview", "## ADDED Requirements")
+            if overview_section and len(overview_section.strip()) < 100:
+                result.warnings.append("Overview section seems too short (< 100 chars)")
 
     def _extract_section(self, content: str, start_marker: str, end_marker: str) -> str:
         """Extract content between two section markers."""

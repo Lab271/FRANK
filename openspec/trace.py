@@ -69,7 +69,7 @@ class TraceabilityChecker:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.specs_dir = project_root / "specs"
+        self.specs_dir = project_root / "openspec"  # Updated to use openspec directory
         self.tests_dir = project_root / "tests"
         self.src_dir = project_root / "src"
         self.docs_dir = project_root / "docs"
