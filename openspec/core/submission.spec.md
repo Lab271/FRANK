@@ -744,15 +744,77 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 
 **Minimum Coverage**: ≥85% (enforced by CI/CD)
 
-**Test Categories**:
-1. **Creation Tests** - Minimal, full fields, factory method
-2. **Validation Tests** - Organization integrity, confidence range
-3. **Factory Tests** - create_minimal() with various parameters
-4. **Serialization Tests** - to_json(), to_yaml()
-5. **Legacy Parser Tests** - from_legacy_dict() with various formats
+### Requirement 1: Core Submission Structure
+
+- **BDD Scenarios**:
+  - `tests/integration/features/frank_server_api.feature:14` - Submit threat intelligence with different access levels (✅ valid submission creation)
+  - `tests/integration/features/frank_server_api.feature:91` - Submit comprehensive threat intelligence (✅ complete submission with all optional fields)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py::test_create_minimal_valid_submission` - Minimal submission creation
+  - `tests/unit/core/test_submission.py::test_create_minimal_with_hit_target` - Submission with target
+  - `tests/unit/core/test_submission.py::TestSubmission` - Core functionality (271 lines)
+- **Coverage**: ✅ 8/8 acceptance criteria tested
+
+### Requirement 2: Submission ID Generation
+
+- **BDD Scenarios**:
+  - `tests/integration/features/frank_server_api.feature:14` - Submit threat intelligence (✅ auto-generated STIX IDs)
+  - `tests/integration/features/frank_server_api.feature:91` - Submit comprehensive sighting (✅ STIX ID format validation)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - ID generation and format validation
+- **Coverage**: ✅ All acceptance criteria tested
+
+### Requirement 3: Organisation Integrity Validation
+
+- **BDD Scenarios**:
+  - ⚠️ Not yet covered in BDD tests (validation happens at model level)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Submitter ≠ target validation
+- **Coverage**: ✅ Unit tests complete, consider adding BDD edge case scenarios
+
+### Requirement 4: Format Versioning
+
+- **BDD Scenarios**:
+  - ✅ Implicitly tested in all submission scenarios (version auto-assigned)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Format version defaults
+- **Coverage**: ✅ All acceptance criteria tested
+
+### Requirement 5: TLP Classification
+
+- **BDD Scenarios**:
+  - `tests/integration/features/frank_server_api.feature:91` - Comprehensive submission (✅ TLP GREEN default)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - TLP level validation
+- **Coverage**: ✅ All acceptance criteria tested
+
+### Requirement 6: Factory Method - create_minimal()
+
+- **BDD Scenarios**:
+  - ⚠️ Not directly covered in BDD (internal API)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Factory method tests
+- **Coverage**: ✅ Unit tests complete
+
+### Requirement 7: Legacy Format Parser - from_legacy_dict()
+
+- **BDD Scenarios**:
+  - ⚠️ Not covered in BDD (backward compatibility feature)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Legacy format parsing
+- **Coverage**: ✅ Unit tests complete
+
+### Requirement 8: Serialization Methods
+
+- **BDD Scenarios**:
+  - ✅ Implicitly tested in all API responses (JSON serialization)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py::TestSubmissionSerialization` - JSON/YAML export
+- **Coverage**: ✅ All acceptance criteria tested
 
 **Test Files**:
 - [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py) - 271 lines
+- [tests/integration/features/frank_server_api.feature](../../tests/integration/features/frank_server_api.feature) - Submission API scenarios
 
 **Key Test Classes**:
 - `TestSubmission` - Core submission functionality
