@@ -24,8 +24,10 @@ Feature: Mock Cognito User and Organisation Management
     And user "ijsbrand" should exist with organisation "identity--schuberg-philis"
     And user "s_unit_analyst" should exist with organisation "identity--s-unit"
 
-  @seeding @cognito
+  @seeding @cognito @spec-auth-req3
   Scenario Outline: Verify seeded users have correct attributes
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 3: Access Tier Mapping (Cognito groups mapped correctly)
     When I get user details for "<username>"
     Then the user should have email "<email>"
     And the user should belong to organisation "<organisation_id>"
@@ -101,8 +103,10 @@ Feature: Mock Cognito User and Organisation Management
     When I delete user "tempuser"
     Then user "tempuser" should not exist in the system
 
-  @users @groups @cognito
+  @users @groups @cognito @spec-auth-req3
   Scenario: Add user to group changes access tier
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 3: Access Tier Mapping (group membership changes tier)
     Given I create a test user "testuser3" in organisation "identity--rabobank"
     When I add user "testuser3" to group "partner"
     Then user "testuser3" should be in group "partner"
@@ -114,8 +118,12 @@ Feature: Mock Cognito User and Organisation Management
     When I remove user "admin" from group "core_member"
     Then user "admin" should not be in group "core_member"
 
-  @authentication @cognito
+  @authentication @cognito @spec-auth-req1 @spec-auth-req2 @spec-auth-req3
   Scenario Outline: Authenticate users from different organisations
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 1: JWT Token Generation (tokens with claims)
+    #   - Requirement 2: JWT Token Validation (successful validation)
+    #   - Requirement 3: Access Tier Mapping (groups to AccessTier)
     Given user "<username>" exists in the system
     When I authenticate with username "<username>" and password "<password>"
     Then authentication should be successful
@@ -128,14 +136,20 @@ Feature: Mock Cognito User and Organisation Management
       | s_unit_analyst    | TempPass123! | identity--s-unit           | partner     |
       | kpn_observer      | TempPass123! | identity--kpn              | observer    |
 
-  @authentication @cognito
+  @authentication @cognito @spec-auth-req1 @spec-auth-req2
   Scenario: Failed authentication with wrong password
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 1: JWT Token Generation (error handling)
+    #   - Requirement 2: JWT Token Validation (reject invalid credentials)
     When I authenticate with username "admin" and password "wrongpassword"
     Then authentication should fail
     And I should receive an AWS "NotAuthorizedException" error
 
-  @authentication @cognito
+  @authentication @cognito @spec-auth-req1 @spec-auth-req2
   Scenario: Failed authentication with non-existent user
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 1: JWT Token Generation (error handling)
+    #   - Requirement 2: JWT Token Validation (reject non-existent users)
     When I authenticate with username "nonexistent" and password "anypassword"
     Then authentication should fail
     And I should receive an AWS "UserNotFoundException" error

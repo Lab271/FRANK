@@ -133,6 +133,66 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
+## 2. Test Coverage
+
+### Requirement 1: JWT Token Generation
+
+- **BDD Scenarios**:
+  - `tests/integration/features/cognito_management.feature:118` - Authenticate users from different organisations (✅ token generation with claims)
+  - `tests/integration/features/cognito_management.feature:132` - Failed authentication with wrong password (✅ error handling)
+  - `tests/integration/features/cognito_management.feature:138` - Failed authentication with non-existent user (✅ error handling)
+- **Unit Tests**:
+  - `tests/unit/auth/test_tokens.py` - Token generation logic
+  - `tests/spikes/014_cognito/` - Spike validation tests
+- **Coverage**: ✅ 6/6 acceptance criteria tested
+
+### Requirement 2: JWT Token Validation
+
+- **BDD Scenarios**:
+  - `tests/integration/features/cognito_management.feature:118` - Authenticate users from different organisations (✅ successful validation)
+  - `tests/integration/features/cognito_management.feature:132` - Failed authentication with wrong password (✅ reject invalid credentials)
+  - `tests/integration/features/cognito_management.feature:138` - Failed authentication with non-existent user (✅ reject non-existent users)
+- **Unit Tests**:
+  - `tests/unit/auth/test_validation.py` - Token validation logic
+  - `tests/spikes/014_cognito/` - JWKS validation tests
+- **Coverage**: ✅ 8/8 acceptance criteria tested
+
+### Requirement 3: Access Tier Mapping
+
+- **BDD Scenarios**:
+  - `tests/integration/features/cognito_management.feature:28` - Verify seeded users have correct attributes (✅ group to tier mapping)
+  - `tests/integration/features/cognito_management.feature:118` - Authenticate users from different organisations (✅ tier in token claims)
+  - `tests/integration/features/cognito_management.feature:105` - Add user to group changes access tier (✅ dynamic tier updates)
+- **Unit Tests**:
+  - `tests/unit/auth/test_tier_mapping.py` - Group to AccessTier logic
+- **Coverage**: ✅ 7/7 acceptance criteria tested
+
+### Requirement 4: Token Refresh Flow
+
+- **BDD Scenarios**:
+  - ⚠️ Not yet covered in BDD tests (add to future iteration)
+- **Unit Tests**:
+  - `tests/spikes/014_cognito/test_token_refresh.py` - Refresh flow validation
+- **Coverage**: ⚠️ 7/7 acceptance criteria tested (unit only, missing BDD)
+
+### Requirement 5: Logout and Token Revocation
+
+- **BDD Scenarios**:
+  - ⚠️ Not yet covered in BDD tests (add to future iteration)
+- **Unit Tests**:
+  - `tests/spikes/014_cognito/test_logout.py` - Logout flow validation
+- **Coverage**: ⚠️ 6/6 acceptance criteria tested (unit only, missing BDD)
+
+### Requirement 6: Service Account Authentication
+
+- **BDD Scenarios**:
+  - ⚠️ Not yet covered in BDD tests (add to future iteration)
+- **Unit Tests**:
+  - `tests/spikes/014_cognito/test_service_accounts.py` - Service account validation
+- **Coverage**: ⚠️ 6/6 acceptance criteria tested (unit only, missing BDD)
+
+---
+
 ## 3. Non-Functional Requirements
 
 ### Performance
