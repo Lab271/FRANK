@@ -1,35 +1,52 @@
 # ECS Fargate Container Deployment Specification
 
-- **Status:** ⭐ IMPLEMENTED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
-- **Owner:** ⭐ Infrastructure Team
-- **Related ADRs:** N/A (extracted from spike 009)
-- **Issue:** ⭐ #N/A (spike-derived specification)
-- **GitHub PR:** Integrated in Stage 3 deployment
+**Domain:** Infrastructure / Container Orchestration
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
+- **Owner:** Infrastructure Team
 - **Related Spike:** [Spike 009: AWS ECS Basic](../../tests/spikes/009_aws_ecs_basic/README.md)
+- **Integration:** Stage 3 cloud deployment
+
+## Overview
+
+Documents the container orchestration pattern for deploying FRANK applications to AWS ECS Fargate. Establishes cloud-native deployment foundation while minimizing infrastructure management overhead.
+
+### Philosophy
+
+- **Serverless Containers**: Zero server management (no EC2 instances)
+- **Automatic Scaling**: Handle variable workloads without manual intervention
+- **Pay-Per-Use**: Cost-effective for development and production environments
+- **Cloud-Native Evolution**: Bridge from local development (Stage 1) to production (Stage 3)
+- **From Spike to Production**: Patterns validated in Spike 009, now production-ready
+
+### Key Capabilities
+
+- **Container Image Management**: ECR integration with version control
+- **Task Definition Configuration**: CPU, memory, environment, logging
+- **Network Configuration**: Multi-AZ VPC with public/private subnets
+- **Service Discovery**: ALB integration with target group health checks
+- **CloudWatch Logging**: Centralized logging with retention policies
+- **Auto-Scaling**: CPU/memory/request-rate based scaling (2-10 tasks)
 
 ---
 
-## 1. Purpose
+## RFC 2119 Keywords
 
-⭐ This specification documents the container orchestration pattern for deploying FRANK applications to AWS ECS Fargate. It establishes the foundation for cloud-native deployment while minimizing infrastructure management overhead.
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
-**Problem Solved**: Traditional server-based deployments require manual provisioning, scaling, and maintenance of compute infrastructure. ECS Fargate provides serverless container execution that eliminates these operational burdens while maintaining the flexibility of containerized applications.
-
-**Business Value**:
-- Zero server management overhead (no EC2 instances to maintain)
-- Automatic scaling capabilities for handling variable workloads
-- Pay-per-use pricing model reduces costs for development environments
-- Foundation for production-grade deployment (Stage 3)
-
-**Why Now**: FRANK's evolution from local development (Stage 1) to cloud deployment (Stage 3) requires a proven container orchestration approach that balances simplicity with production capabilities.
-
-**Connection to Vision**: Supports FRANK's goal of providing a scalable, maintainable threat intelligence platform by leveraging cloud-native infrastructure patterns.
+**Usage in this specification**:
+- **MUST/SHALL**: Health check configuration, network security, logging
+- **SHOULD**: Follow AWS best practices for task definitions
+- **MAY**: Add application-specific environment variables
 
 ---
 
-## 2. Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Container Image Management
 

@@ -1,30 +1,54 @@
 # BaseFRANKDatabase Interface Specification
 
-- **Status:** IMPLEMENTED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Storage Layer / Database Abstraction
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
 - **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md)
-- **Source:** [`src/frank/storage/base.py`](../../src/frank/storage/base.py)
+- **Implementation:** [src/frank/storage/base.py](../../src/frank/storage/base.py)
+- **Tests:** [tests/unit/storage/](../../tests/unit/storage/)
+
+## Overview
+
+The `BaseFRANKDatabase` abstract base class defines the **repository pattern interface** for all database operations in the FRANK platform. It solves a fundamental architectural challenge: FRANK must run unchanged across multiple database technologies (SQLite, DynamoDB, PostgreSQL, and eventually ScyllaDB) as the platform evolves through its four infrastructure stages.
+
+### Philosophy
+
+- **Technology Independence**: Business logic never imports database drivers directly (sqlite3, boto3, psycopg)
+- **Repository Pattern**: Single abstraction layer for all data access operations
+- **Consistent Behavior**: Access filtering works identically across all implementations
+- **Safe Transitions**: Switching databases requires changing only configuration, not code
+- **Evolutionary Design**: Enables FRANK's four-stage infrastructure evolution without rewrites
+
+### Key Capabilities
+
+- **Abstract Interface Contract**: All database operations defined as abstract methods
+- **Access Tier Filtering**: Built-in privacy enforcement (PUBLIC, OBSERVER, CONTRIBUTOR, PARTNER, CORE_MEMBER)
+- **Observable Hashing**: Consistent deduplication across all database backends
+- **Health Checks**: Standardized health monitoring interface
+- **Testability**: Interface can be mocked for unit tests without database dependency
+
+This is the **single most important architectural abstraction** in FRANK, enabling the entire evolutionary design philosophy described in [ADR-0001](../../docs/adr/0001-four-stage-infrastructure-evolution.md).
 
 ---
 
-## 1. Purpose
+## RFC 2119 Keywords
 
-The `BaseFRANKDatabase` abstract base class defines the **repository pattern interface** for all database operations in the FRANK platform. It exists to solve a fundamental architectural challenge: FRANK must run unchanged across multiple database technologies (SQLite, DynamoDB, PostgreSQL, and eventually ScyllaDB) as the platform evolves through its four infrastructure stages.
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
-Without this abstraction, business logic would become entangled with database-specific code, making technology transitions risky and requiring rewrites at each stage. The base interface ensures:
-
-- **Technology Independence**: Business logic never imports sqlite3, boto3, or psycopg directly
-- **Consistent Behavior**: Access filtering works identically across all database implementations
-- **Safe Transitions**: Switching databases requires changing only one line of configuration
-- **Testability**: The interface can be mocked for unit tests without any database dependency
-
-This is the single most important architectural abstraction in FRANK, enabling the entire evolutionary design philosophy described in [ADR-0001](../../docs/adr/0001-four-stage-infrastructure-evolution.md).
+**Usage in this specification**:
+- **MUST/SHALL**: Abstract method implementation, access filtering enforcement
+- **SHOULD**: Use factory pattern for database instantiation
+- **MAY**: Implementations may add database-specific optimizations
 
 ---
 
-## 2. Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Abstract Interface Contract
 

@@ -1,28 +1,56 @@
 # SQLite Implementation Specification
 
-- **Status:** IMPLEMENTED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Storage Layer / Database Implementations
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
 - **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md)
-- **Source:** [`src/frank/storage/sqlite.py`](../../src/frank/storage/sqlite.py)
+- **Implementation:** [src/frank/storage/sqlite.py](../../src/frank/storage/sqlite.py)
+- **Tests:** [tests/unit/storage/test_sqlite.py](../../tests/unit/storage/test_sqlite.py)
+
+## Overview
+
+The `SQLiteFRANKDatabase` is the **reference implementation** of the `BaseFRANKDatabase` interface. It implements **every** method in the interface, making it the only complete implementation in the FRANK platform.
+
+### Philosophy
+
+- **Zero Infrastructure**: No server, no network, no configuration - just a file
+- **Reference Implementation**: All 23 interface methods fully implemented
+- **Development First**: Primary database for local development (Stage 1)
+- **Universal Fallback**: Every stage can fall back to SQLite if cloud unavailable
+- **Immediate Contribution**: Developers start coding without database installation
+
+### Key Capabilities
+
+- **Complete Interface Implementation**: All 23 methods from BaseFRANKDatabase
+- **Auto-Schema Creation**: Tables and indexes created automatically on first use
+- **Full Submission Pipeline**: Normalizes Pydantic models to relational tables
+- **Access Tier Filtering**: Inherits filtering from base class
+- **Observable Querying**: Complex filters on type, role, submitter, timerange
+- **Transaction Safety**: All operations atomic with SQLite transactions
+- **WAL Mode**: Write-Ahead Logging for better concurrency
+
+SQLite was chosen for Stage 1 because it stores everything in a single file while providing relational integrity with foreign keys, transactions, and indexes. This enables immediate developer productivity.
 
 ---
 
-## 1. Purpose
+## RFC 2119 Keywords
 
-The `SQLiteFRANKDatabase` is the **reference implementation** of the `BaseFRANKDatabase` interface. It implements **every** method in the interface, making it the only complete implementation in the FRANK platform. SQLite serves as:
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
-- **Development Baseline**: The primary database for local development on developer laptops (Stage 1)
-- **Fallback**: Every stage can fall back to SQLite if cloud databases are unavailable
-- **Test Target**: The reference behavior against which other implementations are validated
-- **Complete Feature Set**: All methods implemented -- threat intelligence, organisation management, API keys, refresh tokens, auditing
-
-SQLite was chosen as the Stage 1 database because it requires zero infrastructure setup (no server, no network, no configuration), stores everything in a single file, and still provides relational integrity with foreign keys, transactions, and indexes. This enables developers to start contributing immediately without any database installation.
+**Usage in this specification**:
+- **MUST/SHALL**: Complete interface implementation, schema creation, transaction atomicity
+- **SHOULD**: Use WAL mode for better concurrency
+- **MAY**: Add SQLite-specific optimizations (indexes, triggers)
 
 ---
 
-## 2. Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Complete Interface Implementation
 
