@@ -1,15 +1,17 @@
 # DynamoDB Implementation Specification
 
-- **Status:** IMPLEMENTED (Partial)
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Storage Layer / Cloud NoSQL
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
 - **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md), [ADR-0009](../../docs/adr/0009-postgresql-management-api.md)
-- **Source:** [`src/frank/storage/dynamodb.py`](../../src/frank/storage/dynamodb.py)
+- **Implementation:** [`src/frank/storage/dynamodb.py`](../../src/frank/storage/dynamodb.py)
+- **Tests:** [tests/unit/storage/test_dynamodb.py](../../tests/unit/storage/test_dynamodb.py)
 
----
-
-## 1. Purpose
+## Overview
 
 The `DynamoDBFRANKDatabase` implements the `BaseFRANKDatabase` interface for **threat intelligence data** in AWS cloud deployments (Stages 2-3). It handles the high-volume, write-heavy workload of submissions, observables, sightings, and statistics using DynamoDB's single-table design pattern.
 
@@ -23,9 +25,7 @@ DynamoDB was chosen for threat intelligence because:
 
 **Critically, this is a partial implementation.** Organisation management (CRUD), API key management, and refresh token management are explicitly **not implemented** in DynamoDB. These are handled by PostgreSQL (see [postgresql.spec.md](postgresql.spec.md)) or Cognito. This design reflects a deliberate database selection strategy: different data has different access patterns, and each database handles what it does best.
 
----
-
-## 2. Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Threat Intelligence Storage (Implemented)
 
@@ -73,7 +73,7 @@ DynamoDB was chosen for threat intelligence because:
 
 ---
 
-## 3. Non-Functional Requirements
+## Non-Functional Requirements
 
 ### Performance
 
@@ -104,7 +104,7 @@ DynamoDB was chosen for threat intelligence because:
 
 ---
 
-## 4. Data Model / Table Design
+## Data Model / Table Design
 
 ### Single-Table Design Pattern
 
@@ -324,7 +324,7 @@ def create_dynamodb_database(
 
 ---
 
-## 5. Implementation Status Matrix
+## Implementation Status Matrix
 
 ### Implemented Methods (9 methods)
 
@@ -384,7 +384,7 @@ def create_dynamodb_database(
 
 ---
 
-## 6. Test Coverage Requirements
+## Test Coverage Requirements
 
 ### Unit Tests
 

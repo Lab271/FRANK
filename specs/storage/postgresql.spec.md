@@ -1,15 +1,17 @@
 # PostgreSQL Implementation Specification
 
-- **Status:** IMPLEMENTED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Storage Layer / Relational Database
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
 - **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md), [ADR-0005](../../docs/adr/0005-cognito-authentication.md), [ADR-0009](../../docs/adr/0009-postgresql-management-api.md)
-- **Source:** [`src/frank/storage/postgresql.py`](../../src/frank/storage/postgresql.py)
+- **Implementation:** [`src/frank/storage/postgresql.py`](../../src/frank/storage/postgresql.py)
+- **Tests:** [tests/unit/storage/test_postgresql.py](../../tests/unit/storage/test_postgresql.py)
 
----
-
-## 1. Purpose
+## Overview
 
 The `PostgreSQLFRANKDatabase` implements the `BaseFRANKDatabase` interface for **Management API data** in cloud deployments (Stage 3+). It handles the relational, low-volume, high-consistency workload of organisation management, member relationships, and refresh token tracking.
 
@@ -37,9 +39,7 @@ PostgreSQL was chosen for management data because:
 - Target organisations -- victim orgs stored in DynamoDB with sightings
 - Threat intelligence -- submissions, observables, sightings in DynamoDB
 
----
-
-## 2. Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Organisation Management (Implemented)
 
@@ -103,7 +103,7 @@ PostgreSQL was chosen for management data because:
 
 ---
 
-## 3. Non-Functional Requirements
+## Non-Functional Requirements
 
 ### Performance
 
@@ -133,7 +133,7 @@ PostgreSQL was chosen for management data because:
 
 ---
 
-## 4. Data Model / Schema Design
+## Data Model / Schema Design
 
 ### Connection Configuration
 
@@ -266,7 +266,7 @@ db = create_postgresql_database(
 
 ---
 
-## 5. Implementation Status Matrix
+## Implementation Status Matrix
 
 ### Implemented Methods (14 methods)
 
@@ -303,7 +303,7 @@ db = create_postgresql_database(
 
 ---
 
-## 6. Test Coverage Requirements
+## Test Coverage Requirements
 
 ### Unit Tests
 
@@ -338,7 +338,7 @@ db = create_postgresql_database(
 
 ---
 
-## 7. Evolution Path Across FRANK Stages
+## Evolution Path Across FRANK Stages
 
 ### Stage 1: SQLite + FastAPI (Local Development)
 
@@ -409,7 +409,7 @@ for org in orgs:
 
 ---
 
-## 8. References
+## References
 
 - **Related ADRs**:
   - [ADR-0002: Repository Pattern for Database Abstraction](../../docs/adr/0002-repository-pattern-database-abstraction.md)
@@ -440,7 +440,7 @@ for org in orgs:
 
 ---
 
-## 9. Open Questions & Decisions Pending
+## Open Questions & Decisions Pending
 
 - [ ] **Connection Pooling**: Current implementation opens a new connection per operation. Should psycopg's `ConnectionPool` be used for production?
   - **Recommendation**: Use `psycopg_pool.ConnectionPool` for Stage 3 production
