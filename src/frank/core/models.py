@@ -24,6 +24,7 @@ from pydantic import (
 
 from frank import __version__
 from frank.core.enum import AccessTier, ObservableType, SeverityLevel
+from frank.core.mappings import SECTOR_MAPPINGS, SIZE_MAPPINGS
 
 
 class Observable(BaseModel):
@@ -119,21 +120,8 @@ class Submitter(BaseModel):
         if v is None:
             return v
 
-        # Normalize common sector variations
-        # TODO: outside model in separate file
-        sector_mappings = {
-            "finance": "financial",
-            "banking": "financial",
-            "healthcare": "health",
-            "medical": "health",
-            "government": "public_sector",
-            "gov": "public_sector",
-            "tech": "technology",
-            "it": "technology",
-        }
-
         normalized = v.lower().strip()
-        return sector_mappings.get(normalized, normalized)
+        return SECTOR_MAPPINGS.get(normalized, normalized)
 
     @classmethod
     def create(cls, access_level: AccessTier, sector: str = None, region: str = None):
@@ -182,20 +170,8 @@ class HitTarget(BaseModel):
         if v is None:
             return v
 
-        # TODO: outside model in separate file
-        size_mappings = {
-            "small": "small",
-            "sme": "small",
-            "startup": "small",
-            "medium": "medium",
-            "mid": "medium",
-            "large": "large",
-            "enterprise": "large",
-            "multinational": "large",
-        }
-
         normalized = v.lower().strip()
-        return size_mappings.get(normalized, v)
+        return SIZE_MAPPINGS.get(normalized, v)
 
     @classmethod
     def create(cls, sector: str, organisation_size: str = None, region: str = None):
@@ -436,7 +412,43 @@ class Submission(BaseModel):
         data = {"submission": self.model_dump(exclude_none=True, by_alias=True)}
         return json.dumps(data)
 
-    # TODO: add from_yaml/from_json classmethods
+    @classmethod
+    def from_yaml(cls, yaml_str: str) -> "Submission":
+        """
+        Parse Submission from YAML string.
+        Handles both {"submission": {...}} wrapper and direct submission data.
+        Implements 'be forgiving' principle.
+        """
+        import yaml
+
+        data = yaml.safe_load(yaml_str)
+
+        # Handle wrapped format: {"submission": {...}}
+        if isinstance(data, dict) and "submission" in data:
+            submission_data = data["submission"]
+        else:
+            submission_data = data
+
+        return cls(**submission_data)
+
+    @classmethod
+    def from_json(cls, json_str: str) -> "Submission":
+        """
+        Parse Submission from JSON string.
+        Handles both {"submission": {...}} wrapper and direct submission data.
+        Implements 'be forgiving' principle.
+        """
+        import json
+
+        data = json.loads(json_str)
+
+        # Handle wrapped format: {"submission": {...}}
+        if isinstance(data, dict) and "submission" in data:
+            submission_data = data["submission"]
+        else:
+            submission_data = data
+
+        return cls(**submission_data)
 
     @classmethod
     def create_minimal(
