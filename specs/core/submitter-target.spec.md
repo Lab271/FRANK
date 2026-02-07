@@ -1,18 +1,21 @@
 # Submitter & HitTarget Specification
 
-- **Status:** APPROVED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Core Models / Organization Identity
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
 - **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
 - **Implementation:** [src/frank/core/models.py#L89-L203](../../src/frank/core/models.py)
 - **Tests:** [tests/unit/core/test_submitter.py](../../tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](../../tests/unit/core/test_hittarget.py)
 
-## Purpose
+## Overview
 
 Defines Submitter (threat intelligence contributor) and HitTarget (affected organization) models with STIX-compliant organization identities, access tier assignment, privacy controls, and sector normalization. These models enable attribution, access control, and anonymization in the FRANK platform.
 
-## Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Submitter Model
 
