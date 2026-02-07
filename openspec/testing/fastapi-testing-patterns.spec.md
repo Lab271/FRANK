@@ -1,35 +1,50 @@
 # FastAPI Testing Patterns Specification
 
-- **Status:** ⭐ IMPLEMENTED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
-- **Owner:** ⭐ Development Team
-- **Related ADRs:** N/A (extracted from spike 015)
-- **Issue:** ⭐ #N/A (spike-derived specification)
-- **GitHub PR:** Integrated across all FRANK APIs
+**Domain:** Testing / API Testing Patterns
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
+- **Owner:** Development Team
 - **Related Spike:** [Spike 015: FastAPI Testing](../../tests/spikes/015_fastapi_testing/README.md)
+- **Integration:** Applied across all FRANK APIs
+
+## Overview
+
+Documents standard testing patterns for FastAPI applications in FRANK. Establishes pytest-based testing approaches for authenticated endpoints, exception handling, and comprehensive API coverage.
+
+### Philosophy
+
+- **Test-Driven Reliability**: Comprehensive testing (≥85% coverage) ensures API reliability
+- **Reusable Patterns**: Standardized test patterns accelerate development
+- **Authentication First**: Systematic testing of auth scenarios prevents security gaps
+- **From Spike to Standard**: Patterns validated in Spike 015, now production standard
+
+### Key Capabilities
+
+- **Function-Based FastAPI**: Factory functions (`create_app()`) for better testability
+- **TestClient Integration**: FastAPI TestClient for request/response testing
+- **Bearer Token Testing**: Comprehensive authentication scenario coverage
+- **Exception Handling**: Standardized error response testing
+- **Logging Integration**: Request/response logging with timing
 
 ---
 
-## 1. Purpose
+## RFC 2119 Keywords
 
-⭐ This specification documents the standard testing patterns for FastAPI applications in FRANK. It establishes pytest-based testing approaches for authenticated endpoints, exception handling, and comprehensive API coverage.
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
 
-**Problem Solved**: FastAPI applications require specific testing patterns for authentication, HTTP status codes, exception handling, and request/response validation. Without standardized patterns, test coverage becomes inconsistent and difficult to maintain across multiple APIs.
-
-**Business Value**:
-- Comprehensive test coverage (≥85%) for all APIs
-- Faster development through reusable test patterns
-- Consistent error handling and status code usage
-- Reduced bugs through systematic authentication testing
-
-**Why Now**: FRANK is transitioning from proof-of-concept to production-ready platform, requiring systematic testing approaches that scale across multiple APIs (Sightings API, Management API, Background Tasks API).
-
-**Connection to Vision**: Supports FRANK's goal of mission-critical threat intelligence platform by ensuring API reliability through comprehensive testing.
+**Usage in this specification**:
+- **MUST/SHALL**: Test coverage requirements, authentication testing
+- **SHOULD**: Follow established patterns for consistency
+- **MAY**: Add API-specific test scenarios
 
 ---
 
-## 2. Functional Requirements
+## ADDED Requirements
 
 ### Requirement 1: Function-Based FastAPI Architecture
 
