@@ -1,18 +1,53 @@
 # Sighting Specification
 
-- **Status:** APPROVED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Threat Intelligence / Core Data Models
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
 - **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
 - **Implementation:** [src/frank/core/models.py#L291-L369](../../src/frank/core/models.py)
 - **Tests:** [tests/unit/core/test_sighting.py](../../tests/unit/core/test_sighting.py)
 
-## Purpose
+## Overview
 
 Defines the Sighting model representing a single observation of threat activity. Contains core observation metadata (timestamp, confidence), observables (network/file/process indicators), and extended threat context (SIGMA detections, campaign attribution, MITRE ATT&CK mapping, impact assessment). Sightings are the primary threat intelligence payload in FRANK submissions.
 
-## Functional Requirements
+### Philosophy
+
+- **Rich Context Over Raw Data**: Capture not just indicators but full threat context (SIGMA, MITRE ATT&CK, campaigns)
+- **STIX 2.1 Compliance**: Use STIX-compliant sighting IDs for threat intelligence sharing
+- **Be Forgiving on Input**: Accept minimal or comprehensive submissions, validate thoroughly
+- **Confidence Scoring**: Default to 69% (nice) confidence with explicit override capability
+
+### Key Capabilities
+
+- **Automatic ID Generation**: STIX-compliant sighting IDs (`sighting--{uuid}`)
+- **Timestamp Management**: Auto-generated UTC timestamps with timezone awareness
+- **Observable Containers**: Structured network/file/process observables
+- **Extended Threat Context**: SIGMA detections, campaign attribution, MITRE ATT&CK mapping
+- **Impact Assessment**: System/financial/organizational impact tracking
+- **Observation Time Validation**: Ensures first_observed ≤ timestamp ≤ last_observed logic
+- **Factory Method**: Convenient create() for quick sighting generation
+
+---
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: ID format, timestamp generation, observation time validation
+- **SHOULD**: Include confidence scores, provide threat context when available
+- **MAY**: Optional extended metadata (SIGMA, campaigns, MITRE ATT&CK, impact)
+
+---
+
+## ADDED Requirements
 
 ### Requirement 1: Core Sighting Structure
 

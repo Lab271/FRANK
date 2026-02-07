@@ -1,20 +1,55 @@
 # Submission Specification
 
-- **Status:** APPROVED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Threat Intelligence / Core Data Models
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
 - **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
 - **Implementation:** [src/frank/core/models.py#L372-L521](../../src/frank/core/models.py)
 - **Tests:** [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
 
-## Purpose
+## Overview
 
 Defines the Submission model representing a complete threat intelligence submission to FRANK. Aggregates Submitter, HitTarget, Sighting, and observables with format versioning, TLP classification, and cross-field validation. Submission is the root object for all threat intelligence in FRANK.
 
-## Functional Requirements
+### Philosophy
+
+- **Be Forgiving on Input, Strong on Output**: Accept diverse input formats, validate thoroughly, emit standardized data (per ADR-0007)
+- **STIX 2.1 Compliance**: Use STIX-compliant IDs (`submission--{uuid}`) for interoperability with threat intelligence platforms
+- **Single Source of Truth**: Submission aggregates all related entities (submitter, target, observables) in one immutable record
+- **Evolutionary Design**: Same model works across all FRANK stages (SQLite → DynamoDB → ScyllaDB) with zero code changes
+
+### Key Capabilities
+
+- **Automatic ID Generation**: STIX-compliant submission IDs generated automatically
+- **Format Versioning**: Track FRANK data format evolution for backward compatibility
+- **Organization Integrity**: Enforce submitter ≠ target validation
+- **Legacy Format Support**: Parse pre-Pydantic submissions via `from_legacy_dict()`
+- **Multi-Format Export**: Serialize to JSON, YAML with ISO timestamps
+
+---
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Validation rules, ID generation, serialization format
+- **SHOULD**: Recommended practices (e.g., providing confidence scores)
+- **MAY**: Optional fields and behaviors
+
+---
+
+## ADDED Requirements
 
 ### Requirement 1: Core Submission Structure
+
+The system MUST provide a Pydantic v2 model for threat intelligence submissions with automatic ID generation, format versioning, and TLP classification.
 
 **Description**: Pydantic v2 model with automatic ID generation, format versioning, and TLP classification.
 
@@ -61,7 +96,37 @@ class Submission(BaseModel):
 
 **Test Coverage**: [test_create_minimal_valid_submission](../../tests/unit/core/test_submission.py#L53-L91), [test_create_minimal_with_hit_target](../../tests/unit/core/test_submission.py#L93-L112)
 
+#### Scenario: Minimal Submission Creation with Auto-Generated Fields
+
+- GIVEN a user provides minimal submission data (submitter and sighting)
+- AND no submission_id is provided
+- AND no timestamp is provided
+- WHEN the Submission model is instantiated
+- THEN submission_id MUST be auto-generated as "submission--{uuid4}"
+- AND format_version MUST default to current FRANK version
+- AND timestamp MUST be set to current UTC time
+- AND tlp_level MUST default to "GREEN"
+- AND submission_method MUST default to "api"
+
+#### Scenario: Submission with Extra Fields (Forgiving Input)
+
+- GIVEN a user provides submission data including unknown fields
+- AND the data contains {"extra_field": "value", "another_unknown": 123}
+- WHEN the Submission model is instantiated with ConfigDict(extra="ignore")
+- THEN the submission MUST be created successfully
+- AND extra fields MUST be ignored without raising errors
+- AND only defined fields MUST appear in the model
+
+#### Scenario: Datetime Serialization to ISO Format
+
+- GIVEN a submission with timestamp = datetime(2026, 2, 6, 10, 30, 0, tzinfo=timezone.utc)
+- WHEN the submission is serialized via model_dump() or to_json()
+- THEN the timestamp MUST be formatted as ISO string
+- AND the format MUST be "2026-02-06T10:30:00+00:00"
+
 ### Requirement 2: Submission ID Generation
+
+The system MUST auto-generate STIX-compliant submission IDs if not provided during instantiation.
 
 **Description**: Auto-generate STIX-compliant submission IDs if not provided.
 
@@ -92,7 +157,39 @@ def validate_submission_integrity(self):
 
 **Test Coverage**: Tested as part of creation tests
 
+#### Scenario: ID Auto-Generation When Not Provided
+
+- GIVEN submission data with no submission_id field
+- WHEN the Submission model is instantiated
+- THEN submission_id MUST be auto-generated
+- AND the format MUST match "submission--{uuid4}"
+- AND the UUID portion MUST be 36 characters
+- AND the UUID MUST be unique (collision probability negligible)
+
+#### Scenario: Existing ID Preservation
+
+- GIVEN submission data with submission_id = "submission--12345678-1234-5678-1234-123456789abc"
+- WHEN the Submission model is instantiated
+- THEN the submission_id MUST remain "submission--12345678-1234-5678-1234-123456789abc"
+- AND the ID MUST NOT be overwritten with a new UUID
+
+#### Scenario: ID Generation for Empty String
+
+- GIVEN submission data with submission_id = "" (empty string)
+- WHEN the Submission model is instantiated
+- THEN submission_id MUST be auto-generated
+- AND treated the same as None (falsy value triggers generation)
+
+#### Scenario: Unique IDs for Multiple Submissions
+
+- GIVEN 100 submissions created without submission_id
+- WHEN all submissions are instantiated in sequence
+- THEN each submission MUST have a unique submission_id
+- AND no two IDs SHALL be identical
+
 ### Requirement 3: Organisation Integrity Validation
+
+The system MUST ensure submitter and hit_target are different organizations when both are present.
 
 **Description**: Ensure submitter and hit_target are different organizations.
 
@@ -126,7 +223,40 @@ def validate_submission_integrity(self):
 
 **Test Coverage**: [test_submission_integrity_validation](../../tests/unit/core/test_submission.py#L155-L223)
 
+#### Scenario: Valid Submission with Different Organizations
+
+- GIVEN submitter with organisation_id = "identity--abc123..."
+- AND hit_target with organisation_id = "identity--xyz789..."
+- WHEN the Submission model is instantiated
+- THEN validation MUST pass
+- AND the submission MUST be created successfully
+
+#### Scenario: Invalid Submission with Same Organization
+
+- GIVEN submitter with organisation_id = "identity--same123..."
+- AND hit_target with organisation_id = "identity--same123..."
+- WHEN the Submission model is instantiated
+- THEN a ValueError MUST be raised
+- AND the error message MUST state "Submitter and hit_target cannot be the same organisation"
+
+#### Scenario: Submission Without HitTarget (Validation Skipped)
+
+- GIVEN submitter with organisation_id = "identity--abc123..."
+- AND hit_target is None (not provided)
+- WHEN the Submission model is instantiated
+- THEN validation MUST be skipped
+- AND the submission MUST be created successfully
+
+#### Scenario: Auto-Generated IDs Never Collide
+
+- GIVEN submitter and hit_target both use auto-generated organisation_ids
+- WHEN the Submission model is instantiated
+- THEN the auto-generated IDs MUST be different
+- AND validation MUST pass automatically
+
 ### Requirement 4: Format Versioning
+
+The system MUST track FRANK data format version for backward compatibility and evolution.
 
 **Description**: Track FRANK data format version for backward compatibility and evolution.
 
@@ -149,7 +279,31 @@ def validate_submission_integrity(self):
 
 **Test Coverage**: [test_create_minimal_valid_submission](../../tests/unit/core/test_submission.py#L53-L91) (default value check)
 
+#### Scenario: Default Format Version from Package
+
+- GIVEN frank.__version__ = "0.2.0"
+- AND no format_version is provided in submission data
+- WHEN the Submission model is instantiated
+- THEN format_version MUST default to "0.2.0"
+- AND be stored with the submission
+
+#### Scenario: Override Format Version for Legacy Data
+
+- GIVEN legacy submission data with format_version = "0.1.0"
+- WHEN the Submission model is instantiated
+- THEN format_version MUST be set to "0.1.0"
+- AND NOT overridden with current version
+
+#### Scenario: Format Version Used for Migration Decisions
+
+- GIVEN a stored submission with format_version = "0.1.0"
+- WHEN the submission is loaded in a newer FRANK version
+- THEN the system SHOULD check format_version
+- AND apply appropriate migrations if needed
+
 ### Requirement 5: TLP Classification
+
+The system MUST support Traffic Light Protocol classification for information sharing control.
 
 **Description**: Traffic Light Protocol classification for information sharing.
 
@@ -172,7 +326,30 @@ def validate_submission_integrity(self):
 
 **Test Coverage**: Default value tested in creation tests
 
+#### Scenario: Default TLP Level GREEN
+
+- GIVEN submission data without tlp_level field
+- WHEN the Submission model is instantiated
+- THEN tlp_level MUST default to "GREEN"
+- AND indicate community-wide sharing
+
+#### Scenario: Override TLP Level to AMBER
+
+- GIVEN submission data with tlp_level = "AMBER"
+- WHEN the Submission model is instantiated
+- THEN tlp_level MUST be set to "AMBER"
+- AND indicate limited distribution
+
+#### Scenario: TLP Level Used for Access Control
+
+- GIVEN a stored submission with tlp_level = "RED"
+- WHEN a user with insufficient access tier queries the submission
+- THEN the submission SHOULD be filtered out
+- AND NOT visible to unauthorized users
+
 ### Requirement 6: Factory Method - create_minimal()
+
+The system MUST provide a factory method for creating minimal valid submissions with sensible defaults.
 
 **Description**: Convenience constructor for creating minimal valid submissions.
 
@@ -216,7 +393,35 @@ def create_minimal(
 
 **Test Coverage**: [test_factory_method_create_minimal](../../tests/unit/core/test_submission.py#L113-L153)
 
+#### Scenario: Create Minimal Submission with Defaults
+
+- GIVEN no parameters provided to create_minimal()
+- WHEN Submission.create_minimal() is called
+- THEN a valid submission MUST be created
+- AND submitter access_level MUST be PARTNER
+- AND threat_ips MUST be ["185.220.102.45", "203.0.113.42"]
+- AND hit_target MUST be None
+- AND all IDs MUST be auto-generated
+
+#### Scenario: Create Minimal Submission with Custom IPs
+
+- GIVEN threat_ips = ["192.0.2.1", "198.51.100.1", "203.0.113.1"]
+- WHEN Submission.create_minimal(threat_ips=threat_ips) is called
+- THEN a valid submission MUST be created
+- AND sighting MUST contain 3 network observables
+- AND each observable MUST have type "ipv4" and role "c2"
+
+#### Scenario: Create Minimal Submission with HitTarget
+
+- GIVEN target_sector = "financial"
+- WHEN Submission.create_minimal(target_sector="financial") is called
+- THEN a valid submission MUST be created
+- AND hit_target MUST NOT be None
+- AND hit_target.sector MUST be "financial"
+
 ### Requirement 7: Legacy Format Parser - from_legacy_dict()
+
+The system MUST parse submissions from legacy formats (pre-Pydantic v2) with forgiving error handling.
 
 **Description**: Parse submissions from legacy formats (pre-Pydantic v2).
 
@@ -291,7 +496,38 @@ def from_legacy_dict(cls, data: Dict[str, Any]) -> "Submission":
 
 **Test Coverage**: Tested via example_usage() in models.py
 
+#### Scenario: Parse Nested Legacy Format
+
+- GIVEN legacy data with {"submission": {"submitter": {...}, "sighting": {...}}}
+- WHEN Submission.from_legacy_dict(legacy_data) is called
+- THEN the submission MUST be parsed successfully
+- AND the "submission" wrapper MUST be unwrapped
+
+#### Scenario: Parse Flat Legacy Format
+
+- GIVEN legacy data with {"submitter": {...}, "sighting": {...}} (no wrapper)
+- WHEN Submission.from_legacy_dict(legacy_data) is called
+- THEN the submission MUST be parsed successfully
+- AND treated as direct submission data
+
+#### Scenario: Provide Defaults for Missing Fields
+
+- GIVEN legacy data with hit_target missing "sector" field
+- WHEN Submission.from_legacy_dict(legacy_data) is called
+- THEN sector MUST default to "unknown"
+- AND parsing MUST continue successfully
+
+#### Scenario: Skip Invalid Observables Gracefully
+
+- GIVEN legacy data with observables containing one valid and one malformed observable
+- WHEN Submission.from_legacy_dict(legacy_data) is called
+- THEN the valid observable MUST be included
+- AND the malformed observable MUST be skipped
+- AND no exception SHALL be raised
+
 ### Requirement 8: Serialization Methods
+
+The system MUST provide JSON and YAML serialization with proper formatting and field exclusion.
 
 **Description**: Export submissions to JSON and YAML formats.
 
@@ -326,6 +562,30 @@ def to_yaml(self) -> str:
 
 **Test Coverage**: [test_to_yaml](../../tests/unit/core/test_submission.py#L260-L262), [test_to_json](../../tests/unit/core/test_submission.py#L264-L266)
 
+#### Scenario: JSON Serialization with Submission Wrapper
+
+- GIVEN a submission instance
+- WHEN submission.to_json() is called
+- THEN the output MUST be valid JSON
+- AND the structure MUST be {"submission": {...}}
+- AND None values MUST be excluded
+
+#### Scenario: YAML Serialization with ISO Timestamps
+
+- GIVEN a submission with timestamp = datetime(2026, 2, 6, 10, 30, tzinfo=timezone.utc)
+- WHEN submission.to_yaml() is called
+- THEN the timestamp MUST be serialized as "2026-02-06T10:30:00+00:00"
+- AND the format MUST be ISO 8601 with timezone
+
+#### Scenario: Enum Serialization as Strings
+
+- GIVEN a submission with severity = SeverityLevel.CRITICAL (enum)
+- WHEN submission.to_json() is called
+- THEN severity MUST be serialized as "critical" (string)
+- AND NOT as an enum object
+
+---
+
 ## Non-Functional Requirements
 
 ### Performance
@@ -344,6 +604,8 @@ def to_yaml(self) -> str:
 - **Enum Serialization**: String values
 - **Field Exclusion**: `exclude_none=True` removes None values
 - **Extra Fields**: Ignored (ConfigDict `extra="ignore"`)
+
+---
 
 ## Data Model
 
@@ -414,6 +676,8 @@ def to_yaml(self) -> str:
 }
 ```
 
+---
+
 ## Validation Rules
 
 ### Field Validation
@@ -474,6 +738,8 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
     return value.isoformat()
 ```
 
+---
+
 ## Test Coverage Requirements
 
 **Minimum Coverage**: ≥85% (enforced by CI/CD)
@@ -492,6 +758,8 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 - `TestSubmission` - Core submission functionality
 - `TestSubmissionSerialization` - JSON/YAML export
 
+---
+
 ## Implementation Status
 
 - [x] Design complete
@@ -509,6 +777,8 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 - Initial Submission model: Merged in baseline
 - Pydantic v2 migration: Part of core refactoring
 - Comprehensive tests: [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+
+---
 
 ## Evolution Path Across FRANK Stages
 
@@ -535,6 +805,8 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 - ✅ ScyllaDB stores submissions with clustering
 - ✅ Materialized views for common queries
 - ✅ Advanced access control filtering
+
+---
 
 ## Usage Examples
 
@@ -696,11 +968,35 @@ except ValidationError as e:
     print(e)  # ValueError: Submitter and hit_target cannot be the same organisation
 ```
 
+---
+
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **STIX 2.1**: [Report Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_n8bjzg1ysgdq) (similar concept)
-- **TLP Standard**: [Traffic Light Protocol 2.0](https://www.first.org/tlp/)
-- **Related Specs**: [Observable](observable.spec.md), [Sighting](sighting.spec.md), [Submitter & HitTarget](submitter-target.spec.md)
-- **Implementation**: [src/frank/core/models.py](../../src/frank/core/models.py)
-- **Tests**: [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+- **RFC 2119**: https://datatracker.ietf.org/doc/html/rfc2119 (Requirement levels keywords)
+- **STIX 2.1**: https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_n8bjzg1ysgdq (Report Object)
+- **TLP 2.0**: https://www.first.org/tlp/ (Traffic Light Protocol)
+- **Pydantic v2**: https://docs.pydantic.dev/latest/ (Data validation)
+
+- **Related ADRs**:
+  - [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
+
+- **Related Specifications**:
+  - [Observable](observable.spec.md)
+  - [Sighting](sighting.spec.md)
+  - [Submitter & HitTarget](submitter-target.spec.md)
+  - [Enumerations](enums.spec.md)
+
+- **Related Spikes**:
+  - [Spike 003: Pydantic v2](../../tests/spikes/003_pydantic/README.md)
+
+- **Implementation Files**:
+  - [src/frank/core/models.py#L372-L521](../../src/frank/core/models.py)
+
+- **Test Files**:
+  - [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+
+---
+
+**License:** Apache-2.0
+**Copyright:** 2026 FRANK Project
+**Co-Authored-By:** Claude Sonnet 4.5 <noreply@anthropic.com>

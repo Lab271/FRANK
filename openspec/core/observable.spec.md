@@ -1,18 +1,51 @@
 # Observable Specification
 
-- **Status:** APPROVED
-- **Version:** 1.0
-- **Last Updated:** 2026-02-06
+**Domain:** Threat Intelligence / Core Data Models
+**Version:** 1.0.0
+**Status:** Implemented
+**Date:** 2026-02-06
+
+**FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
 - **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
 - **Implementation:** [src/frank/core/models.py#L29-L86](../../src/frank/core/models.py)
 - **Tests:** [tests/unit/core/test_observable.py](../../tests/unit/core/test_observable.py)
 
-## Purpose
+## Overview
 
 Defines the Observable model representing individual threat indicators (IPs, domains, URLs, hashes, etc.) with STIX-compliant IDs, automatic normalization, and comprehensive validation. Observable is the atomic unit of threat intelligence in FRANK.
 
-## Functional Requirements
+### Philosophy
+
+- **STIX 2.1 Compliance**: Use STIX-compliant ID format (`{type}--{uuid}`) for interoperability
+- **Automatic Normalization**: Values automatically normalized (lowercase, trimmed) per type
+- **Be Forgiving on Input**: Accept diverse input formats, validate thoroughly, emit standardized data
+- **Type Safety**: Strong typing with ObservableType enum prevents invalid indicator types
+
+### Key Capabilities
+
+- **Nine Observable Types**: Network (6), File (1), Process (2) threat indicators
+- **Automatic ID Generation**: STIX-compliant IDs with type-specific prefixes
+- **Value Normalization**: Type-specific normalization (lowercase, trim, case preservation for URLs)
+- **Factory Methods**: Convenient constructors (create_ipv4, create_domain, create_url, etc.)
+- **Validation**: Port ranges, hash formats, email patterns
+
+---
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: ID format, value normalization, type validation
+- **SHOULD**: Factory method usage for consistency
+- **MAY**: Optional metadata fields (role, port, protocol)
+
+---
+
+## ADDED Requirements
 
 ### Requirement 1: Core Observable Structure
 
