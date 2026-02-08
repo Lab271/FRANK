@@ -23,7 +23,7 @@ DynamoDB was chosen for threat intelligence because:
 - **Global Secondary Indexes**: Efficient access patterns for different query dimensions
 - **Managed Service**: Zero operational overhead for infrastructure management
 
-**Critically, this is a partial implementation.** Organisation management (CRUD), API key management, and refresh token management are explicitly **not implemented** in DynamoDB. These are handled by PostgreSQL (see [postgresql.spec.md](postgresql.spec.md)) or Cognito. This design reflects a deliberate database selection strategy: different data has different access patterns, and each database handles what it does best.
+**Critically, this is a partial implementation.** Organisation management (CRUD), API key management, and refresh token management are explicitly **not implemented** in DynamoDB. These are handled by PostgreSQL (see [postgresql.spec.md](../storage/postgresql.spec.md)) or Cognito. This design reflects a deliberate database selection strategy: different data has different access patterns, and each database handles what it does best.
 
 
 ## RFC 2119 Keywords
@@ -487,9 +487,9 @@ def create_dynamodb_database(
   - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
 
 - **Related Specifications**:
-  - [Base Interface Spec](base-interface.spec.md) -- interface this implements
-  - [SQLite Implementation Spec](sqlite.spec.md) -- complete reference implementation
-  - [PostgreSQL Implementation Spec](postgresql.spec.md) -- management data complement
+  - [Base Interface Spec](../storage/base-interface.spec.md) -- interface this implements
+  - [SQLite Implementation Spec](../storage/sqlite.spec.md) -- complete reference implementation
+  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md) -- management data complement
 
 - **Source Files**:
   - [`src/frank/storage/dynamodb.py`](src/frank/storage/dynamodb.py) -- Implementation

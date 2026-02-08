@@ -425,9 +425,9 @@ watch "aws ecs describe-services --cluster frank-cluster --services frank-api | 
 - **Related ADRs**: N/A (spike-derived, predates ADR process)
 
 - **Related Specifications**:
-  - [Load Balancer Spec](load-balancer.spec.md) - ALB integration
-  - [Observability Spec](observability.spec.md) - CloudWatch logging
-  - [SSL Certificates Spec](ssl-certificates.spec.md) - HTTPS configuration
+  - Load Balancer Spec (planned) - ALB integration
+  - Observability Spec (planned) - CloudWatch logging
+  - SSL Certificates Spec (planned) - HTTPS configuration
 
 - **Related Spikes**:
   - [Spike 009: AWS ECS Basic](tests/spikes/009_aws_ecs_basic/README.md) - Original hypothesis and validation

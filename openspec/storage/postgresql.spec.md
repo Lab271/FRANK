@@ -23,7 +23,7 @@ PostgreSQL was chosen for management data because:
 - **Query Power**: JOINs for user-to-organisation lookups, aggregation for statistics
 - **UPSERT Support**: `ON CONFLICT ... DO UPDATE` for idempotent organisation management
 
-**This is a purpose-built implementation.** It handles only management data (organisations, members, refresh tokens). Threat intelligence data (submissions, observables, sightings) is handled by DynamoDB (see [dynamodb.spec.md](dynamodb.spec.md)). This reflects the FRANK database selection strategy: use the right database for each data domain.
+**This is a purpose-built implementation.** It handles only management data (organisations, members, refresh tokens). Threat intelligence data (submissions, observables, sightings) is handled by DynamoDB (see [dynamodb.spec.md](../storage/dynamodb.spec.md)). This reflects the FRANK database selection strategy: use the right database for each data domain.
 
 ### Database Scope
 
@@ -431,9 +431,9 @@ for org in orgs:
   - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
 
 - **Related Specifications**:
-  - [Base Interface Spec](base-interface.spec.md) -- interface this implements
-  - [SQLite Implementation Spec](sqlite.spec.md) -- complete reference implementation
-  - [DynamoDB Implementation Spec](dynamodb.spec.md) -- threat intelligence complement
+  - [Base Interface Spec](../storage/base-interface.spec.md) -- interface this implements
+  - [SQLite Implementation Spec](../storage/sqlite.spec.md) -- complete reference implementation
+  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md) -- threat intelligence complement
 
 - **Source Files**:
   - [`src/frank/storage/postgresql.py`](src/frank/storage/postgresql.py) -- Implementation

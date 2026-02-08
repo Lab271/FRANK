@@ -801,8 +801,8 @@ async def create_organisation(
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [Sightings API](sightings-api.spec.md) - Uses these authentication patterns
-  - [Management API](management-api.spec.md) - Uses these authentication patterns
+  - [Sightings API](../apis/sightings-api.spec.md) - Uses these authentication patterns
+  - [Management API](../apis/management-api.spec.md) - Uses these authentication patterns
 
 - **Related Spikes**:
   - [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md) - Original validation
