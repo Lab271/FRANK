@@ -7,10 +7,10 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** API Team
-- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication-strategy.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
 - **Implementation:** src/frank/main/api.py
 - **Database:** DynamoDB (Stages 2-3), SQLite (Stage 1)
-- **Tests:** tests/integration/test_main_api.py
+- **Tests:** tests/integration/features/frank_server_api.feature
 
 ## Overview
 
@@ -448,7 +448,7 @@ class SubmissionResponse(BaseModel):
 
 ### Integration Tests
 
-**Location**: `tests/integration/test_main_api.py`
+**Location**: `tests/integration/features/frank_server_api.feature`
 
 **Required Test Scenarios**:
 - [ ] Health endpoints (basic and deep)
@@ -567,7 +567,7 @@ curl -H "Authorization: Bearer <token>" \
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication-strategy.md)
+  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication.md)
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
   - [ADR-0008: Explicit Error Communication](docs/adr/0008-explicit-error-communication.md)
 
@@ -580,7 +580,7 @@ curl -H "Authorization: Bearer <token>" \
 - **Implementation Files**:
   - `src/frank/main/api.py` - FastAPI application
   - `src/frank/main/models.py` - Request/response models
-  - `tests/integration/test_main_api.py` - Integration tests
+  - `tests/integration/features/frank_server_api.feature` - Integration tests
 
 ---
 
@@ -604,4 +604,4 @@ curl -H "Authorization: Bearer <token>" \
 
 ---
 
-**Questions or feedback?** See implementation at `src/frank/main/api.py` and tests at `tests/integration/test_main_api.py`.
+**Questions or feedback?** See implementation at `src/frank/main/api.py` and tests at `tests/integration/features/frank_server_api.feature`.

@@ -280,7 +280,7 @@ Not applicable (infrastructure specification - validated through deployment test
 ### Integration Tests
 
 ```python
-# Location: tests/integration/infrastructure/test_ecs_deployment.py
+# Location: tests/integration/ (ECS deployment tests planned)
 import boto3
 import requests
 import time

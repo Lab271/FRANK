@@ -9,7 +9,7 @@
 - **Owner:** FRANK Platform Team
 - **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md), [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md)
 - **Implementation:** [`src/frank/storage/postgresql.py`](src/frank/storage/postgresql.py)
-- **Tests:** [tests/unit/storage/test_postgresql.py](tests/unit/storage/test_postgresql.py)
+- **Tests:** [tests/unit/storage/test_dynamodb.py](tests/unit/storage/test_dynamodb.py)
 
 ## Overview
 
@@ -307,7 +307,7 @@ db = create_postgresql_database(
 
 ### Unit Tests
 
-**Location**: `tests/unit/storage/test_postgresql.py` (referenced in ADR-0009)
+**Location**: `tests/unit/storage/test_dynamodb.py` (referenced in ADR-0009)
 
 **Required Unit Test Coverage**:
 - [ ] Schema creation (tables, indexes, extension)
@@ -427,7 +427,7 @@ for org in orgs:
   - [`src/frank/storage/base.py`](src/frank/storage/base.py) -- Interface
 
 - **Test Files**:
-  - `tests/unit/storage/test_postgresql.py` (referenced in ADR-0009)
+  - `tests/unit/storage/test_dynamodb.py` (referenced in ADR-0009)
 
 - **Deployment Files**:
   - `docker-compose.local.yml` -- PostgreSQL Docker service

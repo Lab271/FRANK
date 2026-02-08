@@ -9,7 +9,7 @@
 - **Owner:** FRANK Platform Team
 - **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
 - **Implementation:** [src/frank/storage/sqlite.py](src/frank/storage/sqlite.py)
-- **Tests:** [tests/unit/storage/test_sqlite.py](tests/unit/storage/test_sqlite.py)
+- **Tests:** [tests/unit/storage/test_sqlitedatabase.py](tests/unit/storage/test_sqlitedatabase.py)
 
 ## Overview
 
