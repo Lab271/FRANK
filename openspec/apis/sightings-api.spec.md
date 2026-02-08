@@ -49,7 +49,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ## ADDED Requirements
 
-*This specification primarily documents API endpoints and contracts. Functional requirements are defined in related specifications: [Submission](../core/submission.spec.md), [Observable](../core/observable.spec.md), [Authentication](authentication.spec.md).*
+*This specification primarily documents API endpoints and contracts. Functional requirements are defined in related specifications: [Submission](../core/submission.spec.md), [Observable](../core/observable.spec.md), [Authentication](../apis/authentication.spec.md).*
 
 *See Section 4 (API Endpoints) for detailed endpoint contracts.*
 
@@ -197,7 +197,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:186`
 
-**Related Spec**: [Authentication Patterns](authentication.spec.md)
+**Related Spec**: [Authentication Patterns](../apis/authentication.spec.md)
 
 ---
 
@@ -572,7 +572,7 @@ curl -H "Authorization: Bearer <token>" \
   - [ADR-0008: Explicit Error Communication](docs/adr/0008-explicit-error-communication.md)
 
 - **Related Specifications**:
-  - [Authentication Patterns](authentication.spec.md) - JWT token validation
+  - [Authentication Patterns](../apis/authentication.spec.md) - JWT token validation
   - [Submission Model](../core/submission.spec.md) - Core data model
   - [Observable Model](../core/observable.spec.md) - Observable structure
   - [DynamoDB Storage](../storage/dynamodb.spec.md) - Database implementation

@@ -49,7 +49,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ## ADDED Requirements
 
-*This specification primarily documents API endpoints and administrative workflows. Functional requirements are defined in related specifications: [Authentication](authentication.spec.md), [PostgreSQL Storage](../storage/postgresql.spec.md).*
+*This specification primarily documents API endpoints and administrative workflows. Functional requirements are defined in related specifications: [Authentication](../apis/authentication.spec.md), [PostgreSQL Storage](../storage/postgresql.spec.md).*
 
 *See Section 4 (API Endpoints) for detailed endpoint contracts.*
 
@@ -826,7 +826,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/management/api.py:791`
 
-**Related Spec**: [Authentication Patterns](authentication.spec.md)
+**Related Spec**: [Authentication Patterns](../apis/authentication.spec.md)
 
 ---
 
@@ -1026,7 +1026,7 @@ class LoginResponse(BaseModel):
   - [ADR-0006: Admin MVC Architecture](docs/adr/0006-admin-mvc-architecture.md)
 
 - **Related Specifications**:
-  - [Authentication Patterns](authentication.spec.md) - JWT token flows
+  - [Authentication Patterns](../apis/authentication.spec.md) - JWT token flows
   - [PostgreSQL Storage](../storage/postgresql.spec.md) - Database implementation
 
 - **Implementation Files**:

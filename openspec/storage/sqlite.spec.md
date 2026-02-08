@@ -610,9 +610,9 @@ The SQLite implementation provides additional methods beyond the base interface:
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [Base Interface Spec](base-interface.spec.md) -- interface this implements
-  - [DynamoDB Implementation Spec](dynamodb.spec.md) -- cloud alternative for threat data
-  - [PostgreSQL Implementation Spec](postgresql.spec.md) -- cloud alternative for management data
+  - [Base Interface Spec](../storage/base-interface.spec.md) -- interface this implements
+  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md) -- cloud alternative for threat data
+  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md) -- cloud alternative for management data
 
 - **Source Files**:
   - [`src/frank/storage/sqlite.py`](src/frank/storage/sqlite.py) -- Implementation

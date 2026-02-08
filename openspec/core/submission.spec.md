@@ -1043,10 +1043,10 @@ except ValidationError as e:
   - [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 
 - **Related Specifications**:
-  - [Observable](observable.spec.md)
-  - [Sighting](sighting.spec.md)
-  - [Submitter & HitTarget](submitter-target.spec.md)
-  - [Enumerations](enums.spec.md)
+  - [Observable](../core/observable.spec.md)
+  - [Sighting](../core/sighting.spec.md)
+  - [Submitter & HitTarget](../core/submitter-target.spec.md)
+  - [Enumerations](../core/enums.spec.md)
 
 - **Related Spikes**:
   - [Spike 003: Pydantic v2](tests/spikes/003_pydantic/README.md)

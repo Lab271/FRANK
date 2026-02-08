@@ -353,9 +353,9 @@ All Features (dev/test)    | SQLite     | SQLite (fallback) | SQLite (fallback)
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [SQLite Implementation Spec](sqlite.spec.md)
-  - [DynamoDB Implementation Spec](dynamodb.spec.md)
-  - [PostgreSQL Implementation Spec](postgresql.spec.md)
+  - [SQLite Implementation Spec](../storage/sqlite.spec.md)
+  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md)
+  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md)
 
 - **Source Files**:
   - [`src/frank/storage/base.py`](src/frank/storage/base.py) - Interface definition

@@ -15,6 +15,19 @@
 
 Defines Submitter (threat intelligence contributor) and HitTarget (affected organization) models with STIX-compliant organization identities, access tier assignment, privacy controls, and sector normalization. These models enable attribution, access control, and anonymization in the FRANK platform.
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: Submitter Model
@@ -611,6 +624,6 @@ json_str = submitter.model_dump_json()
 
 - **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Identity Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_wh296fiwpklp)
-- **Access Control**: [AccessTier Enum Specification](enums.spec.md)
+- **Access Control**: [AccessTier Enum Specification](../core/enums.spec.md)
 - **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
 - **Tests**: [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)

@@ -15,6 +15,19 @@
 
 Defines core enumeration types for FRANK's data model including access control tiers, observable types, severity levels, and TLP classifications. All enums inherit from `str` and `Enum` to provide both type safety and JSON/YAML serialization compatibility.
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: AccessTier - Access Control Hierarchy
