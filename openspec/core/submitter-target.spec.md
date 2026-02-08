@@ -15,6 +15,19 @@
 
 Defines Submitter (threat intelligence contributor) and HitTarget (affected organization) models with STIX-compliant organization identities, access tier assignment, privacy controls, and sector normalization. These models enable attribution, access control, and anonymization in the FRANK platform.
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: Submitter Model

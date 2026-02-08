@@ -39,6 +39,19 @@ PostgreSQL was chosen for management data because:
 - Target organisations -- victim orgs stored in DynamoDB with sightings
 - Threat intelligence -- submissions, observables, sightings in DynamoDB
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: Organisation Management (Implemented)

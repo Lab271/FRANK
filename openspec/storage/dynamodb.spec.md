@@ -25,6 +25,19 @@ DynamoDB was chosen for threat intelligence because:
 
 **Critically, this is a partial implementation.** Organisation management (CRUD), API key management, and refresh token management are explicitly **not implemented** in DynamoDB. These are handled by PostgreSQL (see [postgresql.spec.md](postgresql.spec.md)) or Cognito. This design reflects a deliberate database selection strategy: different data has different access patterns, and each database handles what it does best.
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: Threat Intelligence Storage (Implemented)
