@@ -7,10 +7,10 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** Platform Team
-- **Related ADR:** [ADR-0005](../../docs/adr/0005-cognito-authentication-strategy.md), [ADR-0009](../../docs/adr/0009-postgresql-for-management-api.md), [ADR-0006](../../docs/adr/0006-admin-mvc-architecture.md)
+- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md), [ADR-0006](docs/adr/0006-admin-mvc-architecture.md)
 - **Implementation:** src/frank/management/api.py
 - **Database:** PostgreSQL (Stage 3+), SQLite (Stages 1-2)
-- **Tests:** tests/integration/test_management_api.py
+- **Tests:** tests/integration/features/management_api_users.feature
 
 ## Overview
 
@@ -933,7 +933,7 @@ class LoginResponse(BaseModel):
 
 ### Integration Tests
 
-**Location**: `tests/integration/test_management_api.py`
+**Location**: `tests/integration/features/management_api_users.feature`
 
 **Required Test Scenarios**:
 - [ ] Organisation CRUD lifecycle (create, list, get, update, delete)
@@ -1021,9 +1021,9 @@ class LoginResponse(BaseModel):
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](../../docs/adr/0005-cognito-authentication-strategy.md)
-  - [ADR-0009: PostgreSQL for Management API](../../docs/adr/0009-postgresql-for-management-api.md)
-  - [ADR-0006: Admin MVC Architecture](../../docs/adr/0006-admin-mvc-architecture.md)
+  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication.md)
+  - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
+  - [ADR-0006: Admin MVC Architecture](docs/adr/0006-admin-mvc-architecture.md)
 
 - **Related Specifications**:
   - [Authentication Patterns](authentication.spec.md) - JWT token flows
@@ -1032,7 +1032,7 @@ class LoginResponse(BaseModel):
 - **Implementation Files**:
   - `src/frank/management/api.py` - FastAPI application
   - `src/frank/management/models.py` - Request/response models
-  - `tests/integration/test_management_api.py` - Integration tests
+  - `tests/integration/features/management_api_users.feature` - Integration tests
 
 ---
 
@@ -1052,4 +1052,4 @@ class LoginResponse(BaseModel):
 
 ---
 
-**Questions or feedback?** See implementation at `src/frank/management/api.py` and tests at `tests/integration/test_management_api.py`.
+**Questions or feedback?** See implementation at `src/frank/management/api.py` and tests at `tests/integration/features/management_api_users.feature`.

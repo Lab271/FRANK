@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L29-L86](../../src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_observable.py](../../tests/unit/core/test_observable.py)
+- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **Implementation:** [src/frank/core/models.py#L29-L86](src/frank/core/models.py)
+- **Tests:** [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py)
 
 ## Overview
 
@@ -83,7 +83,7 @@ class Observable(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_ipv4_observable_minimal](../../tests/unit/core/test_observable.py#L27-L38), [test_create_ipv4_observable_full](../../tests/unit/core/test_observable.py#L39-L59)
+**Test Coverage**: [test_create_ipv4_observable_minimal](tests/unit/core/test_observable.py#L27-L38), [test_create_ipv4_observable_full](tests/unit/core/test_observable.py#L39-L59)
 
 ### Requirement 2: Observable Types
 
@@ -112,7 +112,7 @@ class Observable(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_ipv6_observable](../../tests/unit/core/test_observable.py#L60-L69), [test_create_domain_observable](../../tests/unit/core/test_observable.py#L71-L82), [test_create_url_observable](../../tests/unit/core/test_observable.py#L84-L93)
+**Test Coverage**: [test_create_ipv6_observable](tests/unit/core/test_observable.py#L60-L69), [test_create_domain_observable](tests/unit/core/test_observable.py#L71-L82), [test_create_url_observable](tests/unit/core/test_observable.py#L84-L93)
 
 ### Requirement 3: STIX ID Generation
 
@@ -145,7 +145,7 @@ def ensure_id_generated(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_stix_id_generation](../../tests/unit/core/test_observable.py#L106-L123)
+**Test Coverage**: [test_stix_id_generation](tests/unit/core/test_observable.py#L106-L123)
 
 ### Requirement 4: Value Normalization
 
@@ -189,7 +189,7 @@ def normalize_values(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_whitespace_trimming](../../tests/unit/core/test_observable.py#L511-L518), [test_case_normalization_domains](../../tests/unit/core/test_observable.py#L520-L527), [test_url_case_preservation](../../tests/unit/core/test_observable.py#L538-L546)
+**Test Coverage**: [test_whitespace_trimming](tests/unit/core/test_observable.py#L511-L518), [test_case_normalization_domains](tests/unit/core/test_observable.py#L520-L527), [test_url_case_preservation](tests/unit/core/test_observable.py#L538-L546)
 
 ### Requirement 5: Factory Methods
 
@@ -215,7 +215,7 @@ def normalize_values(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_ipv4_factory_with_role_and_port](../../tests/unit/core/test_observable.py#L569-L580), [test_create_domain_factory_with_role](../../tests/unit/core/test_observable.py#L582-L591)
+**Test Coverage**: [test_create_ipv4_factory_with_role_and_port](tests/unit/core/test_observable.py#L569-L580), [test_create_domain_factory_with_role](tests/unit/core/test_observable.py#L582-L591)
 
 ## Non-Functional Requirements
 
@@ -224,7 +224,7 @@ def normalize_values(self):
 - **Normalization**: O(n) where n = value length
 - **ID Generation**: O(1) UUID generation
 
-**Test**: [test_bulk_creation_performance](../../tests/unit/core/test_observable.py#L647-L672) - 100 observables < 1 second
+**Test**: [test_bulk_creation_performance](tests/unit/core/test_observable.py#L647-L672) - 100 observables < 1 second
 
 ### Validation
 - **Port Range**: 1-65535 (standard TCP/UDP range)
@@ -360,7 +360,7 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 6. **STIX ID Tests** - Auto-generation, uniqueness, format validation
 
 **Test Files**:
-- [tests/unit/core/test_observable.py](../../tests/unit/core/test_observable.py) - 605 lines, comprehensive coverage
+- [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py) - 605 lines, comprehensive coverage
 
 **Key Test Classes**:
 - `TestObservableValidation` - Basic observable creation and validation
@@ -383,7 +383,7 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 **PR Links**:
 - Initial Observable model: Merged in baseline
 - Pydantic v2 migration: Part of core refactoring
-- Comprehensive tests: [tests/unit/core/test_observable.py](../../tests/unit/core/test_observable.py)
+- Comprehensive tests: [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py)
 
 ## Evolution Path Across FRANK Stages
 
@@ -510,8 +510,8 @@ data = observables.model_dump(by_alias=True, exclude_none=True)
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
+- **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Cyber Observable Objects](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_mlbmudhl16lr)
 - **Pydantic V2**: [Model Validators](https://docs.pydantic.dev/latest/concepts/validators/)
-- **Implementation**: [src/frank/core/models.py](../../src/frank/core/models.py)
-- **Tests**: [tests/unit/core/test_observable.py](../../tests/unit/core/test_observable.py)
+- **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
+- **Tests**: [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py)

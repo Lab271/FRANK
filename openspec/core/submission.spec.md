@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L372-L521](../../src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **Implementation:** [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
+- **Tests:** [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ## Overview
 
@@ -94,7 +94,7 @@ class Submission(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_valid_submission](../../tests/unit/core/test_submission.py#L53-L91), [test_create_minimal_with_hit_target](../../tests/unit/core/test_submission.py#L93-L112)
+**Test Coverage**: [test_create_minimal_valid_submission](tests/unit/core/test_submission.py#L53-L91), [test_create_minimal_with_hit_target](tests/unit/core/test_submission.py#L93-L112)
 
 #### Scenario: Minimal Submission Creation with Auto-Generated Fields
 
@@ -221,7 +221,7 @@ def validate_submission_integrity(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_submission_integrity_validation](../../tests/unit/core/test_submission.py#L155-L223)
+**Test Coverage**: [test_submission_integrity_validation](tests/unit/core/test_submission.py#L155-L223)
 
 #### Scenario: Valid Submission with Different Organizations
 
@@ -277,7 +277,7 @@ The system MUST track FRANK data format version for backward compatibility and e
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_valid_submission](../../tests/unit/core/test_submission.py#L53-L91) (default value check)
+**Test Coverage**: [test_create_minimal_valid_submission](tests/unit/core/test_submission.py#L53-L91) (default value check)
 
 #### Scenario: Default Format Version from Package
 
@@ -391,7 +391,7 @@ def create_minimal(
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_factory_method_create_minimal](../../tests/unit/core/test_submission.py#L113-L153)
+**Test Coverage**: [test_factory_method_create_minimal](tests/unit/core/test_submission.py#L113-L153)
 
 #### Scenario: Create Minimal Submission with Defaults
 
@@ -560,7 +560,7 @@ def to_yaml(self) -> str:
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_to_yaml](../../tests/unit/core/test_submission.py#L260-L262), [test_to_json](../../tests/unit/core/test_submission.py#L264-L266)
+**Test Coverage**: [test_to_yaml](tests/unit/core/test_submission.py#L260-L262), [test_to_json](tests/unit/core/test_submission.py#L264-L266)
 
 #### Scenario: JSON Serialization with Submission Wrapper
 
@@ -813,8 +813,8 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 - **Coverage**: ✅ All acceptance criteria tested
 
 **Test Files**:
-- [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py) - 271 lines
-- [tests/integration/features/frank_server_api.feature](../../tests/integration/features/frank_server_api.feature) - Submission API scenarios
+- [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py) - 271 lines
+- [tests/integration/features/frank_server_api.feature](tests/integration/features/frank_server_api.feature) - Submission API scenarios
 
 **Key Test Classes**:
 - `TestSubmission` - Core submission functionality
@@ -838,7 +838,7 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 **PR Links**:
 - Initial Submission model: Merged in baseline
 - Pydantic v2 migration: Part of core refactoring
-- Comprehensive tests: [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+- Comprehensive tests: [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ---
 
@@ -1040,7 +1040,7 @@ except ValidationError as e:
 - **Pydantic v2**: https://docs.pydantic.dev/latest/ (Data validation)
 
 - **Related ADRs**:
-  - [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
+  - [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 
 - **Related Specifications**:
   - [Observable](observable.spec.md)
@@ -1049,13 +1049,13 @@ except ValidationError as e:
   - [Enumerations](enums.spec.md)
 
 - **Related Spikes**:
-  - [Spike 003: Pydantic v2](../../tests/spikes/003_pydantic/README.md)
+  - [Spike 003: Pydantic v2](tests/spikes/003_pydantic/README.md)
 
 - **Implementation Files**:
-  - [src/frank/core/models.py#L372-L521](../../src/frank/core/models.py)
+  - [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
 
 - **Test Files**:
-  - [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+  - [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ---
 

@@ -7,7 +7,7 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** Development Team
-- **Related Spike:** [Spike 015: FastAPI Testing](../../tests/spikes/015_fastapi_testing/README.md)
+- **Related Spike:** [Spike 015: FastAPI Testing](tests/spikes/015_fastapi_testing/README.md)
 - **Integration:** Applied across all FRANK APIs
 
 ## Overview
@@ -131,7 +131,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 ### Test Structure Pattern
 
 ```python
-# tests/unit/apis/test_example_api.py
+# tests/unit/main/test_api.py
 import pytest
 from fastapi.testclient import TestClient
 from frank.apis.example_api import create_app
@@ -211,7 +211,7 @@ def test_exception_handling(client):
 ### Authentication Dependency Pattern
 
 ```python
-# src/frank/apis/example_api.py
+# src/frank/main/api.py
 from fastapi import FastAPI, Header, HTTPException, Depends
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from typing import Optional
@@ -283,7 +283,7 @@ async def frank_exception_handler(request, exc: FRANKException):
 
 ### Unit Tests
 
-**Location**: `tests/unit/apis/test_*_api.py`
+**Location**: `tests/unit/main/test_api.py, tests/unit/management/test_api.py`
 
 **Required Test Scenarios**:
 - [ ] Public endpoints (no auth required)
@@ -301,7 +301,7 @@ async def frank_exception_handler(request, exc: FRANKException):
 
 ### Integration Tests
 
-**Location**: `tests/integration/*.feature` (BDD/Behave)
+**Location**: `tests/integration/features/cognito_management.feature, tests/integration/features/frank_server_api.feature, tests/integration/features/management_api_users.feature` (BDD/Behave)
 
 ```gherkin
 Feature: API Authentication
@@ -412,8 +412,8 @@ curl -H "Authorization: invalid-format" http://localhost:8000/protected
   - [Authentication Spec](../apis/authentication.spec.md) - Bearer token validation
 
 - **Related Spikes**:
-  - [Spike 015: FastAPI Testing](../../tests/spikes/015_fastapi_testing/README.md) - Original validation
-  - [Spike 014: Cognito](../../tests/spikes/014_cognito/README.md) - JWT validation patterns
+  - [Spike 015: FastAPI Testing](tests/spikes/015_fastapi_testing/README.md) - Original validation
+  - [Spike 014: Cognito](tests/spikes/014_cognito/README.md) - JWT validation patterns
 
 - **External Resources**:
   - [FastAPI Testing Documentation](https://fastapi.tiangolo.com/tutorial/testing/)
@@ -421,8 +421,8 @@ curl -H "Authorization: invalid-format" http://localhost:8000/protected
   - [TestClient API Reference](https://www.starlette.io/testclient/)
 
 - **Implementation Examples**:
-  - `tests/unit/apis/test_sightings_api.py` - Sightings API tests
-  - `tests/unit/apis/test_management_api.py` - Management API tests
+  - `tests/unit/main/test_api.py` - Sightings API tests
+  - `tests/unit/management/test_api.py` - Management API tests
 
 ---
 
@@ -437,7 +437,7 @@ curl -H "Authorization: invalid-format" http://localhost:8000/protected
 ### Example 1: Complete Test Module Structure
 
 ```python
-# tests/unit/apis/test_submission_api.py
+# tests/unit/main/test_api.py
 import pytest
 from fastapi.testclient import TestClient
 from frank.apis.submission_api import create_app
@@ -516,4 +516,4 @@ def test_custom_exception_handler(client):
 
 ---
 
-**Questions or feedback?** See [Spike 015 README](../../tests/spikes/015_fastapi_testing/README.md) for original hypothesis and validation results.
+**Questions or feedback?** See [Spike 015 README](tests/spikes/015_fastapi_testing/README.md) for original hypothesis and validation results.
