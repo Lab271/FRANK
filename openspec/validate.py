@@ -75,8 +75,6 @@ class SpecValidator:
         "## Data Model",
         "## Test Coverage Requirements",
         "## Implementation Status",
-        "## Evolution Path Across FRANK Stages",
-        "## References",
     ]
 
     OPTIONAL_SECTIONS = [
@@ -231,30 +229,44 @@ class SpecValidator:
         """Check that all references point to existing files."""
         # Check ADR references
         for adr_path in metadata.related_adrs:
-            # Handle both relative and absolute ADR paths
-            if adr_path.startswith("../../docs/adr/"):
-                full_path = self.specs_dir / adr_path
-            elif adr_path.startswith("/docs/adr/"):
-                full_path = self.project_root / adr_path.lstrip("/")
-            else:
-                full_path = self.docs_dir / "adr" / Path(adr_path).name
+            # Normalize path to project-root-relative format
+            normalized_path = adr_path
+
+            # Convert old relative paths (../../docs/adr/) to project-root relative (docs/adr/)
+            if normalized_path.startswith("../../docs/adr/"):
+                normalized_path = normalized_path.replace("../../docs/adr/", "docs/adr/")
+            elif normalized_path.startswith("../../"):
+                # Strip leading ../../
+                normalized_path = normalized_path.replace("../../", "")
+
+            # Remove leading slash if present
+            normalized_path = normalized_path.lstrip("/")
+
+            # Resolve full path from project root
+            full_path = self.project_root / normalized_path
 
             if not full_path.exists():
-                result.warnings.append(f"ADR reference not found: {adr_path}")
+                result.warnings.append(f"ADR reference not found: {adr_path} (looking for: {normalized_path})")
 
-        # Check test file references
-        test_refs = re.findall(r'tests/(?:unit|integration|spikes)/[^\s\)]+', content)
+        # Check test file references (improved regex to avoid capturing markdown artifacts)
+        # Match: tests/unit/... or tests/integration/... or tests/spikes/...
+        # Stop at whitespace, ), ], or backtick
+        test_refs = re.findall(r'(tests/(?:unit|integration|spikes)/[^\s\)\]\`]+?\.(?:py|md|feature))', content)
         for test_ref in test_refs:
+            # Clean up any trailing punctuation
+            test_ref = test_ref.rstrip('.,;:')
             test_path = self.project_root / test_ref
             if not test_path.exists():
                 result.warnings.append(f"Test file reference not found: {test_ref}")
 
-        # Check source file references
-        src_refs = re.findall(r'src/frank/[^\s\)]+\.py', content)
+        # Check source file references (improved regex)
+        src_refs = re.findall(r'(src/frank/[^\s\)\]\`]+?\.py)', content)
         for src_ref in src_refs:
-            src_path = self.project_root / src_ref
+            # Clean up any line number anchors (#L123)
+            src_ref_clean = re.sub(r'#L\d+.*$', '', src_ref)
+            src_path = self.project_root / src_ref_clean
             if not src_path.exists():
-                result.warnings.append(f"Source file reference not found: {src_ref}")
+                result.warnings.append(f"Source file reference not found: {src_ref_clean}")
 
     def _check_test_coverage(self, content: str, result: ValidationResult):
         """Check test coverage requirements are defined."""

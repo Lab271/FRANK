@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md), [ADR-0009](../../docs/adr/0009-postgresql-management-api.md)
-- **Implementation:** [`src/frank/storage/dynamodb.py`](../../src/frank/storage/dynamodb.py)
-- **Tests:** [tests/unit/storage/test_dynamodb.py](../../tests/unit/storage/test_dynamodb.py)
+- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+- **Implementation:** [`src/frank/storage/dynamodb.py`](src/frank/storage/dynamodb.py)
+- **Tests:** [tests/unit/storage/test_dynamodb.py](tests/unit/storage/test_dynamodb.py)
 
 ## Overview
 
@@ -40,7 +40,7 @@ DynamoDB was chosen for threat intelligence because:
   - [ ] `log_access()` writes audit log entries to a separate audit table
   - [ ] `health_check()` returns DynamoDB connection status
 - **Stage Availability**: Stages 2-3
-- **Related ADR**: [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md)
+- **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
 ### Requirement 2: Organisation CRUD (Not Implemented)
 
@@ -48,7 +48,7 @@ DynamoDB was chosen for threat intelligence because:
 - **Rationale**: Organisation data is relational (foreign keys, joins, transactional updates) and low-volume. DynamoDB's NoSQL model is not the right fit. PostgreSQL handles this in Stage 3.
 - **Methods**: `create_organisation`, `get_organisation`, `list_organisations`, `update_organisation`, `delete_organisation`
 - **Stage Availability**: Not available (use PostgreSQL)
-- **Related ADR**: [ADR-0009](../../docs/adr/0009-postgresql-management-api.md)
+- **Related ADR**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
 
 ### Requirement 3: Organisation Members (Not Implemented)
 
@@ -60,7 +60,7 @@ DynamoDB was chosen for threat intelligence because:
 ### Requirement 4: API Key Management (Not Implemented)
 
 - **Description**: API key lifecycle is **not implemented** in DynamoDB. All 6 methods raise `NotImplementedError`.
-- **Rationale**: AWS Cognito handles all authentication in Stages 2+. API keys are not needed and were never intended per [ADR-0005](../../docs/adr/0005-cognito-authentication.md).
+- **Rationale**: AWS Cognito handles all authentication in Stages 2+. API keys are not needed and were never intended per [ADR-0005](docs/adr/0005-cognito-authentication.md).
 - **Methods**: `create_api_key`, `get_api_key_by_hash`, `list_api_keys`, `update_api_key`, `revoke_api_key`, `update_api_key_last_used`
 - **Stage Availability**: Not available (Cognito handles auth)
 
@@ -468,10 +468,10 @@ def create_dynamodb_database(
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0002: Repository Pattern for Database Abstraction](../../docs/adr/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](../../docs/adr/0003-tiered-access-control-model.md)
-  - [ADR-0005: Cognito Authentication](../../docs/adr/0005-cognito-authentication.md)
-  - [ADR-0009: PostgreSQL for Management API](../../docs/adr/0009-postgresql-management-api.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](docs/adr/0002-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0005: Cognito Authentication](docs/adr/0005-cognito-authentication.md)
+  - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
 
 - **Related Specifications**:
   - [Base Interface Spec](base-interface.spec.md) -- interface this implements
@@ -479,15 +479,15 @@ def create_dynamodb_database(
   - [PostgreSQL Implementation Spec](postgresql.spec.md) -- management data complement
 
 - **Source Files**:
-  - [`src/frank/storage/dynamodb.py`](../../src/frank/storage/dynamodb.py) -- Implementation
-  - [`src/frank/storage/base.py`](../../src/frank/storage/base.py) -- Interface
+  - [`src/frank/storage/dynamodb.py`](src/frank/storage/dynamodb.py) -- Implementation
+  - [`src/frank/storage/base.py`](src/frank/storage/base.py) -- Interface
 
 - **Test Files**:
-  - [`tests/unit/storage/test_dynamodb.py`](../../tests/unit/storage/test_dynamodb.py)
+  - [`tests/unit/storage/test_dynamodb.py`](tests/unit/storage/test_dynamodb.py)
 
 - **Related Spikes**:
-  - [`tests/spikes/006_dynamodb/README.md`](../../tests/spikes/006_dynamodb/README.md) -- DynamoDB integration spike
-  - [`tests/spikes/012_aws_dynamodb/README.md`](../../tests/spikes/012_aws_dynamodb/README.md) -- AWS DynamoDB table design
+  - [`tests/spikes/006_dynamodb/README.md`](tests/spikes/006_dynamodb/README.md) -- DynamoDB integration spike
+  - [`tests/spikes/012_aws_dynamodb/README.md`](tests/spikes/012_aws_dynamodb/README.md) -- AWS DynamoDB table design
 
 - **External References**:
   - [DynamoDB Single-Table Design](https://www.alexdebrie.com/posts/dynamodb-single-table/)

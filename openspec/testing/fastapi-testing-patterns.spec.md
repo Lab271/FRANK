@@ -7,7 +7,7 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** Development Team
-- **Related Spike:** [Spike 015: FastAPI Testing](../../tests/spikes/015_fastapi_testing/README.md)
+- **Related Spike:** [Spike 015: FastAPI Testing](tests/spikes/015_fastapi_testing/README.md)
 - **Integration:** Applied across all FRANK APIs
 
 ## Overview
@@ -412,8 +412,8 @@ curl -H "Authorization: invalid-format" http://localhost:8000/protected
   - [Authentication Spec](../apis/authentication.spec.md) - Bearer token validation
 
 - **Related Spikes**:
-  - [Spike 015: FastAPI Testing](../../tests/spikes/015_fastapi_testing/README.md) - Original validation
-  - [Spike 014: Cognito](../../tests/spikes/014_cognito/README.md) - JWT validation patterns
+  - [Spike 015: FastAPI Testing](tests/spikes/015_fastapi_testing/README.md) - Original validation
+  - [Spike 014: Cognito](tests/spikes/014_cognito/README.md) - JWT validation patterns
 
 - **External Resources**:
   - [FastAPI Testing Documentation](https://fastapi.tiangolo.com/tutorial/testing/)
@@ -516,4 +516,4 @@ def test_custom_exception_handler(client):
 
 ---
 
-**Questions or feedback?** See [Spike 015 README](../../tests/spikes/015_fastapi_testing/README.md) for original hypothesis and validation results.
+**Questions or feedback?** See [Spike 015 README](tests/spikes/015_fastapi_testing/README.md) for original hypothesis and validation results.

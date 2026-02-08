@@ -7,7 +7,7 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** Infrastructure Team
-- **Related Spike:** [Spike 009: AWS ECS Basic](../../tests/spikes/009_aws_ecs_basic/README.md)
+- **Related Spike:** [Spike 009: AWS ECS Basic](tests/spikes/009_aws_ecs_basic/README.md)
 - **Integration:** Stage 3 cloud deployment
 
 ## Overview
@@ -430,9 +430,9 @@ watch "aws ecs describe-services --cluster frank-cluster --services frank-api | 
   - [SSL Certificates Spec](ssl-certificates.spec.md) - HTTPS configuration
 
 - **Related Spikes**:
-  - [Spike 009: AWS ECS Basic](../../tests/spikes/009_aws_ecs_basic/README.md) - Original hypothesis and validation
-  - [Spike 010: AWS ALB](../../tests/spikes/010_aws_alb/README.md) - Load balancer integration
-  - [Spike 013: AWS Observability](../../tests/spikes/013_aws_observability/README.md) - Logging and monitoring
+  - [Spike 009: AWS ECS Basic](tests/spikes/009_aws_ecs_basic/README.md) - Original hypothesis and validation
+  - [Spike 010: AWS ALB](tests/spikes/010_aws_alb/README.md) - Load balancer integration
+  - [Spike 013: AWS Observability](tests/spikes/013_aws_observability/README.md) - Logging and monitoring
 
 - **External Resources**:
   - [AWS ECS Fargate Documentation](https://docs.aws.amazon.com/AmazonECS/latest/developerguide/AWS_Fargate.html)
@@ -533,4 +533,4 @@ aws ecs describe-tasks --cluster frank-cluster --tasks <task-arn> | jq '.tasks[0
 
 ---
 
-**Questions or feedback?** See [Spike 009 README](../../tests/spikes/009_aws_ecs_basic/README.md) for original hypothesis and validation results.
+**Questions or feedback?** See [Spike 009 README](tests/spikes/009_aws_ecs_basic/README.md) for original hypothesis and validation results.

@@ -7,8 +7,8 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** Security Team
-- **Related ADR:** [ADR-0005](../../docs/adr/0005-cognito-authentication-strategy.md)
-- **Related Spike:** [Spike 014: Cognito Integration](../../tests/spikes/014_cognito/README.md)
+- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication-strategy.md)
+- **Related Spike:** [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md)
 - **Implementation:** src/frank/auth/, tests/spikes/014_cognito/mock_cognito.py
 - **Tests:** tests/unit/auth/, tests/spikes/014_cognito/
 
@@ -797,15 +797,15 @@ async def create_organisation(
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](../../docs/adr/0005-cognito-authentication-strategy.md)
-  - [ADR-0003: Tiered Access Control Model](../../docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication-strategy.md)
+  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
   - [Sightings API](sightings-api.spec.md) - Uses these authentication patterns
   - [Management API](management-api.spec.md) - Uses these authentication patterns
 
 - **Related Spikes**:
-  - [Spike 014: Cognito Integration](../../tests/spikes/014_cognito/README.md) - Original validation
+  - [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md) - Original validation
 
 - **External Resources**:
   - [JWT.io](https://jwt.io/) - JWT token decoder and validator
@@ -836,4 +836,4 @@ async def create_organisation(
 
 ---
 
-**Questions or feedback?** See [Spike 014 README](../../tests/spikes/014_cognito/README.md) for original hypothesis and validation results.
+**Questions or feedback?** See [Spike 014 README](tests/spikes/014_cognito/README.md) for original hypothesis and validation results.

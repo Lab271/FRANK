@@ -7,7 +7,7 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** API Team
-- **Related ADR:** [ADR-0005](../../docs/adr/0005-cognito-authentication-strategy.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication-strategy.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
 - **Implementation:** src/frank/main/api.py
 - **Database:** DynamoDB (Stages 2-3), SQLite (Stage 1)
 - **Tests:** tests/integration/test_main_api.py
@@ -567,9 +567,9 @@ curl -H "Authorization: Bearer <token>" \
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](../../docs/adr/0005-cognito-authentication-strategy.md)
-  - [ADR-0003: Tiered Access Control Model](../../docs/adr/0003-tiered-access-control-model.md)
-  - [ADR-0008: Explicit Error Communication](../../docs/adr/0008-explicit-error-communication.md)
+  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication-strategy.md)
+  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0008: Explicit Error Communication](docs/adr/0008-explicit-error-communication.md)
 
 - **Related Specifications**:
   - [Authentication Patterns](authentication.spec.md) - JWT token validation
