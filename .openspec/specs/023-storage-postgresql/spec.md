@@ -72,7 +72,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 1: Organisation Management (Implemented)
 
-- **Description**: Full CRUD operations for member organisations with filtering and metadata support.
+- **Description**: The system MUST provide full CRUD operations for member organisations with filtering and metadata support.
 - **Acceptance Criteria**:
   - [ ] `create_organisation()` creates organisation and returns ID (delegates to `upsert_organisation`)
   - [ ] `upsert_organisation()` inserts new or updates existing organisation using `ON CONFLICT`
@@ -83,9 +83,16 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: Stage 3+
 - **Related ADR**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
 
+#### Scenario: Create and Update Organisation
+- GIVEN organisation data with STIX ID, type, and access level
+- WHEN calling create_organisation() or upsert_organisation()
+- THEN the organisation SHALL be inserted or updated using ON CONFLICT
+- AND metadata SHALL be stored as JSON
+- AND the organisation_id SHALL be returned
+
 ### Requirement 2: Organisation Member Management (Implemented)
 
-- **Description**: Manage user-to-organisation relationships including service accounts.
+- **Description**: The system MUST manage user-to-organisation relationships including service accounts.
 - **Acceptance Criteria**:
   - [ ] `add_organisation_member()` adds user with role, upserts on conflict (updates role)
   - [ ] `remove_organisation_member()` removes user from organisation
@@ -96,9 +103,16 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: Stage 3+
 - **Related ADR**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
 
+#### Scenario: Add Member with Role Upsert
+- GIVEN an organisation and a user with role "admin"
+- WHEN calling add_organisation_member()
+- THEN the member SHALL be inserted using ON CONFLICT upsert
+- AND if the member already exists, their role SHALL be updated
+- AND the membership record SHALL be returned using RETURNING clause
+
 ### Requirement 3: Refresh Token Management (Implemented)
 
-- **Description**: Store and manage refresh token hashes for JWT revocation tracking.
+- **Description**: The system MUST store and manage refresh token hashes for JWT revocation tracking.
 - **Acceptance Criteria**:
   - [ ] `store_refresh_token()` stores token hash with expiry
   - [ ] `get_refresh_token()` retrieves token if not revoked
@@ -106,29 +120,57 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] `revoke_all_user_refresh_tokens()` revokes all tokens for a user (logout/password change)
 - **Stage Availability**: Stage 3+ (optional; Cognito can handle logout tracking)
 
+#### Scenario: Revoke All User Tokens on Logout
+- GIVEN a user with multiple active refresh tokens
+- WHEN calling revoke_all_user_refresh_tokens()
+- THEN all tokens for the user SHALL be marked as revoked (is_revoked = TRUE)
+- AND subsequent token refresh attempts SHALL return 401 Unauthorized
+- AND the count of revoked tokens SHALL be returned
+
 ### Requirement 4: Threat Intelligence (Not Implemented)
 
-- **Description**: Threat intelligence operations raise `NotImplementedError`. DynamoDB handles these in Stage 3.
+- **Description**: The system SHALL NOT implement threat intelligence operations in PostgreSQL. These methods SHALL raise `NotImplementedError`. DynamoDB handles these in Stage 3.
 - **Methods**: `store_submission`, `get_submission_by_id`, `query_observables`, `search_observables_by_value`, `get_statistics_summary`
 - **Error Message**: "Submissions/Observables/Statistics are stored in DynamoDB, not PostgreSQL"
 - **Stage Availability**: Not available (use DynamoDB)
 
+#### Scenario: Attempt Threat Intelligence Operations
+- GIVEN a PostgreSQL database instance
+- WHEN calling store_submission() or any threat intelligence method
+- THEN a NotImplementedError SHALL be raised
+- AND the error message SHALL guide users to use DynamoDB
+- AND no threat intelligence data SHALL be written to PostgreSQL
+
 ### Requirement 5: Health Check (Implemented)
 
-- **Description**: Verify PostgreSQL connectivity.
+- **Description**: The system MUST verify PostgreSQL connectivity via health check.
 - **Acceptance Criteria**:
   - [ ] `health_check()` returns `{"status": "healthy", "database": "postgresql"}` on success
   - [ ] Returns `{"status": "unhealthy", "error": "..."}` on failure
 - **Stage Availability**: Stage 3+
 
+#### Scenario: Check Database Health
+- GIVEN a running PostgreSQL database connection
+- WHEN calling health_check()
+- THEN the system SHALL execute SELECT 1 to verify connectivity
+- AND return {"status": "healthy", "database": "postgresql"} on success
+- AND return {"status": "unhealthy", "error": "..."} on connection failure
+
 ### Requirement 6: Access Logging (Minimal Implementation)
 
-- **Description**: `log_access()` is implemented as a passthrough that logs to the application logger.
+- **Description**: The system SHALL implement `log_access()` as a passthrough that logs to the application logger.
 - **Acceptance Criteria**:
   - [ ] Logs access event at DEBUG level via application logger
   - [ ] Returns `True` (no database write)
   - [ ] Does not store audit records in PostgreSQL (audit handled by DynamoDB audit table)
 - **Stage Availability**: Stage 3+
+
+#### Scenario: Log Access Event
+- GIVEN an access event with organisation_id and action
+- WHEN calling log_access()
+- THEN the event SHALL be logged to application logger at DEBUG level
+- AND no database write SHALL occur (returns True immediately)
+- AND audit records SHALL be stored in DynamoDB audit table, not PostgreSQL
 
 ---
 
