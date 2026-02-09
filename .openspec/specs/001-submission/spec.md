@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L372-L521](../../src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **Implementation:** [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
+- **Tests:** [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ## Overview
 
@@ -94,7 +94,7 @@ class Submission(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_valid_submission](../../tests/unit/core/test_submission.py#L53-L91), [test_create_minimal_with_hit_target](../../tests/unit/core/test_submission.py#L93-L112)
+**Test Coverage**: [test_create_minimal_valid_submission](tests/unit/core/test_submission.py#L53-L91), [test_create_minimal_with_hit_target](tests/unit/core/test_submission.py#L93-L112)
 
 #### Scenario: Minimal Submission Creation with Auto-Generated Fields
 
@@ -221,7 +221,7 @@ def validate_submission_integrity(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_submission_integrity_validation](../../tests/unit/core/test_submission.py#L155-L223)
+**Test Coverage**: [test_submission_integrity_validation](tests/unit/core/test_submission.py#L155-L223)
 
 #### Scenario: Valid Submission with Different Organizations
 
@@ -277,7 +277,7 @@ The system MUST track FRANK data format version for backward compatibility and e
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_valid_submission](../../tests/unit/core/test_submission.py#L53-L91) (default value check)
+**Test Coverage**: [test_create_minimal_valid_submission](tests/unit/core/test_submission.py#L53-L91) (default value check)
 
 #### Scenario: Default Format Version from Package
 
@@ -391,7 +391,7 @@ def create_minimal(
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_factory_method_create_minimal](../../tests/unit/core/test_submission.py#L113-L153)
+**Test Coverage**: [test_factory_method_create_minimal](tests/unit/core/test_submission.py#L113-L153)
 
 #### Scenario: Create Minimal Submission with Defaults
 
@@ -560,7 +560,7 @@ def to_yaml(self) -> str:
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_to_yaml](../../tests/unit/core/test_submission.py#L260-L262), [test_to_json](../../tests/unit/core/test_submission.py#L264-L266)
+**Test Coverage**: [test_to_yaml](tests/unit/core/test_submission.py#L260-L262), [test_to_json](tests/unit/core/test_submission.py#L264-L266)
 
 #### Scenario: JSON Serialization with Submission Wrapper
 
@@ -744,15 +744,77 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 
 **Minimum Coverage**: ≥85% (enforced by CI/CD)
 
-**Test Categories**:
-1. **Creation Tests** - Minimal, full fields, factory method
-2. **Validation Tests** - Organization integrity, confidence range
-3. **Factory Tests** - create_minimal() with various parameters
-4. **Serialization Tests** - to_json(), to_yaml()
-5. **Legacy Parser Tests** - from_legacy_dict() with various formats
+### Requirement 1: Core Submission Structure
+
+- **BDD Scenarios**:
+  - `tests/integration/features/frank_server_api.feature:14` - Submit threat intelligence with different access levels (✅ valid submission creation)
+  - `tests/integration/features/frank_server_api.feature:91` - Submit comprehensive threat intelligence (✅ complete submission with all optional fields)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py::test_create_minimal_valid_submission` - Minimal submission creation
+  - `tests/unit/core/test_submission.py::test_create_minimal_with_hit_target` - Submission with target
+  - `tests/unit/core/test_submission.py::TestSubmission` - Core functionality (271 lines)
+- **Coverage**: ✅ 8/8 acceptance criteria tested
+
+### Requirement 2: Submission ID Generation
+
+- **BDD Scenarios**:
+  - `tests/integration/features/frank_server_api.feature:14` - Submit threat intelligence (✅ auto-generated STIX IDs)
+  - `tests/integration/features/frank_server_api.feature:91` - Submit comprehensive sighting (✅ STIX ID format validation)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - ID generation and format validation
+- **Coverage**: ✅ All acceptance criteria tested
+
+### Requirement 3: Organisation Integrity Validation
+
+- **BDD Scenarios**:
+  - ⚠️ Not yet covered in BDD tests (validation happens at model level)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Submitter ≠ target validation
+- **Coverage**: ✅ Unit tests complete, consider adding BDD edge case scenarios
+
+### Requirement 4: Format Versioning
+
+- **BDD Scenarios**:
+  - ✅ Implicitly tested in all submission scenarios (version auto-assigned)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Format version defaults
+- **Coverage**: ✅ All acceptance criteria tested
+
+### Requirement 5: TLP Classification
+
+- **BDD Scenarios**:
+  - `tests/integration/features/frank_server_api.feature:91` - Comprehensive submission (✅ TLP GREEN default)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - TLP level validation
+- **Coverage**: ✅ All acceptance criteria tested
+
+### Requirement 6: Factory Method - create_minimal()
+
+- **BDD Scenarios**:
+  - ⚠️ Not directly covered in BDD (internal API)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Factory method tests
+- **Coverage**: ✅ Unit tests complete
+
+### Requirement 7: Legacy Format Parser - from_legacy_dict()
+
+- **BDD Scenarios**:
+  - ⚠️ Not covered in BDD (backward compatibility feature)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py` - Legacy format parsing
+- **Coverage**: ✅ Unit tests complete
+
+### Requirement 8: Serialization Methods
+
+- **BDD Scenarios**:
+  - ✅ Implicitly tested in all API responses (JSON serialization)
+- **Unit Tests**:
+  - `tests/unit/core/test_submission.py::TestSubmissionSerialization` - JSON/YAML export
+- **Coverage**: ✅ All acceptance criteria tested
 
 **Test Files**:
-- [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py) - 271 lines
+- [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py) - 271 lines
+- [tests/integration/features/frank_server_api.feature](tests/integration/features/frank_server_api.feature) - Submission API scenarios
 
 **Key Test Classes**:
 - `TestSubmission` - Core submission functionality
@@ -776,7 +838,7 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 **PR Links**:
 - Initial Submission model: Merged in baseline
 - Pydantic v2 migration: Part of core refactoring
-- Comprehensive tests: [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+- Comprehensive tests: [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ---
 
@@ -978,22 +1040,22 @@ except ValidationError as e:
 - **Pydantic v2**: https://docs.pydantic.dev/latest/ (Data validation)
 
 - **Related ADRs**:
-  - [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
+  - [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 
 - **Related Specifications**:
-  - [Observable](observable.spec.md)
-  - [Sighting](sighting.spec.md)
-  - [Submitter & HitTarget](submitter-target.spec.md)
-  - [Enumerations](enums.spec.md)
+  - [Observable](../core/observable.spec.md)
+  - [Sighting](../core/sighting.spec.md)
+  - [Submitter & HitTarget](../core/submitter-target.spec.md)
+  - [Enumerations](../core/enums.spec.md)
 
 - **Related Spikes**:
-  - [Spike 003: Pydantic v2](../../tests/spikes/003_pydantic/README.md)
+  - [Spike 003: Pydantic v2](tests/spikes/003_pydantic/README.md)
 
 - **Implementation Files**:
-  - [src/frank/core/models.py#L372-L521](../../src/frank/core/models.py)
+  - [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
 
 - **Test Files**:
-  - [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py)
+  - [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ---
 

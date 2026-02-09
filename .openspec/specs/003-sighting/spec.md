@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L291-L369](../../src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_sighting.py](../../tests/unit/core/test_sighting.py)
+- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **Implementation:** [src/frank/core/models.py#L291-L369](src/frank/core/models.py)
+- **Tests:** [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
 
 ## Overview
 
@@ -88,7 +88,7 @@ class Sighting(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_sighting](../../tests/unit/core/test_sighting.py#L60-L84), [test_create_sighting_with_all_fields](../../tests/unit/core/test_sighting.py#L86-L112)
+**Test Coverage**: [test_create_minimal_sighting](tests/unit/core/test_sighting.py#L60-L84), [test_create_sighting_with_all_fields](tests/unit/core/test_sighting.py#L86-L112)
 
 ### Requirement 2: Automatic ID and Timestamp Generation
 
@@ -125,7 +125,7 @@ def validate_timestamp(cls, v):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_sighting_id_auto_generation](../../tests/unit/core/test_sighting.py#L113-L133), [test_timestamp_auto_generation_branch](../../tests/unit/core/test_sighting.py#L135-L167)
+**Test Coverage**: [test_sighting_id_auto_generation](tests/unit/core/test_sighting.py#L113-L133), [test_timestamp_auto_generation_branch](tests/unit/core/test_sighting.py#L135-L167)
 
 ### Requirement 3: Observation Time Validation
 
@@ -168,7 +168,7 @@ def validate_observation_times_and_ensure_ids(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_observation_times_validation](../../tests/unit/core/test_sighting.py#L348-L361), [test_observation_times_invalid_order](../../tests/unit/core/test_sighting.py#L363-L375), [test_invalid_observation_time_last](../../tests/unit/core/test_sighting.py#L263-L269)
+**Test Coverage**: [test_observation_times_validation](tests/unit/core/test_sighting.py#L348-L361), [test_observation_times_invalid_order](tests/unit/core/test_sighting.py#L363-L375), [test_invalid_observation_time_last](tests/unit/core/test_sighting.py#L263-L269)
 
 ### Requirement 4: Confidence Scoring
 
@@ -191,7 +191,7 @@ def validate_observation_times_and_ensure_ids(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_confidence_validation](../../tests/unit/core/test_sighting.py#L280-L295)
+**Test Coverage**: [test_confidence_validation](tests/unit/core/test_sighting.py#L280-L295)
 
 ### Requirement 5: Observables Container
 
@@ -278,7 +278,7 @@ class Observables(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4 (Stage 3+ recommended for complex submissions)
 
-**Test Coverage**: [test_threat_context_serialization](../../tests/unit/core/test_sighting.py#L702-L713), [test_campaign_serialization](../../tests/unit/core/test_sighting.py#L724-L747), [test_sigma_detection_serialization](../../tests/unit/core/test_sighting.py#L755-L768)
+**Test Coverage**: [test_threat_context_serialization](tests/unit/core/test_sighting.py#L702-L713), [test_campaign_serialization](tests/unit/core/test_sighting.py#L724-L747), [test_sigma_detection_serialization](tests/unit/core/test_sighting.py#L755-L768)
 
 ### Requirement 7: Factory Method
 
@@ -310,7 +310,7 @@ def create(
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_factory_method_create](../../tests/unit/core/test_sighting.py#L405-L418), [test_factory_method_minimal](../../tests/unit/core/test_sighting.py#L420-L430)
+**Test Coverage**: [test_factory_method_create](tests/unit/core/test_sighting.py#L405-L418), [test_factory_method_minimal](tests/unit/core/test_sighting.py#L420-L430)
 
 ## Non-Functional Requirements
 
@@ -319,7 +319,7 @@ def create(
 - **Validation**: O(n) where n = number of observables
 - **Serialization**: Efficient JSON/YAML output
 
-**Test**: [test_bulk_creation_performance](../../tests/unit/core/test_sighting.py#L647-L672) - 100 sightings < 1 second
+**Test**: [test_bulk_creation_performance](tests/unit/core/test_sighting.py#L647-L672) - 100 sightings < 1 second
 
 ### Validation
 - **Confidence**: 0 ≤ confidence ≤ 100
@@ -467,7 +467,7 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 7. **Performance Tests** - Bulk creation, datetime parsing
 
 **Test Files**:
-- [tests/unit/core/test_sighting.py](../../tests/unit/core/test_sighting.py) - 779 lines, comprehensive coverage
+- [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py) - 779 lines, comprehensive coverage
 
 **Key Test Classes**:
 - `TestSighting` - Core sighting functionality
@@ -491,7 +491,7 @@ def serialize_datetime(self, value: Optional[datetime]) -> Optional[str]:
 **PR Links**:
 - Initial Sighting model: Merged in baseline
 - Extended metadata: Part of Stage 3 enhancements
-- Comprehensive tests: [tests/unit/core/test_sighting.py](../../tests/unit/core/test_sighting.py)
+- Comprehensive tests: [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
 
 ## Evolution Path Across FRANK Stages
 
@@ -639,9 +639,9 @@ print(data["timestamp"])  # "2025-01-15T10:30:00+00:00"
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
+- **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Sighting Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_a795guqsap3r)
 - **SIGMA**: [SIGMA Rule Format](https://github.com/SigmaHQ/sigma)
 - **MITRE ATT&CK**: [Enterprise Matrix](https://attack.mitre.org/)
-- **Implementation**: [src/frank/core/models.py](../../src/frank/core/models.py)
-- **Tests**: [tests/unit/core/test_sighting.py](../../tests/unit/core/test_sighting.py)
+- **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
+- **Tests**: [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)

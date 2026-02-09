@@ -7,14 +7,27 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L89-L203](../../src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_submitter.py](../../tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](../../tests/unit/core/test_hittarget.py)
+- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **Implementation:** [src/frank/core/models.py#L89-L203](src/frank/core/models.py)
+- **Tests:** [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)
 
 ## Overview
 
 Defines Submitter (threat intelligence contributor) and HitTarget (affected organization) models with STIX-compliant organization identities, access tier assignment, privacy controls, and sector normalization. These models enable attribution, access control, and anonymization in the FRANK platform.
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: Submitter Model
@@ -49,7 +62,7 @@ class Submitter(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_submitter](../../tests/unit/core/test_submitter.py#L36-L47), [test_create_submitter_with_all_fields](../../tests/unit/core/test_submitter.py#L49-L66)
+**Test Coverage**: [test_create_minimal_submitter](tests/unit/core/test_submitter.py#L36-L47), [test_create_submitter_with_all_fields](tests/unit/core/test_submitter.py#L49-L66)
 
 ### Requirement 2: HitTarget Model
 
@@ -83,7 +96,7 @@ class HitTarget(BaseModel):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_create_minimal_hittarget](../../tests/unit/core/test_hittarget.py#L33-L49), [test_create_hittarget_with_all_fields](../../tests/unit/core/test_hittarget.py#L51-L68)
+**Test Coverage**: [test_create_minimal_hittarget](tests/unit/core/test_hittarget.py#L33-L49), [test_create_hittarget_with_all_fields](tests/unit/core/test_hittarget.py#L51-L68)
 
 ### Requirement 3: STIX Organization ID Generation
 
@@ -131,7 +144,7 @@ def ensure_org_id(self):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_organisation_id_auto_generation (Submitter)](../../tests/unit/core/test_submitter.py#L68-L81), [test_organisation_id_auto_generation (HitTarget)](../../tests/unit/core/test_hittarget.py#L70-L88)
+**Test Coverage**: [test_organisation_id_auto_generation (Submitter)](tests/unit/core/test_submitter.py#L68-L81), [test_organisation_id_auto_generation (HitTarget)](tests/unit/core/test_hittarget.py#L70-L88)
 
 ### Requirement 4: Sector Normalization (Submitter)
 
@@ -175,7 +188,7 @@ def normalize_sector(cls, v):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_sector_normalization](../../tests/unit/core/test_submitter.py#L83-L107)
+**Test Coverage**: [test_sector_normalization](tests/unit/core/test_submitter.py#L83-L107)
 
 ### Requirement 5: Organisation Size Normalization (HitTarget)
 
@@ -219,7 +232,7 @@ def normalize_org_size(cls, v):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_organisation_size_normalization](../../tests/unit/core/test_hittarget.py#L109-L133)
+**Test Coverage**: [test_organisation_size_normalization](tests/unit/core/test_hittarget.py#L109-L133)
 
 ### Requirement 6: Factory Methods
 
@@ -249,7 +262,7 @@ def create(cls, sector: str, organisation_size: str = None, region: str = None):
 
 **Stage Availability**: Stages 1, 2, 3, 4
 
-**Test Coverage**: [test_factory_method_create (Submitter)](../../tests/unit/core/test_submitter.py#L152-L162), [test_factory_method_create (HitTarget)](../../tests/unit/core/test_hittarget.py#L164-L172)
+**Test Coverage**: [test_factory_method_create (Submitter)](tests/unit/core/test_submitter.py#L152-L162), [test_factory_method_create (HitTarget)](tests/unit/core/test_hittarget.py#L164-L172)
 
 ### Requirement 7: Anonymization Levels (HitTarget)
 
@@ -414,9 +427,9 @@ def validate_submission_integrity(self):
 7. **Integration Tests** - Submission validation
 
 **Test Files**:
-- [tests/unit/core/test_submitter.py](../../tests/unit/core/test_submitter.py) - Submitter tests
-- [tests/unit/core/test_hittarget.py](../../tests/unit/core/test_hittarget.py) - HitTarget tests
-- [tests/unit/core/test_submission.py](../../tests/unit/core/test_submission.py) - Integration tests
+- [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py) - Submitter tests
+- [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py) - HitTarget tests
+- [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py) - Integration tests
 
 ## Implementation Status
 
@@ -609,8 +622,8 @@ json_str = submitter.model_dump_json()
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
+- **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Identity Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_wh296fiwpklp)
-- **Access Control**: [AccessTier Enum Specification](enums.spec.md)
-- **Implementation**: [src/frank/core/models.py](../../src/frank/core/models.py)
-- **Tests**: [tests/unit/core/test_submitter.py](../../tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](../../tests/unit/core/test_hittarget.py)
+- **Access Control**: [AccessTier Enum Specification](../core/enums.spec.md)
+- **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
+- **Tests**: [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)

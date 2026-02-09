@@ -7,14 +7,27 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/enum.py](../../src/frank/core/enum.py)
-- **Tests:** [tests/unit/core/test_enum.py](../../tests/unit/core/test_enum.py)
+- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **Implementation:** [src/frank/core/enum.py](src/frank/core/enum.py)
+- **Tests:** [tests/unit/core/test_enum.py](tests/unit/core/test_enum.py)
 
 ## Overview
 
 Defines core enumeration types for FRANK's data model including access control tiers, observable types, severity levels, and TLP classifications. All enums inherit from `str` and `Enum` to provide both type safety and JSON/YAML serialization compatibility.
 
+
+## RFC 2119 Keywords
+
+The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD",
+"SHOULD NOT", "RECOMMENDED", "MAY", and "OPTIONAL" in this document are to be
+interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc2119).
+
+**Usage in this specification**:
+- **MUST/SHALL**: Strict requirements for correctness and compliance
+- **SHOULD**: Recommended practices that may have valid exceptions
+- **MAY**: Optional features or behaviors
+
+---
 ## ADDED Requirements
 
 ### Requirement 1: AccessTier - Access Control Hierarchy
@@ -247,7 +260,7 @@ class Model(BaseModel):
 5. **Integration Tests** - Pydantic model integration with enums
 
 **Key Test Files**:
-- [tests/unit/core/test_enum.py](../../tests/unit/core/test_enum.py) - 933 lines, comprehensive coverage
+- [tests/unit/core/test_enum.py](tests/unit/core/test_enum.py) - 933 lines, comprehensive coverage
 
 ## Evolution Path Across FRANK Stages
 
@@ -363,11 +376,11 @@ domain_obs = Observable(
 **PR Links**:
 - Initial implementation: Merged in baseline
 - `from_string()` method: Part of core implementation
-- Comprehensive tests: [tests/unit/core/test_enum.py](../../tests/unit/core/test_enum.py)
+- Comprehensive tests: [tests/unit/core/test_enum.py](tests/unit/core/test_enum.py)
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md) - Enum serialization philosophy
+- **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md) - Enum serialization philosophy
 - **Pydantic V2 Docs**: [Enums in Pydantic](https://docs.pydantic.dev/latest/concepts/types/#enums)
 - **TLP Standard**: [Traffic Light Protocol 2.0](https://www.first.org/tlp/)
 - **STIX 2.1**: [Observable types mapping](https://docs.oasis-open.org/cti/stix/v2.1/)

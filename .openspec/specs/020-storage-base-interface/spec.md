@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** [src/frank/storage/base.py](../../src/frank/storage/base.py)
-- **Tests:** [tests/unit/storage/](../../tests/unit/storage/)
+- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Implementation:** [src/frank/storage/base.py](src/frank/storage/base.py)
+- **Tests:** [tests/unit/storage/](tests/unit/storage/)
 
 ## Overview
 
@@ -31,7 +31,7 @@ The `BaseFRANKDatabase` abstract base class defines the **repository pattern int
 - **Health Checks**: Standardized health monitoring interface
 - **Testability**: Interface can be mocked for unit tests without database dependency
 
-This is the **single most important architectural abstraction** in FRANK, enabling the entire evolutionary design philosophy described in [ADR-0001](../../docs/adr/0001-four-stage-infrastructure-evolution.md).
+This is the **single most important architectural abstraction** in FRANK, enabling the entire evolutionary design philosophy described in [ADR-0001](docs/adr/0001-four-stage-infrastructure-evolution.md).
 
 ---
 
@@ -59,7 +59,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Attempting to instantiate `BaseFRANKDatabase` directly raises `TypeError`
   - [ ] Each concrete implementation (SQLite, DynamoDB, PostgreSQL) can be instantiated
 - **Stage Availability**: All stages (1-4)
-- **Related ADR**: [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md)
+- **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
 ### Requirement 2: Constructor and Initialization
 
@@ -83,7 +83,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] PARTNER and CORE_MEMBER tiers return full data
   - [ ] Filtering is identical regardless of which database implementation is used
 - **Stage Availability**: All stages (1-4)
-- **Related ADR**: [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
 
 ### Requirement 4: Observable Hashing
 
@@ -348,22 +348,22 @@ All Features (dev/test)    | SQLite     | SQLite (fallback) | SQLite (fallback)
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0001: Four-Stage Infrastructure Evolution](../../docs/adr/0001-four-stage-infrastructure-evolution.md)
-  - [ADR-0002: Repository Pattern for Database Abstraction](../../docs/adr/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](../../docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0001: Four-Stage Infrastructure Evolution](docs/adr/0001-four-stage-infrastructure-evolution.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](docs/adr/0002-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [SQLite Implementation Spec](sqlite.spec.md)
-  - [DynamoDB Implementation Spec](dynamodb.spec.md)
-  - [PostgreSQL Implementation Spec](postgresql.spec.md)
+  - [SQLite Implementation Spec](../storage/sqlite.spec.md)
+  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md)
+  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md)
 
 - **Source Files**:
-  - [`src/frank/storage/base.py`](../../src/frank/storage/base.py) - Interface definition
-  - [`src/frank/storage/exceptions.py`](../../src/frank/storage/exceptions.py) - Exception hierarchy
-  - [`src/frank/core/enum.py`](../../src/frank/core/enum.py) - AccessTier, ObservableType enums
+  - [`src/frank/storage/base.py`](src/frank/storage/base.py) - Interface definition
+  - [`src/frank/storage/exceptions.py`](src/frank/storage/exceptions.py) - Exception hierarchy
+  - [`src/frank/core/enum.py`](src/frank/core/enum.py) - AccessTier, ObservableType enums
 
 - **Test Files**:
-  - [`tests/unit/storage/test_basefrankdatabase.py`](../../tests/unit/storage/test_basefrankdatabase.py)
+  - [`tests/unit/storage/test_basefrankdatabase.py`](tests/unit/storage/test_basefrankdatabase.py)
 
 ---
 

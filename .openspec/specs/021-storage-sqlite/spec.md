@@ -7,9 +7,9 @@
 
 **FRANK-Specific Metadata**:
 - **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](../../docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** [src/frank/storage/sqlite.py](../../src/frank/storage/sqlite.py)
-- **Tests:** [tests/unit/storage/test_sqlite.py](../../tests/unit/storage/test_sqlite.py)
+- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Implementation:** [src/frank/storage/sqlite.py](src/frank/storage/sqlite.py)
+- **Tests:** [tests/unit/storage/test_sqlitedatabase.py](tests/unit/storage/test_sqlitedatabase.py)
 
 ## Overview
 
@@ -64,7 +64,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] API key methods work (create, get_by_hash, list, update, revoke, update_last_used)
   - [ ] Health check returns table counts and database file size
 - **Stage Availability**: All stages (1-4, as fallback)
-- **Related ADR**: [ADR-0002](../../docs/adr/0002-repository-pattern-database-abstraction.md)
+- **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
 ### Requirement 2: Schema Auto-Creation
 
@@ -606,24 +606,24 @@ The SQLite implementation provides additional methods beyond the base interface:
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0002: Repository Pattern for Database Abstraction](../../docs/adr/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](../../docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](docs/adr/0002-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [Base Interface Spec](base-interface.spec.md) -- interface this implements
-  - [DynamoDB Implementation Spec](dynamodb.spec.md) -- cloud alternative for threat data
-  - [PostgreSQL Implementation Spec](postgresql.spec.md) -- cloud alternative for management data
+  - [Base Interface Spec](../storage/base-interface.spec.md) -- interface this implements
+  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md) -- cloud alternative for threat data
+  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md) -- cloud alternative for management data
 
 - **Source Files**:
-  - [`src/frank/storage/sqlite.py`](../../src/frank/storage/sqlite.py) -- Implementation
-  - [`src/frank/storage/base.py`](../../src/frank/storage/base.py) -- Interface
+  - [`src/frank/storage/sqlite.py`](src/frank/storage/sqlite.py) -- Implementation
+  - [`src/frank/storage/base.py`](src/frank/storage/base.py) -- Interface
 
 - **Test Files**:
-  - [`tests/unit/storage/test_sqlitedatabase.py`](../../tests/unit/storage/test_sqlitedatabase.py)
-  - [`tests/unit/storage/test_organisation_crud.py`](../../tests/unit/storage/test_organisation_crud.py)
+  - [`tests/unit/storage/test_sqlitedatabase.py`](tests/unit/storage/test_sqlitedatabase.py)
+  - [`tests/unit/storage/test_organisation_crud.py`](tests/unit/storage/test_organisation_crud.py)
 
 - **Related Spikes**:
-  - [`tests/spikes/004_sqlite/README.md`](../../tests/spikes/004_sqlite/README.md) -- SQLite implementation spike
+  - [`tests/spikes/004_sqlite/README.md`](tests/spikes/004_sqlite/README.md) -- SQLite implementation spike
 
 ---
 

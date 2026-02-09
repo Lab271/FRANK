@@ -11,7 +11,11 @@ Feature: FRANK Platform Threat Intelligence API
     Given the FRANK API is running
     And the database is initialized with demo data
 
+  @spec-submission-req1 @spec-submission-req2
   Scenario Outline: Submit threat intelligence with different access levels
+    # Verifies: openspec/core/submission.spec.md
+    #   - Requirement 1: Core Submission Structure (valid submission creation)
+    #   - Requirement 2: Submission ID Generation (auto-generated STIX IDs)
     Given I am authenticated as a <user_type> user
     When I submit a threat intelligence sighting with confidence <confidence>
     Then the submission should be <result>
@@ -23,14 +27,20 @@ Feature: FRANK Platform Threat Intelligence API
       | contributor | 70         | accepted | 10-25          |
       | core_member | 95         | accepted | 10-25          |
 
+  @spec-auth-req3
   Scenario: Observer cannot submit threat intelligence
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 3: Access Tier Mapping (OBSERVER tier cannot submit)
     Given I am authenticated as an observer user
     When I attempt to submit a threat intelligence sighting
     Then the submission should be rejected
     And I should receive a "403" error
     And the error message should contain "Insufficient access level"
 
+  @spec-auth-req2
   Scenario: Unauthenticated access is denied
+    # Verifies: openspec/apis/authentication.spec.md
+    #   - Requirement 2: JWT Token Validation (reject missing/invalid tokens)
     Given I am not authenticated
     When I attempt to submit a threat intelligence sighting
     Then the submission should be rejected
@@ -88,7 +98,12 @@ Feature: FRANK Platform Threat Intelligence API
     And include threat context information
     And provide aggregation statistics
 
+  @spec-submission-req1 @spec-submission-req2 @spec-submission-req5
   Scenario: Submit comprehensive threat intelligence
+    # Verifies: openspec/core/submission.spec.md
+    #   - Requirement 1: Core Submission Structure (complete submission with all optional fields)
+    #   - Requirement 2: Submission ID Generation (auto-generated STIX IDs)
+    #   - Requirement 5: TLP Classification (default TLP GREEN)
     Given I am authenticated as a core_member user
     When I submit a comprehensive sighting with:
       | field              | value                    |
