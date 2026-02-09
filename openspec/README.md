@@ -14,47 +14,53 @@ Specifications in FRANK serve as the bridge between **vision** (what we want to 
 
 ## Directory Structure
 
-### `/specs/core/`
-Specifications for FRANK's core business logic and data models:
-- `models.spec.md` - Data model specifications (Observable, Submission, Sighting, etc.)
-- `access_control.spec.md` - Access tier and permission models
-- `validation.spec.md` - Data validation rules and error handling
+Following [OpenSpec](https://github.com/Fission-AI/OpenSpec) conventions, specifications are organized in numbered directories under `.openspec/specs/`:
 
-**When to Create**: When designing new entity types, modifying data structures, or changing core business rules.
+```
+openspec/
+├── .openspec/
+│   └── specs/                    # Main specifications (source of truth)
+│       ├── 001-submission/       # Core: Submission data model
+│       ├── 002-observable/       # Core: Observable indicators
+│       ├── 003-sighting/         # Core: Sighting details
+│       ├── 004-submitter-target/ # Core: Submitter/Target entities
+│       ├── 005-enums/            # Core: Enumeration types
+│       ├── 010-sightings-api/    # API: Threat intelligence sightings
+│       ├── 011-management-api/   # API: Management endpoints
+│       ├── 012-authentication/   # API: Authentication flows
+│       ├── 020-storage-base-interface/  # Storage: Base abstraction
+│       ├── 021-storage-sqlite/   # Storage: SQLite implementation
+│       ├── 022-storage-dynamodb/ # Storage: DynamoDB implementation
+│       ├── 023-storage-postgresql/ # Storage: PostgreSQL implementation
+│       ├── 030-infrastructure-ecs-fargate/  # Infrastructure: ECS deployment
+│       └── 040-testing-fastapi-patterns/    # Testing: FastAPI patterns
+├── README.md                     # This file
+└── validate.py                   # OpenSpec validator
+```
 
-### `/specs/apis/`
-API endpoint and contract specifications:
-- `sightings_api.spec.md` - Threat intelligence sightings API (Issue #92)
-- `submissions_api.spec.md` - Full submission workflow endpoints
-- `health_check_api.spec.md` - System health check endpoints
-- `admin_api.spec.md` - Administrative and management endpoints
+### Numbering Scheme
 
-**When to Create**: When designing new endpoints, changing API contracts, or versioning APIs.
+Specifications are numbered by domain:
+- **001-009**: Core business logic and data models
+- **010-019**: API endpoints and contracts
+- **020-029**: Storage layer implementations
+- **030-039**: Infrastructure and deployment
+- **040-049**: Testing patterns and frameworks
 
-### `/specs/storage/`
-Database layer specifications and storage contracts:
-- `database_abstraction.spec.md` - BaseFRANKDatabase interface and implementations
-- `sqlite_storage.spec.md` - SQLite-specific implementation requirements
-- `dynamodb_storage.spec.md` - DynamoDB-specific implementation requirements
-- `postgresql_storage.spec.md` - PostgreSQL management API backend
+### Change Proposals (Future)
 
-**When to Create**: When designing database schemas, implementing new storage backends, or changing database interfaces.
-
-### `/specs/changes/`
-Formal change proposals following the **OpenSpec pattern** for introducing new features or major changes.
+`.openspec/changes/` - Formal change proposals following the **OpenSpec pattern** for introducing new features or major changes.
 
 Each change lives in its own directory with a complete narrative:
 - `proposal.md` - Why we need this change (problem statement, business value)
-- `spec.md` - What it should do (functional requirements, behavior, contracts)
-- `design.md` - How to implement it (architecture, trade-offs, alternatives)
+- `specs/NNN-name/spec.md` - What it should do (delta spec with lifecycle markers)
 - `tasks.md` - Implementation checklist (step-by-step tasks)
-- `adr.md` - Architectural decisions (becomes ADR when approved)
 
-**Examples**:
-- `changes/001_sightings_api/` - Threat intelligence sightings API (Issue #92)
-- `changes/002_submission_workflow/` - Complete submission workflow
-- `changes/003_aws_deployment/` - AWS Stage 3 deployment architecture
-- `changes/archive/` - Completed and archived changes
+**Delta Specs** use lifecycle markers:
+- `## ADDED Requirements` - Brand new requirements being proposed
+- `## MODIFIED Requirements` - Changes to existing requirements
+- `## REMOVED Requirements` - Features being deprecated
+- `## RENAMED Requirements` - Requirement name changes
 
 **When to Create**: For any feature that:
 - Introduces significant new functionality
@@ -108,15 +114,22 @@ proposal   team                          when done
 
 ### Creating a New Specification
 
-1. **Determine spec type**:
-   - **Core system** → Create in `core/` (e.g., `core/new_model.spec.md`)
-   - **API change** → Create in `apis/` (e.g., `apis/new_endpoint.spec.md`)
-   - **Storage layer** → Create in `storage/` (e.g., `storage/new_db_backend.spec.md`)
-   - **Major feature** → Create change proposal in `changes/` (e.g., `changes/XXX_feature_name/`)
+1. **Determine the next spec number**:
+   ```bash
+   ls .openspec/specs/  # Find highest number in your domain range
+   ```
 
-2. **Copy the appropriate template**:
-   - For core/apis/storage specs: Use `_template.spec.md`
-   - For change proposals: Use entire `changes/_template/` directory structure
+   - **Core models**: 001-009
+   - **APIs**: 010-019
+   - **Storage**: 020-029
+   - **Infrastructure**: 030-039
+   - **Testing**: 040-049
+
+2. **Create the spec directory and file**:
+   ```bash
+   mkdir -p .openspec/specs/NNN-spec-name
+   # Create spec using OpenSpec template (see OpenSpec skill: /spec)
+   ```
 
 3. **Complete the template**:
    - Fill in all required sections (marked with ⭐)
@@ -140,8 +153,8 @@ proposal   team                          when done
 When implementing a spec, always reference it in code comments and commit messages:
 
 ```python
-# Implementation of Observable validation per src/frank/core/models.spec.md
-# See specs/core/models.spec.md#observable-validation for requirements
+# Implementation of Observable validation per openspec/.openspec/specs/002-observable/spec.md
+# See openspec/.openspec/specs/002-observable/spec.md for requirements
 def validate_observable(observable: Observable) -> bool:
     """Validate observable against spec requirements."""
     pass
@@ -149,10 +162,9 @@ def validate_observable(observable: Observable) -> bool:
 
 In commit messages:
 ```
-feat: Implement Sightings API per specs/changes/001_sightings_api/spec.md
+feat: Implement Sightings API per openspec/.openspec/specs/010-sightings-api/spec.md
 
 This implementation fulfills all requirements from the approved spec.
-See specs/changes/001_sightings_api/ for complete design.
 
 Closes #92
 ```
@@ -324,9 +336,10 @@ Answers "What significant decisions did we make?"
 
 ## Examples in This Repository
 
-- **Sightings API** (Issue #92): `changes/001_sightings_api/` - Complete change proposal for threat intelligence API
-- **Data Models**: `core/models.spec.md` - Specification for Observable, Submission, Sighting models
-- **Storage Layer**: `storage/database_abstraction.spec.md` - BaseFRANKDatabase interface and implementations
+- **Submission Model**: `.openspec/specs/001-submission/spec.md` - Complete submission data structure
+- **Observable Model**: `.openspec/specs/002-observable/spec.md` - Threat indicators specification
+- **Sightings API**: `.openspec/specs/010-sightings-api/spec.md` - Threat intelligence API endpoints
+- **Storage Base**: `.openspec/specs/020-storage-base-interface/spec.md` - Database abstraction layer
 
 ## Contributing
 
