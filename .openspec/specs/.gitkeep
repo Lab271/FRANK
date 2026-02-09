@@ -1,0 +1,4 @@
+# OpenSpec Specifications Directory
+
+This directory contains the main specifications following OpenSpec format.
+Each spec is in a numbered directory: NNN-spec-name/spec.md
