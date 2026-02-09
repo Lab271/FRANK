@@ -58,7 +58,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 1: Threat Intelligence Storage (Implemented)
 
-- **Description**: Store complete threat intelligence submissions with nested observables, sightings, and observable statistics.
+- **Description**: The system MUST store complete threat intelligence submissions with nested observables, sightings, and observable statistics.
 - **Acceptance Criteria**:
   - [ ] `store_submission()` stores submission, organisation, sighting, and observables atomically using batch write
   - [ ] `get_submission_by_id()` retrieves complete submission by ID
@@ -71,34 +71,70 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: Stages 2-3
 - **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
+#### Scenario: Store Submission to DynamoDB
+- GIVEN a complete threat intelligence submission with observables
+- WHEN calling store_submission()
+- THEN the submission SHALL be stored atomically with batch write
+- AND observable index items SHALL be created for cross-referencing
+- AND observable statistics SHALL be upserted (new or updated)
+- AND all items SHALL include TTL for automatic expiration
+
 ### Requirement 2: Organisation CRUD (Not Implemented)
 
-- **Description**: Organisation lifecycle management is **not implemented** in DynamoDB. All 5 methods raise `NotImplementedError` with guidance to use SQLite or PostgreSQL.
+- **Description**: The system SHALL NOT implement organisation lifecycle management in DynamoDB. All 5 methods SHALL raise `NotImplementedError` with guidance to use SQLite or PostgreSQL.
 - **Rationale**: Organisation data is relational (foreign keys, joins, transactional updates) and low-volume. DynamoDB's NoSQL model is not the right fit. PostgreSQL handles this in Stage 3.
 - **Methods**: `create_organisation`, `get_organisation`, `list_organisations`, `update_organisation`, `delete_organisation`
 - **Stage Availability**: Not available (use PostgreSQL)
 - **Related ADR**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
 
+#### Scenario: Attempt Organisation CRUD in DynamoDB
+- GIVEN a DynamoDB database instance
+- WHEN calling create_organisation() or any organisation CRUD method
+- THEN a NotImplementedError SHALL be raised
+- AND the error message SHALL guide users to use PostgreSQL instead
+- AND no organisation data SHALL be written to DynamoDB
+
 ### Requirement 3: Organisation Members (Not Implemented)
 
-- **Description**: User-to-organisation relationships are **not implemented** in DynamoDB. All 5 methods raise `NotImplementedError`.
+- **Description**: The system SHALL NOT implement user-to-organisation relationships in DynamoDB. All 5 methods SHALL raise `NotImplementedError`.
 - **Rationale**: Member management requires relational integrity (foreign keys, unique constraints) and transactional consistency. PostgreSQL handles this.
 - **Methods**: `add_organisation_member`, `remove_organisation_member`, `get_organisation_members`, `get_user_organisations`, `get_organisation_member`
 - **Stage Availability**: Not available (use PostgreSQL)
 
+#### Scenario: Attempt Member Management in DynamoDB
+- GIVEN a DynamoDB database instance
+- WHEN calling add_organisation_member() or any member management method
+- THEN a NotImplementedError SHALL be raised
+- AND the error message SHALL guide users to use PostgreSQL
+- AND relational member data SHALL NOT be stored in DynamoDB
+
 ### Requirement 4: API Key Management (Not Implemented)
 
-- **Description**: API key lifecycle is **not implemented** in DynamoDB. All 6 methods raise `NotImplementedError`.
+- **Description**: The system SHALL NOT implement API key lifecycle in DynamoDB. All 6 methods SHALL raise `NotImplementedError`.
 - **Rationale**: AWS Cognito handles all authentication in Stages 2+. API keys are not needed and were never intended per [ADR-0005](docs/adr/0005-cognito-authentication.md).
 - **Methods**: `create_api_key`, `get_api_key_by_hash`, `list_api_keys`, `update_api_key`, `revoke_api_key`, `update_api_key_last_used`
 - **Stage Availability**: Not available (Cognito handles auth)
 
+#### Scenario: Attempt API Key Management in DynamoDB
+- GIVEN a DynamoDB database instance in Stage 2+ deployment
+- WHEN calling create_api_key() or any API key method
+- THEN a NotImplementedError SHALL be raised
+- AND the error message SHALL indicate Cognito handles authentication
+- AND no API key data SHALL be stored in DynamoDB
+
 ### Requirement 5: Refresh Token Management (Not Implemented)
 
-- **Description**: Refresh token lifecycle is **not implemented** in DynamoDB. All 4 methods raise `NotImplementedError`.
+- **Description**: The system SHALL NOT implement refresh token lifecycle in DynamoDB. All 4 methods SHALL raise `NotImplementedError`.
 - **Rationale**: AWS Cognito manages token lifecycle. If local revocation tracking is needed, PostgreSQL handles it.
 - **Methods**: `store_refresh_token`, `get_refresh_token`, `revoke_refresh_token`, `revoke_all_user_refresh_tokens`
 - **Stage Availability**: Not available (Cognito handles tokens)
+
+#### Scenario: Attempt Refresh Token Management in DynamoDB
+- GIVEN a DynamoDB database instance with Cognito authentication
+- WHEN calling store_refresh_token() or any token management method
+- THEN a NotImplementedError SHALL be raised
+- AND the error message SHALL indicate Cognito manages token lifecycle
+- AND refresh token data SHALL be stored in PostgreSQL if needed for revocation tracking
 
 ---
 
