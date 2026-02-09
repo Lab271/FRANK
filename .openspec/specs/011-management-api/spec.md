@@ -48,13 +48,186 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ## ADDED Requirements
 
-*This specification primarily documents API endpoints and administrative workflows. Functional requirements are defined in related specifications: [Authentication](../012-authentication/spec.md), [PostgreSQL Storage](../023-storage-postgresql/spec.md).*
+### Requirement 1: Organisation CRUD Operations
 
-*See Section 4 (API Endpoints) for detailed endpoint contracts.*
+- **Description**: The Management API must provide full CRUD operations for organisations restricted to CORE_MEMBER access tier.
+- **Acceptance Criteria**:
+  - [ ] POST /v1/organisations creates organisation (CORE_MEMBER only)
+  - [ ] GET /v1/organisations lists organisations with filtering (OBSERVER+)
+  - [ ] GET /v1/organisations/{id} retrieves specific organisation (OBSERVER+)
+  - [ ] PUT /v1/organisations/{id} updates organisation (CORE_MEMBER only)
+  - [ ] DELETE /v1/organisations/{id} deletes organisation (CORE_MEMBER only)
+  - [ ] Organisation IDs follow STIX format: identity--{uuid}
+  - [ ] Returns 201 Created for successful creation
+  - [ ] Returns 404 Not Found for missing organisations
+  - [ ] Returns 409 Conflict for duplicate organisations
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
 
----
+#### Scenario: Creating new organisation
+- GIVEN an authenticated CORE_MEMBER user
+- WHEN I POST /v1/organisations with organisation_id "identity--rabobank" and type "cyber_partner"
+- THEN the response is 201 Created
+- AND the organisation is stored in PostgreSQL
+- AND I can retrieve it by GET /v1/organisations/identity--rabobank
 
-## Functional Requirements (Legacy Section - Informational Only)
+#### Scenario: Updating organisation contribution score
+- GIVEN an existing organisation with contribution_score 150
+- WHEN a CORE_MEMBER user PUTs updated contribution_score 175
+- THEN the organisation is updated in database
+- AND GET retrieves the updated score
+- AND updated_at timestamp is refreshed
+
+#### Scenario: Deleting organisation with cascading members
+- GIVEN an organisation "identity--acme" with 5 members
+- WHEN a CORE_MEMBER user DELETEs the organisation
+- THEN the organisation is removed from database
+- AND all 5 member records are cascade deleted
+- AND submissions by the organisation remain (audit trail)
+
+### Requirement 2: Organisation Member Management
+
+- **Description**: The Management API must manage organisation membership with role-based access (member, admin, owner).
+- **Acceptance Criteria**:
+  - [ ] POST /v1/organisations/{id}/members adds user to organisation (CORE_MEMBER only)
+  - [ ] GET /v1/organisations/{id}/members lists members (OBSERVER+)
+  - [ ] DELETE /v1/organisations/{id}/members/{username} removes member (CORE_MEMBER only)
+  - [ ] Roles: "member", "admin", "owner"
+  - [ ] Cascading delete removes members when organisation deleted
+  - [ ] Returns 409 Conflict if user already a member
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+
+#### Scenario: Adding member to organisation
+- GIVEN an organisation "identity--rabobank" exists
+- WHEN a CORE_MEMBER adds username "jane@rabobank.nl" with role "admin"
+- THEN the member is created in organisation_members table
+- AND the member appears in GET /v1/organisations/identity--rabobank/members
+- AND the joined_at timestamp is recorded
+
+#### Scenario: Listing organisation members filtered by role
+- GIVEN an organisation with 3 members (2 "admin", 1 "owner")
+- WHEN I GET /v1/organisations/{id}/members?role=admin
+- THEN only the 2 admin members are returned
+- AND the owner is excluded from results
+
+#### Scenario: Preventing duplicate membership
+- GIVEN a user "jane@rabobank.nl" already member of "identity--rabobank"
+- WHEN I attempt to add the same user again
+- THEN the response is 409 Conflict
+- AND the error indicates duplicate membership
+- AND no duplicate record is created
+
+### Requirement 3: User Management via Cognito
+
+- **Description**: The Management API must manage users in AWS Cognito with organisation association.
+- **Acceptance Criteria**:
+  - [ ] POST /v1/organisations/{id}/users creates user in Cognito and adds to org (CORE_MEMBER only)
+  - [ ] GET /v1/organisations/{id}/users lists users in organisation (OBSERVER+)
+  - [ ] GET /v1/users/{username} retrieves user details (OBSERVER+)
+  - [ ] PUT /v1/users/{username} updates user attributes and groups (CORE_MEMBER only)
+  - [ ] DELETE /v1/users/{username} deletes user from Cognito and all orgs (CORE_MEMBER only)
+  - [ ] Service accounts detected by "service-" prefix
+  - [ ] Auto-generates secure password (32 chars) for service accounts
+  - [ ] Returns generated password in response for service accounts
+- **Stage Availability**: Stages 3-4 (Cognito integration), Stages 1-2 (mock)
+- **Related ADR(s)**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+
+#### Scenario: Creating human user account
+- GIVEN a CORE_MEMBER creating user for organisation "identity--rabobank"
+- WHEN I POST /v1/organisations/identity--rabobank/users with username "john.doe@rabobank.nl" and password "SecurePass123!"
+- THEN the user is created in Cognito
+- AND the user is added to organisation as member
+- AND the user is added to FRANK_PARTNER group
+
+#### Scenario: Creating service account with generated password
+- GIVEN a CORE_MEMBER creating service account
+- WHEN I POST /v1/organisations/{id}/users with username "service-rabobank-ingestion" (no password)
+- THEN a 32-character secure password is generated
+- AND the password is returned in the response
+- AND the user is created in Cognito
+- AND the user is added to organisation
+
+#### Scenario: Deleting user removes from all organisations
+- GIVEN a user "jane@rabobank.nl" member of 2 organisations
+- WHEN a CORE_MEMBER DELETEs the user
+- THEN the user is removed from Cognito
+- AND membership records from both organisations are deleted
+- AND the deletion is GDPR compliant (all personal data removed)
+
+### Requirement 4: MFA Management
+
+- **Description**: The Management API must setup and manage Multi-Factor Authentication for users.
+- **Acceptance Criteria**:
+  - [ ] POST /v1/users/{username}/mfa/setup initiates MFA enrollment (CORE_MEMBER only)
+  - [ ] Returns TOTP secret and QR code data
+  - [ ] POST /v1/users/{username}/mfa/verify validates TOTP code (CORE_MEMBER only)
+  - [ ] DELETE /v1/users/{username}/mfa disables MFA (CORE_MEMBER only)
+  - [ ] GET /v1/users/{username}/mfa/status checks MFA status (OBSERVER+)
+  - [ ] Returns 400 Bad Request for invalid TOTP codes
+- **Stage Availability**: Stages 3-4 (Cognito MFA), Stages 1-2 (mock)
+- **Related ADR(s)**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+
+#### Scenario: MFA enrollment workflow
+- GIVEN a user without MFA enabled
+- WHEN a CORE_MEMBER calls POST /v1/users/{username}/mfa/setup
+- THEN the response includes TOTP secret and QR code URL
+- AND the user scans QR code with authenticator app
+- AND the user enters 6-digit TOTP code
+- AND CORE_MEMBER calls POST /v1/users/{username}/mfa/verify with code
+- THEN MFA is enabled for the user
+
+#### Scenario: Invalid TOTP code rejection
+- GIVEN a user in MFA setup with valid secret
+- WHEN a CORE_MEMBER verifies with incorrect TOTP code "999999"
+- THEN the response is 400 Bad Request
+- AND MFA is not enabled
+- AND the error indicates invalid verification code
+
+#### Scenario: Disabling MFA for user
+- GIVEN a user with MFA enabled
+- WHEN a CORE_MEMBER calls DELETE /v1/users/{username}/mfa
+- THEN MFA is disabled in Cognito
+- AND GET /v1/users/{username}/mfa/status returns mfa_enabled=false
+- AND the user can log in without TOTP code
+
+### Requirement 5: Authentication (Login/Refresh/Logout)
+
+- **Description**: The Management API must authenticate users via Cognito and manage JWT tokens with refresh token storage.
+- **Acceptance Criteria**:
+  - [ ] POST /v1/auth/login authenticates via Cognito and returns JWT tokens
+  - [ ] Stores refresh token hash in database
+  - [ ] POST /v1/auth/refresh exchanges refresh token for new access token
+  - [ ] Validates refresh token against database storage
+  - [ ] POST /v1/auth/logout revokes all user refresh tokens
+  - [ ] Returns 401 Unauthorized for invalid credentials
+  - [ ] Logs all authentication events
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+
+#### Scenario: Successful user login
+- GIVEN a user with username "john.doe@rabobank.nl" and valid password
+- WHEN I POST /v1/auth/login with credentials
+- THEN Cognito validates the credentials
+- AND access_token (1 hour expiry) is generated
+- AND refresh_token (30 days expiry) is generated
+- AND refresh token hash is stored in database
+- AND tokens are returned to client
+
+#### Scenario: Refreshing access token
+- GIVEN a valid refresh token from previous login
+- WHEN I POST /v1/auth/refresh with the refresh token
+- THEN the token is validated against database
+- AND a new access_token is generated
+- AND the refresh_token remains valid (not rotated)
+- AND the new access token includes fresh user groups
+
+#### Scenario: Logout revokes all refresh tokens
+- GIVEN a user with 2 active sessions (2 refresh tokens)
+- WHEN the user calls POST /v1/auth/logout
+- THEN all refresh tokens for the user are revoked in database
+- AND subsequent refresh attempts return 401 Unauthorized
+- AND access tokens remain valid until expiry (stateless)
 
 ### FR1: Organisation CRUD
 **Requirement**: Manage organisations with full CRUD operations restricted to CORE_MEMBER access.
