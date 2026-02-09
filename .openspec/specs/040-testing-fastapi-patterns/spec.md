@@ -56,6 +56,42 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: N/A
 
+#### Scenario: Creating app instance with custom configuration
+- GIVEN a create_app() factory function
+- WHEN I call create_app(db_path="/tmp/test.db", log_level="DEBUG")
+- THEN a FastAPI instance is returned with custom configuration
+- AND the database uses the test path
+- AND logging is set to DEBUG level
+
+#### Scenario: Isolated app instances per test
+- GIVEN two parallel test cases
+- WHEN test_1 creates app_1 with config_1
+- AND test_2 creates app_2 with config_2
+- THEN each app has independent configuration
+- AND no state is shared between tests
+- AND both tests can run simultaneously
+
+#### Scenario: All routes registered at creation
+- GIVEN a create_app() function
+- WHEN I create an app instance
+- THEN all endpoints are registered (/health, /submit, /observables)
+- AND I can query the app.routes to verify registration
+- AND OpenAPI schema includes all endpoints
+
+#### Scenario: Dependency override for testing
+- GIVEN a production authentication dependency
+- WHEN I create a test app and override the auth dependency with a mock
+- THEN test requests bypass real authentication
+- AND the mock auth returns test user data
+- AND tests run without needing real JWT tokens
+
+#### Scenario: Lifespan events in testing
+- GIVEN a create_app() with lifespan events (database initialization)
+- WHEN I create the app in a test using TestClient context manager
+- THEN startup events execute before tests
+- AND shutdown events execute after tests
+- AND resources are properly cleaned up
+
 ### Requirement 2: Comprehensive Endpoint Test Coverage
 
 - **Description**: All API endpoints must have tests covering public access, authenticated access, validation errors, and exception scenarios.
@@ -66,6 +102,41 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Exceptions return appropriate status codes (401, 403, 404, 500)
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: N/A
+
+#### Scenario: Testing public health endpoint
+- GIVEN a FastAPI application with /health endpoint
+- WHEN I send GET /health without authentication
+- THEN the response is 200 OK
+- AND the response JSON includes {"status": "healthy"}
+- AND no Authorization header is required
+
+#### Scenario: Testing protected endpoint with valid token
+- GIVEN a protected /submit endpoint requiring authentication
+- WHEN I send POST /submit with valid Bearer token in Authorization header
+- THEN the response is 201 Created
+- AND the submission is processed successfully
+- AND the response includes the submission_id
+
+#### Scenario: Testing protected endpoint with missing token
+- GIVEN a protected /submit endpoint
+- WHEN I send POST /submit without Authorization header
+- THEN the response is 401 Unauthorized
+- AND the response includes error detail "Not authenticated"
+- AND no submission is created
+
+#### Scenario: Testing validation errors
+- GIVEN a /submit endpoint expecting valid observable data
+- WHEN I send POST /submit with invalid observable_type "invalid-type"
+- THEN the response is 422 Unprocessable Entity
+- AND the response includes detailed validation errors
+- AND the error indicates which field failed validation
+
+#### Scenario: Testing 404 Not Found error
+- GIVEN a /submissions/{id} endpoint
+- WHEN I request GET /submissions/submission--does-not-exist with valid auth
+- THEN the response is 404 Not Found
+- AND the response includes error message "Submission not found"
+- AND the response follows standard error format
 
 ### Requirement 3: Bearer Token Authentication Testing
 
@@ -79,6 +150,42 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: Spike 014 (Cognito integration)
 
+#### Scenario: Valid Bearer token authentication
+- GIVEN an authentication dependency using HTTPBearer
+- WHEN I send request with header "Authorization: Bearer valid-token-123"
+- THEN the dependency validates the token
+- AND extracts user information (username, access_tier)
+- AND the endpoint receives authenticated user context
+
+#### Scenario: Invalid Bearer token rejection
+- GIVEN an authentication dependency
+- WHEN I send request with header "Authorization: Bearer invalid-token"
+- THEN the dependency rejects the token
+- AND returns 401 Unauthorized
+- AND the response includes WWW-Authenticate header
+- AND the endpoint is never reached
+
+#### Scenario: Missing Authorization header
+- GIVEN a protected endpoint with auth dependency
+- WHEN I send request without Authorization header
+- THEN HTTPBearer returns 403 Forbidden (before dependency runs)
+- AND the response indicates missing credentials
+- AND the endpoint is never reached
+
+#### Scenario: Malformed Authorization header
+- GIVEN a protected endpoint
+- WHEN I send request with header "Authorization: InvalidFormat token123"
+- THEN HTTPBearer rejects the malformed header
+- AND returns 403 Forbidden
+- AND the response indicates invalid authentication scheme
+
+#### Scenario: Testing with mock authentication
+- GIVEN a test that needs authenticated context
+- WHEN I override the auth dependency with a mock returning test user data
+- THEN tests can bypass real token validation
+- AND tests receive predictable user context (username="testuser", tier="PARTNER")
+- AND no real Cognito calls are made during tests
+
 ### Requirement 4: Exception Handling Patterns
 
 - **Description**: APIs must handle both standard HTTPException and custom exceptions with consistent error response formats.
@@ -90,6 +197,42 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0008 (Explicit Error Communication)
 
+#### Scenario: Standard HTTPException handling
+- GIVEN an endpoint that raises HTTPException(status_code=404, detail="Not found")
+- WHEN the exception is raised during request processing
+- THEN FastAPI returns 404 Not Found
+- AND the response JSON includes {"detail": "Not found"}
+- AND the error format is standard FastAPI format
+
+#### Scenario: Custom exception with context
+- GIVEN a custom FRANKException extending HTTPException
+- WHEN the endpoint raises FRANKException(status_code=403, detail="Access denied", context={"required_tier": "PARTNER"})
+- THEN the response is 403 Forbidden
+- AND the response includes both detail and context fields
+- AND the custom exception handler formats the error consistently
+
+#### Scenario: Unhandled exception returns 500
+- GIVEN an endpoint with a bug causing unhandled ZeroDivisionError
+- WHEN the endpoint is called and the exception occurs
+- THEN FastAPI catches the exception
+- AND returns 500 Internal Server Error
+- AND the response includes generic error message (no stack trace in production)
+
+#### Scenario: Validation error returns 422
+- GIVEN an endpoint expecting Pydantic model with required fields
+- WHEN I send request with missing required field "observable_type"
+- THEN FastAPI validation raises ValidationError
+- AND returns 422 Unprocessable Entity
+- AND the response includes detailed field-level errors
+
+#### Scenario: Testing error response format consistency
+- GIVEN multiple endpoints with different error types
+- WHEN I test 401, 403, 404, 422, and 500 errors
+- THEN all responses follow consistent JSON structure
+- AND all include "detail" field
+- AND custom errors include "context" field
+- AND error format matches ADR-0008 specification
+
 ### Requirement 5: TestClient Integration
 
 - **Description**: Tests must use FastAPI's TestClient for realistic request/response testing with proper startup/shutdown handling.
@@ -100,6 +243,42 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Handles cookies, headers, and redirects correctly
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: N/A
+
+#### Scenario: TestClient with pytest fixture
+- GIVEN a pytest fixture that creates TestClient with app
+- WHEN tests use the client fixture
+- THEN each test gets a fresh TestClient instance
+- AND the app is created per fixture scope
+- AND tests are isolated from each other
+
+#### Scenario: Context manager for proper cleanup
+- GIVEN a TestClient used with context manager
+- WHEN I create the client with "with TestClient(app) as client:"
+- THEN lifespan startup events run before tests
+- AND tests execute with active client
+- AND lifespan shutdown events run after tests
+- AND resources are properly cleaned up
+
+#### Scenario: Lifespan events for database setup
+- GIVEN an app with lifespan context that initializes database
+- WHEN TestClient is created with the app
+- THEN the database initialization runs at startup
+- AND tests can use the initialized database
+- AND database connections are closed at shutdown
+
+#### Scenario: Request headers and cookies
+- GIVEN a TestClient instance
+- WHEN I make request with custom headers {"X-Request-ID": "test-123"}
+- THEN the headers are sent to the endpoint
+- AND the endpoint can access the custom header
+- AND cookies are maintained across requests if set
+
+#### Scenario: Testing redirects
+- GIVEN an endpoint that returns RedirectResponse to "/health"
+- WHEN I make request with TestClient follow_redirects=True
+- THEN TestClient follows the redirect automatically
+- AND the final response is from /health endpoint
+- AND the response history includes the redirect
 
 ---
 
