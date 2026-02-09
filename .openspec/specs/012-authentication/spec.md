@@ -62,6 +62,13 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0005
 
+#### Scenario: Authenticate User and Generate JWT
+- GIVEN a registered user with username and password
+- WHEN authenticating via POST /v1/auth/login
+- THEN an access token SHALL be generated with 1-hour expiry
+- AND a refresh token SHALL be generated with 30-day expiry
+- AND tokens SHALL include sub, username, groups, organisation_id claims
+
 ### Requirement 2: JWT Token Validation
 
 - **Description**: The system MUST validate JWT tokens using JWKS public key endpoint with stateless verification (no database lookups).
@@ -77,6 +84,14 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0005
 
+#### Scenario: Validate JWT Token with JWKS
+- GIVEN a valid JWT access token from successful authentication
+- WHEN making an API request with Authorization: Bearer header
+- THEN the token signature SHALL be verified using JWKS public keys
+- AND token expiration SHALL be checked
+- AND issuer SHALL match Cognito User Pool URL
+- AND claims SHALL be extracted without database queries
+
 ### Requirement 3: Access Tier Mapping
 
 - **Description**: The system MUST map Cognito group membership to FRANK AccessTier enum with hierarchical tier resolution.
@@ -91,9 +106,16 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0003, ADR-0005
 
+#### Scenario: Map User Groups to Access Tier
+- GIVEN a user in Cognito groups ["FRANK_PARTNER", "FRANK_CONTRIBUTOR"]
+- WHEN authenticating and generating JWT token
+- THEN the access tier SHALL be PARTNER (highest tier from multiple groups)
+- AND the groups claim SHALL include both group names
+- AND users with no groups SHALL default to PUBLIC tier
+
 ### Requirement 4: Token Refresh Flow
 
-- **Description**: Exchange refresh token for new access token without re-authentication, with database-backed revocation checking.
+- **Description**: The system MUST exchange refresh token for new access token without re-authentication, with database-backed revocation checking.
 - **Acceptance Criteria**:
   - [ ] Validate refresh token signature and expiration (JWKS)
   - [ ] Check refresh token exists in database (not revoked)
@@ -105,9 +127,17 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0005
 
+#### Scenario: Refresh Access Token
+- GIVEN a valid refresh token from previous authentication
+- WHEN calling POST /auth/refresh with refresh token
+- THEN the token signature and expiration SHALL be validated
+- AND the token SHALL be checked against database (not revoked)
+- AND a new access token SHALL be generated with updated groups
+- AND the refresh token SHALL remain valid for reuse
+
 ### Requirement 5: Logout and Token Revocation
 
-- **Description**: Revoke refresh tokens on logout to prevent reuse while maintaining stateless validation.
+- **Description**: The system MUST revoke refresh tokens on logout to prevent reuse while maintaining stateless validation.
 - **Acceptance Criteria**:
   - [ ] Revoke all user's refresh tokens in database (set revoked=true)
   - [ ] Access tokens remain valid until expiry (stateless design trade-off)
@@ -118,9 +148,17 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0005
 
+#### Scenario: Logout and Revoke Tokens
+- GIVEN an authenticated user with active access and refresh tokens
+- WHEN calling POST /auth/logout
+- THEN all refresh tokens for the user SHALL be revoked in database
+- AND access tokens SHALL remain valid until natural expiry
+- AND the client MUST discard both tokens from memory
+- AND subsequent refresh attempts SHALL return 401 Unauthorized
+
 ### Requirement 6: Service Account Authentication
 
-- **Description**: Authenticate service accounts using username/password flow identical to human users.
+- **Description**: The system MUST authenticate service accounts using username/password flow identical to human users.
 - **Acceptance Criteria**:
   - [ ] Service accounts are Cognito users with "service-" username prefix
   - [ ] Authenticate via POST /auth/login (same endpoint as humans)
@@ -130,6 +168,13 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Generated passwords are 32-character secure random strings
 - **Stage Availability**: All stages (1-4)
 - **Related ADR(s)**: ADR-0005
+
+#### Scenario: Authenticate Service Account
+- GIVEN a service account with username "service-rabobank-ingestion"
+- WHEN authenticating via POST /auth/login with service credentials
+- THEN JWT tokens SHALL be generated identically to human users
+- AND service account groups SHALL map to AccessTier (e.g., FRANK_CONTRIBUTOR)
+- AND no special handling or custom token formats SHALL be used
 
 ---
 
