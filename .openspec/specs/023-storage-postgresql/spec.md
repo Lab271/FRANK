@@ -68,7 +68,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **MAY**: Optional features or behaviors
 
 ---
-## ADDED Requirements
+## Requirements
 
 ### Requirement 1: Organisation Management (Implemented)
 
