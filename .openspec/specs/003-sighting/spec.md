@@ -122,6 +122,13 @@ def validate_timestamp(cls, v):
     return v
 ```
 
+#### Scenario: Auto-Generate Sighting ID and Timestamp
+- GIVEN a sighting created without sighting_id or timestamp
+- WHEN the Sighting model is instantiated
+- THEN sighting_id SHALL be auto-generated in format `sighting--{uuid}`
+- AND timestamp SHALL be set to current UTC time
+- AND both fields SHALL be populated before validation completes
+
 **Acceptance Criteria**:
 - ✅ `sighting_id` generated if None or empty string
 - ✅ `timestamp` defaults to `datetime.now(timezone.utc)`

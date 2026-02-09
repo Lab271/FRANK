@@ -60,6 +60,18 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
+#### Scenario: Abstract Base Class Cannot Be Instantiated
+- GIVEN the BaseFRANKDatabase abstract base class
+- WHEN attempting to instantiate BaseFRANKDatabase directly
+- THEN a TypeError SHALL be raised
+- AND the error SHALL indicate that abstract methods must be implemented
+
+#### Scenario: Concrete Implementation Can Be Instantiated
+- GIVEN a concrete implementation like SQLiteFRANKDatabase
+- WHEN instantiating with valid connection parameters
+- THEN the instance SHALL be created successfully
+- AND all abstract methods SHALL be implemented
+
 ### Requirement 2: Constructor and Initialization
 
 - **Description**: The system MUST provide a common constructor for all implementations that accepts connection parameters and an optional logger, then calls `initialize()` to set up the database.
