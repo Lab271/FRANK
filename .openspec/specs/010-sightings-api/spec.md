@@ -5,12 +5,11 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** API Team
+**Owner:** API Team
 - **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** src/frank/main/api.py
+**Implementation:** src/frank/main/api.py
 - **Database:** DynamoDB (Stages 2-3), SQLite (Stage 1)
-- **Tests:** tests/integration/features/frank_server_api.feature
+**Tests:** tests/integration/features/frank_server_api.feature
 
 ## Overview
 
@@ -49,7 +48,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ## ADDED Requirements
 
-*This specification primarily documents API endpoints and contracts. Functional requirements are defined in related specifications: [Submission](../core/submission.spec.md), [Observable](../core/observable.spec.md), [Authentication](../apis/authentication.spec.md).*
+*This specification primarily documents API endpoints and contracts. Functional requirements are defined in related specifications: [Submission](../001-submission/spec.md), [Observable](../002-observable/spec.md), [Authentication](../012-authentication/spec.md).*
 
 *See Section 4 (API Endpoints) for detailed endpoint contracts.*
 
@@ -197,7 +196,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:186`
 
-**Related Spec**: [Authentication Patterns](../apis/authentication.spec.md)
+**Related Spec**: [Authentication Patterns](../012-authentication/spec.md)
 
 ---
 
@@ -263,7 +262,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:281`
 
-**Related Spec**: [Submission Model](../core/submission.spec.md)
+**Related Spec**: [Submission Model](../001-submission/spec.md)
 
 ---
 
@@ -321,7 +320,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:381`
 
-**Related Spec**: [Submission Model](../core/submission.spec.md), [Access Tiers](../storage/base-interface.spec.md)
+**Related Spec**: [Submission Model](../001-submission/spec.md), [Access Tiers](../020-storage-base-interface/spec.md)
 
 ---
 
@@ -367,7 +366,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:440`
 
-**Related Spec**: [Observable Model](../core/observable.spec.md)
+**Related Spec**: [Observable Model](../002-observable/spec.md)
 
 ---
 
@@ -440,7 +439,7 @@ class SubmissionResponse(BaseModel):
     message: str
 ```
 
-**Related Specifications**: See [Submission Model](../core/submission.spec.md) for complete data model.
+**Related Specifications**: See [Submission Model](../001-submission/spec.md) for complete data model.
 
 ---
 
@@ -572,10 +571,10 @@ curl -H "Authorization: Bearer <token>" \
   - [ADR-0008: Explicit Error Communication](docs/adr/0008-explicit-error-communication.md)
 
 - **Related Specifications**:
-  - [Authentication Patterns](../apis/authentication.spec.md) - JWT token validation
-  - [Submission Model](../core/submission.spec.md) - Core data model
-  - [Observable Model](../core/observable.spec.md) - Observable structure
-  - [DynamoDB Storage](../storage/dynamodb.spec.md) - Database implementation
+  - [Authentication Patterns](../012-authentication/spec.md) - JWT token validation
+  - [Submission Model](../001-submission/spec.md) - Core data model
+  - [Observable Model](../002-observable/spec.md) - Observable structure
+  - [DynamoDB Storage](../022-storage-dynamodb/spec.md) - Database implementation
 
 - **Implementation Files**:
   - `src/frank/main/api.py` - FastAPI application

@@ -5,8 +5,7 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** Development Team
+**Owner:** Development Team
 - **Related Spike:** [Spike 015: FastAPI Testing](tests/spikes/015_fastapi_testing/README.md)
 - **Integration:** Applied across all FRANK APIs
 
@@ -407,9 +406,9 @@ curl -H "Authorization: invalid-format" http://localhost:8000/protected
   - ADR-0012: Testing Philosophy (when created)
 
 - **Related Specifications**:
-  - [Sightings API Spec](../apis/sightings-api.spec.md) - Uses these patterns
-  - [Management API Spec](../apis/management-api.spec.md) - Uses these patterns
-  - [Authentication Spec](../apis/authentication.spec.md) - Bearer token validation
+  - [Sightings API Spec](../010-sightings-api/spec.md) - Uses these patterns
+  - [Management API Spec](../011-management-api/spec.md) - Uses these patterns
+  - [Authentication Spec](../012-authentication/spec.md) - Bearer token validation
 
 - **Related Spikes**:
   - [Spike 015: FastAPI Testing](tests/spikes/015_fastapi_testing/README.md) - Original validation

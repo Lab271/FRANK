@@ -4,17 +4,31 @@
 **Version:** 1.0.0
 **Status:** Implemented
 **Date:** 2026-02-06
+**Owner:** FRANK Core Team
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L89-L203](src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Implementation:** [src/frank/core/models.py#L89-L203](src/frank/core/models.py)
+**Tests:** [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)
 
 ## Overview
 
 Defines Submitter (threat intelligence contributor) and HitTarget (affected organization) models with STIX-compliant organization identities, access tier assignment, privacy controls, and sector normalization. These models enable attribution, access control, and anonymization in the FRANK platform.
 
+### Philosophy
+
+- **STIX Compliance**: Organization identities use STIX 2.1 format (`identity--{uuid}`) for interoperability
+- **Access Control**: Submitter access tier determines data visibility across the platform
+- **Privacy by Default**: HitTarget anonymization level defaults to "high" to protect victim organizations
+- **Be Forgiving on Input**: Accept diverse sector/size formats, normalize automatically
+
+### Key Capabilities
+
+- **Dual Organization Models**: Submitter (contributor) and HitTarget (victim) with distinct purposes
+- **Automatic ID Generation**: STIX-compliant organization identities auto-generated if not provided
+- **Sector Normalization**: Common sector aliases mapped to standard values (e.g., "finance" → "financial")
+- **Size Normalization**: Organization size categories standardized (e.g., "sme" → "small")
+- **Access Control Integration**: Submitter access tier controls submission visibility
+- **Privacy Controls**: HitTarget anonymization prevents victim identification
 
 ## RFC 2119 Keywords
 
@@ -32,7 +46,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 1: Submitter Model
 
-**Description**: Represents the organization submitting threat intelligence with access tier and metadata.
+**Description**: The system MUST provide a Submitter model representing the organization submitting threat intelligence with access tier and metadata.
 
 **Pydantic Schema**:
 ```python
@@ -64,9 +78,16 @@ class Submitter(BaseModel):
 
 **Test Coverage**: [test_create_minimal_submitter](tests/unit/core/test_submitter.py#L36-L47), [test_create_submitter_with_all_fields](tests/unit/core/test_submitter.py#L49-L66)
 
+#### Scenario: Create Minimal Submitter
+- GIVEN an access tier level
+- WHEN creating a Submitter instance
+- THEN it SHALL have an auto-generated organisation_id in STIX format
+- AND the access_level SHALL be set correctly
+- AND organisation_type SHALL default to "cyber_partner"
+
 ### Requirement 2: HitTarget Model
 
-**Description**: Represents the organization affected by threat activity with privacy controls.
+**Description**: The system MUST provide a HitTarget model representing the organization affected by threat activity with privacy controls.
 
 **Pydantic Schema**:
 ```python
@@ -98,9 +119,17 @@ class HitTarget(BaseModel):
 
 **Test Coverage**: [test_create_minimal_hittarget](tests/unit/core/test_hittarget.py#L33-L49), [test_create_hittarget_with_all_fields](tests/unit/core/test_hittarget.py#L51-L68)
 
+#### Scenario: Create Minimal HitTarget
+- GIVEN a sector name
+- WHEN creating a HitTarget instance
+- THEN it SHALL have an auto-generated organisation_id in STIX format
+- AND the sector SHALL be required and set
+- AND anonymization_level SHALL default to "high"
+- AND organisation_type SHALL default to "customer"
+
 ### Requirement 3: STIX Organization ID Generation
 
-**Description**: Auto-generate STIX 2.1 compliant organization identities if not provided.
+**Description**: The system MUST auto-generate STIX 2.1 compliant organization identities if not provided.
 
 **ID Format**: `identity--{uuid4}`
 
@@ -146,9 +175,15 @@ def ensure_org_id(self):
 
 **Test Coverage**: [test_organisation_id_auto_generation (Submitter)](tests/unit/core/test_submitter.py#L68-L81), [test_organisation_id_auto_generation (HitTarget)](tests/unit/core/test_hittarget.py#L70-L88)
 
+#### Scenario: Auto-Generate Organization ID
+- GIVEN a Submitter or HitTarget created without organisation_id
+- WHEN the instance is created
+- THEN an organisation_id SHALL be auto-generated in format `identity--{uuid4}`
+- AND the ID SHALL be unique across all instances
+
 ### Requirement 4: Sector Normalization (Submitter)
 
-**Description**: Normalize sector names for consistency using forgiving mapping.
+**Description**: The system MUST normalize sector names for consistency using forgiving mapping.
 
 **Normalization Mapping**:
 ```python
@@ -190,9 +225,15 @@ def normalize_sector(cls, v):
 
 **Test Coverage**: [test_sector_normalization](tests/unit/core/test_submitter.py#L83-L107)
 
+#### Scenario: Normalize Sector Name
+- GIVEN a sector value "FINANCE" or "banking"
+- WHEN creating a Submitter
+- THEN the sector SHALL be normalized to "financial"
+- AND case and whitespace SHALL be handled automatically
+
 ### Requirement 5: Organisation Size Normalization (HitTarget)
 
-**Description**: Normalize organization size categories for consistency.
+**Description**: The system MUST normalize organization size categories for consistency.
 
 **Size Mapping**:
 ```python
@@ -234,9 +275,15 @@ def normalize_org_size(cls, v):
 
 **Test Coverage**: [test_organisation_size_normalization](tests/unit/core/test_hittarget.py#L109-L133)
 
+#### Scenario: Normalize Organization Size
+- GIVEN an organization size "SME" or "enterprise"
+- WHEN creating a HitTarget
+- THEN "SME" SHALL be normalized to "small"
+- AND "enterprise" SHALL be normalized to "large"
+
 ### Requirement 6: Factory Methods
 
-**Description**: Convenience constructors for creating submitters and targets.
+**Description**: The system SHOULD provide convenience constructors for creating submitters and targets.
 
 **Submitter Factory**:
 ```python
@@ -264,9 +311,16 @@ def create(cls, sector: str, organisation_size: str = None, region: str = None):
 
 **Test Coverage**: [test_factory_method_create (Submitter)](tests/unit/core/test_submitter.py#L152-L162), [test_factory_method_create (HitTarget)](tests/unit/core/test_hittarget.py#L164-L172)
 
+#### Scenario: Use Factory Method
+- GIVEN required parameters for Submitter or HitTarget
+- WHEN using the create() factory method
+- THEN a valid instance SHALL be created
+- AND all validators SHALL be triggered
+- AND IDs SHALL be auto-generated
+
 ### Requirement 7: Anonymization Levels (HitTarget)
 
-**Description**: Privacy control for affected organization data.
+**Description**: The system MUST provide privacy control for affected organization data through anonymization levels.
 
 **Anonymization Levels**:
 - **high** (default): Minimal information shared, maximum privacy
@@ -283,6 +337,12 @@ def create(cls, sector: str, organisation_size: str = None, region: str = None):
 **Stage Availability**: Stages 1, 2, 3, 4
 
 **Test Coverage**: Tested as part of HitTarget creation tests
+
+#### Scenario: Default Anonymization Level
+- GIVEN a HitTarget created without anonymization_level
+- WHEN the instance is created
+- THEN anonymization_level SHALL default to "high"
+- AND privacy SHALL be maximized by default
 
 ## Non-Functional Requirements
 
@@ -624,6 +684,6 @@ json_str = submitter.model_dump_json()
 
 - **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Identity Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_wh296fiwpklp)
-- **Access Control**: [AccessTier Enum Specification](../core/enums.spec.md)
+- **Access Control**: [AccessTier Enum Specification](../005-enums/spec.md)
 - **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
 - **Tests**: [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)

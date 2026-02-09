@@ -4,12 +4,11 @@
 **Version:** 1.0.0
 **Status:** Implemented
 **Date:** 2026-02-06
+**Owner:** FRANK Core Team
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L291-L369](src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Implementation:** [src/frank/core/models.py#L291-L369](src/frank/core/models.py)
+**Tests:** [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
 
 ## Overview
 
@@ -51,7 +50,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 1: Core Sighting Structure
 
-**Description**: Pydantic v2 model with automatic ID and timestamp generation, confidence scoring, and observable containers.
+**Description**: The system MUST provide a Pydantic v2 model with automatic ID and timestamp generation, confidence scoring, and observable containers.
 
 **Pydantic Schema**:
 ```python
@@ -90,9 +89,16 @@ class Sighting(BaseModel):
 
 **Test Coverage**: [test_create_minimal_sighting](tests/unit/core/test_sighting.py#L60-L84), [test_create_sighting_with_all_fields](tests/unit/core/test_sighting.py#L86-L112)
 
+#### Scenario: Create Minimal Sighting
+- GIVEN a minimal sighting without ID or timestamp
+- WHEN creating a Sighting instance
+- THEN a sighting_id SHALL be auto-generated in format `sighting--{uuid}`
+- AND timestamp SHALL default to current UTC time
+- AND confidence SHALL default to 69
+
 ### Requirement 2: Automatic ID and Timestamp Generation
 
-**Description**: Auto-generate STIX-compliant sighting IDs and UTC timestamps if not provided.
+**Description**: The system MUST auto-generate STIX-compliant sighting IDs and UTC timestamps if not provided.
 
 **ID Generation**:
 ```python

@@ -5,8 +5,7 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** Infrastructure Team
+**Owner:** Infrastructure Team
 - **Related Spike:** [Spike 009: AWS ECS Basic](tests/spikes/009_aws_ecs_basic/README.md)
 - **Integration:** Stage 3 cloud deployment
 

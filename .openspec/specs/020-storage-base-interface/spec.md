@@ -5,11 +5,10 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** [src/frank/storage/base.py](src/frank/storage/base.py)
-- **Tests:** [tests/unit/storage/](tests/unit/storage/)
+**Owner:** FRANK Platform Team
+**Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+**Implementation:** [src/frank/storage/base.py](src/frank/storage/base.py)
+**Tests:** [tests/unit/storage/](tests/unit/storage/)
 
 ## Overview
 
@@ -353,9 +352,9 @@ All Features (dev/test)    | SQLite     | SQLite (fallback) | SQLite (fallback)
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [SQLite Implementation Spec](../storage/sqlite.spec.md)
-  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md)
-  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md)
+  - [SQLite Implementation Spec](../021-storage-sqlite/spec.md)
+  - [DynamoDB Implementation Spec](../022-storage-dynamodb/spec.md)
+  - [PostgreSQL Implementation Spec](../023-storage-postgresql/spec.md)
 
 - **Source Files**:
   - [`src/frank/storage/base.py`](src/frank/storage/base.py) - Interface definition

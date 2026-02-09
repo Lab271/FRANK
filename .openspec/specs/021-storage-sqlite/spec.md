@@ -5,11 +5,10 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** [src/frank/storage/sqlite.py](src/frank/storage/sqlite.py)
-- **Tests:** [tests/unit/storage/test_sqlitedatabase.py](tests/unit/storage/test_sqlitedatabase.py)
+**Owner:** FRANK Platform Team
+**Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+**Implementation:** [src/frank/storage/sqlite.py](src/frank/storage/sqlite.py)
+**Tests:** [tests/unit/storage/test_sqlitedatabase.py](tests/unit/storage/test_sqlitedatabase.py)
 
 ## Overview
 
@@ -610,9 +609,9 @@ The SQLite implementation provides additional methods beyond the base interface:
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [Base Interface Spec](../storage/base-interface.spec.md) -- interface this implements
-  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md) -- cloud alternative for threat data
-  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md) -- cloud alternative for management data
+  - [Base Interface Spec](../020-storage-base-interface/spec.md) -- interface this implements
+  - [DynamoDB Implementation Spec](../022-storage-dynamodb/spec.md) -- cloud alternative for threat data
+  - [PostgreSQL Implementation Spec](../023-storage-postgresql/spec.md) -- cloud alternative for management data
 
 - **Source Files**:
   - [`src/frank/storage/sqlite.py`](src/frank/storage/sqlite.py) -- Implementation

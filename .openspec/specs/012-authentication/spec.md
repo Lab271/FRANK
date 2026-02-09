@@ -5,12 +5,12 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** Security Team
-- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md)
-- **Related Spike:** [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md)
-- **Implementation:** src/frank/auth/, tests/spikes/014_cognito/README.md (mock Cognito implementation)
-- **Tests:** tests/unit/auth/, tests/spikes/014_cognito/
+**Owner:** Security Team
+
+**Related ADRs:** [ADR-0005](docs/adr/0005-cognito-authentication.md)
+**Related Spike:** [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md)
+**Implementation:** src/frank/auth/, tests/spikes/014_cognito/README.md (mock Cognito implementation)
+**Tests:** tests/unit/auth/, tests/spikes/014_cognito/
 
 ## Overview
 
@@ -801,8 +801,8 @@ async def create_organisation(
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [Sightings API](../apis/sightings-api.spec.md) - Uses these authentication patterns
-  - [Management API](../apis/management-api.spec.md) - Uses these authentication patterns
+  - [Sightings API](../010-sightings-api/spec.md) - Uses these authentication patterns
+  - [Management API](../011-management-api/spec.md) - Uses these authentication patterns
 
 - **Related Spikes**:
   - [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md) - Original validation

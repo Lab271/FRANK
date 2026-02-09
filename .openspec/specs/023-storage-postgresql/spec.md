@@ -5,11 +5,10 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md), [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md)
-- **Implementation:** [`src/frank/storage/postgresql.py`](src/frank/storage/postgresql.py)
-- **Tests:** [tests/unit/storage/test_dynamodb.py](tests/unit/storage/test_dynamodb.py)
+**Owner:** FRANK Platform Team
+**Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md), [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+**Implementation:** [`src/frank/storage/postgresql.py`](src/frank/storage/postgresql.py)
+**Tests:** [tests/unit/storage/test_dynamodb.py](tests/unit/storage/test_dynamodb.py)
 
 ## Overview
 
@@ -23,7 +22,7 @@ PostgreSQL was chosen for management data because:
 - **Query Power**: JOINs for user-to-organisation lookups, aggregation for statistics
 - **UPSERT Support**: `ON CONFLICT ... DO UPDATE` for idempotent organisation management
 
-**This is a purpose-built implementation.** It handles only management data (organisations, members, refresh tokens). Threat intelligence data (submissions, observables, sightings) is handled by DynamoDB (see [dynamodb.spec.md](../storage/dynamodb.spec.md)). This reflects the FRANK database selection strategy: use the right database for each data domain.
+**This is a purpose-built implementation.** It handles only management data (organisations, members, refresh tokens). Threat intelligence data (submissions, observables, sightings) is handled by DynamoDB (see [dynamodb.spec.md](../022-storage-dynamodb/spec.md)). This reflects the FRANK database selection strategy: use the right database for each data domain.
 
 ### Database Scope
 
@@ -39,6 +38,23 @@ PostgreSQL was chosen for management data because:
 - Target organisations -- victim orgs stored in DynamoDB with sightings
 - Threat intelligence -- submissions, observables, sightings in DynamoDB
 
+### Philosophy
+
+- **Relational Data Only**: Focus on data requiring foreign keys, joins, and ACID transactions
+- **Strong Consistency**: Use PostgreSQL's ACID guarantees for critical management operations
+- **Schema Enforcement**: Database-level constraints ensure data integrity
+- **Purpose-Built**: Only handles management data, not threat intelligence workloads
+- **Complementary Design**: Works alongside DynamoDB, each handling appropriate workloads
+
+### Key Capabilities
+
+- **Organisation Management**: Full CRUD operations with UPSERT support
+- **Member Relationships**: User-to-organisation mappings with role-based access
+- **Refresh Token Tracking**: JWT revocation for logout functionality
+- **Foreign Key Constraints**: Cascading deletes maintain referential integrity
+- **Transactional Updates**: Atomic multi-table operations
+- **Query Flexibility**: Complex JOINs for member lookups and aggregations
+- **Not Implemented**: Threat intelligence operations (use DynamoDB instead)
 
 ## RFC 2119 Keywords
 
@@ -431,9 +447,9 @@ for org in orgs:
   - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
 
 - **Related Specifications**:
-  - [Base Interface Spec](../storage/base-interface.spec.md) -- interface this implements
-  - [SQLite Implementation Spec](../storage/sqlite.spec.md) -- complete reference implementation
-  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md) -- threat intelligence complement
+  - [Base Interface Spec](../020-storage-base-interface/spec.md) -- interface this implements
+  - [SQLite Implementation Spec](../021-storage-sqlite/spec.md) -- complete reference implementation
+  - [DynamoDB Implementation Spec](../022-storage-dynamodb/spec.md) -- threat intelligence complement
 
 - **Source Files**:
   - [`src/frank/storage/postgresql.py`](src/frank/storage/postgresql.py) -- Implementation

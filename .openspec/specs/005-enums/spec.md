@@ -5,16 +5,29 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/enum.py](src/frank/core/enum.py)
-- **Tests:** [tests/unit/core/test_enum.py](tests/unit/core/test_enum.py)
+**Owner:** FRANK Core Team
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Implementation:** [src/frank/core/enum.py](src/frank/core/enum.py)
+**Tests:** [tests/unit/core/test_enum.py](tests/unit/core/test_enum.py)
 
 ## Overview
 
 Defines core enumeration types for FRANK's data model including access control tiers, observable types, severity levels, and TLP classifications. All enums inherit from `str` and `Enum` to provide both type safety and JSON/YAML serialization compatibility.
 
+### Philosophy
+
+- **Type Safety First**: All enums inherit from both `str` and `Enum` for type checking and string operations
+- **Serialization Friendly**: Enums serialize directly to strings for JSON/YAML compatibility
+- **Hierarchical Access**: AccessTier implements hierarchical privilege checking for access control
+- **Standards Compliance**: TLP follows Traffic Light Protocol standard, severity levels align with industry norms
+
+### Key Capabilities
+
+- **Five Access Tiers**: PUBLIC, OBSERVER, CONTRIBUTOR, PARTNER, CORE_MEMBER with hierarchical access checking
+- **Nine Observable Types**: Network (6), File (1), Process (2) threat indicator categories
+- **Four Severity Levels**: LOW, MEDIUM, HIGH, CRITICAL with numerical scoring
+- **TLP Classifications**: WHITE, GREEN, AMBER, RED for data sharing controls
+- **String Interoperability**: All enums work seamlessly as strings in Python and JSON
 
 ## RFC 2119 Keywords
 
