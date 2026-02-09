@@ -1045,7 +1045,6 @@ except ValidationError as e:
   - [Observable](../002-observable/spec.md)
   - [Sighting](../003-sighting/spec.md)
   - [Submitter & HitTarget](../004-submitter-target/spec.md)
-  - [Enumerations](../005-enums/spec.md)
 
 - **Related Spikes**:
   - [Spike 003: Pydantic v2](tests/spikes/003_pydantic/README.md)
