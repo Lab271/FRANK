@@ -684,6 +684,5 @@ json_str = submitter.model_dump_json()
 
 - **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Identity Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_wh296fiwpklp)
-- **Access Control**: [AccessTier Enum Specification](../005-enums/spec.md)
 - **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
 - **Tests**: [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)
