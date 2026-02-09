@@ -45,7 +45,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 1: AccessTier - Access Control Hierarchy
 
-**Description**: Five-tier access control model progressing from public (lowest) to core_member (highest privilege).
+**Description**: The system MUST provide a five-tier access control model progressing from public (lowest) to core_member (highest privilege).
 
 **Enum Definition**:
 ```python
@@ -82,9 +82,15 @@ class AccessTier(str, Enum):
 - `test_from_string_with_spaces()` - Space normalization
 - `test_from_string_default_parameter()` - Fallback behavior
 
+#### Scenario: Validate Access Tier Hierarchy
+- GIVEN an organisation with PARTNER access tier
+- WHEN checking access level against CONTRIBUTOR requirement
+- THEN the check SHALL pass because PARTNER > CONTRIBUTOR in hierarchy
+- AND submission rights SHALL be granted (can_submit() returns True)
+
 ### Requirement 2: ObservableType - Threat Indicator Types
 
-**Description**: Types of observable threat indicators categorized as network, file, and process observables.
+**Description**: The system MUST define observable threat indicator types categorized as network, file, and process observables.
 
 **Enum Definition**:
 ```python
@@ -121,9 +127,15 @@ class ObservableType(str, Enum):
 - `test_observable_type_from_string()` - String to enum conversion
 - `test_observable_type_network_categories()` - Network type coverage
 
+#### Scenario: Create Observable with Valid Type
+- GIVEN a threat indicator of type "ipv4" with value "192.168.1.1"
+- WHEN creating an Observable instance
+- THEN the observable_type SHALL be ObservableType.IPV4
+- AND the STIX ID SHALL start with "ipv4--"
+
 ### Requirement 3: SeverityLevel - Threat Severity Classification
 
-**Description**: Four-tier threat severity classification from informational to critical impact.
+**Description**: The system MUST provide a four-tier threat severity classification from informational to critical impact.
 
 **Enum Definition**:
 ```python
@@ -147,9 +159,15 @@ class SeverityLevel(str, Enum):
 - `test_severity_level_ordering()` - Impact hierarchy validation
 - `test_severity_level_from_string()` - String conversion
 
+#### Scenario: Assign Severity to Sighting
+- GIVEN a threat intelligence sighting with multiple observables
+- WHEN setting severity level to "critical"
+- THEN the severity SHALL be SeverityLevel.CRITICAL
+- AND the sighting SHALL serialize with severity as lowercase "critical"
+
 ### Requirement 4: TLPLevel - Traffic Light Protocol
 
-**Description**: Standard TLP classification for information sharing restrictions (CLEAR, GREEN, AMBER, AMBER+, RED).
+**Description**: The system MUST support standard TLP classification for information sharing restrictions (CLEAR, GREEN, AMBER, AMBER+, RED).
 
 **Enum Definition**:
 ```python
@@ -172,6 +190,12 @@ class TLPLevel(str, Enum):
 **Test Coverage**:
 - `test_tlp_level_values()` - Standard TLP values
 - `test_tlp_level_string_comparison()` - String equality
+
+#### Scenario: Apply TLP Classification to Submission
+- GIVEN a threat intelligence submission with sensitive attribution data
+- WHEN setting TLP level to "AMBER"
+- THEN the tlp_level SHALL be TLPLevel.AMBER
+- AND sharing MUST be restricted to organization and partners only
 
 ## Non-Functional Requirements
 
