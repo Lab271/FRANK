@@ -65,6 +65,41 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4, as fallback)
 - **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
+#### Scenario: Creating and retrieving organisation
+- GIVEN a fresh SQLite database
+- WHEN I create an organisation with STIX ID "identity--rabobank"
+- THEN the organisation is stored successfully
+- AND I can retrieve it by ID with all fields intact
+
+#### Scenario: Storing and retrieving refresh tokens
+- GIVEN an authenticated user with username "john.doe@example.com"
+- WHEN I store a refresh token with 30-day expiration
+- THEN the token is stored with hashed value
+- AND I can retrieve it by token_id
+- AND I can revoke it successfully
+
+#### Scenario: Managing organisation members
+- GIVEN an existing organisation "identity--rabobank"
+- WHEN I add a member with username "jane@rabobank.nl" and role "admin"
+- THEN the member is added successfully
+- AND I can list all members for the organisation
+- AND I can remove the member by username
+
+#### Scenario: API key lifecycle
+- GIVEN a user "service-account-1"
+- WHEN I create an API key with name "Production Ingestion"
+- THEN the key is stored with hashed value and prefix
+- AND I can retrieve it by key hash
+- AND I can update its last_used timestamp
+- AND I can revoke it by key_id
+
+#### Scenario: Health check with table statistics
+- GIVEN a database with 5 organisations and 12 submissions
+- WHEN I call the health_check method
+- THEN the response includes status "healthy"
+- AND includes table counts for organisations and submissions
+- AND includes the database file size in bytes
+
 ### Requirement 2: Schema Auto-Creation
 
 - **Description**: The `initialize()` method must create all tables, indexes, and constraints on first use. Subsequent calls must be idempotent (no errors if tables already exist).
@@ -75,6 +110,40 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] WAL journal mode enabled for better concurrency via `PRAGMA journal_mode = WAL`
   - [ ] Schema creation is transactional (commit at end of initialize)
 - **Stage Availability**: All stages
+
+#### Scenario: First-time database initialization
+- GIVEN a non-existent database file at "/tmp/frank_test.db"
+- WHEN I call initialize() for the first time
+- THEN all 12 tables are created (organisations, submissions, sightings, observables, etc.)
+- AND all indexes are created without errors
+- AND foreign keys are enabled
+- AND WAL mode is activated
+
+#### Scenario: Idempotent schema creation
+- GIVEN an already initialized database with existing tables
+- WHEN I call initialize() a second time
+- THEN no errors are raised
+- AND existing data remains intact
+- AND schema creation completes successfully
+
+#### Scenario: Foreign key constraint enforcement
+- GIVEN an initialized database with foreign keys enabled
+- WHEN I attempt to insert a submission with non-existent submitter_org_id
+- THEN the operation fails with foreign key constraint error
+- AND the database remains in consistent state
+
+#### Scenario: WAL mode enables concurrent reads
+- GIVEN an initialized database with WAL mode enabled
+- WHEN one connection writes a submission
+- AND another connection simultaneously reads submissions
+- THEN both operations succeed without blocking
+- AND read sees committed data
+
+#### Scenario: Transactional schema creation
+- GIVEN a database initialization in progress
+- WHEN schema creation fails midway through table creation
+- THEN the entire transaction is rolled back
+- AND no partial schema remains in the database
 
 ### Requirement 3: Full Submission Storage Pipeline
 
@@ -92,6 +161,44 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] All operations within a single SQLite transaction (atomic)
 - **Stage Availability**: All stages
 
+#### Scenario: Storing minimal submission with single observable
+- GIVEN a submission with submitter "identity--rabobank" and one IPv4 observable "192.0.2.1"
+- WHEN I call store_submission()
+- THEN the submission is stored in submissions table with full JSON
+- AND the submitter organisation is upserted in organisations table
+- AND the sighting is stored with timestamp
+- AND the observable is stored with SHA-256 hash
+- AND observable statistics are updated with first sighting count
+
+#### Scenario: Storing submission with hit target
+- GIVEN a submission with submitter "identity--rabobank" and hit_target "identity--acme-corp"
+- WHEN I call store_submission()
+- THEN both submitter and hit_target organisations are upserted
+- AND the submission links to both via foreign keys
+- AND access log records both organisation IDs
+
+#### Scenario: Storing submission with SIGMA rule
+- GIVEN a submission including a SIGMA detection rule with rule_id "rule--sigma-001"
+- WHEN I call store_submission()
+- THEN the SIGMA rule is stored in sigma_rules table
+- AND the sighting references the rule_id
+- AND the rule YAML content is preserved
+
+#### Scenario: Observable statistics aggregation
+- GIVEN an existing observable "192.0.2.1" with 5 previous sightings
+- WHEN I store a new submission containing the same observable
+- THEN observable_statistics is updated (not inserted)
+- AND total_sightings increments to 6
+- AND avg_confidence is recalculated
+- AND last_seen timestamp is updated
+
+#### Scenario: Transaction rollback on error
+- GIVEN a submission with invalid data causing storage failure
+- WHEN store_submission() encounters an error mid-transaction
+- THEN the entire transaction is rolled back
+- AND no partial data remains in any table
+- AND the database remains in consistent state
+
 ### Requirement 4: Access Tier Filtered Retrieval
 
 - **Description**: `get_submission_by_id()` must retrieve the full JSON submission from the database and apply access tier filtering before returning.
@@ -103,6 +210,41 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Returns `Submission` Pydantic model (not raw dict)
   - [ ] Returns `None` if submission not found
 - **Stage Availability**: All stages
+
+#### Scenario: PUBLIC tier user retrieves submission
+- GIVEN a submission from PARTNER tier organisation
+- WHEN a PUBLIC tier user retrieves the submission by ID
+- THEN only statistical fields are returned (timestamp, confidence, observation_count)
+- AND observable values are completely hidden
+- AND hit_target information is anonymized
+
+#### Scenario: OBSERVER tier user retrieves submission
+- GIVEN a submission with 3 observables including domain "malicious.example.com"
+- WHEN an OBSERVER tier user retrieves the submission by ID
+- THEN observable values are masked to first 10 characters ("malicious...")
+- AND hit_target sector is visible but organisation_id is hidden
+- AND confidence and severity are fully visible
+
+#### Scenario: PARTNER tier user retrieves own submission
+- GIVEN a submission created by "identity--rabobank" with PARTNER tier
+- WHEN a PARTNER tier user from "identity--rabobank" retrieves it
+- THEN all submission data is fully visible
+- AND all observable values are unmasked
+- AND hit_target details are complete
+
+#### Scenario: Retrieving non-existent submission
+- GIVEN a submission_id "submission--does-not-exist"
+- WHEN I call get_submission_by_id()
+- THEN None is returned
+- AND no exception is raised
+- AND an access log entry records the failed lookup
+
+#### Scenario: Access logging on retrieval
+- GIVEN a successful submission retrieval by "identity--rabobank"
+- WHEN the submission is retrieved
+- THEN an access_logs entry is created
+- AND the entry includes organisation_id, action "READ", resource_type "submission"
+- AND the entry includes the access_level used for filtering
 
 ### Requirement 5: Observable Querying with Filters
 
@@ -117,6 +259,38 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Order by `last_seen DESC`
   - [ ] Parse JSON fields (sectors_json, regions_json) in results
 - **Stage Availability**: All stages
+
+#### Scenario: Query observables by type
+- GIVEN 10 IPv4 observables and 5 domain observables in the database
+- WHEN I query with observable_type="ipv4"
+- THEN only the 10 IPv4 observables are returned
+- AND they are ordered by last_seen DESC
+- AND access tier filtering is applied
+
+#### Scenario: Query observables with confidence threshold
+- GIVEN observables with avg_confidence ranging from 0.3 to 0.9
+- WHEN I query with min_confidence=0.7
+- THEN only observables with avg_confidence >= 0.7 are returned
+- AND lower confidence observables are excluded
+
+#### Scenario: Query observables by sector
+- GIVEN observables affecting "financial", "healthcare", and "government" sectors
+- WHEN I query with sectors=["financial"]
+- THEN only observables with "financial" in sectors_json are returned
+- AND the sectors_json field is parsed from JSON to list
+
+#### Scenario: Query observables with time constraint
+- GIVEN observables with last_seen timestamps ranging from 1 day to 90 days ago
+- WHEN I query with days_back=30
+- THEN only observables seen within the last 30 days are returned
+- AND older observables are excluded
+
+#### Scenario: Pagination with limit parameter
+- GIVEN 150 observables matching the query criteria
+- WHEN I query with limit=50
+- THEN exactly 50 results are returned
+- AND they are the 50 most recently seen observables
+- AND access tier filtering is applied to all returned items
 
 ---
 
