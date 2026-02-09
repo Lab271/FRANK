@@ -51,7 +51,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 1: JWT Token Generation
 
-- **Description**: Generate signed JWT tokens with user claims and group membership for both human users and service accounts.
+- **Description**: The system MUST generate signed JWT tokens with user claims and group membership for both human users and service accounts.
 - **Acceptance Criteria**:
   - [ ] Access tokens expire in 1 hour (3600 seconds)
   - [ ] Refresh tokens expire in 30 days (2,592,000 seconds)
@@ -64,7 +64,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 2: JWT Token Validation
 
-- **Description**: Validate JWT tokens using JWKS public key endpoint with stateless verification (no database lookups).
+- **Description**: The system MUST validate JWT tokens using JWKS public key endpoint with stateless verification (no database lookups).
 - **Acceptance Criteria**:
   - [ ] Fetch public keys from Cognito JWKS endpoint (.well-known/jwks.json)
   - [ ] Cache JWKS keys for 24 hours to reduce API calls
@@ -79,7 +79,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ### Requirement 3: Access Tier Mapping
 
-- **Description**: Map Cognito group membership to FRANK AccessTier enum with hierarchical tier resolution.
+- **Description**: The system MUST map Cognito group membership to FRANK AccessTier enum with hierarchical tier resolution.
 - **Acceptance Criteria**:
   - [ ] FRANK_OBSERVER → AccessTier.OBSERVER
   - [ ] FRANK_CONTRIBUTOR → AccessTier.CONTRIBUTOR
@@ -146,6 +146,13 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - `tests/spikes/014_cognito/` - Spike validation tests
 - **Coverage**: ✅ 6/6 acceptance criteria tested
 
+#### Scenario: Authenticate User and Generate JWT
+- GIVEN a registered user with username and password
+- WHEN authenticating via POST /v1/auth/login
+- THEN an access token SHALL be generated with 1-hour expiry
+- AND a refresh token SHALL be generated with 30-day expiry
+- AND tokens SHALL include sub, username, groups, organisation_id claims
+
 ### Requirement 2: JWT Token Validation
 
 - **BDD Scenarios**:
@@ -157,6 +164,14 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - `tests/spikes/014_cognito/` - JWKS validation tests
 - **Coverage**: ✅ 8/8 acceptance criteria tested
 
+#### Scenario: Validate JWT Token with JWKS
+- GIVEN a valid JWT access token from successful authentication
+- WHEN making an API request with Authorization: Bearer header
+- THEN the token signature SHALL be verified using JWKS public keys
+- AND token expiration SHALL be checked
+- AND issuer SHALL match Cognito User Pool URL
+- AND claims SHALL be extracted without database queries
+
 ### Requirement 3: Access Tier Mapping
 
 - **BDD Scenarios**:
@@ -167,6 +182,13 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - `tests/unit/auth/test_config.py` - Group to AccessTier logic
 - **Coverage**: ✅ 7/7 acceptance criteria tested
 
+#### Scenario: Map User Groups to Access Tier
+- GIVEN a user in Cognito groups ["FRANK_PARTNER", "FRANK_CONTRIBUTOR"]
+- WHEN authenticating and generating JWT token
+- THEN the access tier SHALL be PARTNER (highest tier from multiple groups)
+- AND the groups claim SHALL include both group names
+- AND users with no groups SHALL default to PUBLIC tier
+
 ### Requirement 4: Token Refresh Flow
 
 - **BDD Scenarios**:
@@ -174,6 +196,14 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Unit Tests**:
   - `tests/unit/auth/test_tokens.py (token refresh tests planned)` - Refresh flow validation
 - **Coverage**: ⚠️ 7/7 acceptance criteria tested (unit only, missing BDD)
+
+#### Scenario: Refresh Access Token
+- GIVEN a valid refresh token from previous authentication
+- WHEN calling POST /auth/refresh with refresh token
+- THEN the token signature and expiration SHALL be validated
+- AND the token SHALL be checked against database (not revoked)
+- AND a new access token SHALL be generated with updated groups
+- AND the refresh token SHALL remain valid for reuse
 
 ### Requirement 5: Logout and Token Revocation
 
@@ -183,6 +213,14 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - `tests/unit/auth/test_tokens.py (logout tests planned)` - Logout flow validation
 - **Coverage**: ⚠️ 6/6 acceptance criteria tested (unit only, missing BDD)
 
+#### Scenario: Logout and Revoke Tokens
+- GIVEN an authenticated user with active access and refresh tokens
+- WHEN calling POST /auth/logout
+- THEN all refresh tokens for the user SHALL be revoked in database
+- AND access tokens SHALL remain valid until natural expiry
+- AND the client MUST discard both tokens from memory
+- AND subsequent refresh attempts SHALL return 401 Unauthorized
+
 ### Requirement 6: Service Account Authentication
 
 - **BDD Scenarios**:
@@ -190,6 +228,13 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Unit Tests**:
   - `tests/unit/auth/test_cognito.py (service account tests planned)` - Service account validation
 - **Coverage**: ⚠️ 6/6 acceptance criteria tested (unit only, missing BDD)
+
+#### Scenario: Authenticate Service Account
+- GIVEN a service account with username "service-rabobank-ingestion"
+- WHEN authenticating via POST /auth/login with service credentials
+- THEN JWT tokens SHALL be generated identically to human users
+- AND service account groups SHALL map to AccessTier (e.g., FRANK_CONTRIBUTOR)
+- AND no special handling or custom token formats SHALL be used
 
 ---
 
