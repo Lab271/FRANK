@@ -4,12 +4,11 @@
 **Version:** 1.0.0
 **Status:** Implemented
 **Date:** 2026-02-06
+**Owner:** FRANK Core Team
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L29-L86](src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Implementation:** [src/frank/core/models.py#L29-L86](src/frank/core/models.py)
+**Tests:** [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py)
 
 ## Overview
 
@@ -45,11 +44,17 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement 1: Core Observable Structure
 
-**Description**: Pydantic v2 model with automatic ID generation, value normalization, and STIX compliance.
+**Description**: The system MUST provide a Pydantic v2 model with automatic ID generation, value normalization, and STIX compliance.
+
+#### Scenario: Create Valid Observable
+- GIVEN a valid observable type and value
+- WHEN creating an observable instance
+- THEN it SHALL have an auto-generated STIX ID in format `{type}--{uuid}`
+- AND the value SHALL be normalized according to type rules
 
 **Pydantic Schema**:
 ```python
@@ -87,7 +92,7 @@ class Observable(BaseModel):
 
 ### Requirement 2: Observable Types
 
-**Description**: Nine observable types categorized as network, file, or process indicators.
+**Description**: The system MUST support nine observable types categorized as network, file, or process indicators.
 
 **Observable Types**:
 
@@ -114,9 +119,15 @@ class Observable(BaseModel):
 
 **Test Coverage**: [test_create_ipv6_observable](tests/unit/core/test_observable.py#L60-L69), [test_create_domain_observable](tests/unit/core/test_observable.py#L71-L82), [test_create_url_observable](tests/unit/core/test_observable.py#L84-L93)
 
+#### Scenario: Create Observable with Specific Type
+- GIVEN an observable type from the supported list
+- WHEN creating an observable with that type
+- THEN the STIX ID prefix SHALL match the observable type
+- AND value normalization SHALL be applied according to type rules
+
 ### Requirement 3: STIX ID Generation
 
-**Description**: Auto-generate STIX 2.1 compliant IDs if not provided.
+**Description**: The system MUST auto-generate STIX 2.1 compliant IDs if not provided.
 
 **ID Format**: `{observable_type}--{uuid4}`
 
@@ -147,9 +158,15 @@ def ensure_id_generated(self):
 
 **Test Coverage**: [test_stix_id_generation](tests/unit/core/test_observable.py#L106-L123)
 
+#### Scenario: Auto-Generate STIX ID
+- GIVEN an observable created without an ID
+- WHEN the observable is instantiated
+- THEN a STIX ID SHALL be auto-generated in format `{type}--{uuid4}`
+- AND subsequent observables SHALL receive unique IDs
+
 ### Requirement 4: Value Normalization
 
-**Description**: Normalize observable values based on type for consistent storage and comparison.
+**Description**: The system MUST normalize observable values based on type for consistent storage and comparison.
 
 **Normalization Rules**:
 
@@ -191,9 +208,21 @@ def normalize_values(self):
 
 **Test Coverage**: [test_whitespace_trimming](tests/unit/core/test_observable.py#L511-L518), [test_case_normalization_domains](tests/unit/core/test_observable.py#L520-L527), [test_url_case_preservation](tests/unit/core/test_observable.py#L538-L546)
 
+#### Scenario: Normalize Domain Value
+- GIVEN a domain with mixed case and whitespace "  EXAMPLE.COM  "
+- WHEN creating a domain observable
+- THEN the value SHALL be normalized to "example.com"
+- AND whitespace SHALL be trimmed
+
+#### Scenario: Preserve URL Case
+- GIVEN a URL "  https://Example.com/Path  "
+- WHEN creating a URL observable
+- THEN the value SHALL be "https://Example.com/Path"
+- AND case SHALL be preserved for path sensitivity
+
 ### Requirement 5: Factory Methods
 
-**Description**: Convenience constructors for common observable types.
+**Description**: The system SHOULD provide convenience constructors for common observable types.
 
 **Factory Methods**:
 
@@ -216,6 +245,12 @@ def normalize_values(self):
 **Stage Availability**: Stages 1, 2, 3, 4
 
 **Test Coverage**: [test_create_ipv4_factory_with_role_and_port](tests/unit/core/test_observable.py#L569-L580), [test_create_domain_factory_with_role](tests/unit/core/test_observable.py#L582-L591)
+
+#### Scenario: Use IPv4 Factory Method
+- GIVEN a valid IPv4 address "192.168.1.1" with role "c2" and port 443
+- WHEN using Observable.create_ipv4() factory method
+- THEN a valid observable SHALL be created with type "ipv4"
+- AND the role and port SHALL be set correctly
 
 ## Non-Functional Requirements
 

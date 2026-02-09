@@ -5,11 +5,10 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
+**Owner:** FRANK Core Team
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Implementation:** [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
+**Tests:** [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
 ## Overview
 
@@ -45,7 +44,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement 1: Core Submission Structure
 
@@ -1043,10 +1042,9 @@ except ValidationError as e:
   - [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
 
 - **Related Specifications**:
-  - [Observable](../core/observable.spec.md)
-  - [Sighting](../core/sighting.spec.md)
-  - [Submitter & HitTarget](../core/submitter-target.spec.md)
-  - [Enumerations](../core/enums.spec.md)
+  - [Observable](../002-observable/spec.md)
+  - [Sighting](../003-sighting/spec.md)
+  - [Submitter & HitTarget](../004-submitter-target/spec.md)
 
 - **Related Spikes**:
   - [Spike 003: Pydantic v2](tests/spikes/003_pydantic/README.md)

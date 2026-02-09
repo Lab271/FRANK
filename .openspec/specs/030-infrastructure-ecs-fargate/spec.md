@@ -5,8 +5,7 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** Infrastructure Team
+**Owner:** Infrastructure Team
 - **Related Spike:** [Spike 009: AWS ECS Basic](tests/spikes/009_aws_ecs_basic/README.md)
 - **Integration:** Stage 3 cloud deployment
 
@@ -46,7 +45,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement 1: Container Image Management
 
@@ -59,6 +58,44 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: Stage 3 (AWS Cloud), Stage 4 (Kubernetes equivalent)
 - **Related ADR(s)**: N/A
 
+#### Scenario: Building and pushing Docker image to ECR
+- GIVEN a Dockerfile with FRANK application code
+- WHEN I build the image with tag "v0.3.0"
+- AND I authenticate to ECR using AWS credentials
+- AND I push the image to ECR repository
+- THEN the image is stored in ECR with correct tag
+- AND ECR reports successful image push
+
+#### Scenario: ECS task definition references ECR image
+- GIVEN an ECR image "frank-api:v0.3.0"
+- WHEN I create an ECS task definition
+- THEN the task definition includes the full ECR image URI
+- AND the task execution role has ECR pull permissions
+- AND the image tag is properly versioned
+
+#### Scenario: Automatic task replacement on image update
+- GIVEN 2 running ECS tasks with image version "v0.2.0"
+- WHEN I update the task definition to reference "v0.3.0"
+- AND I force a new deployment
+- THEN ECS starts 2 new tasks with the updated image
+- AND the new tasks register with the ALB target group
+- AND the old tasks are drained after new tasks pass health checks
+
+#### Scenario: Graceful termination during deployment
+- GIVEN a running task serving active requests
+- WHEN a new deployment starts with updated image
+- THEN the old task receives SIGTERM signal
+- AND the task has 30 seconds to finish active connections
+- AND the task deregisters from ALB target group
+- AND only after health checks pass does the old task terminate
+
+#### Scenario: Image vulnerability scanning
+- GIVEN ECR image scanning is enabled
+- WHEN I push a new image to ECR
+- THEN ECR automatically scans for vulnerabilities
+- AND scanning results are available within 5 minutes
+- AND critical vulnerabilities are flagged for review
+
 ### Requirement 2: Task Definition Configuration
 
 - **Description**: ECS task definitions must specify compute resources, environment variables, logging configuration, and container runtime settings.
@@ -69,6 +106,41 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Task execution role grants ECR pull and CloudWatch write permissions
 - **Stage Availability**: Stage 3 (AWS), Stage 4 (Kubernetes ConfigMaps equivalent)
 - **Related ADR(s)**: N/A
+
+#### Scenario: Task definition with compute resources
+- GIVEN a task definition for FRANK API
+- WHEN I specify CPU as 256 (0.25 vCPU) and memory as 512 (0.5GB)
+- THEN ECS validates the CPU/memory combination is valid for Fargate
+- AND tasks launch with exactly those resource allocations
+- AND resource limits are enforced by the container runtime
+
+#### Scenario: Environment variables for application configuration
+- GIVEN a task definition with environment variables
+- WHEN I set STAGE="stage3", AWS_REGION="us-east-1", LOG_LEVEL="INFO"
+- THEN the container receives these environment variables at startup
+- AND the FRANK application reads configuration from environment
+- AND database connection strings are properly configured
+
+#### Scenario: CloudWatch logging configuration
+- GIVEN a task definition with awslogs log driver
+- WHEN I configure log group "/ecs/frank-api" with 7-day retention
+- THEN container stdout/stderr is streamed to CloudWatch Logs
+- AND logs are retained for exactly 7 days
+- AND old logs are automatically deleted after retention period
+
+#### Scenario: Task execution role permissions
+- GIVEN a task execution role for ECS tasks
+- WHEN I attach policies for ECR pull and CloudWatch Logs write
+- THEN tasks can pull images from ECR without authentication errors
+- AND tasks can write logs to CloudWatch without permission errors
+- AND the role follows principle of least privilege
+
+#### Scenario: Port mapping configuration
+- GIVEN a task definition with container port 8000
+- WHEN I configure port mapping to host port 8000
+- THEN the container exposes port 8000 for ALB health checks
+- AND the ALB target group can route traffic to the container
+- AND health check probes reach the /v1/health endpoint
 
 ### Requirement 3: Network Configuration
 
@@ -81,6 +153,41 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: Stage 3 (AWS), Stage 4 (Kubernetes NetworkPolicy equivalent)
 - **Related ADR(s)**: N/A
 
+#### Scenario: Development deployment in public subnet
+- GIVEN a development environment ECS service
+- WHEN tasks are deployed in public subnets with auto-assign public IP enabled
+- THEN each task receives a public IP address
+- AND tasks can be accessed directly for debugging
+- AND outbound internet access works without NAT Gateway
+
+#### Scenario: Production deployment in private subnet
+- GIVEN a production environment ECS service
+- WHEN tasks are deployed in private subnets
+- THEN tasks do NOT receive public IP addresses
+- AND inbound traffic only comes from ALB in public subnet
+- AND outbound internet access is routed through NAT Gateway
+
+#### Scenario: Security group restricts inbound to ALB only
+- GIVEN an ECS security group for production tasks
+- WHEN I configure inbound rules to allow port 8000 from ALB security group only
+- THEN direct access to task IP is blocked
+- AND only ALB can reach the container port
+- AND zero-trust network security is enforced
+
+#### Scenario: Outbound internet access for AWS API calls
+- GIVEN an ECS task in private subnet with outbound rules
+- WHEN the application makes API calls to DynamoDB and Cognito
+- THEN traffic routes through NAT Gateway to internet
+- AND AWS API endpoints respond successfully
+- AND the task can download packages if needed
+
+#### Scenario: Multi-AZ deployment for high availability
+- GIVEN an ECS service configured for 2 tasks
+- WHEN I deploy across 2 availability zones (us-east-1a, us-east-1b)
+- THEN 1 task runs in each availability zone
+- AND if one AZ fails, the other task continues serving traffic
+- AND ALB routes traffic to healthy tasks only
+
 ### Requirement 4: Service Discovery and Load Balancing
 
 - **Description**: ECS services must integrate with Application Load Balancer (ALB) for stable endpoints and health-based routing.
@@ -92,6 +199,43 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: Stage 3 (AWS), Stage 4 (Kubernetes Service/Ingress equivalent)
 - **Related ADR(s)**: Spike 010 (ALB integration)
 
+#### Scenario: ECS service registers with ALB target group
+- GIVEN an ECS service definition with load balancer configuration
+- WHEN the service starts 2 tasks
+- THEN both tasks are automatically registered with the ALB target group
+- AND the ALB starts routing traffic to the tasks
+- AND the target group reports 2 healthy targets
+
+#### Scenario: Health check probes validate task health
+- GIVEN an ALB target group configured with /v1/health endpoint
+- WHEN the health check interval (30 seconds) elapses
+- THEN the ALB sends GET /v1/health to each task
+- AND healthy tasks respond with 200 OK within 5 seconds
+- AND tasks passing 2 consecutive checks are marked healthy
+
+#### Scenario: Unhealthy task automatic replacement
+- GIVEN a running task that becomes unhealthy (health check fails)
+- WHEN 3 consecutive health checks fail (90 seconds total)
+- THEN ECS marks the task as unhealthy
+- AND ECS starts a replacement task
+- AND the unhealthy task is drained and terminated
+- AND the service maintains desired task count
+
+#### Scenario: Load balancing across multiple tasks
+- GIVEN 4 running tasks registered with ALB
+- WHEN the ALB receives 100 requests
+- THEN requests are distributed evenly across all 4 tasks
+- AND no single task is overloaded
+- AND the ALB uses round-robin or least-outstanding-requests algorithm
+
+#### Scenario: Zero-downtime deployment with health checks
+- GIVEN 2 running tasks with old version
+- WHEN a deployment starts with new task definition
+- THEN 2 new tasks are started (200% deployment)
+- AND new tasks must pass health checks before old tasks drain
+- AND only after new tasks are healthy do old tasks terminate
+- AND no requests are dropped during the transition
+
 ### Requirement 5: Logging and Observability
 
 - **Description**: ECS tasks must send application logs to CloudWatch Logs for centralized monitoring and troubleshooting.
@@ -102,6 +246,43 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Log retention policy enforced (7 days dev, 30 days prod)
 - **Stage Availability**: Stage 3 (AWS), Stage 4 (Kubernetes with Fluentd/CloudWatch agent)
 - **Related ADR(s)**: Spike 013 (AWS Observability)
+
+#### Scenario: Application logs streamed to CloudWatch
+- GIVEN an ECS task with awslogs log driver configured
+- WHEN the application writes to stdout/stderr
+- THEN logs appear in CloudWatch Logs within 5 seconds
+- AND each log line is tagged with task ID and timestamp
+- AND log stream is named by task ID
+
+#### Scenario: Log groups organized by environment
+- GIVEN ECS tasks in dev, preprod, and prod environments
+- WHEN logs are generated
+- THEN dev logs go to /ecs/frank-api-dev
+- AND preprod logs go to /ecs/frank-api-preprod
+- AND prod logs go to /ecs/frank-api-prod
+- AND environments are isolated in separate log groups
+
+#### Scenario: Structured JSON logging for parsing
+- GIVEN application logs in JSON format
+- WHEN a request is processed with username "john.doe" and operation "SUBMIT"
+- THEN the log entry is valid JSON with fields: timestamp, level, username, operation, response_time
+- AND CloudWatch Insights can query logs by field
+- AND logs are machine-parseable for alerting
+
+#### Scenario: Log retention policy enforcement
+- GIVEN a CloudWatch log group for development with 7-day retention
+- WHEN logs are written continuously
+- THEN logs older than 7 days are automatically deleted
+- AND recent logs remain queryable
+- AND storage costs are controlled by retention policy
+
+#### Scenario: Troubleshooting failed task with logs
+- GIVEN an ECS task that failed to start
+- WHEN I query CloudWatch Logs for the task ID
+- THEN I can see the container startup logs
+- AND error messages indicate the failure reason (e.g., database connection failure)
+- AND logs include stack traces for exceptions
+- AND I can correlate logs with ECS task events
 
 ---
 

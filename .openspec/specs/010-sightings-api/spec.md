@@ -5,12 +5,11 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** API Team
+**Owner:** API Team
 - **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** src/frank/main/api.py
+**Implementation:** src/frank/main/api.py
 - **Database:** DynamoDB (Stages 2-3), SQLite (Stage 1)
-- **Tests:** tests/integration/features/frank_server_api.feature
+**Tests:** tests/integration/features/frank_server_api.feature
 
 ## Overview
 
@@ -47,11 +46,163 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
-## ADDED Requirements
+## Requirements
 
-*This specification primarily documents API endpoints and contracts. Functional requirements are defined in related specifications: [Submission](../core/submission.spec.md), [Observable](../core/observable.spec.md), [Authentication](../apis/authentication.spec.md).*
+### Requirement 1: Health Check Endpoints
 
-*See Section 4 (API Endpoints) for detailed endpoint contracts.*
+- **Description**: The Sightings API must provide basic and deep health check endpoints for load balancer probes and monitoring.
+- **Acceptance Criteria**:
+  - [ ] GET /health returns 200 OK with status, timestamp, version
+  - [ ] GET /health/deep returns 200 OK with component health (database, authentication)
+  - [ ] Health checks do not require authentication
+  - [ ] Response time < 100ms for basic health check
+  - [ ] Deep health check validates database connectivity
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: N/A
+
+#### Scenario: Load balancer health probe
+- GIVEN an ALB configured to probe /health every 30 seconds
+- WHEN the health check request is made
+- THEN the response is 200 OK within 100ms
+- AND the response includes {"status": "healthy"}
+- AND the ALB marks the target as healthy
+
+#### Scenario: Deep health check with database validation
+- GIVEN a /health/deep endpoint
+- WHEN the deep health check is requested
+- THEN the database connectivity is tested
+- AND authentication service status is checked
+- AND the response includes component-level health status
+
+#### Scenario: Health check during database outage
+- GIVEN the DynamoDB database is temporarily unavailable
+- WHEN /health/deep is requested
+- THEN the response is 503 Service Unavailable
+- AND the response indicates database component is unhealthy
+- AND basic /health still returns 200 OK
+
+### Requirement 2: Submission Endpoint (POST /submit)
+
+- **Description**: The API must accept threat intelligence submissions with observables, confidence, and severity for authenticated users with CONTRIBUTOR tier or higher.
+- **Acceptance Criteria**:
+  - [ ] POST /submit requires Bearer token authentication
+  - [ ] Only CONTRIBUTOR, PARTNER, or CORE_MEMBER access tiers can submit
+  - [ ] Request body includes observables array, confidence_score, severity, description
+  - [ ] Returns 201 Created with submission_id on success
+  - [ ] Returns 401 Unauthorized for missing/invalid tokens
+  - [ ] Returns 403 Forbidden for insufficient access tier (OBSERVER/PUBLIC)
+  - [ ] Returns 422 Unprocessable Entity for invalid data
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+
+#### Scenario: Successful submission with PARTNER tier
+- GIVEN an authenticated user with PARTNER access tier
+- WHEN I POST /submit with valid observables and confidence_score 0.85
+- THEN the response is 201 Created
+- AND the submission is stored in the database
+- AND the response includes the generated submission_id
+
+#### Scenario: Submission rejection for OBSERVER tier
+- GIVEN an authenticated user with OBSERVER access tier
+- WHEN I attempt to POST /submit
+- THEN the response is 403 Forbidden
+- AND the error message indicates insufficient access tier
+- AND no submission is created
+
+#### Scenario: Validation error for invalid confidence
+- GIVEN an authenticated CONTRIBUTOR user
+- WHEN I POST /submit with confidence_score=1.5 (out of 0.0-1.0 range)
+- THEN the response is 422 Unprocessable Entity
+- AND the validation error indicates confidence_score constraint
+
+### Requirement 3: Submission Retrieval (GET /submissions/{id})
+
+- **Description**: The API must retrieve submissions by ID with access tier filtering applied automatically.
+- **Acceptance Criteria**:
+  - [ ] GET /submissions/{id} requires authentication
+  - [ ] Access tier filtering masks data based on requester's tier
+  - [ ] PUBLIC tier sees only statistics
+  - [ ] OBSERVER tier sees masked observable values
+  - [ ] CONTRIBUTOR tier sees anonymized hit_targets
+  - [ ] PARTNER/CORE_MEMBER see full data
+  - [ ] Returns 404 Not Found if submission doesn't exist
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+
+#### Scenario: PUBLIC tier filtered retrieval
+- GIVEN a submission with full threat intelligence data
+- WHEN a PUBLIC tier user retrieves it
+- THEN only timestamp, confidence, and observation_count are visible
+- AND all observable values are hidden
+- AND hit_target information is completely removed
+
+#### Scenario: OBSERVER tier masked observables
+- GIVEN a submission with domain "malicious.example.com"
+- WHEN an OBSERVER tier user retrieves it
+- THEN the domain value is masked to "malicious..." (first 10 chars)
+- AND confidence and severity remain visible
+- AND hit_target sector is visible but organisation_id is hidden
+
+#### Scenario: PARTNER tier full access
+- GIVEN a submission created by a PARTNER organisation
+- WHEN a PARTNER tier user retrieves it
+- THEN all observables are fully visible
+- AND hit_target details are complete
+- AND no data masking is applied
+
+### Requirement 4: Observable Query (GET /observables)
+
+- **Description**: The API must support querying observables with filters (type, limit, offset) and automatic access tier filtering.
+- **Acceptance Criteria**:
+  - [ ] GET /observables requires authentication
+  - [ ] Supports observable_type filter (ipv4, domain, hash, etc.)
+  - [ ] Supports pagination with limit (default 100, max 1000) and offset
+  - [ ] Returns list of observables with access filtering applied
+  - [ ] Returns total count and pagination metadata
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+
+#### Scenario: Query IPv4 observables
+- GIVEN 15 IPv4 and 8 domain observables in the database
+- WHEN I query GET /observables?observable_type=ipv4
+- THEN only the 15 IPv4 observables are returned
+- AND access tier filtering is applied to each result
+- AND the response includes pagination metadata
+
+#### Scenario: Pagination with limit and offset
+- GIVEN 250 observables in the database
+- WHEN I query GET /observables?limit=100&offset=0
+- THEN exactly 100 results are returned (first page)
+- AND the response includes total=250
+- AND subsequent requests with offset=100 return the next page
+
+### Requirement 5: Platform Statistics (GET /statistics)
+
+- **Description**: The API must provide aggregated platform statistics with detail level based on access tier.
+- **Acceptance Criteria**:
+  - [ ] GET /statistics requires authentication
+  - [ ] Supports days parameter (default 30)
+  - [ ] PUBLIC tier sees total counts only
+  - [ ] OBSERVER tier sees aggregated statistics
+  - [ ] CONTRIBUTOR+ see detailed breakdowns and trends
+  - [ ] CORE_MEMBER sees platform-wide metrics
+- **Stage Availability**: All stages (1-4)
+- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+
+#### Scenario: CONTRIBUTOR tier detailed statistics
+- GIVEN a CONTRIBUTOR tier user
+- WHEN I query GET /statistics?days=7
+- THEN the response includes total_submissions, total_observables, submission_rate_per_day
+- AND includes top_observable_types breakdown
+- AND includes severity_distribution
+- AND statistics are filtered to last 7 days
+
+#### Scenario: PUBLIC tier limited statistics
+- GIVEN a PUBLIC tier user
+- WHEN I query GET /statistics
+- THEN only total_submissions and total_observables are returned
+- AND no detailed breakdowns are included
+- AND no organisation-specific data is visible
 
 ---
 
@@ -197,7 +348,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:186`
 
-**Related Spec**: [Authentication Patterns](../apis/authentication.spec.md)
+**Related Spec**: [Authentication Patterns](../012-authentication/spec.md)
 
 ---
 
@@ -263,7 +414,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:281`
 
-**Related Spec**: [Submission Model](../core/submission.spec.md)
+**Related Spec**: [Submission Model](../001-submission/spec.md)
 
 ---
 
@@ -321,7 +472,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:381`
 
-**Related Spec**: [Submission Model](../core/submission.spec.md), [Access Tiers](../storage/base-interface.spec.md)
+**Related Spec**: [Submission Model](../001-submission/spec.md), [Access Tiers](../020-storage-base-interface/spec.md)
 
 ---
 
@@ -367,7 +518,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 **Implementation**: `src/frank/main/api.py:440`
 
-**Related Spec**: [Observable Model](../core/observable.spec.md)
+**Related Spec**: [Observable Model](../002-observable/spec.md)
 
 ---
 
@@ -440,7 +591,7 @@ class SubmissionResponse(BaseModel):
     message: str
 ```
 
-**Related Specifications**: See [Submission Model](../core/submission.spec.md) for complete data model.
+**Related Specifications**: See [Submission Model](../001-submission/spec.md) for complete data model.
 
 ---
 
@@ -572,10 +723,10 @@ curl -H "Authorization: Bearer <token>" \
   - [ADR-0008: Explicit Error Communication](docs/adr/0008-explicit-error-communication.md)
 
 - **Related Specifications**:
-  - [Authentication Patterns](../apis/authentication.spec.md) - JWT token validation
-  - [Submission Model](../core/submission.spec.md) - Core data model
-  - [Observable Model](../core/observable.spec.md) - Observable structure
-  - [DynamoDB Storage](../storage/dynamodb.spec.md) - Database implementation
+  - [Authentication Patterns](../012-authentication/spec.md) - JWT token validation
+  - [Submission Model](../001-submission/spec.md) - Core data model
+  - [Observable Model](../002-observable/spec.md) - Observable structure
+  - [DynamoDB Storage](../022-storage-dynamodb/spec.md) - Database implementation
 
 - **Implementation Files**:
   - `src/frank/main/api.py` - FastAPI application

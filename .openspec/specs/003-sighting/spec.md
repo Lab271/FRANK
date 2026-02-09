@@ -4,12 +4,11 @@
 **Version:** 1.0.0
 **Status:** Implemented
 **Date:** 2026-02-06
+**Owner:** FRANK Core Team
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Core Team
-- **Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
-- **Implementation:** [src/frank/core/models.py#L291-L369](src/frank/core/models.py)
-- **Tests:** [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Implementation:** [src/frank/core/models.py#L291-L369](src/frank/core/models.py)
+**Tests:** [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
 
 ## Overview
 
@@ -47,11 +46,11 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement 1: Core Sighting Structure
 
-**Description**: Pydantic v2 model with automatic ID and timestamp generation, confidence scoring, and observable containers.
+**Description**: The system MUST provide a Pydantic v2 model with automatic ID and timestamp generation, confidence scoring, and observable containers.
 
 **Pydantic Schema**:
 ```python
@@ -90,9 +89,16 @@ class Sighting(BaseModel):
 
 **Test Coverage**: [test_create_minimal_sighting](tests/unit/core/test_sighting.py#L60-L84), [test_create_sighting_with_all_fields](tests/unit/core/test_sighting.py#L86-L112)
 
+#### Scenario: Create Minimal Sighting
+- GIVEN a minimal sighting without ID or timestamp
+- WHEN creating a Sighting instance
+- THEN a sighting_id SHALL be auto-generated in format `sighting--{uuid}`
+- AND timestamp SHALL default to current UTC time
+- AND confidence SHALL default to 69
+
 ### Requirement 2: Automatic ID and Timestamp Generation
 
-**Description**: Auto-generate STIX-compliant sighting IDs and UTC timestamps if not provided.
+**Description**: The system MUST auto-generate STIX-compliant sighting IDs and UTC timestamps if not provided.
 
 **ID Generation**:
 ```python
@@ -116,6 +122,13 @@ def validate_timestamp(cls, v):
     return v
 ```
 
+#### Scenario: Auto-Generate Sighting ID and Timestamp
+- GIVEN a sighting created without sighting_id or timestamp
+- WHEN the Sighting model is instantiated
+- THEN sighting_id SHALL be auto-generated in format `sighting--{uuid}`
+- AND timestamp SHALL be set to current UTC time
+- AND both fields SHALL be populated before validation completes
+
 **Acceptance Criteria**:
 - ✅ `sighting_id` generated if None or empty string
 - ✅ `timestamp` defaults to `datetime.now(timezone.utc)`
@@ -129,7 +142,7 @@ def validate_timestamp(cls, v):
 
 ### Requirement 3: Observation Time Validation
 
-**Description**: Validate logical consistency of observation timestamps.
+**Description**: The system MUST validate logical consistency of observation timestamps.
 
 **Validation Rules**:
 1. `first_observed` <= `last_observed`
@@ -170,9 +183,15 @@ def validate_observation_times_and_ensure_ids(self):
 
 **Test Coverage**: [test_observation_times_validation](tests/unit/core/test_sighting.py#L348-L361), [test_observation_times_invalid_order](tests/unit/core/test_sighting.py#L363-L375), [test_invalid_observation_time_last](tests/unit/core/test_sighting.py#L263-L269)
 
+#### Scenario: Validate Observation Time Ordering
+- GIVEN a sighting with first_observed at 09:00 and last_observed at 11:00
+- WHEN creating the Sighting with timestamp at 10:00
+- THEN validation SHALL pass with first_observed <= timestamp <= last_observed
+- AND all timestamps SHALL be timezone-aware in UTC
+
 ### Requirement 4: Confidence Scoring
 
-**Description**: Confidence score (0-100) indicating reliability of threat intelligence.
+**Description**: The system MUST provide a confidence score (0-100) indicating reliability of threat intelligence.
 
 **Confidence Levels**:
 - 0-20: Very Low - Unverified, speculative
@@ -193,9 +212,15 @@ def validate_observation_times_and_ensure_ids(self):
 
 **Test Coverage**: [test_confidence_validation](tests/unit/core/test_sighting.py#L280-L295)
 
+#### Scenario: Validate Confidence Score Range
+- GIVEN a sighting with confidence score of 95
+- WHEN creating the Sighting instance
+- THEN the confidence SHALL be validated within range 0-100
+- AND confidence values outside range SHALL raise ValidationError
+
 ### Requirement 5: Observables Container
 
-**Description**: Container for network, file, and process observables grouped by category.
+**Description**: The system MUST provide a container for network, file, and process observables grouped by category.
 
 **Structure**:
 ```python
@@ -220,9 +245,16 @@ class Observables(BaseModel):
 
 **Test Coverage**: Test coverage in observable tests, integration in sighting tests
 
+#### Scenario: Group Observables by Category
+- GIVEN a sighting with 2 network observables and 1 file observable
+- WHEN creating the Observables container
+- THEN network observables SHALL be in the network list
+- AND file observables SHALL be in the file list
+- AND process list SHALL be empty
+
 ### Requirement 6: Extended Threat Metadata
 
-**Description**: Optional rich threat intelligence context including SIGMA rules, campaigns, MITRE ATT&CK, and impact data.
+**Description**: The system MAY include optional rich threat intelligence context including SIGMA rules, campaigns, MITRE ATT&CK, and impact data.
 
 **Extended Models**:
 
@@ -280,9 +312,15 @@ class Observables(BaseModel):
 
 **Test Coverage**: [test_threat_context_serialization](tests/unit/core/test_sighting.py#L702-L713), [test_campaign_serialization](tests/unit/core/test_sighting.py#L724-L747), [test_sigma_detection_serialization](tests/unit/core/test_sighting.py#L755-L768)
 
+#### Scenario: Enrich Sighting with Threat Context
+- GIVEN a sighting with basic observables
+- WHEN adding SIGMA detection, campaign attribution, and MITRE ATT&CK mapping
+- THEN the threat_context SHALL contain campaign and mitre_attack data
+- AND the sigma_detection SHALL have auto-generated rule_id
+
 ### Requirement 7: Factory Method
 
-**Description**: Convenience constructor for creating sightings.
+**Description**: The system SHOULD provide a convenience factory method for creating sightings.
 
 **Factory Method**:
 ```python
@@ -311,6 +349,12 @@ def create(
 **Stage Availability**: Stages 1, 2, 3, 4
 
 **Test Coverage**: [test_factory_method_create](tests/unit/core/test_sighting.py#L405-L418), [test_factory_method_minimal](tests/unit/core/test_sighting.py#L420-L430)
+
+#### Scenario: Create Sighting Using Factory Method
+- GIVEN observables and confidence score of 85
+- WHEN calling Sighting.create() with observables and severity
+- THEN a fully validated Sighting instance SHALL be returned
+- AND sighting_id and timestamp SHALL be auto-generated
 
 ## Non-Functional Requirements
 

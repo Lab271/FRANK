@@ -85,7 +85,13 @@ class SpecValidator:
 
     def __init__(self, project_root: Path):
         self.project_root = project_root
-        self.specs_dir = project_root / "openspec"  # Updated to use openspec directory
+        # Support both .openspec and openspec directory names
+        if (project_root / ".openspec" / "specs").exists():
+            self.specs_dir = project_root / ".openspec" / "specs"
+        elif (project_root / "openspec" / "specs").exists():
+            self.specs_dir = project_root / "openspec" / "specs"
+        else:
+            self.specs_dir = project_root / "openspec"  # fallback to old structure
         self.docs_dir = project_root / "docs"
         self.tests_dir = project_root / "tests"
         self.src_dir = project_root / "src"
@@ -312,13 +318,17 @@ class SpecValidator:
         """Validate all spec files in a directory."""
         results = []
 
-        for spec_file in spec_dir.rglob("*.spec.md"):
-            # Skip template file
-            if spec_file.name == "_template.spec.md":
-                continue
+        # Support both *.spec.md and spec.md patterns
+        for pattern in ["*.spec.md", "spec.md"]:
+            for spec_file in spec_dir.rglob(pattern):
+                # Skip template file
+                if spec_file.name == "_template.spec.md" or "_template" in str(spec_file):
+                    continue
 
-            result = self.validate_spec(spec_file)
-            results.append(result)
+                # Avoid duplicates (some files might match both patterns)
+                if not any(r.spec_path == spec_file for r in results):
+                    result = self.validate_spec(spec_file)
+                    results.append(result)
 
         return results
 
@@ -337,7 +347,10 @@ class SpecValidator:
         total_warnings = sum(len(r.warnings) for r in results)
 
         lines.append(f"Total Specifications: {total_specs}")
-        lines.append(f"Valid Specifications: {valid_specs} ({valid_specs/total_specs*100:.1f}%)")
+        if total_specs > 0:
+            lines.append(f"Valid Specifications: {valid_specs} ({valid_specs/total_specs*100:.1f}%)")
+        else:
+            lines.append(f"Valid Specifications: 0 (0.0%)")
         lines.append(f"Total Errors: {total_errors}")
         lines.append(f"Total Warnings: {total_warnings}")
         lines.append("")

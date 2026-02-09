@@ -5,11 +5,10 @@
 **Status:** Implemented
 **Date:** 2026-02-06
 
-**FRANK-Specific Metadata**:
-- **Owner:** FRANK Platform Team
-- **Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
-- **Implementation:** [src/frank/storage/base.py](src/frank/storage/base.py)
-- **Tests:** [tests/unit/storage/](tests/unit/storage/)
+**Owner:** FRANK Platform Team
+**Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+**Implementation:** [src/frank/storage/base.py](src/frank/storage/base.py)
+**Tests:** [tests/unit/storage/](tests/unit/storage/)
 
 ## Overview
 
@@ -48,7 +47,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 
 ---
 
-## ADDED Requirements
+## Requirements
 
 ### Requirement 1: Abstract Interface Contract
 
@@ -61,9 +60,21 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
 
+#### Scenario: Abstract Base Class Cannot Be Instantiated
+- GIVEN the BaseFRANKDatabase abstract base class
+- WHEN attempting to instantiate BaseFRANKDatabase directly
+- THEN a TypeError SHALL be raised
+- AND the error SHALL indicate that abstract methods must be implemented
+
+#### Scenario: Concrete Implementation Can Be Instantiated
+- GIVEN a concrete implementation like SQLiteFRANKDatabase
+- WHEN instantiating with valid connection parameters
+- THEN the instance SHALL be created successfully
+- AND all abstract methods SHALL be implemented
+
 ### Requirement 2: Constructor and Initialization
 
-- **Description**: All implementations share a common constructor that accepts connection parameters and an optional logger, then calls `initialize()` to set up the database.
+- **Description**: The system MUST provide a common constructor for all implementations that accepts connection parameters and an optional logger, then calls `initialize()` to set up the database.
 - **Acceptance Criteria**:
   - [ ] Constructor accepts `connection_params: Dict[str, Any]` and optional `logger: logging.Logger`
   - [ ] Constructor stores `connection_params` and `logger` as instance attributes
@@ -71,9 +82,16 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] `initialize()` sets up database connection and creates schema if needed
 - **Stage Availability**: All stages (1-4)
 
+#### Scenario: Initialize Database Implementation
+- GIVEN connection parameters for SQLite database
+- WHEN creating a SQLiteFRANKDatabase instance
+- THEN the constructor SHALL accept connection_params and optional logger
+- AND initialize() SHALL be called automatically to set up schema
+- AND the database SHALL be ready for operations
+
 ### Requirement 3: Access Tier Filtering
 
-- **Description**: Access control filtering is implemented once in the base class and inherited by all implementations, ensuring consistent privacy enforcement across all database backends.
+- **Description**: The system MUST implement access control filtering once in the base class and inherit it in all implementations, ensuring consistent privacy enforcement across all database backends.
 - **Acceptance Criteria**:
   - [ ] `_filter_submission_by_access_level()` correctly filters for all five tiers
   - [ ] `_filter_observable_by_access_level()` correctly filters for all five tiers
@@ -85,15 +103,29 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Stage Availability**: All stages (1-4)
 - **Related ADR**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
 
+#### Scenario: Filter Submission by Access Tier
+- GIVEN a submission with full observables and hit_target data
+- WHEN filtering with OBSERVER tier
+- THEN observable values SHALL be masked to first 10 characters
+- AND hit_target and tlp_level SHALL be removed
+- AND filtering SHALL work identically across SQLite and DynamoDB
+
 ### Requirement 4: Observable Hashing
 
-- **Description**: A shared `hash_observable()` method provides consistent SHA-256 hashing for observable deduplication and quick lookups across all implementations.
+- **Description**: The system MUST provide a shared `hash_observable()` method that provides consistent SHA-256 hashing for observable deduplication and quick lookups across all implementations.
 - **Acceptance Criteria**:
   - [ ] `hash_observable(type, value)` returns SHA-256 hex digest
   - [ ] Hashing is case-insensitive (lowercases `type:value` before hashing)
   - [ ] Same type+value always produces the same hash
   - [ ] Hash is used consistently across SQLite and DynamoDB for deduplication
 - **Stage Availability**: All stages (1-4)
+
+#### Scenario: Hash Observable for Deduplication
+- GIVEN an IPv4 observable with value "192.168.1.1"
+- WHEN calling hash_observable("ipv4", "192.168.1.1")
+- THEN a SHA-256 hash SHALL be returned
+- AND the same type+value SHALL always produce the same hash
+- AND hashing SHALL be case-insensitive (lowercased before hashing)
 
 ---
 
@@ -353,9 +385,9 @@ All Features (dev/test)    | SQLite     | SQLite (fallback) | SQLite (fallback)
   - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
-  - [SQLite Implementation Spec](../storage/sqlite.spec.md)
-  - [DynamoDB Implementation Spec](../storage/dynamodb.spec.md)
-  - [PostgreSQL Implementation Spec](../storage/postgresql.spec.md)
+  - [SQLite Implementation Spec](../021-storage-sqlite/spec.md)
+  - [DynamoDB Implementation Spec](../022-storage-dynamodb/spec.md)
+  - [PostgreSQL Implementation Spec](../023-storage-postgresql/spec.md)
 
 - **Source Files**:
   - [`src/frank/storage/base.py`](src/frank/storage/base.py) - Interface definition
