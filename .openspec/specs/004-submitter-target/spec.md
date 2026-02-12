@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 **Owner:** FRANK Core Team
 
-**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](.openspec/architecture/decisions/0007-forgiving-input-strong-output.md)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](.openspec/architecture/decisions/008-forgiving-input-strong-output.md)
 **Implementation:** [src/frank/core/models.py#L89-L203](src/frank/core/models.py)
 **Tests:** [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)
 
@@ -682,7 +682,7 @@ json_str = submitter.model_dump_json()
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](.openspec/architecture/decisions/0007-forgiving-input-strong-output.md)
+- **ADR-0007**: [Forgiving Input, Strong Output](.openspec/architecture/decisions/008-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Identity Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_wh296fiwpklp)
 - **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)
 - **Tests**: [tests/unit/core/test_submitter.py](tests/unit/core/test_submitter.py), [tests/unit/core/test_hittarget.py](tests/unit/core/test_hittarget.py)

@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** FRANK Platform Team
-**Related ADRs:** [ADR-0002](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md), [ADR-0003](.openspec/architecture/decisions/0003-tiered-access-control-model.md), [ADR-0009](.openspec/architecture/decisions/0009-postgresql-management-api.md)
+**Related ADRs:** [ADR-0002](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md), [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md), [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md)
 **Implementation:** [`src/frank/storage/dynamodb.py`](src/frank/storage/dynamodb.py)
 **Tests:** [tests/unit/storage/test_dynamodb.py](tests/unit/storage/test_dynamodb.py)
 
@@ -69,7 +69,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] `log_access()` writes audit log entries to a separate audit table
   - [ ] `health_check()` returns DynamoDB connection status
 - **Stage Availability**: Stages 2-3
-- **Related ADR**: [ADR-0002](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md)
+- **Related ADR**: [ADR-0002](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md)
 
 #### Scenario: Store Submission to DynamoDB
 - GIVEN a complete threat intelligence submission with observables
@@ -85,7 +85,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 - **Rationale**: Organisation data is relational (foreign keys, joins, transactional updates) and low-volume. DynamoDB's NoSQL model is not the right fit. PostgreSQL handles this in Stage 3.
 - **Methods**: `create_organisation`, `get_organisation`, `list_organisations`, `update_organisation`, `delete_organisation`
 - **Stage Availability**: Not available (use PostgreSQL)
-- **Related ADR**: [ADR-0009](.openspec/architecture/decisions/0009-postgresql-management-api.md)
+- **Related ADR**: [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md)
 
 #### Scenario: Attempt Organisation CRUD in DynamoDB
 - GIVEN a DynamoDB database instance
@@ -111,7 +111,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
 ### Requirement 4: API Key Management (Not Implemented)
 
 - **Description**: The system SHALL NOT implement API key lifecycle in DynamoDB. All 6 methods SHALL raise `NotImplementedError`.
-- **Rationale**: AWS Cognito handles all authentication in Stages 2+. API keys are not needed and were never intended per [ADR-0005](.openspec/architecture/decisions/0005-cognito-authentication.md).
+- **Rationale**: AWS Cognito handles all authentication in Stages 2+. API keys are not needed and were never intended per [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md).
 - **Methods**: `create_api_key`, `get_api_key_by_hash`, `list_api_keys`, `update_api_key`, `revoke_api_key`, `update_api_key_last_used`
 - **Stage Availability**: Not available (Cognito handles auth)
 
@@ -533,10 +533,10 @@ def create_dynamodb_database(
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0002: Repository Pattern for Database Abstraction](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
-  - [ADR-0005: Cognito Authentication](.openspec/architecture/decisions/0005-cognito-authentication.md)
-  - [ADR-0009: PostgreSQL for Management API](.openspec/architecture/decisions/0009-postgresql-management-api.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/002-tiered-access-control.md)
+  - [ADR-0005: Cognito Authentication](.openspec/architecture/decisions/006-cognito-authentication.md)
+  - [ADR-0009: PostgreSQL for Management API](.openspec/architecture/decisions/010-postgresql-management-api.md)
 
 - **Related Specifications**:
   - [Base Interface Spec](../020-storage-base-interface/spec.md) -- interface this implements

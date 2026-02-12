@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** FRANK Platform Team
-**Related ADRs:** [ADR-0002](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md), [ADR-0003](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
+**Related ADRs:** [ADR-0002](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md), [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 **Implementation:** [src/frank/storage/base.py](src/frank/storage/base.py)
 **Tests:** [tests/unit/storage/](tests/unit/storage/)
 
@@ -30,7 +30,7 @@ The `BaseFRANKDatabase` abstract base class defines the **repository pattern int
 - **Health Checks**: Standardized health monitoring interface
 - **Testability**: Interface can be mocked for unit tests without database dependency
 
-This is the **single most important architectural abstraction** in FRANK, enabling the entire evolutionary design philosophy described in [ADR-0001](.openspec/architecture/decisions/0001-four-stage-infrastructure-evolution.md).
+This is the **single most important architectural abstraction** in FRANK, enabling the entire evolutionary design philosophy described in [ADR-0001](.openspec/architecture/decisions/003-four-stage-infrastructure-evolution.md).
 
 ---
 
@@ -58,7 +58,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Attempting to instantiate `BaseFRANKDatabase` directly raises `TypeError`
   - [ ] Each concrete implementation (SQLite, DynamoDB, PostgreSQL) can be instantiated
 - **Stage Availability**: All stages (1-4)
-- **Related ADR**: [ADR-0002](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md)
+- **Related ADR**: [ADR-0002](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md)
 
 #### Scenario: Abstract Base Class Cannot Be Instantiated
 - GIVEN the BaseFRANKDatabase abstract base class
@@ -101,7 +101,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] PARTNER and CORE_MEMBER tiers return full data
   - [ ] Filtering is identical regardless of which database implementation is used
 - **Stage Availability**: All stages (1-4)
-- **Related ADR**: [ADR-0003](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
+- **Related ADR**: [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 
 #### Scenario: Filter Submission by Access Tier
 - GIVEN a submission with full observables and hit_target data
@@ -380,9 +380,9 @@ All Features (dev/test)    | SQLite     | SQLite (fallback) | SQLite (fallback)
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0001: Four-Stage Infrastructure Evolution](.openspec/architecture/decisions/0001-four-stage-infrastructure-evolution.md)
-  - [ADR-0002: Repository Pattern for Database Abstraction](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
+  - [ADR-0001: Four-Stage Infrastructure Evolution](.openspec/architecture/decisions/003-four-stage-infrastructure-evolution.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/002-tiered-access-control.md)
 
 - **Related Specifications**:
   - [SQLite Implementation Spec](../021-storage-sqlite/spec.md)
