@@ -170,9 +170,9 @@ def create_service_account_routes(config: WebConfig, templates) -> APIRouter:
         )
 
         return templates.TemplateResponse(
+            request,
             "service-accounts/list.html",
             {
-                "request": request,
                 "username": session.username,
                 "service_accounts": service_accounts,
             },
@@ -202,9 +202,9 @@ def create_service_account_routes(config: WebConfig, templates) -> APIRouter:
         )
 
         return templates.TemplateResponse(
+            request,
             "service-accounts/new.html",
             {
-                "request": request,
                 "username": session.username,
                 "error": error,
                 "organisations": organisations,
@@ -328,9 +328,9 @@ def create_service_account_routes(config: WebConfig, templates) -> APIRouter:
             )
 
         return templates.TemplateResponse(
+            request,
             "service-accounts/password-display.html",
             {
-                "request": request,
                 "username": session.username,
                 "service_username": username,
                 "generated_password": password,

@@ -248,9 +248,9 @@ def create_organisation_routes(config: WebConfig, templates) -> APIRouter:
         )
 
         return templates.TemplateResponse(
+            request,
             "organisations/list.html",
             {
-                "request": request,
                 "username": session.username,
                 "organisations": organisations,
             },
@@ -274,9 +274,9 @@ def create_organisation_routes(config: WebConfig, templates) -> APIRouter:
             Rendered new organisation form
         """
         return templates.TemplateResponse(
+            request,
             "organisations/new.html",
             {
-                "request": request,
                 "username": session.username,
                 "error": error,
             },
@@ -357,9 +357,9 @@ def create_organisation_routes(config: WebConfig, templates) -> APIRouter:
             return RedirectResponse(url="/organisations?error=Organisation+not+found", status_code=303)
 
         return templates.TemplateResponse(
+            request,
             "organisations/view.html",
             {
-                "request": request,
                 "username": session.username,
                 "organisation": organisation,
             },
@@ -394,9 +394,9 @@ def create_organisation_routes(config: WebConfig, templates) -> APIRouter:
             return RedirectResponse(url="/organisations?error=Organisation+not+found", status_code=303)
 
         return templates.TemplateResponse(
+            request,
             "organisations/edit.html",
             {
-                "request": request,
                 "username": session.username,
                 "organisation": organisation,
                 "error": error,

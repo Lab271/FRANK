@@ -93,9 +93,9 @@ def create_auth_routes(
             return RedirectResponse(url="/dashboard", status_code=303)
 
         return templates.TemplateResponse(
+            request,
             "auth/login.html",
             {
-                "request": request,
                 "error": error,
             },
         )

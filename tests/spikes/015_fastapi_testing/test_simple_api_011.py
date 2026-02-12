@@ -93,12 +93,12 @@ class TestSimpleAPI:
         Test protected endpoint without authentication - should fail
 
         Validates:
-        - HTTP 403 response (FastAPI security returns 403 for missing auth)
+        - HTTP 401 response (HTTPBearer returns 401 for missing auth)
         - Proper error structure
         """
         response = client.get("/protected")
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
         data = response.json()
         assert "detail" in data
 
@@ -107,13 +107,13 @@ class TestSimpleAPI:
         Test protected endpoint with malformed Authorization header
 
         Validates:
-        - HTTP 403 response for malformed header
+        - HTTP 401 response for malformed header
         - Proper error handling
         """
         headers = {"Authorization": "InvalidFormat"}
         response = client.get("/protected", headers=headers)
 
-        assert response.status_code == status.HTTP_403_FORBIDDEN
+        assert response.status_code == status.HTTP_401_UNAUTHORIZED
         data = response.json()
         assert "detail" in data
 

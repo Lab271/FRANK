@@ -52,6 +52,7 @@ dependencies = [
     "ruff>=0.14.0",
     "textual>=0.50.0",
     "uvicorn>=0.38.0",
+    "pytest>=9.0.2",
 ]
 
 [project.scripts]

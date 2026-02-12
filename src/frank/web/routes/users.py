@@ -269,9 +269,9 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
         )
 
         return templates.TemplateResponse(
+            request,
             "users/list.html",
             {
-                "request": request,
                 "username": session.username,
                 "users": users,
             },
@@ -301,9 +301,9 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
         )
 
         return templates.TemplateResponse(
+            request,
             "users/new.html",
             {
-                "request": request,
                 "username": session.username,
                 "error": error,
                 "organisations": organisations,
@@ -403,9 +403,9 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
             return RedirectResponse(url="/users?error=User+not+found", status_code=303)
 
         return templates.TemplateResponse(
+            request,
             "users/view.html",
             {
-                "request": request,
                 "username": session.username,
                 "user": user,
             },
@@ -440,9 +440,9 @@ def create_user_routes(config: WebConfig, templates) -> APIRouter:
             return RedirectResponse(url="/users?error=User+not+found", status_code=303)
 
         return templates.TemplateResponse(
+            request,
             "users/edit.html",
             {
-                "request": request,
                 "username": session.username,
                 "user": user,
                 "error": error,

@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 from typing import Dict
 
+from jinja2 import Environment, FileSystemLoader
+
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
@@ -67,12 +69,13 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
         # Re-raise other HTTP exceptions
         raise exc
 
-    # Setup Jinja2 templates
+    # Setup Jinja2 templates with pre-configured environment
     templates_dir = Path(__file__).parent / "templates"
-    templates = Jinja2Templates(
-        directory=str(templates_dir),
-        auto_reload=config.template_auto_reload
+    jinja_env = Environment(
+        loader=FileSystemLoader(str(templates_dir)),
+        auto_reload=config.template_auto_reload,
     )
+    templates = Jinja2Templates(env=jinja_env)
     app.state.templates = templates
 
     # Mount static files
@@ -143,9 +146,9 @@ def create_web_app(config: WebConfig = None) -> FastAPI:
             Rendered dashboard page
         """
         return templates.TemplateResponse(
+            request,
             "dashboard.html",
             {
-                "request": request,
                 "username": session.username,
                 "version": frank.__version__,
             }
