@@ -1,0 +1,281 @@
+# Sequence: Authentication Flow
+# JWT-based authentication with AWS Cognito
+
+sequence:
+  id: authentication-flow
+  name: User Authentication Flow
+  description: |
+    Complete authentication flow showing login, JWT token generation, validation,
+    refresh, and logout. Demonstrates stateless JWT validation with refresh token
+    revocation tracking.
+
+  actors:
+    - id: user
+      name: User/Service Account
+      type: external
+      description: Human user or automated service account
+
+    - id: api
+      name: FRANK API
+      type: container
+      description: Sightings or Management API
+
+    - id: cognito
+      name: AWS Cognito
+      type: external-system
+      description: Identity provider and JWT issuer
+
+    - id: postgresql
+      name: PostgreSQL
+      type: infrastructure
+      description: Refresh token revocation tracking
+
+  flows:
+    - name: Initial Login
+      steps:
+        - step: 1
+          from: user
+          to: api
+          action: POST /v1/auth/login
+          payload: |
+            {
+              "username": "user@example.com",
+              "password": "SecurePass123!"
+            }
+
+        - step: 2
+          from: api
+          to: cognito
+          action: InitiateAuth
+          description: Forward credentials to Cognito
+
+        - step: 3
+          from: cognito
+          to: cognito
+          action: Validate credentials
+          validations:
+            - Check password against stored hash
+            - Verify email is confirmed
+            - Check account not locked
+
+        - step: 4
+          from: cognito
+          to: api
+          action: Return auth result
+          payload: |
+            {
+              "AuthenticationResult": {
+                "AccessToken": "<JWT_ACCESS_TOKEN>",
+                "IdToken": "<JWT_ID_TOKEN>",
+                "RefreshToken": "<REFRESH_TOKEN>",
+                "ExpiresIn": 3600,
+                "TokenType": "Bearer"
+              }
+            }
+
+        - step: 5
+          from: api
+          to: user
+          action: 200 OK
+          response: |
+            {
+              "access_token": "<JWT_ACCESS_TOKEN>",
+              "id_token": "<JWT_ID_TOKEN>",
+              "refresh_token": "<REFRESH_TOKEN>",
+              "expires_in": 3600,
+              "token_type": "Bearer"
+            }
+
+    - name: Token Validation (Every API Request)
+      steps:
+        - step: 1
+          from: user
+          to: api
+          action: GET /v1/submissions/{id}
+          headers:
+            Authorization: "Bearer <JWT_ACCESS_TOKEN>"
+
+        - step: 2
+          from: api
+          to: api
+          action: Extract JWT from Authorization header
+
+        - step: 3
+          from: api
+          to: cognito
+          action: Fetch JWKS public keys
+          endpoint: "/.well-known/jwks.json"
+          note: Cached for 24 hours
+
+        - step: 4
+          from: api
+          to: api
+          action: Validate JWT
+          validations:
+            - Verify RS256 signature with public key
+            - Check token not expired (exp claim)
+            - Verify issuer (iss claim)
+            - Extract user_id and access_tier from claims
+
+        - step: 5
+          from: api
+          to: user
+          action: Return requested data
+          note: No database lookup for authentication
+
+    - name: Token Refresh
+      steps:
+        - step: 1
+          from: user
+          to: api
+          action: POST /v1/auth/refresh
+          payload: |
+            {
+              "refresh_token": "<REFRESH_TOKEN>"
+            }
+
+        - step: 2
+          from: api
+          to: postgresql
+          action: Check if refresh token revoked
+          query: "SELECT revoked FROM refresh_tokens WHERE jti = ?"
+
+        - step: 3
+          from: postgresql
+          to: api
+          action: Return revocation status
+          result: "not revoked"
+
+        - step: 4
+          from: api
+          to: cognito
+          action: InitiateAuth with REFRESH_TOKEN_AUTH
+          payload:
+            AuthFlow: REFRESH_TOKEN_AUTH
+            AuthParameters:
+              REFRESH_TOKEN: "<REFRESH_TOKEN>"
+
+        - step: 5
+          from: cognito
+          to: api
+          action: Return new tokens
+          payload: |
+            {
+              "AccessToken": "<NEW_JWT_ACCESS_TOKEN>",
+              "IdToken": "<NEW_JWT_ID_TOKEN>"
+            }
+          note: Refresh token remains the same
+
+        - step: 6
+          from: api
+          to: user
+          action: 200 OK
+          response: |
+            {
+              "access_token": "<NEW_JWT_ACCESS_TOKEN>",
+              "id_token": "<NEW_JWT_ID_TOKEN>",
+              "expires_in": 3600
+            }
+
+    - name: Logout (Token Revocation)
+      steps:
+        - step: 1
+          from: user
+          to: api
+          action: POST /v1/auth/logout
+          headers:
+            Authorization: "Bearer <JWT_ACCESS_TOKEN>"
+
+        - step: 2
+          from: api
+          to: api
+          action: Extract JTI from refresh token
+          description: JWT ID for revocation tracking
+
+        - step: 3
+          from: api
+          to: postgresql
+          action: Mark refresh token as revoked
+          query: |
+            INSERT INTO refresh_tokens (jti, revoked_at)
+            VALUES (?, NOW())
+
+        - step: 4
+          from: postgresql
+          to: api
+          action: Confirm revocation
+
+        - step: 5
+          from: api
+          to: user
+          action: 200 OK
+          response: |
+            {
+              "message": "Successfully logged out"
+            }
+          note: |
+            Access token remains valid until expiration (max 1 hour).
+            Refresh token can no longer be used to get new tokens.
+
+  error_flows:
+    - condition: Invalid credentials
+      flow: Initial Login
+      step: 3
+      response: 401 Unauthorized
+      message: "Invalid username or password"
+
+    - condition: Account not confirmed
+      flow: Initial Login
+      step: 3
+      response: 403 Forbidden
+      message: "Email not verified"
+
+    - condition: Expired access token
+      flow: Token Validation
+      step: 4
+      response: 401 Unauthorized
+      message: "Token expired"
+
+    - condition: Invalid signature
+      flow: Token Validation
+      step: 4
+      response: 401 Unauthorized
+      message: "Invalid token signature"
+
+    - condition: Revoked refresh token
+      flow: Token Refresh
+      step: 3
+      response: 401 Unauthorized
+      message: "Refresh token has been revoked"
+
+  jwt_claims:
+    access_token:
+      - "sub: user-123 (Cognito user ID)"
+      - "username: user@example.com"
+      - "cognito:groups: [PARTNER]"
+      - "custom:organization_id: org-12345"
+      - "token_use: access"
+      - "exp: 1675890000 (1 hour from iat)"
+      - "iat: 1675886400"
+      - "jti: abc-123-def (JWT ID)"
+
+  security_considerations:
+    - Access tokens short-lived (1 hour)
+    - Refresh tokens tracked for revocation
+    - JWKS keys cached to reduce Cognito API calls
+    - Stateless validation (no DB lookup per request)
+    - RS256 signature (asymmetric crypto)
+
+  performance:
+    - Token validation: < 10ms (cached JWKS)
+    - Login: ~200ms (Cognito round-trip)
+    - Refresh: ~150ms (Cognito + DB check)
+    - Logout: ~50ms (PostgreSQL insert)
+
+related_specs:
+  - .openspec/specs/012-authentication/spec.md
+  - .openspec/specs/010-sightings-api/spec.md
+  - .openspec/specs/011-management-api/spec.md
+
+related_adrs:
+  - docs/adr/0005-cognito-authentication.md

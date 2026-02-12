@@ -1,0 +1,178 @@
+# AWS Cognito Resource Definition
+# Extracted from: .openspec/specs/012-authentication/spec.md
+
+resource:
+  id: aws-cognito
+  name: AWS Cognito
+  type: external-system
+  technology: AWS Cognito User Pools
+
+  description: |
+    Authentication and authorization service providing JWT-based authentication
+    for FRANK platform. Manages user identities, groups, MFA, and service accounts.
+    Used in Stage 3+ cloud deployments.
+
+  responsibilities:
+    - User identity management (create, update, delete)
+    - Authentication (username/password, MFA)
+    - JWT token issuance and validation
+    - Access tier group membership
+    - Service account management
+    - Password policies and MFA enforcement
+
+  cognito_components:
+    user_pool:
+      name: frank-user-pool
+      purpose: Central identity store for all FRANK users
+      features:
+        - Username/password authentication
+        - Email verification
+        - TOTP-based MFA
+        - Password policies
+        - Account recovery
+
+    user_groups:
+      - PUBLIC
+      - OBSERVER
+      - CONTRIBUTOR
+      - PARTNER
+      - CORE_MEMBER
+
+    app_client:
+      name: frank-app-client
+      auth_flows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+      token_validity:
+        access_token: 1 hour
+        id_token: 1 hour
+        refresh_token: 30 days
+
+  authentication_flows:
+    - name: Username/Password Login
+      endpoints:
+        - InitiateAuth
+        - RespondToAuthChallenge (for MFA)
+      outputs:
+        - AccessToken (JWT)
+        - IdToken (JWT with user claims)
+        - RefreshToken
+
+    - name: Service Account Login
+      description: Automated authentication for threat feed ingestion
+      method: Username + generated password
+      outputs: Same as user login
+      use_cases:
+        - Automated threat intelligence submission
+        - API integration
+        - Monitoring and health checks
+
+    - name: Token Refresh
+      endpoint: InitiateAuth with REFRESH_TOKEN_AUTH
+      inputs: RefreshToken
+      outputs: New AccessToken and IdToken
+
+    - name: Logout
+      description: Revoke refresh tokens in PostgreSQL
+      note: Cognito tokens cannot be revoked, tracked in application DB
+
+  jwt_token_structure:
+    access_token:
+      claims:
+        - sub (user ID)
+        - username
+        - cognito:groups (access tiers)
+        - token_use = "access"
+        - exp (expiration)
+        - iat (issued at)
+
+    id_token:
+      claims:
+        - sub (user ID)
+        - email
+        - email_verified
+        - cognito:groups
+        - custom:organization_id
+        - token_use = "id"
+
+  integration_with_frank:
+    - Sightings API validates JWT on every request
+    - Management API uses Cognito for user CRUD
+    - Access tier determined from cognito:groups claim
+    - No database lookups for authentication (stateless)
+    - Refresh tokens tracked in PostgreSQL for logout
+
+  mfa_support:
+    type: TOTP (Time-based One-Time Password)
+    apps:
+      - Google Authenticator
+      - Authy
+      - Microsoft Authenticator
+    enrollment:
+      - User requests MFA setup
+      - Cognito generates secret key
+      - User scans QR code in authenticator app
+      - User provides verification code
+      - MFA enabled for account
+
+  service_accounts:
+    creation:
+      - Created via Management API
+      - Assigned to organization
+      - Added to appropriate access tier group
+      - Generated password (32 chars, high entropy)
+    authentication:
+      - Same flow as regular users
+      - No MFA required
+      - Long-lived credentials
+    use_cases:
+      - Automated threat feed submission
+      - Security tool integration
+      - Monitoring and alerting
+
+  security:
+    - Password requirements (min 12 chars, complexity)
+    - MFA optional but recommended for CORE_MEMBER
+    - Account lockout after failed attempts
+    - Email verification required
+    - Refresh token rotation
+    - No password reuse
+
+  deployment:
+    stage1: N/A (local auth only)
+    stage2: N/A (LocalStack simulation)
+    stage3: AWS Cognito User Pool in us-east-1
+    stage4: AWS Cognito (cloud-agnostic alternative TBD)
+
+  limitations:
+    - Cannot revoke JWT tokens before expiration (1 hour TTL)
+    - Refresh tokens tracked in PostgreSQL for logout
+    - Group membership changes require new token
+    - Rate limits on authentication API
+
+  observability:
+    - CloudWatch Logs for authentication events
+    - Sign-in metrics (success/failure rates)
+    - MFA enrollment metrics
+    - User pool analytics
+
+related_specs:
+  - .openspec/specs/012-authentication/spec.md
+  - .openspec/specs/010-sightings-api/spec.md
+  - .openspec/specs/011-management-api/spec.md
+
+related_adrs:
+  - docs/adr/0005-cognito-authentication.md
+  - docs/adr/0003-tiered-access-control-model.md
+
+aws_resources:
+  - CognitoUserPool (frank-user-pool)
+  - CognitoUserPoolClient (frank-app-client)
+  - CognitoUserPoolGroups (PUBLIC, OBSERVER, CONTRIBUTOR, PARTNER, CORE_MEMBER)
+
+cost_considerations:
+  - Pay per MAU (Monthly Active User)
+  - Free tier: 50,000 MAUs
+  - MFA adds cost per authentication
+  - Advanced security features (compromised credentials) add cost
