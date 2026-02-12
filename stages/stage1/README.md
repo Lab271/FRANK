@@ -253,8 +253,8 @@ Stage 1 **is the baseline** - there is no simpler fallback. All other stages can
 
 ## Related Documentation
 
-- [ADR-0001: Four-Stage Infrastructure Evolution](../../docs/adr/0001-four-stage-infrastructure-evolution.md) - Stage rationale
-- [ADR-0010: Stages vs Environments](../../docs/adr/0010-stages-vs-environments.md) - Stage/environment distinction
+- [ADR-0001: Four-Stage Infrastructure Evolution](../../.openspec/architecture/decisions/0001-four-stage-infrastructure-evolution.md) - Stage rationale
+- [ADR-0010: Stages vs Environments](../../.openspec/architecture/decisions/0010-stages-vs-environments.md) - Stage/environment distinction
 - [Implementation Plan](../../docs/implementation_plan.md) - Detailed roadmap
 - [Evolutionary Design](../../docs/evolutionary_design.md) - Design philosophy
 - [environments/local-python/README.md](../../environments/local-python/README.md) - Deployment guide

@@ -1,0 +1,107 @@
+# Sightings API Resource Definition
+# Extracted from: .openspec/specs/010-sightings-api/spec.md
+
+resource:
+  id: sightings-api
+  name: Sightings API
+  type: container
+  technology: FastAPI
+
+  description: |
+    High-volume threat intelligence submission and query API. Primary interface
+    for service accounts and automated threat feed ingestion. Designed for
+    2,000+ submissions/min with stateless JWT authentication.
+
+  responsibilities:
+    - Accept threat intelligence submissions with observables
+    - Query submissions with access tier filtering
+    - Query observables by type with pagination
+    - Provide platform statistics filtered by access tier
+    - Health monitoring for load balancers
+
+  interfaces:
+    - id: submit-endpoint
+      name: POST /submit
+      type: http-rest
+      authentication: Bearer JWT
+      description: Submit threat intelligence with observables
+      access_tiers:
+        - CONTRIBUTOR
+        - PARTNER
+        - CORE_MEMBER
+
+    - id: get-submission
+      name: GET /submissions/{id}
+      type: http-rest
+      authentication: Bearer JWT
+      description: Retrieve submission with access filtering
+
+    - id: query-observables
+      name: GET /observables
+      type: http-rest
+      authentication: Bearer JWT
+      description: Query observables with type filtering
+      parameters:
+        - observable_type (optional)
+        - limit (optional, default 100)
+        - offset (optional)
+
+    - id: health-check
+      name: GET /health
+      type: http-rest
+      authentication: none
+      description: Basic health check for ALB probes
+      sla: < 100ms response time
+
+    - id: deep-health-check
+      name: GET /health/deep
+      type: http-rest
+      authentication: none
+      description: Component health validation
+
+  dependencies:
+    - core-library: Uses Pydantic models for validation
+    - storage-layer: Persists and queries threat data
+    - aws-cognito: JWT token validation (Stage 3)
+
+  deployment:
+    stage1: SQLite database, local FastAPI server
+    stage2: DynamoDB, Docker container on LocalStack
+    stage3: DynamoDB, ECS Fargate with ALB, Auto Scaling (2-10 tasks)
+    stage4: ScyllaDB, Kubernetes with HPA
+
+  performance:
+    throughput: 2,000+ submissions/min
+    response_time:
+      p95: < 200ms
+      p99: < 500ms
+    availability: 99.9% (Stage 3+)
+
+  security:
+    - JWT Bearer token authentication
+    - Access tier enforcement at repository layer
+    - Field masking based on access level
+    - No database lookups for auth (stateless)
+
+  observability:
+    - Request/response logging with timing
+    - CloudWatch metrics (Stage 3)
+    - Structured JSON logs
+    - Health check endpoints
+
+related_specs:
+  - .openspec/specs/010-sightings-api/spec.md
+  - .openspec/specs/012-authentication/spec.md
+  - .openspec/specs/001-submission/spec.md
+
+related_adrs:
+  - .openspec/architecture/decisions/0005-cognito-authentication.md
+  - .openspec/architecture/decisions/0003-tiered-access-control-model.md
+
+implementation:
+  - src/frank/main/api.py
+  - src/frank/api/endpoints.py
+
+tests:
+  - tests/integration/features/frank_server_api.feature
+  - tests/unit/api/

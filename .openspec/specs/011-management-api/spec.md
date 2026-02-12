@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** Platform Team
-- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md), [ADR-0006](docs/adr/0006-admin-mvc-architecture.md)
+- **Related ADR:** [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md), [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md), [ADR-0006](.openspec/architecture/decisions/007-admin-mvc-architecture.md)
 **Implementation:** src/frank/management/api.py
 - **Database:** PostgreSQL (Stage 3+), SQLite (Stages 1-2)
 **Tests:** tests/integration/features/management_api_users.feature
@@ -62,7 +62,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Returns 404 Not Found for missing organisations
   - [ ] Returns 409 Conflict for duplicate organisations
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+- **Related ADR(s)**: [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md)
 
 #### Scenario: Creating new organisation
 - GIVEN an authenticated CORE_MEMBER user
@@ -96,7 +96,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Cascading delete removes members when organisation deleted
   - [ ] Returns 409 Conflict if user already a member
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+- **Related ADR(s)**: [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md)
 
 #### Scenario: Adding member to organisation
 - GIVEN an organisation "identity--rabobank" exists
@@ -131,7 +131,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Auto-generates secure password (32 chars) for service accounts
   - [ ] Returns generated password in response for service accounts
 - **Stage Availability**: Stages 3-4 (Cognito integration), Stages 1-2 (mock)
-- **Related ADR(s)**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+- **Related ADR(s)**: [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md)
 
 #### Scenario: Creating human user account
 - GIVEN a CORE_MEMBER creating user for organisation "identity--rabobank"
@@ -166,7 +166,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] GET /v1/users/{username}/mfa/status checks MFA status (OBSERVER+)
   - [ ] Returns 400 Bad Request for invalid TOTP codes
 - **Stage Availability**: Stages 3-4 (Cognito MFA), Stages 1-2 (mock)
-- **Related ADR(s)**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+- **Related ADR(s)**: [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md)
 
 #### Scenario: MFA enrollment workflow
 - GIVEN a user without MFA enabled
@@ -203,7 +203,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Returns 401 Unauthorized for invalid credentials
   - [ ] Logs all authentication events
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+- **Related ADR(s)**: [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md)
 
 #### Scenario: Successful user login
 - GIVEN a user with username "john.doe@rabobank.nl" and valid password
@@ -1193,9 +1193,9 @@ class LoginResponse(BaseModel):
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication.md)
-  - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
-  - [ADR-0006: Admin MVC Architecture](docs/adr/0006-admin-mvc-architecture.md)
+  - [ADR-0005: Cognito Authentication Strategy](.openspec/architecture/decisions/006-cognito-authentication.md)
+  - [ADR-0009: PostgreSQL for Management API](.openspec/architecture/decisions/010-postgresql-management-api.md)
+  - [ADR-0006: Admin MVC Architecture](.openspec/architecture/decisions/007-admin-mvc-architecture.md)
 
 - **Related Specifications**:
   - [Authentication Patterns](../012-authentication/spec.md) - JWT token flows

@@ -1,0 +1,136 @@
+# Management API Resource Definition
+# Extracted from: .openspec/specs/011-management-api/spec.md
+
+resource:
+  id: management-api
+  name: Management API
+  type: container
+  technology: FastAPI
+
+  description: |
+    Organization and user management API for FRANK platform. Handles organization
+    CRUD operations, member management, and administrative tasks. Separate from
+    Sightings API to isolate high-volume threat intelligence from low-volume
+    management operations.
+
+  responsibilities:
+    - Organization lifecycle management (create, read, update, delete)
+    - Organization member management
+    - Access tier assignment
+    - Administrative operations
+    - Refresh token management for logout tracking
+
+  interfaces:
+    - id: create-organization
+      name: POST /organizations
+      type: http-rest
+      authentication: Bearer JWT
+      description: Create new organization
+      access_tiers:
+        - CORE_MEMBER
+
+    - id: get-organization
+      name: GET /organizations/{id}
+      type: http-rest
+      authentication: Bearer JWT
+      description: Retrieve organization details
+
+    - id: list-organizations
+      name: GET /organizations
+      type: http-rest
+      authentication: Bearer JWT
+      description: List all organizations
+      access_tiers:
+        - CORE_MEMBER
+
+    - id: update-organization
+      name: PUT /organizations/{id}
+      type: http-rest
+      authentication: Bearer JWT
+      description: Update organization details
+      access_tiers:
+        - CORE_MEMBER
+
+    - id: delete-organization
+      name: DELETE /organizations/{id}
+      type: http-rest
+      authentication: Bearer JWT
+      description: Delete organization
+      access_tiers:
+        - CORE_MEMBER
+
+    - id: add-member
+      name: POST /organizations/{id}/members
+      type: http-rest
+      authentication: Bearer JWT
+      description: Add member to organization
+
+    - id: remove-member
+      name: DELETE /organizations/{id}/members/{user_id}
+      type: http-rest
+      authentication: Bearer JWT
+      description: Remove member from organization
+
+  dependencies:
+    - core-library: Uses Pydantic models for validation
+    - postgresql-impl: Persists organization and member data (Stage 3+)
+    - sqlite-impl: Local development and testing (Stage 1-2)
+    - aws-cognito: JWT token validation and user management (Stage 3)
+
+  deployment:
+    stage1: SQLite database, local FastAPI server
+    stage2: SQLite/MySQL, Docker container
+    stage3: PostgreSQL RDS, ECS Fargate with ALB
+    stage4: PostgreSQL/MongoDB, Kubernetes
+
+  performance:
+    throughput: "Low volume (< 100 req/min)"
+    response_time:
+      p95: "< 500ms"
+      p99: "< 1s"
+    availability: "99.5% (lower than Sightings API)"
+
+  security:
+    - JWT Bearer token authentication
+    - RBAC with access tier enforcement
+    - CORE_MEMBER required for administrative operations
+    - Refresh token tracking for logout functionality
+    - Audit logging for all management operations
+
+  data_model:
+    organization:
+      - organization_id (UUID)
+      - name
+      - access_tier
+      - created_at
+      - updated_at
+      - metadata (JSON)
+
+    member:
+      - user_id (from Cognito)
+      - organization_id
+      - role
+      - joined_at
+
+  separation_rationale: |
+    Management API is separate from Sightings API to:
+    - Isolate high-volume threat intelligence from low-volume admin operations
+    - Use different databases (PostgreSQL for relational data vs DynamoDB for high-throughput)
+    - Apply different scaling policies (management is mostly steady-state)
+    - Enable independent deployment and monitoring
+
+related_specs:
+  - .openspec/specs/011-management-api/spec.md
+  - .openspec/specs/012-authentication/spec.md
+
+related_adrs:
+  - .openspec/architecture/decisions/0005-cognito-authentication.md
+  - .openspec/architecture/decisions/0003-tiered-access-control-model.md
+
+implementation:
+  - src/frank/management/api.py
+  - src/frank/api/management_endpoints.py
+
+tests:
+  - tests/integration/features/management_api.feature
+  - tests/unit/api/test_management.py

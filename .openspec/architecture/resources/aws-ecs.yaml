@@ -1,0 +1,177 @@
+# AWS ECS Fargate Resource Definition
+# Extracted from: .openspec/specs/030-infrastructure-ecs-fargate/spec.md
+
+resource:
+  id: aws-ecs
+  name: AWS ECS Fargate
+  type: external-system
+  technology: AWS ECS Fargate
+
+  description: |
+    Container orchestration platform for running FRANK APIs in AWS Cloud (Stage 3).
+    Provides serverless container execution with auto-scaling, health checks, and
+    integration with ALB for load balancing.
+
+  responsibilities:
+    - Container orchestration and lifecycle management
+    - Auto-scaling based on CPU, memory, and request rate
+    - Health monitoring and automatic recovery
+    - Integration with Application Load Balancer
+    - CloudWatch logging and metrics
+    - Zero-downtime deployments
+
+  architecture:
+    compute_type: Fargate (serverless)
+    cluster: frank-cluster
+    services:
+      - sightings-api-service
+      - management-api-service
+
+  task_definition:
+    family: frank-api
+    cpu: 512 (0.5 vCPU)
+    memory: 1024 (1 GB)
+    network_mode: awsvpc
+    requires_compatibilities:
+      - FARGATE
+    containers:
+      - name: frank-api
+        image: "{account}.dkr.ecr.us-east-1.amazonaws.com/frank:latest"
+        port: 8000
+        environment:
+          - STAGE=3
+          - DATABASE_TYPE=dynamodb
+          - AWS_REGION=us-east-1
+        logging:
+          driver: awslogs
+          options:
+            group: /ecs/frank-api
+            region: us-east-1
+            stream_prefix: ecs
+
+  service_configuration:
+    desired_count: 2
+    min_count: 2
+    max_count: 10
+    deployment:
+      type: rolling
+      minimum_healthy_percent: 50
+      maximum_percent: 200
+    load_balancer:
+      target_group: frank-tg
+      container_name: frank-api
+      container_port: 8000
+
+  auto_scaling:
+    policies:
+      - name: cpu-scaling
+        metric: CPUUtilization
+        target: 70%
+        scale_out: "+1 task when > 70% for 2 minutes"
+        scale_in: "-1 task when < 50% for 5 minutes"
+
+      - name: memory-scaling
+        metric: MemoryUtilization
+        target: 80%
+        scale_out: "+1 task when > 80% for 2 minutes"
+        scale_in: "-1 task when < 60% for 5 minutes"
+
+      - name: request-rate-scaling
+        metric: RequestCountPerTarget
+        target: 1000 requests/min per task
+        scale_out: "+2 tasks when > 1000 req/min"
+        scale_in: "-1 task when < 500 req/min"
+
+  health_checks:
+    - level: ECS Task Health
+      method: Docker HEALTHCHECK
+      endpoint: GET /health
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+    - level: ALB Target Group
+      method: HTTP GET
+      endpoint: /v1/health
+      interval: 30s
+      timeout: 5s
+      healthy_threshold: 2
+      unhealthy_threshold: 3
+      matcher: "200"
+
+  networking:
+    vpc:
+      - private_subnets (ECS tasks)
+      - public_subnets (ALB)
+    security_groups:
+      - ecs-tasks-sg (allows 8000 from ALB only)
+      - alb-sg (allows 443 from internet)
+    nat_gateway: Required for tasks to access DynamoDB/Cognito
+
+  deployment_strategy:
+    type: Blue/Green via rolling updates
+    steps:
+      - Build Docker image
+      - Push to ECR
+      - Update task definition with new image
+      - ECS creates new tasks
+      - Health checks pass
+      - ALB routes traffic to new tasks
+      - Old tasks gracefully shutdown
+
+  observability:
+    logging:
+      - CloudWatch Logs (/ecs/frank-api)
+      - JSON structured logs
+      - Request/response logging
+      - Error tracking
+
+    metrics:
+      - CPUUtilization
+      - MemoryUtilization
+      - RequestCountPerTarget
+      - TargetResponseTime
+      - HealthyHostCount
+      - UnhealthyHostCount
+
+    alarms:
+      - HighCPUUtilization (> 90% for 5 min)
+      - HighMemoryUtilization (> 95% for 5 min)
+      - NoHealthyTasks (count = 0)
+      - HighErrorRate (5xx > 5%)
+
+  cost_optimization:
+    - Fargate Spot for non-production (60-70% savings)
+    - Right-sized task definitions (512 CPU, 1024 MB)
+    - Auto-scaling to match demand
+    - CloudWatch Logs retention (7 days)
+
+  integration_with_frank:
+    - Runs FastAPI application containers
+    - Environment variables configure Stage 3 mode
+    - Connects to DynamoDB via VPC endpoints
+    - Validates JWT with Cognito JWKS
+    - Sends logs to CloudWatch
+    - Exposes /health for ALB probes
+
+  deployment_automation:
+    - Ansible playbook: environments/ansible/playbook.yml
+    - Docker build and ECR push
+    - CloudFormation stack updates
+    - Blue/Green rollout with health checks
+
+related_specs:
+  - .openspec/specs/030-infrastructure-ecs-fargate/spec.md
+
+related_adrs:
+  - .openspec/architecture/decisions/0008-ecs-fargate-deployment.md
+
+aws_resources:
+  - ECSCluster (frank-cluster)
+  - ECSService (frank-api-service)
+  - TaskDefinition (frank-api)
+  - TargetGroup (frank-tg)
+  - ApplicationLoadBalancer (frank-alb)
+  - CloudWatchLogGroup (/ecs/frank-api)
+  - AutoScalingTarget
+  - AutoScalingPolicy (cpu, memory, request-rate)

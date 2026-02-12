@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** API Team
-- **Related ADR:** [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR:** [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md), [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 **Implementation:** src/frank/main/api.py
 - **Database:** DynamoDB (Stages 2-3), SQLite (Stage 1)
 **Tests:** tests/integration/features/frank_server_api.feature
@@ -93,7 +93,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Returns 403 Forbidden for insufficient access tier (OBSERVER/PUBLIC)
   - [ ] Returns 422 Unprocessable Entity for invalid data
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR(s)**: [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 
 #### Scenario: Successful submission with PARTNER tier
 - GIVEN an authenticated user with PARTNER access tier
@@ -127,7 +127,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] PARTNER/CORE_MEMBER see full data
   - [ ] Returns 404 Not Found if submission doesn't exist
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR(s)**: [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 
 #### Scenario: PUBLIC tier filtered retrieval
 - GIVEN a submission with full threat intelligence data
@@ -160,7 +160,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] Returns list of observables with access filtering applied
   - [ ] Returns total count and pagination metadata
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR(s)**: [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 
 #### Scenario: Query IPv4 observables
 - GIVEN 15 IPv4 and 8 domain observables in the database
@@ -187,7 +187,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] CONTRIBUTOR+ see detailed breakdowns and trends
   - [ ] CORE_MEMBER sees platform-wide metrics
 - **Stage Availability**: All stages (1-4)
-- **Related ADR(s)**: [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+- **Related ADR(s)**: [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md)
 
 #### Scenario: CONTRIBUTOR tier detailed statistics
 - GIVEN a CONTRIBUTOR tier user
@@ -718,9 +718,9 @@ curl -H "Authorization: Bearer <token>" \
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication.md)
-  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
-  - [ADR-0008: Explicit Error Communication](docs/adr/0008-explicit-error-communication.md)
+  - [ADR-0005: Cognito Authentication Strategy](.openspec/architecture/decisions/006-cognito-authentication.md)
+  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/002-tiered-access-control.md)
+  - [ADR-0008: Explicit Error Communication](.openspec/architecture/decisions/009-explicit-error-communication.md)
 
 - **Related Specifications**:
   - [Authentication Patterns](../012-authentication/spec.md) - JWT token validation

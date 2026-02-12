@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 **Owner:** FRANK Core Team
 
-**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](.openspec/architecture/decisions/008-forgiving-input-strong-output.md)
 **Implementation:** [src/frank/core/models.py#L291-L369](src/frank/core/models.py)
 **Tests:** [tests/unit/core/test_sighting.py](tests/unit/core/test_sighting.py)
 
@@ -683,7 +683,7 @@ print(data["timestamp"])  # "2025-01-15T10:30:00+00:00"
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **ADR-0007**: [Forgiving Input, Strong Output](.openspec/architecture/decisions/008-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Sighting Object](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_a795guqsap3r)
 - **SIGMA**: [SIGMA Rule Format](https://github.com/SigmaHQ/sigma)
 - **MITRE ATT&CK**: [Enterprise Matrix](https://attack.mitre.org/)

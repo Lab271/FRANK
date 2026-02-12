@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** FRANK Platform Team
-**Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md), [ADR-0005](docs/adr/0005-cognito-authentication.md), [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+**Related ADRs:** [ADR-0002](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md), [ADR-0003](.openspec/architecture/decisions/002-tiered-access-control.md), [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md), [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md)
 **Implementation:** [`src/frank/storage/postgresql.py`](src/frank/storage/postgresql.py)
 **Tests:** [tests/unit/storage/test_dynamodb.py](tests/unit/storage/test_dynamodb.py)
 
@@ -81,7 +81,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] `update_organisation()` updates specific fields dynamically
   - [ ] `delete_organisation()` deletes organisation with cascading member deletion
 - **Stage Availability**: Stage 3+
-- **Related ADR**: [ADR-0009](docs/adr/0009-postgresql-management-api.md)
+- **Related ADR**: [ADR-0009](.openspec/architecture/decisions/010-postgresql-management-api.md)
 
 #### Scenario: Create and Update Organisation
 - GIVEN organisation data with STIX ID, type, and access level
@@ -101,7 +101,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] `get_organisation_member()` returns specific membership record
   - [ ] Service accounts (username prefix `service-*`) treated as regular members
 - **Stage Availability**: Stage 3+
-- **Related ADR**: [ADR-0005](docs/adr/0005-cognito-authentication.md)
+- **Related ADR**: [ADR-0005](.openspec/architecture/decisions/006-cognito-authentication.md)
 
 #### Scenario: Add Member with Role Upsert
 - GIVEN an organisation and a user with role "admin"
@@ -483,10 +483,10 @@ for org in orgs:
 ## References
 
 - **Related ADRs**:
-  - [ADR-0002: Repository Pattern for Database Abstraction](docs/adr/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
-  - [ADR-0005: Cognito Authentication](docs/adr/0005-cognito-authentication.md)
-  - [ADR-0009: PostgreSQL for Management API](docs/adr/0009-postgresql-management-api.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](.openspec/architecture/decisions/004-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/002-tiered-access-control.md)
+  - [ADR-0005: Cognito Authentication](.openspec/architecture/decisions/006-cognito-authentication.md)
+  - [ADR-0009: PostgreSQL for Management API](.openspec/architecture/decisions/010-postgresql-management-api.md)
 
 - **Related Specifications**:
   - [Base Interface Spec](../020-storage-base-interface/spec.md) -- interface this implements

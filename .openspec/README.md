@@ -236,7 +236,7 @@ Use this template for any specification in `core/`, `apis/`, or `storage/`:
 - **Version:** 1.0
 - **Last Updated:** YYYY-MM-DD
 - **Owner:** [Name/Team]
-- **Related ADRs:** [ADR-0002](../../docs/adr/0002-*.md), [ADR-0005](../../docs/adr/0005-*.md)
+- **Related ADRs:** [ADR-0002](../../.openspec/architecture/decisions/0002-*.md), [ADR-0005](../../.openspec/architecture/decisions/0005-*.md)
 - **Issue:** #123
 
 ## Purpose
@@ -329,7 +329,7 @@ Answers "What significant decisions did we make?"
 
 ## Quick Links
 
-- **ADR Index**: [docs/adr/index.md](../docs/adr/index.md)
+- **ADR Index**: [.openspec/architecture/decisions/index.md](../.openspec/architecture/decisions/index.md)
 - **Evolutionary Design**: [docs/evolutionary_design.md](../docs/evolutionary_design.md)
 - **Project CLAUDE.md**: [CLAUDE.md](../CLAUDE.md)
 - **Spike Documentation**: [tests/spikes/README.md](../tests/spikes/README.md)

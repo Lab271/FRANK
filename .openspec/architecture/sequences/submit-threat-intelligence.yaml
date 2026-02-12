@@ -1,0 +1,202 @@
+# Sequence: Submit Threat Intelligence
+# Key flow showing authentication, validation, and persistence
+
+sequence:
+  id: submit-threat-intelligence
+  name: Submit Threat Intelligence
+  description: |
+    End-to-end flow for submitting threat intelligence through the Sightings API.
+    Shows JWT authentication, Pydantic validation, access tier enforcement, and
+    database persistence.
+
+  actors:
+    - id: service-account
+      name: Service Account
+      type: external
+      description: Automated threat feed or security tool
+
+    - id: alb
+      name: Application Load Balancer
+      type: infrastructure
+      description: AWS ALB (Stage 3 only)
+
+    - id: sightings-api
+      name: Sightings API
+      type: container
+      description: FastAPI application
+
+    - id: cognito
+      name: AWS Cognito
+      type: external-system
+      description: JWT token validation (Stage 3)
+
+    - id: core-library
+      name: Core Library
+      type: component
+      description: Pydantic models and validation
+
+    - id: storage-layer
+      name: Storage Layer
+      type: component
+      description: Database abstraction
+
+    - id: database
+      name: Database
+      type: infrastructure
+      description: DynamoDB (Stage 3) or SQLite (Stage 1)
+
+  steps:
+    - step: 1
+      from: service-account
+      to: alb
+      action: POST /submit
+      payload: |
+        {
+          "observables": [
+            {"type": "ipv4", "value": "192.168.1.100"},
+            {"type": "domain", "value": "malicious.example.com"}
+          ],
+          "confidence_score": 0.85,
+          "severity": "HIGH",
+          "description": "Observed C2 communication"
+        }
+      headers:
+        Authorization: "Bearer <JWT_TOKEN>"
+
+    - step: 2
+      from: alb
+      to: sightings-api
+      action: Forward request
+      note: ALB performs SSL termination and health checks
+
+    - step: 3
+      from: sightings-api
+      to: cognito
+      action: Validate JWT token
+      description: Extract user_id and access_tier from JWT claims
+      stage: Stage 3 only (Stage 1 uses local validation)
+
+    - step: 4
+      from: cognito
+      to: sightings-api
+      action: Return user claims
+      payload: |
+        {
+          "user_id": "org-12345",
+          "access_tier": "PARTNER",
+          "organization_id": "org-12345"
+        }
+
+    - step: 5
+      from: sightings-api
+      to: sightings-api
+      action: Check access tier
+      validation: |
+        if access_tier not in [CONTRIBUTOR, PARTNER, CORE_MEMBER]:
+          return 403 Forbidden
+
+    - step: 6
+      from: sightings-api
+      to: core-library
+      action: Create Submission model
+      description: Parse and validate request data using Pydantic
+
+    - step: 7
+      from: core-library
+      to: core-library
+      action: Validate submission
+      validations:
+        - Generate STIX-compliant submission_id
+        - Validate observable types and formats
+        - Check confidence_score range (0-100)
+        - Normalize timestamps to UTC
+        - Validate submitter ≠ target
+
+    - step: 8
+      from: core-library
+      to: sightings-api
+      action: Return validated Submission
+      result: Submission object with submission_id
+
+    - step: 9
+      from: sightings-api
+      to: storage-layer
+      action: store_submission(submission)
+      description: Persist submission to database
+
+    - step: 10
+      from: storage-layer
+      to: database
+      action: INSERT submission
+      details: |
+        Stage 1: SQLite - Single table with JSON fields
+        Stage 3: DynamoDB - PutItem with GSI for queries
+
+    - step: 11
+      from: database
+      to: storage-layer
+      action: Confirm persistence
+      result: submission_id
+
+    - step: 12
+      from: storage-layer
+      to: sightings-api
+      action: Return submission_id
+
+    - step: 13
+      from: sightings-api
+      to: alb
+      action: 201 Created
+      response: |
+        {
+          "submission_id": "submission--a3f2c1d4-...",
+          "status": "accepted",
+          "timestamp": "2026-02-12T14:30:00Z"
+        }
+
+    - step: 14
+      from: alb
+      to: service-account
+      action: Forward response
+
+  error_flows:
+    - condition: Missing or invalid JWT token
+      step: 3
+      response: 401 Unauthorized
+      message: "Invalid or missing authentication token"
+
+    - condition: Insufficient access tier (OBSERVER or PUBLIC)
+      step: 5
+      response: 403 Forbidden
+      message: "Access tier CONTRIBUTOR or higher required for submission"
+
+    - condition: Invalid observable format
+      step: 7
+      response: 422 Unprocessable Entity
+      message: "Observable validation failed: Invalid IPv4 format"
+
+    - condition: Database connection failure
+      step: 10
+      response: 503 Service Unavailable
+      message: "Database temporarily unavailable"
+
+  performance_targets:
+    p50: < 100ms
+    p95: < 200ms
+    p99: < 500ms
+    throughput: 2,000+ submissions/min
+
+  observability:
+    - Request ID tracking throughout flow
+    - Timing metrics at each step
+    - Structured logs for debugging
+    - CloudWatch metrics (Stage 3)
+
+related_specs:
+  - .openspec/specs/010-sightings-api/spec.md
+  - .openspec/specs/001-submission/spec.md
+  - .openspec/specs/012-authentication/spec.md
+
+related_adrs:
+  - .openspec/architecture/decisions/0005-cognito-authentication.md
+  - .openspec/architecture/decisions/0007-forgiving-input-strong-output.md

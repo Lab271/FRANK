@@ -171,8 +171,8 @@ services:
 
 ## Related Documentation
 
-- [ADR-0012: Testing Philosophy and Local Services](../docs/adr/0012-testing-philosophy.md)
-- [ADR-0011: Spike Integration Process](../docs/adr/0011-spike-integration-process.md)
+- [ADR-0012: Testing Philosophy and Local Services](../.openspec/architecture/decisions/0012-testing-philosophy.md)
+- [ADR-0011: Spike Integration Process](../.openspec/architecture/decisions/0011-spike-integration-process.md)
 - [Spike 014: Cognito Authentication](../tests/spikes/014_cognito/README.md)
 
 ## Future Stubs

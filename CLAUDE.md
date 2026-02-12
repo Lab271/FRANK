@@ -368,7 +368,7 @@ cp -r specs/changes/_template specs/changes/001-background-tasks
 ```bash
 # If spec contains architectural decisions:
 # specs/changes/001-background-tasks/adr.md
-# → docs/adr/00XX-background-task-queue.md
+# → .openspec/architecture/decisions/00XX-background-task-queue.md
 
 # Link spec ↔ ADR bidirectionally
 ```
