@@ -19,24 +19,24 @@ resource:
     file: src/frank/storage/base.py
     methods:
       threat_intelligence:
-        - store_submission(submission: Submission) -> str
-        - get_submission_by_id(submission_id: str, access_level: AccessTier) -> Optional[Submission]
-        - query_observables(org_id: str, observable_type: str, ...) -> List[Observable]
-        - store_sighting(sighting: Sighting) -> str
-        - get_sighting_by_id(sighting_id: str) -> Optional[Sighting]
+        - "store_submission(submission: Submission) -> str"
+        - "get_submission_by_id(submission_id: str, access_level: AccessTier) -> Optional[Submission]"
+        - "query_observables(org_id: str, observable_type: str, ...) -> List[Observable]"
+        - "store_sighting(sighting: Sighting) -> str"
+        - "get_sighting_by_id(sighting_id: str) -> Optional[Sighting]"
 
       organization_management:
-        - upsert_organisation(org_data: dict) -> str
-        - get_organisation_by_id(org_id: str) -> Optional[dict]
-        - list_organisations() -> List[dict]
-        - delete_organisation(org_id: str) -> bool
+        - "upsert_organisation(org_data: dict) -> str"
+        - "get_organisation_by_id(org_id: str) -> Optional[dict]"
+        - "list_organisations() -> List[dict]"
+        - "delete_organisation(org_id: str) -> bool"
 
       access_control:
-        - _filter_submission_by_access_level(submission: Submission, access_level: AccessTier) -> Submission
-        - _filter_observable_by_access_level(observable: Observable, access_level: AccessTier) -> Observable
+        - "_filter_submission_by_access_level(submission: Submission, access_level: AccessTier) -> Submission"
+        - "_filter_observable_by_access_level(observable: Observable, access_level: AccessTier) -> Observable"
 
       health:
-        - health_check() -> dict
+        - "health_check() -> dict"
 
   implementations:
     - id: sqlite-impl

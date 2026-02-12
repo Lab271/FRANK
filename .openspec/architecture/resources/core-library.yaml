@@ -60,15 +60,15 @@ resource:
 
   validation_rules:
     - Submitter organization_id ≠ Hit Target organization_id
-    - Confidence scores: 0-100 range
-    - Timestamps: ISO 8601 format with UTC
+    - "Confidence scores: 0-100 range"
+    - "Timestamps: ISO 8601 format with UTC"
     - ObservableType matches value format
-    - STIX ID format: {type}--{uuid}
+    - "STIX ID format: {type}--{uuid}"
 
   serialization:
-    - JSON: ISO timestamps, enum values as strings
-    - YAML: Human-readable format
-    - Field aliases: Support both snake_case and camelCase
+    - "JSON: ISO timestamps, enum values as strings"
+    - "YAML: Human-readable format"
+    - "Field aliases: Support both snake_case and camelCase"
 
   design_patterns:
     - Pydantic v2 with ConfigDict(extra="ignore")
@@ -83,7 +83,7 @@ resource:
       - python >= 3.12
     internal: none (infrastructure-independent)
 
-  test_coverage: > 85%
+  test_coverage: "> 85%"
 
 related_specs:
   - .openspec/specs/001-submission/spec.md
