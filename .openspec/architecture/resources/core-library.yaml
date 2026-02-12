@@ -1,0 +1,106 @@
+# Core Library Resource Definition
+# Extracted from: .openspec/specs/001-submission/spec.md, 002-observable/spec.md
+
+resource:
+  id: core-library
+  name: Core Library
+  type: component
+  technology: Python 3.12 + Pydantic v2
+
+  description: |
+    Infrastructure-independent business logic for threat intelligence models.
+    Single source of truth for data structures that work unchanged across all
+    deployment stages (SQLite → DynamoDB → ScyllaDB).
+
+  philosophy:
+    - Be forgiving on input, strong on output (ADR-0007)
+    - STIX 2.1 compliance for interoperability
+    - Zero infrastructure dependencies
+    - Evolutionary design - same code across all stages
+
+  components:
+    - name: Submission Model
+      description: Root object aggregating submitter, target, sighting, observables
+      file: src/frank/core/models.py (L372-L521)
+      key_features:
+        - Automatic STIX-compliant ID generation
+        - Format versioning for backward compatibility
+        - Cross-field validation (submitter ≠ target)
+        - Multi-format serialization (JSON, YAML)
+        - Legacy format parsing
+
+    - name: Observable Model
+      description: Threat indicators (IPs, domains, hashes, URLs, emails)
+      file: src/frank/core/models.py (L28-L203)
+      key_features:
+        - 10+ observable types with validation
+        - STIX-compliant IDs
+        - Factory methods per type
+        - Normalization (lowercase domains, strip whitespace)
+        - Hash validation (MD5, SHA1, SHA256)
+
+    - name: Sighting Model
+      description: Threat observation details with observables
+      file: src/frank/core/models.py (L290-L370)
+      key_features:
+        - Network/File/Process observable categorization
+        - MITRE ATT&CK mapping
+        - ThreatContext aggregation
+        - Timestamp normalization
+
+    - name: Enums
+      description: Type-safe enumerations for all categorical data
+      file: src/frank/core/enum.py
+      types:
+        - ObservableType (ipv4, domain, hash_md5, etc.)
+        - AccessTier (PUBLIC, OBSERVER, CONTRIBUTOR, PARTNER, CORE_MEMBER)
+        - SeverityLevel (LOW, MEDIUM, HIGH, CRITICAL)
+        - TLPLevel (WHITE, GREEN, AMBER, RED)
+        - SightingType (OBSERVED, INDICATED, SUSPECTED)
+
+  validation_rules:
+    - Submitter organization_id ≠ Hit Target organization_id
+    - Confidence scores: 0-100 range
+    - Timestamps: ISO 8601 format with UTC
+    - ObservableType matches value format
+    - STIX ID format: {type}--{uuid}
+
+  serialization:
+    - JSON: ISO timestamps, enum values as strings
+    - YAML: Human-readable format
+    - Field aliases: Support both snake_case and camelCase
+
+  design_patterns:
+    - Pydantic v2 with ConfigDict(extra="ignore")
+    - Factory methods for common use cases
+    - model_validator for cross-field checks
+    - field_serializer for consistent output
+    - from_legacy_dict() for backward compatibility
+
+  dependencies:
+    external:
+      - pydantic >= 2.0
+      - python >= 3.12
+    internal: none (infrastructure-independent)
+
+  test_coverage: > 85%
+
+related_specs:
+  - .openspec/specs/001-submission/spec.md
+  - .openspec/specs/002-observable/spec.md
+  - .openspec/specs/003-sighting/spec.md
+  - .openspec/specs/004-submitter-target/spec.md
+
+related_adrs:
+  - docs/adr/0007-forgiving-input-strong-output.md
+
+implementation:
+  - src/frank/core/models.py
+  - src/frank/core/enum.py
+  - src/frank/core/exceptions.py
+
+tests:
+  - tests/unit/core/test_submission.py
+  - tests/unit/core/test_observable.py
+  - tests/unit/core/test_sighting.py
+  - tests/unit/core/test_enums.py
