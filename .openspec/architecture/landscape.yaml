@@ -1,19 +1,150 @@
 # System Landscape
-# Top-level view of your system and its external dependencies
+# Top-level view of FRANK threat intelligence platform
 
 landscape:
-  id: my-system
-  name: My System
+  id: frank
+  name: FRANK
   description: |
-    Brief description of your system
+    Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling (FRANK)
+    A threat intelligence platform demonstrating structured evolutionary software development.
+    Separates infrastructure complexity from functional complexity through four-stage evolution.
 
 resources:
-  # Define your top-level systems and external dependencies here
-  # Example:
-  # - id: main-app
-  #   name: Main Application
-  #   type: system
-  #   abstract: true
-  #   children: []
+  # Core FRANK Application
+  - id: frank-platform
+    name: FRANK Platform
+    type: system
+    description: |
+      Unified threat intelligence platform with single code library running across all stages
 
-relationships: []
+  # Sightings API - Threat Intelligence Submission and Query
+  - id: sightings-api
+    name: Sightings API
+    type: container
+    technology: FastAPI
+    description: |
+      REST API for submitting and querying threat intelligence sightings
+
+  # Management API - Organization and User Management
+  - id: management-api
+    name: Management API
+    type: container
+    technology: FastAPI
+    description: |
+      REST API for organization and user management operations
+
+  # Core Business Logic Library
+  - id: core-library
+    name: Core Library
+    type: component
+    technology: Python 3.12
+    description: |
+      Infrastructure-independent business logic (src/frank/core/)
+      - Pydantic v2 models (Observable, Submission, Sighting)
+      - Enums (ObservableType, AccessTier, SeverityLevel)
+      - Domain exceptions
+
+  # Storage Abstraction Layer
+  - id: storage-layer
+    name: Storage Layer
+    type: component
+    technology: Python 3.12
+    description: |
+      Database abstraction layer with multiple implementations
+
+  # Storage Implementations
+  - id: sqlite-impl
+    name: SQLite Implementation
+    type: component
+    technology: SQLite
+    description: |
+      Full implementation for Stage 1-2 (local development)
+
+  - id: dynamodb-impl
+    name: DynamoDB Implementation
+    type: component
+    technology: AWS DynamoDB
+    description: |
+      Threat intelligence operations for Stage 2-3 (cloud deployment)
+
+  - id: postgresql-impl
+    name: PostgreSQL Implementation
+    type: component
+    technology: PostgreSQL
+    description: |
+      Management API operations (organizations, members) for cloud deployments
+
+  # External Dependencies
+  - id: aws-cognito
+    name: AWS Cognito
+    type: external-system
+    description: |
+      Authentication and authorization service for cloud deployments
+
+  - id: aws-ecs
+    name: AWS ECS Fargate
+    type: external-system
+    description: |
+      Container orchestration for Stage 3 cloud deployment
+
+relationships:
+  # System Containment
+  - from: frank-platform
+    to: sightings-api
+    description: Contains - Sightings API is part of FRANK platform
+
+  - from: frank-platform
+    to: management-api
+    description: Contains - Management API is part of FRANK platform
+
+  - from: frank-platform
+    to: core-library
+    description: Contains - Core library is part of FRANK platform
+
+  - from: frank-platform
+    to: storage-layer
+    description: Contains - Storage layer is part of FRANK platform
+
+  # Storage Layer Containment
+  - from: storage-layer
+    to: sqlite-impl
+    description: Contains - SQLite implementation
+
+  - from: storage-layer
+    to: dynamodb-impl
+    description: Contains - DynamoDB implementation
+
+  - from: storage-layer
+    to: postgresql-impl
+    description: Contains - PostgreSQL implementation
+
+  # API Dependencies on Core Library
+  - from: sightings-api
+    to: core-library
+    description: Uses models and business logic
+
+  - from: management-api
+    to: core-library
+    description: Uses models and business logic
+
+  # API Dependencies on Storage Layer
+  - from: sightings-api
+    to: storage-layer
+    description: Uses - Persists and queries threat intelligence data
+
+  - from: management-api
+    to: storage-layer
+    description: Uses - Manages organizations and members
+
+  # Cloud Dependencies
+  - from: sightings-api
+    to: aws-cognito
+    description: Uses - JWT token validation (Stage 3)
+
+  - from: management-api
+    to: aws-cognito
+    description: Uses - JWT token validation (Stage 3)
+
+  - from: frank-platform
+    to: aws-ecs
+    description: Deployed on - Container orchestration (Stage 3)
