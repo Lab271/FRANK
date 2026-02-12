@@ -1,0 +1,19 @@
+# System Landscape
+# Top-level view of your system and its external dependencies
+
+landscape:
+  id: my-system
+  name: My System
+  description: |
+    Brief description of your system
+
+resources:
+  # Define your top-level systems and external dependencies here
+  # Example:
+  # - id: main-app
+  #   name: Main Application
+  #   type: system
+  #   abstract: true
+  #   children: []
+
+relationships: []
