@@ -7,7 +7,7 @@
 
 **Owner:** Security Team
 
-**Related ADRs:** [ADR-0005](docs/adr/0005-cognito-authentication.md)
+**Related ADRs:** [ADR-0005](.openspec/architecture/decisions/0005-cognito-authentication.md)
 **Related Spike:** [Spike 014: Cognito Integration](tests/spikes/014_cognito/README.md)
 **Implementation:** src/frank/auth/, tests/spikes/014_cognito/README.md (mock Cognito implementation)
 **Tests:** tests/unit/auth/, tests/spikes/014_cognito/
@@ -887,8 +887,8 @@ async def create_organisation(
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0005: Cognito Authentication Strategy](docs/adr/0005-cognito-authentication.md)
-  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0005: Cognito Authentication Strategy](.openspec/architecture/decisions/0005-cognito-authentication.md)
+  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
   - [Sightings API](../010-sightings-api/spec.md) - Uses these authentication patterns

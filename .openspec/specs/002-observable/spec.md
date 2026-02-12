@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 **Owner:** FRANK Core Team
 
-**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](.openspec/architecture/decisions/0007-forgiving-input-strong-output.md)
 **Implementation:** [src/frank/core/models.py#L29-L86](src/frank/core/models.py)
 **Tests:** [tests/unit/core/test_observable.py](tests/unit/core/test_observable.py)
 
@@ -545,7 +545,7 @@ data = observables.model_dump(by_alias=True, exclude_none=True)
 
 ## References
 
-- **ADR-0007**: [Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+- **ADR-0007**: [Forgiving Input, Strong Output](.openspec/architecture/decisions/0007-forgiving-input-strong-output.md)
 - **STIX 2.1**: [Cyber Observable Objects](https://docs.oasis-open.org/cti/stix/v2.1/os/stix-v2.1-os.html#_mlbmudhl16lr)
 - **Pydantic V2**: [Model Validators](https://docs.pydantic.dev/latest/concepts/validators/)
 - **Implementation**: [src/frank/core/models.py](src/frank/core/models.py)

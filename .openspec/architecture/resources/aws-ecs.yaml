@@ -164,7 +164,7 @@ related_specs:
   - .openspec/specs/030-infrastructure-ecs-fargate/spec.md
 
 related_adrs:
-  - docs/adr/0008-ecs-fargate-deployment.md
+  - .openspec/architecture/decisions/0008-ecs-fargate-deployment.md
 
 aws_resources:
   - ECSCluster (frank-cluster)

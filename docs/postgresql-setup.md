@@ -315,7 +315,7 @@ docker-compose.local.yml                 # PostgreSQL service
 docker/Dockerfile.management             # PostgreSQL libraries
 pyproject.toml                           # psycopg dependency
 tests/integration/environment.py         # BDD test reset
-docs/adr/0015-postgresql-management-api.md  # Architecture decision
+.openspec/architecture/decisions/0015-postgresql-management-api.md  # Architecture decision
 ```
 
 ## Next Steps

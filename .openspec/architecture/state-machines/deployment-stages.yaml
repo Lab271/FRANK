@@ -235,7 +235,7 @@ related_specs:
   - .openspec/specs/030-infrastructure-ecs-fargate/spec.md
 
 related_adrs:
-  - docs/adr/0001-evolutionary-four-stage-architecture.md
+  - .openspec/architecture/decisions/003-four-stage-infrastructure-evolution.md
 
 documentation:
   - docs/evolutionary_design.md

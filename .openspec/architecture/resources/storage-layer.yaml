@@ -126,7 +126,7 @@ related_specs:
   - .openspec/specs/023-storage-postgresql/spec.md
 
 related_adrs:
-  - docs/adr/0003-tiered-access-control-model.md
+  - .openspec/architecture/decisions/0003-tiered-access-control-model.md
 
 implementation:
   - src/frank/storage/base.py

@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** FRANK Platform Team
-**Related ADRs:** [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md), [ADR-0003](docs/adr/0003-tiered-access-control-model.md)
+**Related ADRs:** [ADR-0002](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md), [ADR-0003](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
 **Implementation:** [src/frank/storage/sqlite.py](src/frank/storage/sqlite.py)
 **Tests:** [tests/unit/storage/test_sqlitedatabase.py](tests/unit/storage/test_sqlitedatabase.py)
 
@@ -63,7 +63,7 @@ interpreted as described in [RFC 2119](https://datatracker.ietf.org/doc/html/rfc
   - [ ] API key methods work (create, get_by_hash, list, update, revoke, update_last_used)
   - [ ] Health check returns table counts and database file size
 - **Stage Availability**: All stages (1-4, as fallback)
-- **Related ADR**: [ADR-0002](docs/adr/0002-repository-pattern-database-abstraction.md)
+- **Related ADR**: [ADR-0002](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md)
 
 #### Scenario: Creating and retrieving organisation
 - GIVEN a fresh SQLite database
@@ -779,8 +779,8 @@ The SQLite implementation provides additional methods beyond the base interface:
 ## 8. References
 
 - **Related ADRs**:
-  - [ADR-0002: Repository Pattern for Database Abstraction](docs/adr/0002-repository-pattern-database-abstraction.md)
-  - [ADR-0003: Tiered Access Control Model](docs/adr/0003-tiered-access-control-model.md)
+  - [ADR-0002: Repository Pattern for Database Abstraction](.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md)
+  - [ADR-0003: Tiered Access Control Model](.openspec/architecture/decisions/0003-tiered-access-control-model.md)
 
 - **Related Specifications**:
   - [Base Interface Spec](../020-storage-base-interface/spec.md) -- interface this implements

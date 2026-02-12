@@ -10,7 +10,7 @@ The FRANK platform has transitioned to unified AWS Cognito authentication for al
 
 See:
 - `docs/highlevel_design.md` - Architecture overview
-- `docs/adr/0015-postgresql-management-api.md` - PostgreSQL decision
+- `.openspec/architecture/decisions/0015-postgresql-management-api.md` - PostgreSQL decision
 
 ## Schema Change
 

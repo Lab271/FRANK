@@ -92,7 +92,7 @@ related_specs:
   - .openspec/specs/004-submitter-target/spec.md
 
 related_adrs:
-  - docs/adr/0007-forgiving-input-strong-output.md
+  - .openspec/architecture/decisions/0007-forgiving-input-strong-output.md
 
 implementation:
   - src/frank/core/models.py

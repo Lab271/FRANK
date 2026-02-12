@@ -2,7 +2,7 @@
 
 Spikes are time-boxed experiments (1-4 hours) validating hypotheses before integration into the main codebase.
 
-**For complete spike process documentation, see [ADR-0011: Spike Integration Process](../../docs/adr/0011-spike-integration-process.md)**
+**For complete spike process documentation, see [ADR-0011: Spike Integration Process](../../.openspec/architecture/decisions/0011-spike-integration-process.md)**
 
 ## Status Legend
 
@@ -80,11 +80,11 @@ All AWS spikes integrated into **Stage 3** deployment:
 
 ## Related ADRs
 
-- [ADR-0011: Spike Integration Process](../../docs/adr/0011-spike-integration-process.md) - Spike lifecycle and integration patterns
-- [ADR-0002: Repository Pattern Database Abstraction](../../docs/adr/0002-repository-pattern-database-abstraction.md) - Storage layer patterns (Spikes 004, 006)
-- [ADR-0003: Tiered Access Control Model](../../docs/adr/0003-tiered-access-control-model.md) - Access filtering (Spike 002)
-- [ADR-0005: AWS Cognito Authentication](../../docs/adr/0005-cognito-authentication.md) - Authentication patterns (Spike 014)
-- [ADR-0007: Forgiving Input, Strong Output](../../docs/adr/0007-forgiving-input-strong-output.md) - Pydantic validation (Spike 003)
+- [ADR-0011: Spike Integration Process](../../.openspec/architecture/decisions/0011-spike-integration-process.md) - Spike lifecycle and integration patterns
+- [ADR-0002: Repository Pattern Database Abstraction](../../.openspec/architecture/decisions/0002-repository-pattern-database-abstraction.md) - Storage layer patterns (Spikes 004, 006)
+- [ADR-0003: Tiered Access Control Model](../../.openspec/architecture/decisions/0003-tiered-access-control-model.md) - Access filtering (Spike 002)
+- [ADR-0005: AWS Cognito Authentication](../../.openspec/architecture/decisions/0005-cognito-authentication.md) - Authentication patterns (Spike 014)
+- [ADR-0007: Forgiving Input, Strong Output](../../.openspec/architecture/decisions/0007-forgiving-input-strong-output.md) - Pydantic validation (Spike 003)
 
 ## Evolution Timeline
 
@@ -102,7 +102,7 @@ Foundation (001-007)     AWS Infrastructure (009-013)     Advanced (014-015)
 
 ## Spike Development Process
 
-**See [ADR-0011: Spike Integration Process](../../docs/adr/0011-spike-integration-process.md) for complete lifecycle documentation.**
+**See [ADR-0011: Spike Integration Process](../../.openspec/architecture/decisions/0011-spike-integration-process.md) for complete lifecycle documentation.**
 
 ### Quick Reference: Creating a New Spike
 

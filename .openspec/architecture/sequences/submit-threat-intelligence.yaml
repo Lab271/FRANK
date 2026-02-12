@@ -198,5 +198,5 @@ related_specs:
   - .openspec/specs/012-authentication/spec.md
 
 related_adrs:
-  - docs/adr/0005-cognito-authentication.md
-  - docs/adr/0007-forgiving-input-strong-output.md
+  - .openspec/architecture/decisions/0005-cognito-authentication.md
+  - .openspec/architecture/decisions/0007-forgiving-input-strong-output.md

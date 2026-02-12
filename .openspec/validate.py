@@ -238,9 +238,9 @@ class SpecValidator:
             # Normalize path to project-root-relative format
             normalized_path = adr_path
 
-            # Convert old relative paths (../../docs/adr/) to project-root relative (docs/adr/)
-            if normalized_path.startswith("../../docs/adr/"):
-                normalized_path = normalized_path.replace("../../docs/adr/", "docs/adr/")
+            # Convert old relative paths (../../.openspec/architecture/decisions/) to project-root relative (.openspec/architecture/decisions/)
+            if normalized_path.startswith("../../.openspec/architecture/decisions/"):
+                normalized_path = normalized_path.replace("../../.openspec/architecture/decisions/", ".openspec/architecture/decisions/")
             elif normalized_path.startswith("../../"):
                 # Strip leading ../../
                 normalized_path = normalized_path.replace("../../", "")

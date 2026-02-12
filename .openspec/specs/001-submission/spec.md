@@ -6,7 +6,7 @@
 **Date:** 2026-02-06
 
 **Owner:** FRANK Core Team
-**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+**Related ADRs:** [ADR-0007: Forgiving Input, Strong Output](.openspec/architecture/decisions/0007-forgiving-input-strong-output.md)
 **Implementation:** [src/frank/core/models.py#L372-L521](src/frank/core/models.py)
 **Tests:** [tests/unit/core/test_submission.py](tests/unit/core/test_submission.py)
 
@@ -1039,7 +1039,7 @@ except ValidationError as e:
 - **Pydantic v2**: https://docs.pydantic.dev/latest/ (Data validation)
 
 - **Related ADRs**:
-  - [ADR-0007: Forgiving Input, Strong Output](docs/adr/0007-forgiving-input-strong-output.md)
+  - [ADR-0007: Forgiving Input, Strong Output](.openspec/architecture/decisions/0007-forgiving-input-strong-output.md)
 
 - **Related Specifications**:
   - [Observable](../002-observable/spec.md)

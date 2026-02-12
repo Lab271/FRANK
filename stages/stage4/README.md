@@ -371,8 +371,8 @@ ansible-playbook ansible/playbook.yml --tags create
 
 ## Related Documentation
 
-- [ADR-0001: Four-Stage Infrastructure Evolution](../../docs/adr/0001-four-stage-infrastructure-evolution.md) - Stage 4 rationale
-- [ADR-0010: Stages vs Environments](../../docs/adr/0010-stages-vs-environments.md) - Understanding stages
+- [ADR-0001: Four-Stage Infrastructure Evolution](../../.openspec/architecture/decisions/0001-four-stage-infrastructure-evolution.md) - Stage 4 rationale
+- [ADR-0010: Stages vs Environments](../../.openspec/architecture/decisions/0010-stages-vs-environments.md) - Understanding stages
 - [Implementation Plan](../../docs/implementation_plan.md) - Stage 4 roadmap
 - [DATABASE_CONNECTION_GUIDE.md](DATABASE_CONNECTION_GUIDE.md) - Database setup guide
 - [stages/stage3/README.md](../stage3/README.md) - Previous stage documentation

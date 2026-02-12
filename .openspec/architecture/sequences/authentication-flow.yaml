@@ -278,4 +278,4 @@ related_specs:
   - .openspec/specs/011-management-api/spec.md
 
 related_adrs:
-  - docs/adr/0005-cognito-authentication.md
+  - .openspec/architecture/decisions/0005-cognito-authentication.md

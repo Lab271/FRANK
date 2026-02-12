@@ -4,7 +4,7 @@
 
 FRANK evolves through **four controlled infrastructure stages**, each introducing exactly one major complexity dimension while maintaining a fully working system. This staged approach separates infrastructure learning from functional complexity, enabling incremental mastery without overwhelming the development team.
 
-**Key Principle**: Stages represent **infrastructure complexity levels**, not deployment targets. A single stage can run in multiple environments (local Python, local Docker, AWS, etc.). See [ADR-0010: Stages vs Environments](../docs/adr/0010-stages-vs-environments.md) for the critical distinction.
+**Key Principle**: Stages represent **infrastructure complexity levels**, not deployment targets. A single stage can run in multiple environments (local Python, local Docker, AWS, etc.). See [ADR-0010: Stages vs Environments](../.openspec/architecture/decisions/0010-stages-vs-environments.md) for the critical distinction.
 
 ## Stages Quick Reference
 
@@ -185,9 +185,9 @@ ansible-playbook ../../ansible/playbook.yml --tags create
 ## Related Documentation
 
 ### Architectural Decision Records
-- [ADR-0001: Four-Stage Infrastructure Evolution](../docs/adr/0001-four-stage-infrastructure-evolution.md) - Why stages exist
-- [ADR-0010: Stages vs Environments](../docs/adr/0010-stages-vs-environments.md) - Critical distinction
-- [ADR-0011: Spike Integration Process](../docs/adr/0011-spike-integration-process.md) - Validation approach
+- [ADR-0001: Four-Stage Infrastructure Evolution](../.openspec/architecture/decisions/0001-four-stage-infrastructure-evolution.md) - Why stages exist
+- [ADR-0010: Stages vs Environments](../.openspec/architecture/decisions/0010-stages-vs-environments.md) - Critical distinction
+- [ADR-0011: Spike Integration Process](../.openspec/architecture/decisions/0011-spike-integration-process.md) - Validation approach
 
 ### Planning and Design
 - [Implementation Plan](../docs/implementation_plan.md) - Detailed stage roadmap
