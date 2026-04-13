@@ -52,7 +52,7 @@ dependencies = [
     "ruff>=0.14.0",
     "textual>=0.50.0",
     "uvicorn>=0.38.0",
-    "pytest>=9.0.2",
+    "pytest>=9.0.3",
 ]
 
 [project.scripts]
@@ -61,7 +61,7 @@ frank-web = "frank.web.server:main"
 
 [project.optional-dependencies]
 dev = [
-    "pytest>=8.0.0",
+    "pytest>=9.0.3",
     "pytest-asyncio>=0.24.0",
     "pytest-bdd>=8.0.0",
     "pytest-cov>=7.0.0",
