@@ -5,6 +5,7 @@
 .PHONY: help up down logs demo seed clean
 
 DEMO_PORT ?= 2718
+DOCKER_COMPOSE := $(shell command -v docker-compose 2>/dev/null || echo "docker compose")
 
 help:
 	@echo "FRANK Demo Commands:"
@@ -19,23 +20,23 @@ help:
 	@echo "Quick start:"
 	@echo "  make up seed demo"
 
-# Start all FRANK containers
+# Start LocalStack for data inspection (optional)
 up:
-	docker compose up -d
+	$(DOCKER_COMPOSE) up -d
 	@echo ""
-	@echo "FRANK instances starting..."
-	@echo "  - Central: http://localhost:8000/docs"
-	@echo "  - SBP:     http://localhost:8001/docs"
-	@echo "  - Partner: http://localhost:8002/docs"
+	@echo "LocalStack starting..."
 	@echo "  - DynamoDB Admin: http://localhost:8100"
+	@echo ""
+	@echo "For live FRANK API, use:"
+	@echo "  cd ../environments/local-docker && make stage2"
 
 # Stop containers
 down:
-	docker compose down
+	$(DOCKER_COMPOSE) down
 
 # Follow logs
 logs:
-	docker compose logs -f
+	$(DOCKER_COMPOSE) logs -f
 
 # Run demo launcher
 demo:
@@ -65,5 +66,5 @@ seed:
 
 # Clean everything
 clean:
-	docker compose down -v
+	$(DOCKER_COMPOSE) down -v
 	@echo "Containers stopped and volumes removed"
