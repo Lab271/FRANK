@@ -1,0 +1,146 @@
+# FRANK Demo — Multi-instance Setup
+#
+# Runs three FRANK instances for demonstrating federation:
+# - frank-central: Central FRANK (port 8000) — scenarios 1-3
+# - frank-sbp: SBP MDR FRANK (port 8001) — scenario 4-5
+# - frank-partner: Partner FRANK (port 8002) — scenario 4-5
+#
+# Usage:
+#   docker compose up -d
+#   docker compose logs -f
+#   docker compose down
+#
+# Access:
+#   - FRANK Central API: http://localhost:8000/docs
+#   - FRANK SBP API:     http://localhost:8001/docs
+#   - FRANK Partner API: http://localhost:8002/docs
+#   - DynamoDB Admin:    http://localhost:8100
+
+services:
+  # Shared LocalStack for DynamoDB
+  localstack:
+    image: localstack/localstack:latest
+    container_name: demo-localstack
+    ports:
+      - "4566:4566"
+    environment:
+      - SERVICES=dynamodb
+      - DEBUG=0
+      - AWS_DEFAULT_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+    networks:
+      - frank-demo-net
+
+  # DynamoDB Admin UI
+  dynamodb-admin:
+    image: aaronshaf/dynamodb-admin:latest
+    container_name: demo-dynamodb-admin
+    ports:
+      - "8100:8001"
+    environment:
+      - DYNAMO_ENDPOINT=http://localstack:4566
+      - AWS_REGION=eu-west-1
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+    depends_on:
+      localstack:
+        condition: service_healthy
+    networks:
+      - frank-demo-net
+
+  # FRANK Central — scenarios 1-3 (single-instance demos)
+  frank-central:
+    build:
+      context: ..
+      dockerfile: stages/stage3/Dockerfile
+    container_name: frank-central
+    ports:
+      - "8000:8000"
+    environment:
+      - FRANK_ENVIRONMENT=localstack
+      - FRANK_INSTANCE_ID=central
+      - ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+      - DYNAMODB_TABLE=frank-central
+      - DYNAMODB_AUDIT_TABLE=frank-central-audit
+    depends_on:
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - frank-demo-net
+
+  # FRANK SBP — MDR provider instance (scenario 4-5)
+  frank-sbp:
+    build:
+      context: ..
+      dockerfile: stages/stage3/Dockerfile
+    container_name: frank-sbp
+    ports:
+      - "8001:8000"
+    environment:
+      - FRANK_ENVIRONMENT=localstack
+      - FRANK_INSTANCE_ID=sbp
+      - ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+      - DYNAMODB_TABLE=frank-sbp
+      - DYNAMODB_AUDIT_TABLE=frank-sbp-audit
+    depends_on:
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - frank-demo-net
+
+  # FRANK Partner — external partner instance (scenario 4-5)
+  frank-partner:
+    build:
+      context: ..
+      dockerfile: stages/stage3/Dockerfile
+    container_name: frank-partner
+    ports:
+      - "8002:8000"
+    environment:
+      - FRANK_ENVIRONMENT=localstack
+      - FRANK_INSTANCE_ID=partner
+      - ENDPOINT=http://localstack:4566
+      - AWS_ACCESS_KEY_ID=test
+      - AWS_SECRET_ACCESS_KEY=test
+      - AWS_DEFAULT_REGION=eu-west-1
+      - DYNAMODB_TABLE=frank-partner
+      - DYNAMODB_AUDIT_TABLE=frank-partner-audit
+    depends_on:
+      localstack:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/v1/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    networks:
+      - frank-demo-net
+
+networks:
+  frank-demo-net:
+    driver: bridge

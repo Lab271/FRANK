@@ -9,18 +9,19 @@ Edit with: marimo edit app.py
 
 import marimo
 
-__generated_with = "0.10.0"
+__generated_with = "0.23.3"
 app = marimo.App(width="full")
 
 
 @app.cell
-def __():
+def _():
     import marimo as mo
-    return mo,
+
+    return (mo,)
 
 
 @app.cell
-def __(mo):
+def _(mo):
     # ============================================================
     # HEADER & SCENARIO SELECTOR
     # ============================================================
@@ -36,7 +37,7 @@ def __(mo):
 
 
 @app.cell
-def __(mo):
+def _(mo):
     scenarios = {
         "1. Active Incident": "active_incident",
         "2. Evolving Case": "evolving_case",
@@ -56,7 +57,7 @@ def __(mo):
 
 
 @app.cell
-def __(mo, scenario_selector, scenarios):
+def _(mo, scenario_selector, scenarios):
     # ============================================================
     # SCENARIO STORIES
     # ============================================================
@@ -129,11 +130,11 @@ def __(mo, scenario_selector, scenarios):
 
     selected = scenarios.get(scenario_selector.value, "dashboard")
     mo.md(stories.get(selected, ""))
-    return selected, stories
+    return (selected,)
 
 
 @app.cell
-def __(mo, selected):
+def _(mo, selected):
     # ============================================================
     # SCENARIO 1: ACTIVE INCIDENT
     # ============================================================
@@ -157,7 +158,7 @@ def __(mo, selected):
 
 
 @app.cell
-def __(mo, selected, ioc_input, check_button):
+def _(check_button, ioc_input, mo, selected):
     # Results for Scenario 1
 
     if selected == "active_incident" and check_button is not None and check_button.value:
@@ -194,7 +195,7 @@ def __(mo, selected, ioc_input, check_button):
 
 
 @app.cell
-def __(mo, selected):
+def _(mo, selected):
     # ============================================================
     # SCENARIO 2: EVOLVING CASE
     # ============================================================
@@ -221,7 +222,7 @@ def __(mo, selected):
 
 
 @app.cell
-def __(mo, selected):
+def _(mo, selected):
     # ============================================================
     # SCENARIO 3: SUPPLY CHAIN
     # ============================================================
@@ -265,7 +266,7 @@ def __(mo, selected):
 
 
 @app.cell
-def __(mo, selected):
+def _(mo, selected):
     # ============================================================
     # SCENARIO 4: CYCLOTRON
     # ============================================================
@@ -308,7 +309,7 @@ def __(mo, selected):
 
 
 @app.cell
-def __(mo, selected):
+def _(mo, selected):
     # ============================================================
     # SCENARIO 5: DASHBOARD
     # ============================================================
@@ -367,7 +368,7 @@ def __(mo, selected):
 
 
 @app.cell
-def __(mo, selected):
+def _(mo):
     # ============================================================
     # TOPOLOGY VISUALIZATION
     # ============================================================
@@ -381,6 +382,14 @@ def __(mo, selected):
     mo.md("""
     ---
     *Topology visualization placeholder — will show interactive network graph*
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+ 
     """)
     return
 
