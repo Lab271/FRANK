@@ -47,29 +47,29 @@ def _(mo):
 
     When an MDR analyst detects a threat indicator, they submit a **sighting** to FRANK:
 
-    ```json
-    {
-      "observable": {
-        "type": "ipv4",
-        "value": "185.234.72.14"
-      },
-      "confidence": 0.9,
-      "context": "C2 callback detected in firewall logs",
-      "timestamp": "2026-05-05T02:15:00Z"
-    }
+    ```yaml
+    # Sighting submitted by organization
+    observable:
+      type: ipv4
+      value: "185.234.72.14"
+    confidence: 0.9
+    context: "C2 callback detected in firewall logs"
+    timestamp: "2026-05-05T02:15:00Z"
     ```
 
     FRANK **anonymizes** and **aggregates** this with sightings from other organizations:
 
-    ```json
-    {
-      "observable": "185.234.72.14",
-      "sightings": 3,
-      "sectors": ["Finance", "Logistics"],
-      "first_seen": "2026-05-05T02:15:00Z",
-      "trend": "increasing",
-      "related_sigma_rules": ["APT29-C2-Beacon"]
-    }
+    ```yaml
+    # Aggregated response from FRANK
+    observable: "185.234.72.14"
+    sightings: 3
+    sectors:
+      - Finance
+      - Logistics
+    first_seen: "2026-05-05T02:15:00Z"
+    trend: increasing
+    related_sigma_rules:
+      - APT29-C2-Beacon
     ```
 
     **What's shared:** Observable value, sector, timestamp, confidence.

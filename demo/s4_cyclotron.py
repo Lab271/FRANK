@@ -166,8 +166,13 @@ def _(mo, json, match_button, selected_rule, config):
     ---
     ### Contributed Back to Cyclotron (Anonymized)
 
-    ```json
-{json.dumps(feedback, indent=2)}
+    ```yaml
+    # Anonymized feedback to Cyclotron
+    rule_id: {rule_id}
+    private_sector_hits: {data['hits']}
+    sectors_affected: {feedback['sectors_affected']}
+    first_seen: "{feedback['first_seen']}"
+    confidence: confirmed
     ```
 
     **What Cyclotron receives:**
