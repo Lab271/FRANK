@@ -38,26 +38,14 @@ down:
 logs:
 	$(DOCKER_COMPOSE) logs -f
 
-# Run demo launcher
-demo:
-	@echo "Starting FRANK Demo at http://localhost:$(DEMO_PORT)"
-	uv run marimo run index.py --host 0.0.0.0 --port $(DEMO_PORT)
+# Run demo (multi-page ASGI app)
+demo run:
+	uv run python serve.py
 
-# Run individual scenarios
-s1:
-	uv run marimo run s1_active_incident.py --host 0.0.0.0 --port $(DEMO_PORT)
-
-s2:
-	uv run marimo run s2_evolving_case.py --host 0.0.0.0 --port $(DEMO_PORT)
-
-s3:
-	uv run marimo run s3_supply_chain.py --host 0.0.0.0 --port $(DEMO_PORT)
-
-s4:
-	uv run marimo run s4_cyclotron.py --host 0.0.0.0 --port $(DEMO_PORT)
-
-s5:
-	uv run marimo run s5_dashboard.py --host 0.0.0.0 --port $(DEMO_PORT)
+# Stop demo
+stop:
+	@pkill -f "serve.py" 2>/dev/null || true
+	@echo "Stopped demo server"
 
 # Seed demo data
 seed:

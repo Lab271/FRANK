@@ -2,10 +2,7 @@
 """
 Scenario 1: Active Incident — "Is this happening elsewhere?"
 
-It's 2 AM. Your SOC just found a malicious IP in customer logs.
-The incident is LIVE. You need to know NOW if this is isolated or widespread.
-
-Run with: marimo run s1_active_incident.py
+Run with: uv run python serve.py
 """
 
 import marimo
@@ -17,9 +14,7 @@ app = marimo.App(width="medium")
 @app.cell
 def _():
     import marimo as mo
-    import httpx
-    from datetime import datetime
-    return mo, httpx, datetime
+    return (mo,)
 
 
 @app.cell
@@ -29,12 +24,40 @@ def _(mo):
 
     ## "Is this happening elsewhere?"
 
-    **The situation:** It's 2 AM. Your SOC just found a malicious IP in customer logs.
-    The incident is **LIVE**. Adrenaline high. You need to know NOW:
-
-    > Is this an isolated attack, or is it hitting others too?
+    It's 2 AM. Your SOC just found a malicious IP in customer logs.
+    The incident is **LIVE**. You need to know NOW if this is isolated or widespread.
 
     ---
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ### Configuration
+    """)
+    config = mo.ui.dictionary({
+        "frank_instance": mo.ui.dropdown(
+            options=["FRANK-SBP (Production)", "FRANK-SBP (Staging)", "FRANK-Central"],
+            value="FRANK-SBP (Production)",
+            label="FRANK Instance"
+        ),
+        "org_id": mo.ui.dropdown(
+            options=["org-sbp", "org-customer-alpha", "org-customer-beta"],
+            value="org-sbp",
+            label="Your Organization"
+        ),
+    })
+    config
+    return (config,)
+
+
+@app.cell
+def _(mo):
+    mo.md("""
+    ---
+    ### Query
     """)
     return
 
@@ -44,7 +67,7 @@ def _(mo):
     ioc_input = mo.ui.text(
         value="185.234.72.14",
         placeholder="Enter IP, hash, or domain...",
-        label="🔍 IoC to check",
+        label="IoC to check",
         full_width=True
     )
     return (ioc_input,)
@@ -52,92 +75,87 @@ def _(mo):
 
 @app.cell
 def _(mo, ioc_input):
-    mo.hstack([
-        ioc_input,
-        mo.ui.button(label="Check FRANK", kind="success", value=True)
-    ], justify="start", gap=1)
-    return
+    check_button = mo.ui.run_button(label="Check FRANK")
+    mo.hstack([ioc_input, check_button], widths=[3, 1], align="end")
+    return (check_button,)
 
 
 @app.cell
-def _(mo, ioc_input):
-    # Query FRANK API
+def _(mo, check_button, ioc_input, config):
+    mo.stop(not check_button.value)
+
+    # Simulate FRANK API call
     ioc_value = ioc_input.value or "185.234.72.14"
 
-    # TODO: Replace with actual API call
-    # response = httpx.get(f"http://localhost:8000/api/v1/sightings/search?observable={ioc_value}")
+    # Mock response based on IoC
+    if "185.234" in ioc_value:
+        result = {
+            "ioc": ioc_value,
+            "seen_by": 3,
+            "total_orgs": 12,
+            "sectors": ["Finance", "Finance", "Logistics"],
+            "first_seen": "2h ago",
+            "trend": "increasing",
+            "your_org_first": False,
+            "confidence_avg": 0.90
+        }
+    else:
+        result = {
+            "ioc": ioc_value,
+            "seen_by": 0,
+            "total_orgs": 12,
+            "sectors": [],
+            "first_seen": None,
+            "trend": "unknown",
+            "your_org_first": True,
+            "confidence_avg": None
+        }
 
-    # Mock response for demo
-    mock_result = {
-        "ioc": ioc_value,
-        "seen_by": 3,
-        "sectors": ["Finance", "Finance", "Logistics"],
-        "first_seen": "2h ago",
-        "trend": "increasing",
-        "your_org_first": False,
-        "confidence_avg": 0.90
-    }
+    unique_sectors = list(set(result['sectors']))
 
-    unique_sectors = list(set(mock_result['sectors']))
+    if result['seen_by'] > 0:
+        interpretation = f"""
+        🚨 **You are NOT alone.** This IoC is active across **{result['seen_by']} organizations**.
+
+        **Recommended actions:**
+        1. Check shared SIGMA rules for this IoC
+        2. Coordinate response with affected parties
+        3. Submit additional observables you discover
+        """
+    else:
+        interpretation = """
+        ✅ **First sighting.** No other organization has reported this IoC yet.
+
+        **You are the first reporter** — your submission will help others.
+        """
 
     mo.md(f"""
-    ## Results for `{mock_result['ioc']}`
+    ---
+    ### Results
+
+    **Query:** `{result['ioc']}` via `{config.value['frank_instance']}`
 
     | Metric | Value |
     |--------|-------|
-    | **Organizations reporting** | {mock_result['seen_by']} |
-    | **Sectors affected** | {', '.join(unique_sectors)} |
-    | **First seen in network** | {mock_result['first_seen']} |
-    | **Trend** | ↑ {mock_result['trend']} |
-    | **Average confidence** | {mock_result['confidence_avg']:.0%} |
-    | **You are first reporter** | {'✅ Yes' if mock_result['your_org_first'] else '❌ No'} |
+    | **Organizations reporting** | {result['seen_by']} of {result['total_orgs']} |
+    | **Sectors affected** | {', '.join(unique_sectors) if unique_sectors else '—'} |
+    | **First seen in network** | {result['first_seen'] or '—'} |
+    | **Trend** | {'↑ ' + result['trend'] if result['trend'] != 'unknown' else '—'} |
+    | **Average confidence** | {f"{result['confidence_avg']:.0%}" if result['confidence_avg'] else '—'} |
+    | **You are first reporter** | {'✅ Yes' if result['your_org_first'] else '❌ No'} |
 
     ---
-
     ### Interpretation
-
-    🚨 **You are NOT alone.** This IoC is active across **{mock_result['seen_by']} organizations**.
-
-    **Recommended actions:**
-    1. Check shared SIGMA rules for this IoC
-    2. Coordinate response with affected parties
-    3. Submit additional observables you discover
-
+    {interpretation}
     """)
-    return mock_result, ioc_value, unique_sectors
+    return
 
 
 @app.cell
 def _(mo):
     mo.md("""
     ---
-
-    ### Network Topology
-
-    ```
-                         ┌─────────────┐
-                         │    FRANK    │
-                         │   Central   │
-                         └──────┬──────┘
-                                │
-            ┌───────────────────┼───────────────────┐
-            │                   │                   │
-       ┌────▼────┐         ┌────▼────┐         ┌────▼────┐
-       │ Bank    │         │Insurance│         │  Port   │
-       │ Alpha   │         │  Beta   │         │Rotterdam│
-       │(Finance)│         │(Finance)│         │(Logist.)│
-       └─────────┘         └─────────┘         └─────────┘
-            ▲                   ▲                   ▲
-            │                   │                   │
-         Sighting            Sighting            Sighting
-         02:15 UTC           03:42 UTC           04:10 UTC
-    ```
-
-    *All three organizations reported the same IoC within hours*
-
-    ---
-
-    [← Back to Scenarios](/)
+    [← Back to Scenarios](./)
     """)
     return
 

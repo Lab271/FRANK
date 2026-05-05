@@ -36,7 +36,7 @@ def _(mo):
 
     ---
 
-    ### 🚨 [Scenario 1: Active Incident](http://localhost:2718/s1_active_incident.py)
+    ### 🚨 [Scenario 1: Active Incident](/s1)
 
     **"Is this happening elsewhere?"**
 
@@ -45,7 +45,7 @@ def _(mo):
 
     ---
 
-    ### 🔍 [Scenario 2: Evolving Case](http://localhost:2718/s2_evolving_case.py)
+    ### 🔍 [Scenario 2: Evolving Case](/s2)
 
     **"The investigation grows"**
 
@@ -54,7 +54,7 @@ def _(mo):
 
     ---
 
-    ### 📦 [Scenario 3: Supply Chain Attack](http://localhost:2718/s3_supply_chain.py)
+    ### 📦 [Scenario 3: Supply Chain Attack](/s3)
 
     **Axios npm compromise — March 2026**
 
@@ -63,7 +63,7 @@ def _(mo):
 
     ---
 
-    ### 🔄 [Scenario 4: Cyclotron Exchange](http://localhost:2718/s4_cyclotron.py)
+    ### 🔄 [Scenario 4: Cyclotron Exchange](/s4)
 
     **Government ↔ Private Sector**
 
@@ -72,7 +72,7 @@ def _(mo):
 
     ---
 
-    ### 📊 [Scenario 5: Information Economy](http://localhost:2718/s5_dashboard.py)
+    ### 📊 [Scenario 5: Information Economy](/s5)
 
     **The Network Effect Dashboard**
 
