@@ -24,8 +24,26 @@ def _(mo):
 
     ## "The investigation grows"
 
-    What started as a suspicious email is now a full investigation.
-    As the case develops, **FRANK enriches each observable** with community intelligence.
+    **The situation:** Three days ago, a phishing email slipped past the spam filter
+    at one of your customers. The user clicked. Now you're knee-deep in forensics.
+
+    **What you've found so far:**
+    - The email contained a link to a credential harvesting page
+    - The user entered their password (confirmed via web proxy logs)
+    - An hour later, a new executable appeared on their workstation
+    - That executable is beaconing to an external IP every 60 seconds
+
+    **The problem:** You have three observables: an IP address, a malware hash, and
+    a C2 domain extracted from the binary. Each one is a puzzle piece. But you're
+    working in isolation — you don't know if these indicators are part of a known
+    campaign, if other organizations have seen them, or if there's related intelligence
+    that could accelerate your investigation.
+
+    **What FRANK provides:** As you submit each observable, FRANK enriches it with
+    community context. The IP might already be flagged by two other organizations.
+    The hash might be brand new — making you the first reporter. The domain might
+    correlate with a known APT campaign. This bidirectional flow — you contribute,
+    you receive — is the core of the FRANK value proposition.
 
     ---
     """)

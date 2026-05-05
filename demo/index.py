@@ -30,9 +30,23 @@ def _(mo):
 
     ---
 
+    ## What is FRANK?
+
+    FRANK is a threat intelligence sharing platform that enables Dutch organizations
+    to collectively defend against cyber threats. Built by Schuberg Philis as part of
+    the SBIR cybersecurity innovation program (SB1CD24006), FRANK creates a trusted
+    network where MDR providers, critical infrastructure operators, and government
+    agencies can share threat indicators without exposing sensitive customer data.
+
+    **The core principle:** When one organization detects a threat, all organizations
+    benefit. No commercial middleman. Pure reciprocity.
+
+    ---
+
     ## Demo Scenarios
 
-    Click any scenario to explore:
+    These five scenarios demonstrate FRANK's value in real-world situations.
+    Each scenario has interactive elements — configure, input data, and see results.
 
     ---
 
@@ -40,8 +54,10 @@ def _(mo):
 
     **"Is this happening elsewhere?"**
 
-    It's 2 AM. Your SOC found a malicious IP. The incident is LIVE.
-    Query FRANK to see if others are being hit too.
+    It's 2 AM. Your SOC detected a suspicious IP beaconing from a customer network.
+    Before triggering a full incident response, you need to know: is this an isolated
+    attack or part of a broader campaign? Query FRANK to get instant context from
+    the collective network.
 
     ---
 
@@ -49,8 +65,10 @@ def _(mo):
 
     **"The investigation grows"**
 
-    What started as one IoC is now three. As your case develops,
-    FRANK enriches each observable with community intelligence.
+    A phishing email led to malware, which led to C2 traffic. You now have three
+    observables: IP, hash, domain. As you submit each one to FRANK, you receive
+    enrichment from the community — some indicators are already known, others are
+    new contributions from your investigation.
 
     ---
 
@@ -58,8 +76,9 @@ def _(mo):
 
     **Axios npm compromise — March 2026**
 
-    100 million weekly downloads. 18-hour window. FRANK helped detect
-    the RAT callbacks 6 hours before npm takedown.
+    A widely-used npm package was compromised with a RAT. 100 million weekly downloads.
+    18-hour exposure window. FRANK aggregated detection patterns from multiple organizations
+    and generated SIGMA rules — available 6 hours before the official takedown.
 
     ---
 
@@ -67,8 +86,9 @@ def _(mo):
 
     **Government ↔ Private Sector**
 
-    Bidirectional intelligence sharing. Government provides context,
-    private sector confirms with telemetry. Both win.
+    The Dutch government pushes APT indicators via Cyclotron. FRANK matches them against
+    MDR telemetry from 35 customers. Anonymized confirmations flow back. Government gets
+    ground-truth validation. Private sector gets early warning. Both win.
 
     ---
 
@@ -76,8 +96,9 @@ def _(mo):
 
     **The Network Effect Dashboard**
 
-    FRANK isn't a product — it's a network effect.
-    Every participant makes every other participant safer.
+    FRANK isn't a product — it's a network effect. This dashboard shows the health of
+    the ecosystem: participating organizations, shared sightings, SIGMA rules, and the
+    measurable value created through collective defense.
 
     ---
     """)

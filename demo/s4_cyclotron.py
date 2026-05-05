@@ -25,8 +25,30 @@ def _(mo):
 
     ## Government ↔ Private Sector Exchange
 
-    Cyclotron pushes detection rules. FRANK matches against MDR telemetry.
-    Anonymized confirmations flow back. **Both sides win.**
+    **The situation:** The Dutch government operates Cyclotron, a platform for
+    sharing threat intelligence with critical infrastructure operators. AIVD, NCSC-NL,
+    and European partners like Europol contribute indicators and detection rules
+    based on their unique visibility into nation-state and organized crime activities.
+
+    **The traditional problem:** Government agencies have strategic intelligence but
+    limited visibility into whether their indicators are actually hitting targets in
+    the private sector. Meanwhile, private sector MDR providers like SBP have deep
+    telemetry across dozens of customers but lack the attribution context that
+    government agencies possess.
+
+    **The solution — bidirectional exchange:**
+    1. **Cyclotron → FRANK:** Government pushes detection rules (SIGMA format) with
+       indicators for APT infrastructure, ransomware staging servers, credential
+       harvesting campaigns.
+    2. **FRANK matches:** Rules are automatically tested against SBP's MDR telemetry
+       covering 35 customers across finance, logistics, energy, and healthcare.
+    3. **FRANK → Cyclotron:** Anonymized confirmation flows back: "Rule X matched
+       2 organizations in sectors Y and Z, first seen at time T."
+
+    **The value exchange:** Government gets ground-truth confirmation that their
+    intelligence is actionable. Private sector gets early warning and detection
+    rules they couldn't develop alone. No customer identities are shared — only
+    aggregate sector-level statistics.
 
     ---
     """)

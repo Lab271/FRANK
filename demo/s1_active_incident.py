@@ -24,8 +24,21 @@ def _(mo):
 
     ## "Is this happening elsewhere?"
 
-    It's 2 AM. Your SOC just found a malicious IP in customer logs.
-    The incident is **LIVE**. You need to know NOW if this is isolated or widespread.
+    **The situation:** It's 2 AM. Your Security Operations Center just detected
+    a suspicious IP address in the firewall logs of one of your MDR customers.
+    The connection was outbound, repeated every 5 minutes — classic C2 beacon behavior.
+
+    **The problem:** You're about to wake up the customer's CISO and trigger a full
+    incident response. But first you need context:
+
+    - Is this a targeted attack on this specific customer?
+    - Or is this IP part of a broader campaign hitting multiple organizations?
+    - Has anyone else in the FRANK network seen this indicator?
+
+    **What FRANK provides:** Instead of manually reaching out to peers or searching
+    public threat feeds, you query FRANK. Within seconds, you get an anonymized view
+    of whether other organizations — across different sectors — have reported the same
+    indicator. This transforms your incident from "isolated event" to "coordinated response."
 
     ---
     """)

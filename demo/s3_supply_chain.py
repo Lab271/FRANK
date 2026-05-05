@@ -24,8 +24,30 @@ def _(mo):
 
     ## Axios npm Compromise — March 31, 2026
 
-    npm package `axios` was compromised. **100 million weekly downloads.**
-    18-hour exposure window. You need to check your customers.
+    **The situation:** It's Monday morning. You open your threat intel feed and see
+    the news: `axios`, one of the most popular npm packages with over 100 million
+    weekly downloads, was compromised. Versions 1.14.1 and 0.30.4 contained a Remote
+    Access Trojan (RAT) that exfiltrates environment variables and opens a backdoor.
+
+    **The timeline:**
+    - March 31, 06:00 UTC — Malicious versions published to npm
+    - March 31, 24:00 UTC — npm removes the packages (18-hour window)
+    - Unknown — How many of your customers pulled the bad version?
+
+    **The problem:** You manage MDR for 35 customers. Many run Node.js applications.
+    You need to know immediately:
+    - Which customers have the compromised package in their dependency tree?
+    - Are any of them already showing signs of RAT callback behavior?
+    - What detection rules should you deploy across all customer SIEMs?
+
+    **What FRANK provides:** The FRANK network has already aggregated intelligence
+    from multiple organizations that detected this attack. You get:
+    - Known indicators of compromise (callback URLs, beacon patterns)
+    - A pre-built SIGMA detection rule ready to deploy
+    - Cross-reference against your MDR telemetry to find exposed customers
+
+    This is the power of collective defense — the detection rule was available
+    **6 hours before npm took down the malicious packages**.
 
     ---
     """)

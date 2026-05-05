@@ -24,8 +24,31 @@ def _(mo):
 
     ## FRANK Network Dashboard
 
-    FRANK isn't a product — it's a **network effect**.
-    Every participant makes every other participant safer.
+    **The big picture:** FRANK is not a product you buy — it's a network you join.
+    The value comes from participation, not from features.
+
+    **How it works:**
+    - Every organization that joins FRANK contributes their threat sightings
+    - Every sighting enriches the collective knowledge base
+    - Every participant benefits from everyone else's visibility
+    - The more organizations participate, the more valuable the network becomes
+
+    **The economics are simple:**
+    - Traditional threat intel: You pay a vendor for access to their data
+    - FRANK model: You contribute your data, you receive everyone's data
+    - No commercial middleman extracting value — pure peer-to-peer reciprocity
+
+    **Why this matters for the Netherlands:**
+    Dutch critical infrastructure — finance, energy, logistics, healthcare — faces
+    the same threats. When a bank detects an APT campaign, that intelligence should
+    flow to energy companies before they're hit. When a hospital sees ransomware
+    staging, logistics providers should get early warning.
+
+    FRANK makes this possible without exposing sensitive customer data, without
+    commercial incentives distorting the information flow, and without requiring
+    organizations to trust each other with raw telemetry.
+
+    **This dashboard shows the health of the ecosystem.**
 
     ---
     """)
