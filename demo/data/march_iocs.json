@@ -1,0 +1,83 @@
+{
+  "axios_supply_chain": {
+    "description": "Axios npm supply chain attack - March 31, 2026",
+    "source": "TeamPCP threat actor",
+    "window": "18 hours",
+    "packages": [
+      {"name": "axios", "version": "1.14.1", "ecosystem": "npm"},
+      {"name": "axios", "version": "0.30.4", "ecosystem": "npm"}
+    ],
+    "indicators": {
+      "network": [
+        {"type": "url_pattern", "value": "/api/heartbeat", "method": "POST"},
+        {"type": "url_pattern", "value": "/api/upload", "method": "POST"},
+        {"type": "port", "value": 8443, "description": "RAT beacon port"}
+      ],
+      "behavior": [
+        {"type": "beacon_interval", "value": "60s"},
+        {"type": "postinstall_hook", "value": true}
+      ]
+    },
+    "sigma_rule": {
+      "title": "Axios NPM Supply Chain RAT Callback",
+      "status": "experimental",
+      "description": "Detects Axios supply chain RAT callback patterns",
+      "logsource": {
+        "category": "proxy"
+      },
+      "detection": {
+        "selection": {
+          "c-uri|contains": ["/api/heartbeat", "/api/upload"],
+          "cs-method": "POST"
+        },
+        "condition": "selection"
+      }
+    }
+  },
+
+  "trivy_compromise": {
+    "description": "Trivy GitHub Actions supply chain attack - March 19, 2026",
+    "source": "TeamPCP threat actor",
+    "cve": "CVE-2026-33634",
+    "cvss": 9.4,
+    "indicators": {
+      "network": [
+        {"type": "domain", "value": "scan.aquasecurtiy.org", "note": "typosquat"},
+        {"type": "ipv4", "value": "45.148.10.212"}
+      ],
+      "file": [
+        {"type": "filename", "value": "tpcp.tar.gz"},
+        {"type": "sha256", "value": "27f446..."},
+        {"type": "sha256", "value": "5aaa1d..."},
+        {"type": "sha256", "value": "425cd3..."}
+      ],
+      "github": [
+        {"type": "action", "value": "aquasecurity/trivy-action"},
+        {"type": "action", "value": "aquasecurity/setup-trivy"},
+        {"type": "repo", "value": "tpcp-docs", "note": "C2 via GitHub releases"}
+      ]
+    },
+    "exfiltration_targets": [
+      "~/.aws/credentials",
+      "~/.kube/config",
+      "~/.docker/config.json",
+      "~/.ssh/*",
+      "/proc/<pid>/mem"
+    ]
+  },
+
+  "litellm_pth": {
+    "description": "LiteLLM PyPI supply chain attack - March 24, 2026",
+    "source": "TeamPCP threat actor",
+    "packages": [
+      {"name": "litellm", "version": "1.82.7", "ecosystem": "pypi"},
+      {"name": "litellm", "version": "1.82.8", "ecosystem": "pypi"}
+    ],
+    "technique": ".pth file auto-execution in site-packages",
+    "indicators": {
+      "file": [
+        {"type": "filename_pattern", "value": "*.pth", "location": "site-packages"}
+      ]
+    }
+  }
+}

@@ -1,0 +1,102 @@
+{
+  "organizations": [
+    {"id": "org-sbp", "name": "Schuberg Philis", "sector": "IT Services", "tier": "CORE_MEMBER"},
+    {"id": "org-finance-1", "name": "Bank Alpha", "sector": "Finance", "tier": "PARTNER"},
+    {"id": "org-finance-2", "name": "Insurance Beta", "sector": "Finance", "tier": "PARTNER"},
+    {"id": "org-logistics-1", "name": "Port Rotterdam", "sector": "Logistics", "tier": "PARTNER"},
+    {"id": "org-energy-1", "name": "Grid Operator", "sector": "Energy", "tier": "CONTRIBUTOR"},
+    {"id": "org-healthcare-1", "name": "Hospital Network", "sector": "Healthcare", "tier": "CONTRIBUTOR"}
+  ],
+
+  "demo_sightings": [
+    {
+      "id": "sight-001",
+      "observable": {"type": "ipv4", "value": "185.234.72.14"},
+      "org_id": "org-finance-1",
+      "timestamp": "2026-05-05T02:15:00Z",
+      "confidence": 0.9,
+      "description": "C2 callback detected in firewall logs"
+    },
+    {
+      "id": "sight-002",
+      "observable": {"type": "ipv4", "value": "185.234.72.14"},
+      "org_id": "org-finance-2",
+      "timestamp": "2026-05-05T03:42:00Z",
+      "confidence": 0.85,
+      "description": "Same IP seen in proxy logs"
+    },
+    {
+      "id": "sight-003",
+      "observable": {"type": "ipv4", "value": "185.234.72.14"},
+      "org_id": "org-logistics-1",
+      "timestamp": "2026-05-05T04:10:00Z",
+      "confidence": 0.95,
+      "description": "EDR alert - suspicious outbound connection"
+    },
+    {
+      "id": "sight-004",
+      "observable": {"type": "sha256", "value": "a1b2c3d4e5f6..."},
+      "org_id": "org-sbp",
+      "timestamp": "2026-05-04T14:30:00Z",
+      "confidence": 0.99,
+      "description": "Proton malware variant - binary from phishing email"
+    },
+    {
+      "id": "sight-005",
+      "observable": {"type": "domain", "value": "evil-c2.example.com"},
+      "org_id": "org-sbp",
+      "timestamp": "2026-05-04T15:00:00Z",
+      "confidence": 0.95,
+      "description": "C2 domain extracted from malware sample"
+    }
+  ],
+
+  "cyclotron_rules": [
+    {
+      "rule_id": "CYC-2026-0847",
+      "title": "APT29 Infrastructure - Beacon Pattern",
+      "confidence": "high",
+      "indicators": [
+        {"type": "domain", "value": "update-service.example.com"},
+        {"type": "ipv4", "value": "192.0.2.50"}
+      ]
+    },
+    {
+      "rule_id": "CYC-2026-0851",
+      "title": "Ransomware Staging Server",
+      "confidence": "medium",
+      "indicators": [
+        {"type": "ipv4", "value": "198.51.100.25"},
+        {"type": "url_pattern", "value": "/stage/payload.bin"}
+      ]
+    },
+    {
+      "rule_id": "CYC-2026-0855",
+      "title": "Credential Harvesting Campaign",
+      "confidence": "high",
+      "indicators": [
+        {"type": "domain", "value": "login-verify.example.com"},
+        {"type": "email", "value": "*@phish-domain.com"}
+      ]
+    }
+  ],
+
+  "network_stats": {
+    "total_organizations": 12,
+    "total_sightings": 847,
+    "total_sigma_rules": 156,
+    "sectors": {
+      "Finance": 5,
+      "Logistics": 3,
+      "Energy": 2,
+      "Healthcare": 1,
+      "IT Services": 1
+    },
+    "monthly_trend": [
+      {"month": "2026-02", "sightings": 523, "new_orgs": 2},
+      {"month": "2026-03", "sightings": 712, "new_orgs": 3},
+      {"month": "2026-04", "sightings": 891, "new_orgs": 2},
+      {"month": "2026-05", "sightings": 847, "new_orgs": 1}
+    ]
+  }
+}
