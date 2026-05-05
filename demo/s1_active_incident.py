@@ -168,6 +168,30 @@ def _(mo, check_button, ioc_input, config):
 def _(mo):
     mo.md("""
     ---
+    ### Architecture
+
+    ```
+                              ┌─────────────┐
+                              │    FRANK    │
+                              │   Central   │
+                              └──────┬──────┘
+                                     │
+             ┌───────────────────────┼───────────────────────┐
+             │                       │                       │
+        ┌────▼────┐             ┌────▼────┐             ┌────▼────┐
+        │  Bank   │             │Insurance│             │  Port   │
+        │  Alpha  │             │  Beta   │             │Rotterdam│
+        │(Finance)│             │(Finance)│             │(Logist.)│
+        └─────────┘             └─────────┘             └─────────┘
+             ▲                       ▲                       ▲
+             │                       │                       │
+          Sighting               Sighting                Sighting
+          02:15 UTC              03:42 UTC               04:10 UTC
+
+    Your query → FRANK aggregates → You see: 3 orgs, 2 sectors
+    ```
+
+    ---
     [← Back to Scenarios](./)
     """)
     return

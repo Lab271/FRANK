@@ -153,6 +153,36 @@ def _(mo):
     > Your contributions enabled **23 faster detections** at other organizations this month.
 
     ---
+    ### Architecture
+
+    ```
+                                ┌──────────────┐
+                                │   CYCLOTRON  │
+                                │  (Government)│
+                                └──────┬───────┘
+                                       │
+                          ┌────────────┴────────────┐
+                          │                         │
+                    ┌─────▼─────┐             ┌─────▼─────┐
+                    │ FRANK-GOV │◀───────────▶│ FRANK-EU  │
+                    │   (NL)    │    sync     │ (Europol) │
+                    └─────┬─────┘             └───────────┘
+                          │
+     ┌────────────────────┼────────────────────┐
+     │                    │                    │
+┌────▼────┐          ┌────▼────┐          ┌────▼────┐
+│FRANK-SBP│          │FRANK-KPN│          │FRANK-FOX│
+│  (MDR)  │          │  (ISP)  │          │  (MDR)  │
+└────┬────┘          └────┬────┘          └────┬────┘
+     │                    │                    │
+┌────┴────┐          ┌────┴────┐          ┌────┴────┐
+│35 cust. │          │Backbone │          │ 50 cust │
+│Finance, │          │telemetry│          │ Retail, │
+│ Energy  │          │         │          │  Gov    │
+└─────────┘          └─────────┘          └─────────┘
+    ```
+
+    ---
     [← Back to Scenarios](./)
     """)
     return

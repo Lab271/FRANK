@@ -173,6 +173,34 @@ def _(mo, scan_button, package_input, version_input, config):
 def _(mo):
     mo.md("""
     ---
+    ### Architecture
+
+    ```
+    ┌─────────────┐     compromised      ┌─────────────┐
+    │    npm      │ ──────────────────▶  │   axios     │
+    │  registry   │     versions         │  1.14.1     │
+    └─────────────┘                      └──────┬──────┘
+                                                │
+                     ┌──────────────────────────┼──────────────┐
+                     │                          │              │
+                ┌────▼────┐                ┌────▼────┐    ┌────▼────┐
+                │Customer │                │Customer │    │Customer │
+                │    3    │                │   12    │    │   19    │
+                │(exposed)│                │(comprom)│    │(exposed)│
+                └─────────┘                └────┬────┘    └─────────┘
+                                                │
+                                           RAT callback
+                                                │
+                                                ▼
+                                         ┌─────────────┐
+                                         │  C2 Server  │
+                                         │ /api/heart  │
+                                         └─────────────┘
+
+    FRANK aggregates IoCs → Generates SIGMA rule → You scan 35 customers
+    ```
+
+    ---
     [← Back to Scenarios](./)
     """)
     return

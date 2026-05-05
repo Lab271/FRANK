@@ -168,6 +168,30 @@ def _(mo, submit_button, attack_ip, malware_hash, c2_domain, config):
 def _(mo):
     mo.md("""
     ---
+    ### Architecture
+
+    ```
+    ┌──────────────────┐
+    │  Phishing Email  │
+    │   (entry point)  │
+    └────────┬─────────┘
+             │ downloads
+             ▼
+    ┌──────────────────┐      beacons to      ┌──────────────────┐
+    │  Proton Malware  │ ───────────────────▶ │  185.234.72.14   │
+    │  (a1b2c3d4...)   │                      │  (C2 server)     │
+    └────────┬─────────┘                      └──────────────────┘
+             │ resolves                               ▲
+             ▼                                        │
+    ┌──────────────────┐      resolves to            │
+    │evil-c2.example   │ ────────────────────────────┘
+    │   (C2 domain)    │
+    └──────────────────┘
+
+    You submit 3 observables → FRANK enriches each → Network learns
+    ```
+
+    ---
     [← Back to Scenarios](./)
     """)
     return

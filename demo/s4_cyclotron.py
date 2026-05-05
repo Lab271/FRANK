@@ -199,6 +199,36 @@ def _(mo, json, match_button, selected_rule, config):
 def _(mo):
     mo.md("""
     ---
+    ### Architecture
+
+    ```
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                        CYCLOTRON                                │
+    │                    (Government Platform)                        │
+    │                  AIVD · NCSC-NL · Europol                       │
+    └───────────────────────────┬─────────────────────────────────────┘
+                                │
+                                │ 1. Push: Detection rules (SIGMA)
+                                ▼
+    ┌───────────────────────────────────────────────────────────────┐
+    │                      FRANK-SBP                                │
+    │              (SBP Private FRANK instance)                     │
+    │                                                               │
+    │  2. Match against MDR telemetry (35 customers)                │
+    └───────────────────────────┬───────────────────────────────────┘
+                                │
+                                │ 3. Return: Anonymized confirmation
+                                │    {sectors, hit_count, first_seen}
+                                ▼
+    ┌─────────────────────────────────────────────────────────────────┐
+    │                        CYCLOTRON                                │
+    │              "APT29 confirmed active in NL private sector"      │
+    └─────────────────────────────────────────────────────────────────┘
+
+    Government pushes → FRANK matches → Anonymized stats flow back
+    ```
+
+    ---
     [← Back to Scenarios](./)
     """)
     return
