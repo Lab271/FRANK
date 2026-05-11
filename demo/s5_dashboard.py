@@ -87,48 +87,93 @@ def _(mo, refresh_button, config):
     import datetime
     timestamp = datetime.datetime.now().strftime("%H:%M:%S") if refresh_button.value else "—"
 
-    # SBP-specific stats (35 customers)
-    stats = {
-        "customers": 35,
-        "participating_orgs": 12,  # in FRANK network
-        "sightings_this_month": 847,
-        "sigma_rules_shared": 156,
-        "active_incidents": 3,
+    time_range = config.value['time_range']
+
+    # Stats vary by time range
+    stats_by_range = {
+        "Last 24 hours": {
+            "sightings": 28,
+            "sigma_rules": 3,
+            "active_incidents": 1,
+            "label": "24h"
+        },
+        "Last 7 days": {
+            "sightings": 187,
+            "sigma_rules": 12,
+            "active_incidents": 2,
+            "label": "7d"
+        },
+        "Last 30 days": {
+            "sightings": 847,
+            "sigma_rules": 43,
+            "active_incidents": 3,
+            "label": "30d"
+        },
+        "All time": {
+            "sightings": 12483,
+            "sigma_rules": 156,
+            "active_incidents": 3,
+            "label": "all"
+        },
     }
 
+    stats = stats_by_range.get(time_range, stats_by_range["Last 30 days"])
+
     mo.hstack([
-        mo.stat(value=stats["customers"], label="SBP Customers", bordered=True),
-        mo.stat(value=stats["participating_orgs"], label="FRANK Orgs", bordered=True),
-        mo.stat(value=stats["sightings_this_month"], label="Sightings (May)", bordered=True),
-        mo.stat(value=stats["sigma_rules_shared"], label="SIGMA Rules", bordered=True),
+        mo.stat(value=35, label="SBP Customers", bordered=True),
+        mo.stat(value=12, label="FRANK Orgs", bordered=True),
+        mo.stat(value=stats["sightings"], label=f"Sightings ({stats['label']})", bordered=True),
+        mo.stat(value=stats["sigma_rules"], label=f"SIGMA Rules ({stats['label']})", bordered=True),
         mo.stat(value=stats["active_incidents"], label="Active Incidents", bordered=True),
     ], justify="space-around")
     return (timestamp,)
 
 
 @app.cell
-def _(mo):
-    mo.md("""
+def _(mo, config):
+    time_range = config.value['time_range']
+
+    # Sector sightings by time range
+    sector_data = {
+        "Last 24 hours": {"finance": 10, "logistics": 8, "energy": 5, "healthcare": 3, "other": 2},
+        "Last 7 days": {"finance": 68, "logistics": 52, "energy": 34, "healthcare": 21, "other": 12},
+        "Last 30 days": {"finance": 312, "logistics": 245, "energy": 156, "healthcare": 78, "other": 56},
+        "All time": {"finance": 4521, "logistics": 3876, "energy": 2134, "healthcare": 1203, "other": 749},
+    }
+
+    # Value metrics by time range
+    value_data = {
+        "Last 24 hours": {"detections": 2, "prevented": 0, "hours": 12, "correlations": 1},
+        "Last 7 days": {"detections": 8, "prevented": 2, "hours": 85, "correlations": 4},
+        "Last 30 days": {"detections": 23, "prevented": 7, "hours": 340, "correlations": 12},
+        "All time": {"detections": 287, "prevented": 89, "hours": 4120, "correlations": 156},
+    }
+
+    s = sector_data.get(time_range, sector_data["Last 30 days"])
+    v = value_data.get(time_range, value_data["Last 30 days"])
+    period = time_range.replace("Last ", "").replace(" ", "")
+
+    mo.md(f"""
     ---
-    ### SBP Customer Sectors (35 total)
+    ### SBP Customer Sectors (35 total) — {time_range}
 
     | Sector | Customers | Sightings |
     |--------|-----------|-----------|
-    | Finance | 12 | 312 |
-    | Logistics | 8 | 245 |
-    | Energy | 6 | 156 |
-    | Healthcare | 5 | 78 |
-    | Other | 4 | 56 |
+    | Finance | 12 | {s['finance']} |
+    | Logistics | 8 | {s['logistics']} |
+    | Energy | 6 | {s['energy']} |
+    | Healthcare | 5 | {s['healthcare']} |
+    | Other | 4 | {s['other']} |
 
     ---
-    ### Value Created This Month
+    ### Value Created — {time_range}
 
     | Impact | Count | Description |
     |--------|-------|-------------|
-    | **Faster detections** | 23 | Detections enabled by shared intel |
-    | **Incidents prevented** | 7 | Attacks blocked due to early warning |
-    | **Analyst hours saved** | 340 | Time saved by not duplicating research |
-    | **Cross-org correlations** | 12 | Attacks linked across customers |
+    | **Faster detections** | {v['detections']} | Detections enabled by shared intel |
+    | **Incidents prevented** | {v['prevented']} | Attacks blocked due to early warning |
+    | **Analyst hours saved** | {v['hours']} | Time saved by not duplicating research |
+    | **Cross-org correlations** | {v['correlations']} | Attacks linked across customers |
     """)
     return
 
