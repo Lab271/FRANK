@@ -36,10 +36,45 @@ def _(mo):
     to collectively defend against cyber threats. Built by Schuberg Philis as part of
     the SBIR cybersecurity innovation program (SB1CD24006), FRANK creates a trusted
     network where MDR providers, critical infrastructure operators, and government
-    agencies can share threat indicators without exposing sensitive customer data.
+    agencies can share **actual sightings** of threat indicators without exposing
+    sensitive customer data — providing **dynamic threat intelligence** that evolves
+    in real-time as the threat landscape changes.
 
     **The core principle:** When one organization detects a threat, all organizations
     benefit. No commercial middleman. Pure reciprocity.
+
+    ### Key Concepts
+
+    - **Sighting:** A specific observation of threat activity — not just an indicator,
+      but evidence that it was actually seen in a real environment
+    - **Observable:** The threat indicator itself (IP, domain, hash, URL)
+    - **Member Organisation:** An authenticated party that can submit and query sightings
+    - **Target Organisation:** The (anonymized) victim in a sighting — identity protected
+    - **Access Tiers:** From public to core_member — what you contribute determines what you see
+
+    ### Standards & Protocols
+
+    - **STIX 2.1:** All identifiers and data structures follow STIX format
+    - **SIGMA:** Detection rules in SIGMA format for cross-platform matching
+    - **TLP:** Traffic Light Protocol for information sharing controls
+    - **NATO STANAG 2511:** Confidence scoring aligned with intelligence standards
+
+    ### Why Not Just Use MISP?
+
+    MISP is excellent for sharing **indicators**. FRANK is built for sharing **sightings**.
+
+    | Aspect | MISP | FRANK |
+    |--------|------|-------|
+    | **Focus** | Indicators (IoCs) | Sightings (observations) |
+    | **Question** | "Is this IP malicious?" | "Who else saw this IP *today*?" |
+    | **Model** | Events with attributes | Submissions with sightings |
+    | **Reciprocity** | Optional | Built-in (access tiers) |
+    | **Anonymization** | Manual | By design (target orgs) |
+    | **Workflow** | Analyst-driven | MDR-integrated |
+
+    FRANK complements MISP — it can consume MISP feeds and contribute back. But FRANK's
+    value is in the **dynamic, real-time confirmation** that a threat is active *right now*
+    in the Dutch ecosystem.
 
     ---
 
