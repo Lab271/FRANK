@@ -193,15 +193,14 @@ def _(mo, json, match_button, selected_rule, config):
             "",
             "  sectors_affected:",
         ]
-        yaml_lines.extend([f'    - "{s}"' for s in sectors])
-        yaml_lines.extend([
-            "",
-            "  # What is NOT shared:",
-            "  # - Organisation identities",
-            "  # - Customer names",
-            "  # - Source IP addresses",
-            "  # - Raw log data",
-        ])
+        for s in sectors:
+            yaml_lines.append(f'    - "{s}"')
+        yaml_lines.append("")
+        yaml_lines.append("  # What is NOT shared:")
+        yaml_lines.append("  # - Organisation identities")
+        yaml_lines.append("  # - Customer names")
+        yaml_lines.append("  # - Source IP addresses")
+        yaml_lines.append("  # - Raw log data")
         yaml_response = "\n".join(yaml_lines)
 
         yaml_view = mo.md(f"**FRANK → NDN Response**\n\n```yaml\n{yaml_response}\n```")
