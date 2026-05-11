@@ -116,13 +116,14 @@ def _(mo):
 
     ---
 
-    ### 🔄 [Scenario 4: Cyclotron Exchange](/s4)
+    ### 🔄 [Scenario 4: NDN Exchange](/s4)
 
     **Government ↔ Private Sector**
 
-    The Dutch government pushes APT indicators via Cyclotron. FRANK matches them against
-    MDR telemetry from 35 customers. Anonymized confirmations flow back. Government gets
-    ground-truth validation. Private sector gets early warning. Both win.
+    The Dutch government pushes APT indicators via the Nationaal Detectie Netwerk (NDN).
+    FRANK matches them against MDR telemetry from 35 customers. Anonymized confirmations
+    flow back. Government gets ground-truth validation. Private sector gets early warning.
+    Both win.
 
     ---
 
@@ -150,7 +151,7 @@ def _(mo):
     ├─────────────────────────────────────────────────────────────────────┤
     │                                                                     │
     │   ┌──────────────┐                          ┌──────────────┐        │
-    │   │   CYCLOTRON  │◀────────────────────────▶│  FRANK-GOV   │        │
+    │   │     NDN      │◀────────────────────────▶│  FRANK-GOV   │        │
     │   │ (Government) │    Secure Exchange       │   (Bridge)   │        │
     │   └──────────────┘                          └──────┬───────┘        │
     │                                                    │                │

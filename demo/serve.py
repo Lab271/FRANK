@@ -22,12 +22,14 @@ else:
     logo_img = "Schuberg Philis"
 
 # CSS and HTML for branding
+# Content block is ~760px wide centered, so left edge is at calc(50% - 380px)
+# Logo should end at that left edge with a small gap
 html_head = f"""
 <style>
 #sbp-logo {{
     position: fixed;
-    top: 12px;
-    right: 16px;
+    top: 16px;
+    left: 200px;
     z-index: 9999;
     opacity: 0.9;
 }}
@@ -68,7 +70,7 @@ marimo_app = (
     .with_app(path="/s1", root=str(APP_DIR / "s1_active_incident.py"))
     .with_app(path="/s2", root=str(APP_DIR / "s2_evolving_case.py"))
     .with_app(path="/s3", root=str(APP_DIR / "s3_supply_chain.py"))
-    .with_app(path="/s4", root=str(APP_DIR / "s4_cyclotron.py"))
+    .with_app(path="/s4", root=str(APP_DIR / "s4_ndn.py"))
     .with_app(path="/s5", root=str(APP_DIR / "s5_dashboard.py"))
 ).build()
 
@@ -79,7 +81,7 @@ if __name__ == "__main__":
     print("  http://localhost:2718/s1   — Active Incident")
     print("  http://localhost:2718/s2   — Evolving Case")
     print("  http://localhost:2718/s3   — Supply Chain (Axios)")
-    print("  http://localhost:2718/s4   — Cyclotron Exchange")
+    print("  http://localhost:2718/s4   — NDN Exchange")
     print("  http://localhost:2718/s5   — Information Economy")
     print()
     uvicorn.run(marimo_app, host="0.0.0.0", port=2718)

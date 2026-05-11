@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
 """
-Scenario 4: Cyclotron Exchange — Government ↔ Private Sector
+Scenario 4: NDN Exchange — Government ↔ Private Sector
+
+NDN = Nationaal Detectie Netwerk (formerly Cyclotron)
 
 Run with: uv run python serve.py
 """
@@ -21,13 +23,13 @@ def _():
 @app.cell
 def _(mo):
     mo.md("""
-    # Scenario 4: Cyclotron Feedback Loop
+    # Scenario 4: NDN Feedback Loop
 
     ## Government ↔ Private Sector Exchange
 
-    **The situation:** The Dutch government operates Cyclotron, a platform for
-    sharing threat intelligence with critical infrastructure operators. AIVD, NCSC-NL,
-    and European partners like Europol contribute indicators and detection rules
+    **The situation:** The Dutch government operates the **Nationaal Detectie Netwerk (NDN)**,
+    a platform for sharing threat intelligence with critical infrastructure operators. AIVD,
+    NCSC-NL, and European partners like Europol contribute indicators and detection rules
     based on their unique visibility into nation-state and organized crime activities.
 
     **The traditional problem:** Government agencies have strategic intelligence but
@@ -37,12 +39,12 @@ def _(mo):
     government agencies possess.
 
     **The solution — bidirectional exchange:**
-    1. **Cyclotron → FRANK:** Government pushes detection rules (SIGMA format) with
+    1. **NDN → FRANK:** Government pushes detection rules (SIGMA format) with
        indicators for APT infrastructure, ransomware staging servers, credential
        harvesting campaigns.
     2. **FRANK matches:** Rules are automatically tested against SBP's MDR telemetry
        covering 35 customers across finance, logistics, energy, and healthcare.
-    3. **FRANK → Cyclotron:** Anonymized confirmation flows back: "Rule X matched
+    3. **FRANK → NDN:** Anonymized confirmation flows back: "Rule X matched
        2 organizations in sectors Y and Z, first seen at time T."
 
     **The value exchange:** Government gets ground-truth confirmation that their
@@ -64,10 +66,10 @@ def _(mo):
             value="FRANK-SBP (Production)",
             label="FRANK Instance"
         ),
-        "cyclotron_feed": mo.ui.dropdown(
+        "ndn_feed": mo.ui.dropdown(
             options=["AIVD - APT Indicators", "NCSC-NL - Ransomware", "Europol EC3 - Fraud"],
             value="AIVD - APT Indicators",
-            label="Cyclotron Feed"
+            label="NDN Feed"
         ),
     })
     config
@@ -78,13 +80,13 @@ def _(mo):
 def _(mo):
     mo.md("""
     ---
-    ### Incoming Rules from Cyclotron
+    ### Incoming Rules from NDN
 
     | Rule ID | Description | Confidence | Source |
     |---------|-------------|------------|--------|
-    | CYC-2026-0847 | APT29 infrastructure - beacon | High | AIVD |
-    | CYC-2026-0851 | Ransomware staging server | Medium | NCSC-NL |
-    | CYC-2026-0855 | Credential harvesting campaign | High | Europol |
+    | NDN-2026-0847 | APT29 infrastructure - beacon | High | AIVD |
+    | NDN-2026-0851 | Ransomware staging server | Medium | NCSC-NL |
+    | NDN-2026-0855 | Credential harvesting campaign | High | Europol |
     """)
     return
 
@@ -92,8 +94,8 @@ def _(mo):
 @app.cell
 def _(mo):
     selected_rule = mo.ui.dropdown(
-        options=["CYC-2026-0847", "CYC-2026-0851", "CYC-2026-0855"],
-        value="CYC-2026-0847",
+        options=["NDN-2026-0847", "NDN-2026-0851", "NDN-2026-0855"],
+        value="NDN-2026-0847",
         label="Select rule to match"
     )
     return (selected_rule,)
@@ -114,18 +116,18 @@ def _(mo, json, match_button, selected_rule, config):
 
     # Mock match results per rule
     match_data = {
-        "CYC-2026-0847": {
+        "NDN-2026-0847": {
             "hits": 2,
             "customers": [
                 {"name": "Customer 5", "sector": "Finance", "first_seen": "2026-05-05 08:23", "hits": 4, "status": "active"},
                 {"name": "Customer 18", "sector": "Logistics", "first_seen": "2026-05-04 14:00", "hits": 1, "status": "single"},
             ]
         },
-        "CYC-2026-0851": {
+        "NDN-2026-0851": {
             "hits": 0,
             "customers": []
         },
-        "CYC-2026-0855": {
+        "NDN-2026-0855": {
             "hits": 1,
             "customers": [
                 {"name": "Customer 31", "sector": "Energy", "first_seen": "2026-05-03 11:15", "hits": 2, "status": "active"},
@@ -142,7 +144,7 @@ def _(mo, json, match_button, selected_rule, config):
             rows.append(f"| {c['name']} | {c['sector']} | {c['first_seen']} | {c['hits']} | {status} |")
         table = "\n".join(rows)
 
-        # Anonymized feedback to Cyclotron
+        # Anonymized feedback to NDN
         feedback = {
             "rule_id": rule_id,
             "private_sector_hits": data["hits"],
@@ -155,7 +157,7 @@ def _(mo, json, match_button, selected_rule, config):
     ---
     ### Match Results
 
-    **Rule:** `{rule_id}` | **Feed:** {config.value['cyclotron_feed']}
+    **Rule:** `{rule_id}` | **Feed:** {config.value['ndn_feed']}
 
     **Matched {data['hits']} customers** across 35 in SBP MDR portfolio:
 
@@ -164,10 +166,10 @@ def _(mo, json, match_button, selected_rule, config):
     {table}
 
     ---
-    ### Contributed Back to Cyclotron (Anonymized)
+    ### Contributed Back to NDN (Anonymized)
 
     ```yaml
-    # Anonymized feedback to Cyclotron
+    # Anonymized feedback to NDN
     rule_id: {rule_id}
     private_sector_hits: {data['hits']}
     sectors_affected: {feedback['sectors_affected']}
@@ -175,7 +177,7 @@ def _(mo, json, match_button, selected_rule, config):
     confidence: confirmed
     ```
 
-    **What Cyclotron receives:**
+    **What NDN receives:**
     - ✅ Confirmation that indicators are active in NL private sector
     - ✅ Sector breakdown (without customer names)
     - ✅ Timeline (first seen)
@@ -187,13 +189,13 @@ def _(mo, json, match_button, selected_rule, config):
     ---
     ### Match Results
 
-    **Rule:** `{rule_id}` | **Feed:** {config.value['cyclotron_feed']}
+    **Rule:** `{rule_id}` | **Feed:** {config.value['ndn_feed']}
 
     ✅ **No matches** found across 35 SBP MDR customers.
 
     This is good news — the threat indicators are not present in our telemetry.
 
-    **Feedback to Cyclotron:** Rule received, 0 matches in private sector (NL).
+    **Feedback to NDN:** Rule received, 0 matches in private sector (NL).
     """
 
     mo.md(result_md)
@@ -208,8 +210,8 @@ def _(mo):
 
     ```
     ┌─────────────────────────────────────────────────────────────────┐
-    │                        CYCLOTRON                                │
-    │                    (Government Platform)                        │
+    │                           NDN                                   │
+    │              (Nationaal Detectie Netwerk)                       │
     │                  AIVD · NCSC-NL · Europol                       │
     └───────────────────────────┬─────────────────────────────────────┘
                                 │
@@ -226,7 +228,7 @@ def _(mo):
                                 │    {sectors, hit_count, first_seen}
                                 ▼
     ┌─────────────────────────────────────────────────────────────────┐
-    │                        CYCLOTRON                                │
+    │                           NDN                                   │
     │              "APT29 confirmed active in NL private sector"      │
     └─────────────────────────────────────────────────────────────────┘
 
