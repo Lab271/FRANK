@@ -183,7 +183,7 @@ def _(mo):
     ```
 
     ---
-    [← Back to Scenarios](./)
+    [← Back to Scenarios](/)
 
     <div style="text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
     <strong>FRANK — Threat Intelligence Sharing</strong><br>
