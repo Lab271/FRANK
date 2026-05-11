@@ -26,8 +26,6 @@ def _(mo):
 
     **Feedbackinfrastructuur voor cyberRisico Analyse en Netwerk Kennisdeling**
 
-    *SBIR RVO Demo — May 2026*
-
     ---
 
     ## What is FRANK?
@@ -240,7 +238,10 @@ def _(mo):
 
     ---
 
-    *Schuberg Philis — SBIR Grant SB1CD24006*
+    <div style="text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
+    <strong>FRANK — Threat Intelligence Sharing</strong><br>
+    <small>Schuberg Philis · SBIR Grant SB1CD24006</small>
+    </div>
     """)
     return
 
