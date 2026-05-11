@@ -40,8 +40,8 @@ def _(mo):
     sensitive customer data — providing **dynamic threat intelligence** that evolves
     in real-time as the threat landscape changes.
 
-    **The core principle:** When one organization detects a threat, all organizations
-    benefit. No commercial middleman. Pure reciprocity.
+    **The core principle:** FRANK isn't a feed you subscribe to — it's a network you join.
+    Submit sightings, get context. The ecosystem rewards contribution, not consumption.
 
     ### Key Concepts
 
