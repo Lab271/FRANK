@@ -130,10 +130,8 @@ def _(mo, scan_button, package_input, version_input, config):
 
     table = "\n".join(rows)
 
-    mo.md(f"""
-    ---
-    ### Scan Results
-
+    # Formatted results view
+    formatted_view = mo.md(f"""
     **Package:** `{pkg}@{ver}` | **Scope:** {config.value['scan_scope']}
 
     | Customer | Version | RAT Callback | Status |
@@ -166,6 +164,77 @@ def _(mo, scan_button, package_input, version_input, config):
       condition: selection
     ```
     """)
+
+    # YAML response view
+    yaml_response = f"""supply_chain_scan:
+  query:
+    package: "{pkg}"
+    version: "{ver}"
+    scope: "{config.value['scan_scope']}"
+    timestamp: "2026-03-31T12:30:00Z"
+
+  threat_intel:
+    source: "FRANK-network"
+    rule_id: "FRANK-2026-0331-axios"
+    rule_available_at: "2026-03-31T12:00:00Z"
+    npm_takedown_at: "2026-03-31T24:00:00Z"
+    early_warning_hours: 12
+
+  indicators:
+    compromised_versions:
+      - "1.14.1"
+      - "0.30.4"
+    callback_patterns:
+      - "/api/heartbeat"
+      - "/api/upload"
+    c2_domains:
+      - "cdn-analytics.net"
+      - "npm-telemetry.io"
+
+  scan_results:
+    total_customers: 35
+    scanned: {len(scan_results)}
+    summary:
+      compromised: {len(compromised)}
+      exposed: {len(exposed)}
+      safe: {len(safe)}
+
+    customers:
+{chr(10).join(f'''      - customer_id: "{r['customer']}"
+        installed_version: "{r['version']}"
+        callback_detected: {str(r['callback_detected']).lower()}
+        status: "{r['status']}"''' for r in scan_results)}
+
+  sigma_rule:
+    title: "Axios NPM Supply Chain RAT Callback"
+    status: "experimental"
+    logsource:
+      category: "proxy"
+    detection:
+      selection:
+        c-uri|contains:
+          - "/api/heartbeat"
+          - "/api/upload"
+        cs-method: "POST"
+      condition: "selection"
+"""
+
+    yaml_view = mo.md(f"""
+**FRANK API Response**
+
+```yaml
+{yaml_response}
+```
+    """)
+
+    # Tabbed interface
+    mo.vstack([
+        mo.md("---\n### Scan Results"),
+        mo.ui.tabs({
+            "📊 Formatted": formatted_view,
+            "📄 YAML Response": yaml_view
+        })
+    ])
     return
 
 
