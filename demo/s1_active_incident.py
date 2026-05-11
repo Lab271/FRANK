@@ -107,7 +107,7 @@ def _(mo, check_button, ioc_input, config):
             "seen_by": 3,
             "total_orgs": 12,
             "sectors": ["Finance", "Finance", "Logistics"],
-            "first_seen": "2h ago",
+            "first_seen": "2026-05-11T00:15:00Z",
             "trend": "increasing",
             "your_org_first": False,
             "confidence_avg": 0.90
@@ -142,10 +142,8 @@ def _(mo, check_button, ioc_input, config):
         **You are the first reporter** — your submission will help others.
         """
 
-    mo.md(f"""
-    ---
-    ### Results
-
+    # Formatted results view
+    formatted_view = mo.md(f"""
     **Query:** `{result['ioc']}` via `{config.value['frank_instance']}`
 
     | Metric | Value |
@@ -161,6 +159,48 @@ def _(mo, check_button, ioc_input, config):
     ### Interpretation
     {interpretation}
     """)
+
+    # YAML response view
+    yaml_response = f"""query_result:
+  observable: "{result['ioc']}"
+  type: "ipv4"
+
+  network_visibility:
+    total_organisations: {result['total_orgs']}
+    organisations_reporting: {result['seen_by']}
+    you_are_first_reporter: {str(result['your_org_first']).lower()}
+
+  sighting_summary:
+    first_seen: {f'"{result["first_seen"]}"' if result['first_seen'] else 'null'}
+    last_seen: "2026-05-11T02:15:00Z"
+    trend: "{result['trend']}"
+    confidence_avg: {result['confidence_avg'] if result['confidence_avg'] else 'null'}
+
+  sectors_affected:
+{chr(10).join(f'    - "{s}"' for s in unique_sectors) if unique_sectors else '    []'}
+
+  sigma_matches:
+    - rule_id: "NDN-2026-0847"
+      rule_name: "APT29 Infrastructure Beacon"
+      confidence: "high"
+"""
+
+    yaml_view = mo.md(f"""
+**FRANK API Response**
+
+```yaml
+{yaml_response}
+```
+    """)
+
+    # Tabbed interface
+    mo.vstack([
+        mo.md("---\n### Results"),
+        mo.ui.tabs({
+            "📊 Formatted": formatted_view,
+            "📄 YAML Response": yaml_view
+        })
+    ])
     return
 
 
