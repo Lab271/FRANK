@@ -38,19 +38,19 @@ def _(mo):
     telemetry across dozens of customers but lack the attribution context that
     government agencies possess.
 
-    **The solution — bidirectional exchange:**
-    1. **NDN → FRANK:** Government pushes detection rules (SIGMA format) with
-       indicators for APT infrastructure, ransomware staging servers, credential
-       harvesting campaigns.
-    2. **FRANK matches:** Rules are automatically tested against SBP's MDR telemetry
-       covering 35 customers across finance, logistics, energy, and healthcare.
-    3. **FRANK → NDN:** Anonymized confirmation flows back: "Rule X matched
-       2 organizations in sectors Y and Z, first seen at time T."
+    **The solution — the NDN feedback loop:**
+    1. **NDN → MDRs:** Government publishes SIGMA detection rules directly to
+       participating MDR providers (SBP, KPN, Fox-IT, etc.)
+    2. **MDRs deploy:** Each MDR deploys the rules in their customer environments
+       and monitors for matches across their portfolio
+    3. **MDRs → FRANK:** When rules match, MDRs submit anonymized sightings to FRANK
+    4. **FRANK → NDN:** FRANK aggregates across all MDRs and reports back to NDN:
+       "Rule X confirmed active — 3 organisations, 2 sectors, first seen at T"
 
     **The value exchange:** Government gets ground-truth confirmation that their
-    intelligence is actionable. Private sector gets early warning and detection
-    rules they couldn't develop alone. No customer identities are shared — only
-    aggregate sector-level statistics.
+    intelligence is hitting real targets. MDRs get detection rules they couldn't
+    develop alone. FRANK provides the aggregation layer — one connection to NDN
+    instead of each MDR maintaining their own. No customer identities flow anywhere.
 
     ---
     """)
@@ -114,91 +114,144 @@ def _(mo, json, match_button, selected_rule, config):
 
     rule_id = selected_rule.value
 
-    # Mock match results per rule
+    # Mock match results per rule (anonymized - no customer names in FRANK)
     match_data = {
         "NDN-2026-0847": {
-            "hits": 2,
-            "customers": [
-                {"name": "Customer 5", "sector": "Finance", "first_seen": "2026-05-05 08:23", "hits": 4, "status": "active"},
-                {"name": "Customer 18", "sector": "Logistics", "first_seen": "2026-05-04 14:00", "hits": 1, "status": "single"},
+            "organisations": 2,
+            "sightings": [
+                {"sector": "financial_services", "first_seen": "2026-05-04T14:00:00Z", "hits": 4, "status": "active"},
+                {"sector": "logistics", "first_seen": "2026-05-05T08:23:00Z", "hits": 1, "status": "single"},
             ]
         },
         "NDN-2026-0851": {
-            "hits": 0,
-            "customers": []
+            "organisations": 0,
+            "sightings": []
         },
         "NDN-2026-0855": {
-            "hits": 1,
-            "customers": [
-                {"name": "Customer 31", "sector": "Energy", "first_seen": "2026-05-03 11:15", "hits": 2, "status": "active"},
+            "organisations": 1,
+            "sightings": [
+                {"sector": "energy", "first_seen": "2026-05-03T11:15:00Z", "hits": 2, "status": "active"},
             ]
         }
     }
 
-    data = match_data.get(rule_id, {"hits": 0, "customers": []})
+    data = match_data.get(rule_id, {"organisations": 0, "sightings": []})
+    sectors = list(set(s["sector"] for s in data["sightings"]))
 
-    if data["hits"] > 0:
+    # Map rule IDs to proper STIX UUIDs
+    rule_uuids = {
+        "NDN-2026-0847": "indicator--a1b2c3d4-0847-4e5f-8a9b-c0d1e2f3a4b5",
+        "NDN-2026-0851": "indicator--b2c3d4e5-0851-4f6a-9b0c-d1e2f3a4b5c6",
+        "NDN-2026-0855": "indicator--c3d4e5f6-0855-4a7b-0c1d-e2f3a4b5c6d7",
+    }
+
+    if data["organisations"] > 0:
         rows = []
-        for c in data["customers"]:
-            status = "🚨 Active" if c["status"] == "active" else "⚠️ Single hit"
-            rows.append(f"| {c['name']} | {c['sector']} | {c['first_seen']} | {c['hits']} | {status} |")
+        for i, s in enumerate(data["sightings"], 1):
+            status = "🚨 Active" if s["status"] == "active" else "⚠️ Single hit"
+            rows.append(f"| Organisation {i} | {s['sector']} | {s['first_seen'][:10]} | {s['hits']} | {status} |")
         table = "\n".join(rows)
 
-        # Anonymized feedback to NDN
-        feedback = {
-            "rule_id": rule_id,
-            "private_sector_hits": data["hits"],
-            "sectors_affected": list(set(c["sector"] for c in data["customers"])),
-            "first_seen": min(c["first_seen"] for c in data["customers"]),
-            "confidence": "confirmed"
-        }
+        # Formatted view
+        formatted_view = mo.md(f"""
+**Rule:** `{rule_id}` | **Feed:** {config.value['ndn_feed']}
 
-        result_md = f"""
-    ---
-    ### Match Results
+**Matched {data['organisations']} organisations** across FRANK network:
 
-    **Rule:** `{rule_id}` | **Feed:** {config.value['ndn_feed']}
+| Organisation | Sector | First Seen | Hits | Status |
+|--------------|--------|------------|------|--------|
+{table}
 
-    **Matched {data['hits']} customers** across 35 in SBP MDR portfolio:
+---
+### What flows back to NDN
 
-    | Customer | Sector | First Seen | Hits | Status |
-    |----------|--------|------------|------|--------|
-    {table}
+- ✅ Confirmation that indicators are active in NL private sector
+- ✅ Sector breakdown (anonymized)
+- ✅ Timeline (first seen)
+- ❌ No organisation identities
+- ❌ No IP addresses or sensitive telemetry
+        """)
 
-    ---
-    ### Contributed Back to NDN (Anonymized)
+        # YAML response view
+        first_seen = min(s["first_seen"] for s in data["sightings"])
+        yaml_response = f"""# FRANK → NDN Feedback (Anonymized)
+ndn_feedback:
+  rule_id: "{rule_uuids.get(rule_id, 'indicator--unknown')}"
+  rule_name: "{rule_id}"
+  source_feed: "{config.value['ndn_feed']}"
 
-    ```yaml
-    # Anonymized feedback to NDN
-    rule_id: {rule_id}
-    private_sector_hits: {data['hits']}
-    sectors_affected: {feedback['sectors_affected']}
-    first_seen: "{feedback['first_seen']}"
-    confidence: confirmed
-    ```
+  confirmation:
+    status: "confirmed_active"
+    confidence: 95
 
-    **What NDN receives:**
-    - ✅ Confirmation that indicators are active in NL private sector
-    - ✅ Sector breakdown (without customer names)
-    - ✅ Timeline (first seen)
-    - ❌ No customer identities
-    - ❌ No IP addresses or sensitive telemetry
-    """
+  aggregated_sightings:
+    total_organisations: {data['organisations']}
+    total_hits: {sum(s['hits'] for s in data['sightings'])}
+    first_seen: "{first_seen}"
+    last_seen: "2026-05-11T02:15:00Z"
+
+  sectors_affected:
+{chr(10).join(f'    - "{s}"' for s in sectors)}
+
+  # What is NOT shared:
+  # - Organisation identities
+  # - Customer names
+  # - Source IP addresses
+  # - Raw log data
+"""
+
+        yaml_view = mo.md(f"""
+**FRANK → NDN Response**
+
+```yaml
+{yaml_response}
+```
+        """)
+
     else:
-        result_md = f"""
-    ---
-    ### Match Results
+        formatted_view = mo.md(f"""
+**Rule:** `{rule_id}` | **Feed:** {config.value['ndn_feed']}
 
-    **Rule:** `{rule_id}` | **Feed:** {config.value['ndn_feed']}
+✅ **No matches** found across FRANK network.
 
-    ✅ **No matches** found across 35 SBP MDR customers.
+This is valuable intelligence — the threat indicators are not hitting the Dutch private sector (yet).
+        """)
 
-    This is good news — the threat indicators are not present in our telemetry.
+        yaml_response = f"""# FRANK → NDN Feedback (No matches)
+ndn_feedback:
+  rule_id: "{rule_uuids.get(rule_id, 'indicator--unknown')}"
+  rule_name: "{rule_id}"
+  source_feed: "{config.value['ndn_feed']}"
 
-    **Feedback to NDN:** Rule received, 0 matches in private sector (NL).
-    """
+  confirmation:
+    status: "not_observed"
+    confidence: null
 
-    mo.md(result_md)
+  aggregated_sightings:
+    total_organisations: 0
+    total_hits: 0
+    first_seen: null
+    last_seen: null
+
+  sectors_affected: []
+"""
+
+        yaml_view = mo.md(f"""
+**FRANK → NDN Response**
+
+```yaml
+{yaml_response}
+```
+        """)
+
+    # Tabbed interface
+    mo.vstack([
+        mo.md("---\n### Match Results"),
+        mo.ui.tabs({
+            "📊 Formatted": formatted_view,
+            "📄 YAML Response": yaml_view
+        })
+    ])
     return
 
 
@@ -213,26 +266,30 @@ def _(mo):
     │                           NDN                                   │
     │              (Nationaal Detectie Netwerk)                       │
     │                  AIVD · NCSC-NL · Europol                       │
-    └───────────────────────────┬─────────────────────────────────────┘
-                                │
-                                │ 1. Push: Detection rules (SIGMA)
-                                ▼
-    ┌───────────────────────────────────────────────────────────────┐
-    │                      FRANK-SBP                                │
-    │              (SBP Private FRANK instance)                     │
-    │                                                               │
-    │  2. Match against MDR telemetry (35 customers)                │
-    └───────────────────────────┬───────────────────────────────────┘
-                                │
-                                │ 3. Return: Anonymized confirmation
-                                │    {sectors, hit_count, first_seen}
-                                ▼
-    ┌─────────────────────────────────────────────────────────────────┐
-    │                           NDN                                   │
-    │              "APT29 confirmed active in NL private sector"      │
+    └──────────┬──────────────────────────────────────────┬──────────┘
+               │                                          ▲
+               │ 1. Publish SIGMA rules                   │ 4. Aggregated
+               ▼                                          │    feedback
+    ┌──────────┴──────────────────────────────────────────┴──────────┐
+    │                                                                 │
+    │  ┌─────────────┐    ┌─────────────┐    ┌─────────────┐         │
+    │  │  MDR: SBP   │    │  MDR: KPN   │    │ MDR: Fox-IT │   ...   │
+    │  │ 35 customers│    │ 50 customers│    │ 40 customers│         │
+    │  └──────┬──────┘    └──────┬──────┘    └──────┬──────┘         │
+    │         │                  │                  │                 │
+    │         │ 2. Deploy rules, monitor for matches                 │
+    │         │                  │                  │                 │
+    │         └────────────┬─────┴─────┬───────────┘                 │
+    │                      │           │                              │
+    │                      ▼           ▼                              │
+    │              ┌───────────────────────────┐                      │
+    │              │          FRANK            │ 3. Aggregate         │
+    │              │    (Central aggregator)   │    sightings         │
+    │              └───────────────────────────┘                      │
+    │                                                                 │
     └─────────────────────────────────────────────────────────────────┘
 
-    Government pushes → FRANK matches → Anonymized stats flow back
+    NDN publishes → MDRs deploy & detect → FRANK aggregates → NDN gets confirmation
     ```
 
     ---
