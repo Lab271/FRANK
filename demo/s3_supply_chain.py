@@ -157,11 +157,34 @@ def _(mo, scan_button, package_input, version_input, config):
 
     ```yaml
     title: Axios NPM Supply Chain RAT Callback
+    id: frank-2026-0331-axios
+    status: experimental
+    description: |
+      Detects HTTP POST requests to callback endpoints used by the
+      compromised axios npm packages (1.14.1, 0.30.4) from March 2026.
+    author: FRANK Network (aggregated)
+    date: 2026/03/31
+    references:
+      - https://frank.sbp.nl/intel/2026-0331-axios
+    logsource:
+      category: proxy
     detection:
       selection:
-        c-uri|contains: ['/api/heartbeat', '/api/upload']
-        cs-method: POST
-      condition: selection
+        c-uri|contains:
+          - '/api/heartbeat'
+          - '/api/upload'
+        cs-method: 'POST'
+      filter_legitimate:
+        c-uri|contains:
+          - 'your-legitimate-domain.com'
+      condition: selection and not filter_legitimate
+    falsepositives:
+      - Legitimate applications using similar endpoint patterns
+    level: high
+    tags:
+      - attack.initial_access
+      - attack.t1195.002
+      - supply_chain
     ```
     """)
 
@@ -207,7 +230,11 @@ def _(mo, scan_button, package_input, version_input, config):
 
   sigma_rule:
     title: "Axios NPM Supply Chain RAT Callback"
+    id: "frank-2026-0331-axios"
     status: "experimental"
+    description: "Detects callback endpoints used by compromised axios npm packages"
+    author: "FRANK Network (aggregated)"
+    date: "2026/03/31"
     logsource:
       category: "proxy"
     detection:
@@ -217,6 +244,11 @@ def _(mo, scan_button, package_input, version_input, config):
           - "/api/upload"
         cs-method: "POST"
       condition: "selection"
+    level: "high"
+    tags:
+      - "attack.initial_access"
+      - "attack.t1195.002"
+      - "supply_chain"
 """
 
     yaml_view = mo.md(f"""
