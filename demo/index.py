@@ -48,32 +48,47 @@ def _(mo):
     When an MDR analyst detects a threat indicator, they submit a **sighting** to FRANK:
 
     ```yaml
-    # Sighting submitted by organization
-    observable:
-      type: ipv4
-      value: "185.234.72.14"
-    confidence: 0.9
-    context: "C2 callback detected in firewall logs"
-    timestamp: "2026-05-05T02:15:00Z"
+    # FRANK Sighting Submission (minimal format)
+    submission:
+      submitter:
+        organisation_id: "identity-f431f809-377b-45e0-aa1c-6a4751cae5ff"
+        access_level: "partner"
+
+      sighting:
+        sighting_id: "sighting-ee20065d-2555-424f-ad9e-0f8428623c75"
+        timestamp: "2026-05-05T02:15:00Z"
+        confidence: 87
+
+        observables:
+          network:
+            - type: "ipv4"
+              value: "185.220.102.45"
+            - type: "domain"
+              value: "secure-bank-verify.nl"
     ```
 
     FRANK **anonymizes** and **aggregates** this with sightings from other organizations:
 
     ```yaml
-    # Aggregated response from FRANK
-    observable: "185.234.72.14"
-    sightings: 3
-    sectors:
-      - Finance
-      - Logistics
-    first_seen: "2026-05-05T02:15:00Z"
-    trend: increasing
-    related_sigma_rules:
-      - APT29-C2-Beacon
+    # FRANK Aggregated Response
+    query_result:
+      observable: "185.220.102.45"
+      total_sightings: 3
+      unique_organisations: 2
+      sectors_affected:
+        - "financial_services"
+        - "logistics"
+      first_seen: "2026-05-04T14:00:00Z"
+      last_seen: "2026-05-05T02:15:00Z"
+      trend: "increasing"
+      sigma_matches:
+        - rule_id: "NDN-2026-0847"
+          rule_name: "APT29 Infrastructure Beacon"
+          confidence: "high"
     ```
 
-    **What's shared:** Observable value, sector, timestamp, confidence.
-    **What's NOT shared:** Customer name, source IP, raw logs, PII.
+    **What's shared:** Observable, sector, timestamp, confidence, SIGMA matches.
+    **What's NOT shared:** Customer identity, source IPs, raw logs, PII.
 
     ---
 
