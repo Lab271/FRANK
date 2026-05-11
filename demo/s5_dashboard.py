@@ -87,8 +87,6 @@ def _(mo, refresh_button, config):
     import datetime
     timestamp = datetime.datetime.now().strftime("%H:%M:%S") if refresh_button.value else "—"
 
-    time_range = config.value['time_range']
-
     # Stats vary by time range
     stats_by_range = {
         "Last 24 hours": {
@@ -117,7 +115,7 @@ def _(mo, refresh_button, config):
         },
     }
 
-    stats = stats_by_range.get(time_range, stats_by_range["Last 30 days"])
+    stats = stats_by_range.get(config.value['time_range'], stats_by_range["Last 30 days"])
 
     mo.hstack([
         mo.stat(value=35, label="SBP Customers", bordered=True),
@@ -131,8 +129,6 @@ def _(mo, refresh_button, config):
 
 @app.cell
 def _(mo, config):
-    time_range = config.value['time_range']
-
     # Sector sightings by time range
     sector_data = {
         "Last 24 hours": {"finance": 10, "logistics": 8, "energy": 5, "healthcare": 3, "other": 2},
@@ -149,13 +145,13 @@ def _(mo, config):
         "All time": {"detections": 287, "prevented": 89, "hours": 4120, "correlations": 156},
     }
 
-    s = sector_data.get(time_range, sector_data["Last 30 days"])
-    v = value_data.get(time_range, value_data["Last 30 days"])
-    period = time_range.replace("Last ", "").replace(" ", "")
+    tr = config.value['time_range']
+    s = sector_data.get(tr, sector_data["Last 30 days"])
+    v = value_data.get(tr, value_data["Last 30 days"])
 
     mo.md(f"""
     ---
-    ### SBP Customer Sectors (35 total) — {time_range}
+    ### SBP Customer Sectors (35 total) — {tr}
 
     | Sector | Customers | Sightings |
     |--------|-----------|-----------|
@@ -166,7 +162,7 @@ def _(mo, config):
     | Other | 4 | {s['other']} |
 
     ---
-    ### Value Created — {time_range}
+    ### Value Created — {tr}
 
     | Impact | Count | Description |
     |--------|-------|-------------|
