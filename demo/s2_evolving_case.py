@@ -183,8 +183,8 @@ def _(mo):
     └────────┬─────────┘                      └──────────────────┘
              │ resolves                               ▲
              ▼                                        │
-    ┌──────────────────┐      resolves to            │
-    │evil-c2.example   │ ────────────────────────────┘
+    ┌──────────────────┐      resolves to             │
+    │evil-c2.example   │ ─────────────────────────────┘
     │   (C2 domain)    │
     └──────────────────┘
 
@@ -192,7 +192,7 @@ def _(mo):
     ```
 
     ---
-    [← Back to Scenarios](/)
+    [← Back to Scenarios](/) · [Next: Supply Chain →](/s3)
 
     <div style="text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
     <strong>FRANK — Threat Intelligence Sharing</strong><br>

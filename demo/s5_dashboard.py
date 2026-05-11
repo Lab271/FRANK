@@ -175,8 +175,8 @@ def _(mo):
             subgraph NETWORK["🔗 FRANK Network"]
                 direction LR
                 F_SBP["FRANK-SBP<br/>MDR · 35 customers"]
-                F_KPN["FRANK-KPN<br/>ISP · Backbone"]
-                F_FOX["FRANK-FOX<br/>MDR · 50 customers"]
+                F_NORTHWAVE["FRANK-NORTHWAVE<br/>MDR · 50 customers"]
+                F_MNEMONIC["FRANK-MNEMONIC<br/>MDR · 20 customers"]
             end
 
             subgraph SECTORS["🏢 Sectors Covered"]
@@ -192,22 +192,22 @@ def _(mo):
             F_GOV <-->|"sync"| F_EU
 
             F_GOV --> F_SBP
-            F_GOV --> F_KPN
-            F_GOV --> F_FOX
+            F_GOV --> F_NORTHWAVE
+            F_GOV --> F_MNEMONIC
 
-            F_SBP <-->|"sightings"| F_KPN
-            F_KPN <-->|"sightings"| F_FOX
-            F_SBP <-->|"sightings"| F_FOX
+            F_SBP <-->|"sightings"| F_NORTHWAVE
+            F_NORTHWAVE <-->|"sightings"| F_MNEMONIC
+            F_SBP <-->|"sightings"| F_MNEMONIC
 
             F_SBP --- S1
             F_SBP --- S2
-            F_KPN --- S3
-            F_FOX --- S4
-            F_FOX --- S5
+            F_NORTHWAVE --- S3
+            F_MNEMONIC --- S4
+            F_MNEMONIC --- S5
         """),
         mo.md("""
 ---
-[← Back to Scenarios](/)
+[← Back to Scenarios](/) · [Start Over: Active Incident →](/s1)
 
 <div style="text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
 <strong>FRANK — Threat Intelligence Sharing</strong><br>
