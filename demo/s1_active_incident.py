@@ -161,9 +161,11 @@ def _(mo, check_button, ioc_input, config):
     """)
 
     # YAML response view
-    yaml_response = f"""query_result:
+    yaml_response = f"""# FRANK API Response — Observable Query
+query_result:
+  indicator_id: "indicator--e7b3c2a1-4f5d-4e6a-8b9c-1d2e3f4a5b6c"
   observable: "{result['ioc']}"
-  type: "ipv4"
+  type: "ipv4-addr"
 
   network_visibility:
     total_organisations: {result['total_orgs']}
@@ -171,6 +173,7 @@ def _(mo, check_button, ioc_input, config):
     you_are_first_reporter: {str(result['your_org_first']).lower()}
 
   sighting_summary:
+    sighting_id: "sighting--a1b2c3d4-5e6f-7a8b-9c0d-e1f2a3b4c5d6"
     first_seen: {f'"{result["first_seen"]}"' if result['first_seen'] else 'null'}
     last_seen: "2026-05-11T02:15:00Z"
     trend: "{result['trend']}"
@@ -180,7 +183,7 @@ def _(mo, check_button, ioc_input, config):
 {chr(10).join(f'    - "{s}"' for s in unique_sectors) if unique_sectors else '    []'}
 
   sigma_matches:
-    - rule_id: "NDN-2026-0847"
+    - rule_id: "indicator--f8d9e0a1-2b3c-4d5e-6f7a-8b9c0d1e2f3a"
       rule_name: "APT29 Infrastructure Beacon"
       confidence: "high"
 """

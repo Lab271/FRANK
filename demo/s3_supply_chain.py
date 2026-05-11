@@ -157,7 +157,7 @@ def _(mo, scan_button, package_input, version_input, config):
 
     ```yaml
     title: Axios NPM Supply Chain RAT Callback
-    id: frank-2026-0331-axios
+    id: indicator--c3d4e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f
     status: experimental
     description: |
       Detects HTTP POST requests to callback endpoints used by the
@@ -165,7 +165,7 @@ def _(mo, scan_button, package_input, version_input, config):
     author: FRANK Network (aggregated)
     date: 2026/03/31
     references:
-      - https://frank.sbp.nl/intel/2026-0331-axios
+      - https://frank.network/campaign/campaign--7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d
     logsource:
       category: proxy
     detection:
@@ -188,19 +188,31 @@ def _(mo, scan_button, package_input, version_input, config):
     ```
     """)
 
-    # YAML response view
-    yaml_response = f"""supply_chain_scan:
+    # YAML response view - what FRANK actually returns
+    yaml_response = f"""# FRANK API Response — Supply Chain Intelligence
+frank_response:
   query:
+    type: "supply_chain"
     package: "{pkg}"
     version: "{ver}"
-    scope: "{config.value['scan_scope']}"
     timestamp: "2026-03-31T12:30:00Z"
 
   threat_intel:
-    source: "FRANK-network"
-    rule_id: "FRANK-2026-0331-axios"
-    rule_available_at: "2026-03-31T12:00:00Z"
-    npm_takedown_at: "2026-03-31T24:00:00Z"
+    campaign_id: "campaign--7a8b9c0d-1e2f-3a4b-5c6d-7e8f9a0b1c2d"
+    malware_id: "malware--b2c3d4e5-6f7a-8b9c-0d1e-2f3a4b5c6d7e"
+    severity: "critical"
+    confidence: 95
+    first_reported: "2026-03-31T08:15:00Z"
+    reporters: 4
+    sectors_affected:
+      - "financial_services"
+      - "logistics"
+      - "healthcare"
+
+  timeline:
+    malicious_publish: "2026-03-31T06:00:00Z"
+    frank_rule_available: "2026-03-31T12:00:00Z"
+    npm_takedown: "2026-03-31T24:00:00Z"
     early_warning_hours: 12
 
   indicators:
@@ -213,26 +225,21 @@ def _(mo, scan_button, package_input, version_input, config):
     c2_domains:
       - "cdn-analytics.net"
       - "npm-telemetry.io"
+    file_hashes:
+      - sha256: "a1d4e5f6c8b9a0e1d2c3b4a5f6e7d8c9b0a1e2f3..."
+        version: "1.14.1"
 
-  scan_results:
-    total_customers: 35
-    scanned: {len(scan_results)}
-    summary:
-      compromised: {len(compromised)}
-      exposed: {len(exposed)}
-      safe: {len(safe)}
-
-    customers:
-{chr(10).join(f'''      - customer_id: "{r['customer']}"
-        installed_version: "{r['version']}"
-        callback_detected: {str(r['callback_detected']).lower()}
-        status: "{r['status']}"''' for r in scan_results)}
+  network_sightings:
+    total_organisations: 8
+    callback_detected: 3
+    sectors:
+      financial_services: 2
+      logistics: 1
 
   sigma_rule:
+    id: "indicator--c3d4e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f"
     title: "Axios NPM Supply Chain RAT Callback"
-    id: "frank-2026-0331-axios"
     status: "experimental"
-    description: "Detects callback endpoints used by compromised axios npm packages"
     author: "FRANK Network (aggregated)"
     date: "2026/03/31"
     logsource:
@@ -248,7 +255,6 @@ def _(mo, scan_button, package_input, version_input, config):
     tags:
       - "attack.initial_access"
       - "attack.t1195.002"
-      - "supply_chain"
 """
 
     yaml_view = mo.md(f"""
