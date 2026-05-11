@@ -190,37 +190,48 @@ def _(mo):
 
 @app.cell
 def _(mo):
+    mo.vstack([
+        mo.md("## Architecture"),
+        mo.mermaid("""
+        flowchart TB
+            subgraph GOV["🏛️ Government Layer"]
+                NDN["NDN<br/>Nationaal Detectie Netwerk"]
+            end
+
+            subgraph FRANK["🔗 FRANK Network"]
+                direction LR
+                F_SBP["FRANK-SBP<br/>MDR Provider"]
+                F_KPN["FRANK-KPN<br/>ISP"]
+                F_FOX["FRANK-FOX<br/>MDR Provider"]
+            end
+
+            subgraph MDR["🏢 MDR Customers"]
+                direction LR
+                C1["Finance<br/>35 orgs"]
+                C2["Logistics<br/>20 orgs"]
+                C3["Energy<br/>15 orgs"]
+            end
+
+            NDN -->|"1. SIGMA rules"| F_SBP
+            NDN -->|"1. SIGMA rules"| F_KPN
+            NDN -->|"1. SIGMA rules"| F_FOX
+
+            F_SBP <-->|"3. Sync sightings"| F_KPN
+            F_KPN <-->|"3. Sync sightings"| F_FOX
+
+            F_SBP -->|"2. Deploy"| C1
+            F_KPN -->|"2. Deploy"| C2
+            F_FOX -->|"2. Deploy"| C3
+
+            F_SBP -->|"4. Aggregated feedback"| NDN
+        """)
+    ])
+    return
+
+
+@app.cell
+def _(mo):
     mo.md("""
-    ## Architecture
-
-    ```
-    ┌─────────────────────────────────────────────────────────────────────┐
-    │                         FRANK ECOSYSTEM                             │
-    ├─────────────────────────────────────────────────────────────────────┤
-    │                                                                     │
-    │   ┌──────────────┐                          ┌──────────────┐        │
-    │   │     NDN      │◀────────────────────────▶│  FRANK-GOV   │        │
-    │   │ (Government) │    Secure Exchange       │   (Bridge)   │        │
-    │   └──────────────┘                          └──────┬───────┘        │
-    │                                                    │                │
-    │                            ┌───────────────────────┼──────────┐     │
-    │                            │                       │          │     │
-    │                       ┌────▼────┐            ┌─────▼────┐     │     │
-    │                       │FRANK-SBP│◀──────────▶│FRANK-KPN │     │     │
-    │                       │  (MDR)  │   Sync     │  (ISP)   │     │     │
-    │                       └────┬────┘            └──────────┘     │     │
-    │                            │                                  │     │
-    │                 ┌──────────┼──────────┐                       │     │
-    │                 │          │          │                       │     │
-    │            ┌────▼───┐ ┌────▼───┐ ┌────▼───┐                   │     │
-    │            │Customer│ │Customer│ │Customer│                   │     │
-    │            │   A    │ │   B    │ │   C    │                   │     │
-    │            │(MDR)   │ │(MDR)   │ │(MDR)   │                   │     │
-    │            └────────┘ └────────┘ └────────┘                   │     │
-    │                                                               │     │
-    └───────────────────────────────────────────────────────────────┴─────┘
-    ```
-
     ---
 
     ## Quick Start
