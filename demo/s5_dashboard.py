@@ -152,44 +152,69 @@ def _(mo):
 
     > Your contributions enabled **23 faster detections** at other organizations this month.
 
-    ---
-    ### Architecture
-
-    ```
-                                ┌──────────────┐
-                                │     NDN      │
-                                │  (Government)│
-                                └──────┬───────┘
-                                       │
-                          ┌────────────┴────────────┐
-                          │                         │
-                    ┌─────▼─────┐             ┌─────▼─────┐
-                    │ FRANK-GOV │◀───────────▶│ FRANK-EU  │
-                    │   (NL)    │    sync     │ (Europol) │
-                    └─────┬─────┘             └───────────┘
-                          │
-     ┌────────────────────┼────────────────────┐
-     │                    │                    │
-┌────▼────┐          ┌────▼────┐          ┌────▼────┐
-│FRANK-SBP│          │FRANK-KPN│          │FRANK-FOX│
-│  (MDR)  │          │  (ISP)  │          │  (MDR)  │
-└────┬────┘          └────┬────┘          └────┬────┘
-     │                    │                    │
-┌────┴────┐          ┌────┴────┐          ┌────┴────┐
-│35 cust. │          │Backbone │          │ 50 cust │
-│Finance, │          │telemetry│          │ Retail, │
-│ Energy  │          │         │          │  Gov    │
-└─────────┘          └─────────┘          └─────────┘
-    ```
-
-    ---
-    [← Back to Scenarios](/)
-
-    <div style="text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
-    <strong>FRANK — Threat Intelligence Sharing</strong><br>
-    <small>Schuberg Philis · SBIR Grant SB1CD24006</small>
-    </div>
     """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.vstack([
+        mo.md("---\n### Architecture"),
+        mo.mermaid("""
+        flowchart TB
+            subgraph GOV["🏛️ Government"]
+                NDN["NDN<br/>Nationaal Detectie Netwerk"]
+            end
+
+            subgraph BRIDGES["🌐 National & EU Bridges"]
+                direction LR
+                F_GOV["FRANK-GOV<br/>Netherlands"]
+                F_EU["FRANK-EU<br/>Europol"]
+            end
+
+            subgraph NETWORK["🔗 FRANK Network"]
+                direction LR
+                F_SBP["FRANK-SBP<br/>MDR · 35 customers"]
+                F_KPN["FRANK-KPN<br/>ISP · Backbone"]
+                F_FOX["FRANK-FOX<br/>MDR · 50 customers"]
+            end
+
+            subgraph SECTORS["🏢 Sectors Covered"]
+                direction LR
+                S1["Finance"]
+                S2["Energy"]
+                S3["Logistics"]
+                S4["Healthcare"]
+                S5["Government"]
+            end
+
+            NDN <--> F_GOV
+            F_GOV <-->|"sync"| F_EU
+
+            F_GOV --> F_SBP
+            F_GOV --> F_KPN
+            F_GOV --> F_FOX
+
+            F_SBP <-->|"sightings"| F_KPN
+            F_KPN <-->|"sightings"| F_FOX
+            F_SBP <-->|"sightings"| F_FOX
+
+            F_SBP --- S1
+            F_SBP --- S2
+            F_KPN --- S3
+            F_FOX --- S4
+            F_FOX --- S5
+        """),
+        mo.md("""
+---
+[← Back to Scenarios](/)
+
+<div style="text-align: center; margin-top: 40px; padding: 20px; border-top: 1px solid #ddd;">
+<strong>FRANK — Threat Intelligence Sharing</strong><br>
+<small>Schuberg Philis · SBIR Grant SB1CD24006</small>
+</div>
+        """)
+    ])
     return
 
 
