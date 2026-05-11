@@ -149,6 +149,15 @@ def _(mo, scan_button, package_input, version_input, config):
     | Total scanned | {len(scan_results)} of 35 |
 
     ---
+    ### Access Tiers
+
+    **Your access level: `core_member`**
+
+    As a core member, you see `target_organisation` UUIDs in the YAML response.
+    Only you can link these UUIDs back to your own customers — FRANK doesn't
+    know the mapping. Other members see only sector aggregates.
+
+    ---
     ### Recommended Actions
 
     1. **Customer 12:** Initiate incident response — RAT callback detected
@@ -235,6 +244,20 @@ frank_response:
     sectors:
       financial_services: 2
       logistics: 1
+
+  # Access tier: core_member
+  # Core members see target_organisation UUIDs (below)
+  # Only the submitting MDR can link these back to their own customers
+  target_sightings:
+    - target_id: "identity--d4e5f6a7-8b9c-0d1e-2f3a-4b5c6d7e8f9a"
+      sector: "financial_services"
+      callback_detected: true
+    - target_id: "identity--e5f6a7b8-9c0d-1e2f-3a4b-5c6d7e8f9a0b"
+      sector: "financial_services"
+      callback_detected: false
+    - target_id: "identity--f6a7b8c9-0d1e-2f3a-4b5c-6d7e8f9a0b1c"
+      sector: "logistics"
+      callback_detected: false
 
   sigma_rule:
     id: "indicator--c3d4e5f6-7a8b-9c0d-1e2f-3a4b5c6d7e8f"
