@@ -266,3 +266,4 @@ logs/
 .tmp/
 .temp/
 AGENTS.md
+.mcp.json
