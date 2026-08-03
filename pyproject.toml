@@ -2,6 +2,8 @@
 # Copyright (c) 2025 Schuberg Philis B.V.
 # SPDX-License-Identifier: Apache-2.0
 ##
+# ci: no-op touch to trigger FRANK CI (main.yml) and verify the SHA-pinned
+# actions run past "Set up job". Reverted before merge.
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
