@@ -55,16 +55,16 @@ For more details see the [/docs/implementation plan](../../docs/implementation_p
 ```
 ┌──────────────────┐    ┌──────────────────┐    ┌─────────────────┐
 │   FastAPI App    │    │   LocalStack     │    │   Admin Tools   │
-│   (Port 8000)    │    │   (Port 4566)    │    │   (Port 8080)   │
+│   (Port 8000)    │    │   (Port 4566)    │    │   (Port 8001)   │
 │                  │    │                  │    │                 │
 │ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌─────────────┐ │
-│ │ Dual Repo    │ │◄──►│ │  DynamoDB    │ │    │ │   Adminer   │ │
-│ │  Manager     │ │    │ │              │ │    │ │ (MySQL GUI) │ │
+│ │ Dual Repo    │ │◄──►│ │  DynamoDB    │ │    │ │DynamoDB GUI │ │
+│ │  Manager     │ │    │ │              │ │    │ │(Port 8001)  │ │
 │ └──────────────┘ │    │ └──────────────┘ │    │ └─────────────┘ │
-│ ┌──────────────┐ │    │ ┌──────────────┐ │    │ ┌─────────────┐ │
-│ │MySQL Repo    │ │◄──┐│ │      S3      │ │    │ │DynamoDB GUI │ │
-│ │(Replacement) │ │   ││ │   (Future)   │ │    │ │(Port 8001)  │ │
-│ └──────────────┘ │   ││ └──────────────┘ │    │ └─────────────┘ │
+│ ┌──────────────┐ │    │ ┌──────────────┐ │    │                 │
+│ │MySQL Repo    │ │◄──┐│ │      S3      │ │    │                 │
+│ │(Replacement) │ │   ││ │   (Future)   │ │    │                 │
+│ └──────────────┘ │   ││ └──────────────┘ │    │                 │
 │ ┌──────────────┐ │   │└──────────────────┘    └─────────────────┘
 │ │DynamoDB Repo │ │   │
 │ └──────────────┘ │   │
@@ -117,7 +117,6 @@ make test-api
 - **FRANK API**: http://localhost:8000
 - **API Documentation**: http://localhost:8000/docs
 - **MySQL**: localhost:3306
-- **MySQL Admin (Adminer)**: http://localhost:8080
 - **DynamoDB Admin**: http://localhost:8001
 - **LocalStack Dashboard**: http://localhost:4571
 
