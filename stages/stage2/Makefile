@@ -27,7 +27,6 @@ up-mysql:  ## Start all services
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"
-	@echo "- Adminer (RDS): http://localhost:8080"
 	@echo "- DynamoDB Admin: http://localhost:8081"
 	@echo "- LocalStack: http://localhost:4566"
 
@@ -36,7 +35,6 @@ up:  ## Start all services
 	@echo "Waiting for services to be ready..."
 	@echo "Services started:"
 	@echo "- FRANK API: http://localhost:8000"
-	@echo "- Adminer (RDS): http://localhost:8080"
 	@echo "- DynamoDB Admin: http://localhost:8001"
 	@echo "- LocalStack: http://localhost:4566"
 
@@ -120,8 +118,7 @@ shell:  ## Open shell in application container
 	docker-compose exec frank-app bash
 
 db-inspect-rds:  ## Inspect RDS database
-	@echo "Connect to Adminer at http://localhost:8080"
-	@echo "Server: localstack:4566"
+	@echo "Connect with: mysql -h 127.0.0.1 -P 3306 -u frank_user -p frank"
 	@echo "Username: frank_user"
 	@echo "Password: frank_pass"
 	@echo "Database: frank"
