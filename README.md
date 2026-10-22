@@ -41,12 +41,11 @@ make demo                          # optional: 60 synthetic sightings from the l
 make run                           # http://127.0.0.1:8080, data in ./data
 ```
 
-**In podman** (data and tokens stay on the host as plain files under `deploy/podman/`):
+**In podman** (data stays on the host under `deploy/podman/data`; tokens are the same `./tokens` file `make run` uses):
 
 ```bash
-make image
-make podman-token TIER=partner LABEL=me   # prints the token once
-make up                            # http://127.0.0.1:8080 (FRANK_PORT to change)
+make token TIER=partner LABEL=me   # skip if you already have one
+make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT to change)
 make down
 ```
 

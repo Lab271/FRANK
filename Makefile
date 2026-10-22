@@ -10,7 +10,7 @@ FRANK := target/release/frank
 COMPOSE := podman compose -f deploy/podman/compose.yaml
 N ?= 60
 
-.PHONY: help check build server wasm test lint fmt run token demo image up podman-token down clean
+.PHONY: help check build server wasm test lint fmt run token demo image up down clean
 
 help: ## Show targets
 	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-13s %s\n", $$1, $$2}'
@@ -45,7 +45,7 @@ run: build ## Run on this machine (data in ./data, tokens in ./tokens)
 	@[ -s $(TOKENS) ] || echo "note: no tokens yet, so only public statistics work: make token TIER=partner LABEL=me (then restart)" >&2
 	FRANK_DATA=$(DATA) FRANK_TOKENS=$(TOKENS) $(FRANK) serve
 
-token: server ## Create a token: make token TIER=partner LABEL=me (restart the server after)
+token: server ## Create a token for run and up: make token TIER=partner LABEL=me (then restart)
 	@[ -n "$(TIER)" ] && [ -n "$(LABEL)" ] || { echo "usage: make token TIER=observer|contributor|partner|core LABEL=<who>" >&2; exit 2; }
 	@FRANK_TOKENS=$(TOKENS) $(FRANK) token $(TIER) "$(LABEL)"
 
@@ -57,15 +57,9 @@ demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-up: image ## Run in podman (data and tokens on the host under deploy/podman; FRANK_PORT, default 8080)
-	mkdir -p deploy/podman/data && touch deploy/podman/tokens
+up: image ## Run in podman (data in deploy/podman/data, tokens shared with run; FRANK_PORT, default 8080)
+	mkdir -p deploy/podman/data && touch $(TOKENS)
 	$(COMPOSE) up -d
-
-podman-token: ## Token for the podman deployment: make podman-token TIER=partner LABEL=me
-	@[ -n "$(TIER)" ] && [ -n "$(LABEL)" ] || { echo "usage: make podman-token TIER=observer|contributor|partner|core LABEL=<who>" >&2; exit 2; }
-	@touch deploy/podman/tokens
-	@podman run --rm -v $(CURDIR)/deploy/podman/tokens:/etc/frank/tokens:Z $(IMAGE):latest token $(TIER) "$(LABEL)"
-	@echo "restart to load it: $(COMPOSE) restart" >&2
 
 down: ## Stop the podman deployment
 	$(COMPOSE) down
