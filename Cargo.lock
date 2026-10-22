@@ -263,7 +263,7 @@ dependencies = [
 
 [[package]]
 name = "frank"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "axum",
  "clap",
@@ -284,7 +284,7 @@ dependencies = [
 
 [[package]]
 name = "frank-core"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -293,7 +293,7 @@ dependencies = [
 
 [[package]]
 name = "frank-wasm"
-version = "0.9.0"
+version = "0.10.0"
 dependencies = [
  "db-core",
  "frank-core",
