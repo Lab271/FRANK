@@ -1,0 +1,6 @@
+/* Pills fully round; cards 12px. The parent's one-square-corner grammar applies:
+   radius trios like "999px 999px 999px 0" and "20px 20px 20px 0" are composed per element. */
+:root{
+  --lab-shape-radius-card:12px;
+  --lab-shape-radius-pill:999px;
+}

@@ -1,0 +1,28 @@
+# FRANK in podman: `make up` from the repo root.
+# Data and tokens stay on the host as plain files:
+#   deploy/podman/data/sightings/   Parquet table (live/, archive/, wal/)
+#   deploy/podman/data/iocs.db      row table
+#   tokens (repo root)              `<sha256> <tier> <label>` lines, shared
+#                                   with `make run`
+# Tokens are read at start: `make token TIER=partner LABEL=me`, then
+# `podman compose -f deploy/podman/compose.yaml restart`.
+# The container runs as uid 65532. On Linux, give it the data directory once:
+# `podman unshare chown -R 65532:65532 deploy/podman/data tokens`.
+# Host port: FRANK_PORT (default 8080).
+services:
+  frank:
+    image: ghcr.io/lab271/frank:latest
+    build:
+      context: ../..
+      dockerfile: Containerfile
+    ports:
+      - "127.0.0.1:${FRANK_PORT:-8080}:8080"
+    volumes:
+      - ./data:/data:Z
+      - ../../tokens:/etc/frank/tokens:ro,Z
+    environment:
+      FRANK_RETENTION_DAYS: "400"
+      RUST_LOG: "frank=info,tower_http=info"
+    restart: unless-stopped
+    stop_signal: SIGTERM
+    stop_grace_period: 30s

@@ -1,0 +1,37 @@
+//! FRANK's wire model (ADR-016): a submission comes in, anonymised
+//! sighting rows go out. Shared by the server and the browser (WASM), so
+//! a contributor sees exactly the rows that will be shared before sending.
+//!
+//! Anonymisation is by schema: [`SightingRow`] has no column for the
+//! submitter's or the target's identity, so nothing identifying can be
+//! stored, whatever a submission carries.
+
+pub mod observable;
+pub mod submission;
+pub mod tier;
+
+pub use observable::{Ioc, IocType};
+pub use submission::{Error, SightingRow, Submission};
+pub use tier::Tier;
+
+/// The smallest count a public or observer answer shows for one cell
+/// (sector, type, ...); smaller cells are suppressed (k-anonymity).
+pub const MIN_CELL: i64 = 3;
+
+/// `s` as an SQL string literal: quotes doubled. The only escape SQLite's
+/// grammar (and db-core's) has; values are normalised before they get here.
+#[must_use]
+pub fn sql_quote(s: &str) -> String {
+    format!("'{}'", s.replace('\'', "''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_quote_doubles_quotes() {
+        assert_eq!(sql_quote("a'b"), "'a''b'");
+        assert_eq!(sql_quote("x' OR '1'='1"), "'x'' OR ''1''=''1'");
+    }
+}

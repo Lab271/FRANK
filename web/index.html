@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>FRANK</title>
+<link rel="stylesheet" href="style.css">
+<script>
+  // The Lab271 tokens theme on data-theme; follow the OS setting.
+  const dark = matchMedia("(prefers-color-scheme: dark)");
+  const theme = () => document.documentElement.dataset.theme = dark.matches ? "dark" : "light";
+  theme(); dark.addEventListener("change", theme);
+</script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <span class="lab-eyebrow">lab271 \ anonymised threat-sighting sharing</span>
+    <h1>FRANK</h1>
+  </div>
+  <form id="auth" autocomplete="off">
+    <input id="token" class="lab-input" type="password" placeholder="frank_… token (empty = public)" aria-label="Token">
+    <button type="submit" class="lab-btn lab-btn--secondary">use</button>
+    <span id="tier" class="lab-label pill">public</span>
+  </form>
+</header>
+<div class="beam" aria-hidden="true">
+  <svg width="232" height="8" viewBox="0 0 232 8">
+    <rect x="0" y="3" width="38" height="2"/><rect x="44" y="3" width="16" height="2"/><rect x="66" y="3" width="8" height="2"/>
+    <rect x="80" y="2" width="4" height="4"/><rect x="88" y="2" width="4" height="4"/><rect class="a" x="98" y="2" width="4" height="4"/>
+    <rect x="106" y="2" width="4" height="4"/><rect x="118" y="2" width="4" height="4"/><rect x="130" y="2" width="4" height="4"/>
+    <rect class="a" x="144" y="2" width="4" height="4"/><rect x="156" y="2" width="4" height="4"/><rect x="172" y="2" width="4" height="4"/>
+    <rect class="a" x="188" y="2" width="4" height="4"/><rect x="206" y="2" width="4" height="4"/><rect x="228" y="2" width="4" height="4"/>
+  </svg>
+</div>
+
+<nav role="tablist" class="lab-nav">
+  <button role="tab" class="lab-nav-link" data-tab="stats" aria-selected="true">statistics</button>
+  <button role="tab" class="lab-nav-link" data-tab="submit">submit</button>
+  <button role="tab" class="lab-nav-link" data-tab="lookup">lookup</button>
+  <button role="tab" class="lab-nav-link" data-tab="analyse">analyse locally</button>
+</nav>
+
+<main>
+  <section id="stats" role="tabpanel">
+    <div class="row">
+      <label>window <select id="days" class="lab-input">
+        <option value="1">1 day</option><option value="7">7 days</option>
+        <option value="30" selected>30 days</option><option value="365">365 days</option>
+      </select></label>
+      <button id="refresh" class="lab-btn lab-btn--secondary">refresh</button>
+    </div>
+    <div id="tiles" class="tiles"></div>
+    <div id="breakdowns" class="grid"></div>
+    <p class="note" id="stats-note"></p>
+  </section>
+
+  <section id="submit" role="tabpanel" hidden>
+    <p class="note">Paste a submission (Phase 2 JSON format, one or an array). The preview runs in
+      your browser, with the same code the server runs (WebAssembly): these rows are everything that is shared.
+      Organisation identities are never stored.</p>
+    <textarea id="submission" class="lab-input" spellcheck="false" rows="14"></textarea>
+    <div class="row">
+      <button id="example" class="lab-btn lab-btn--secondary">load example</button>
+      <button id="do-preview" class="lab-btn">preview</button>
+      <button id="do-submit" class="lab-btn lab-btn--cta">submit \ contributor</button>
+    </div>
+    <div id="submit-out"></div>
+  </section>
+
+  <section id="lookup" role="tabpanel" hidden>
+    <form id="ioc-form" class="row">
+      <select id="ioc-type" class="lab-input" aria-label="IoC type">
+        <option>ipv4</option><option>ipv6</option><option>domain</option><option>url</option>
+        <option>email</option><option>file_hash</option><option>certificate</option>
+        <option>registry_key</option><option>mutex</option>
+      </select>
+      <input id="ioc-value" class="lab-input" placeholder="185.220.102.45" aria-label="IoC value">
+      <button type="submit" class="lab-btn">look up</button>
+    </form>
+    <form id="cidr-form" class="row">
+      <input id="cidr" class="lab-input" placeholder="185.220.0.0/16" aria-label="CIDR block">
+      <button type="submit" class="lab-btn lab-btn--secondary">addresses in range</button>
+    </form>
+    <div id="lookup-out"></div>
+  </section>
+
+  <section id="analyse" role="tabpanel" hidden>
+    <p class="note">Partners download the <code>sightings</code> Parquet files and query them here, in the browser,
+      on db-core's column engine compiled to WebAssembly. Nothing is sent back. Counts, sums, minimums and
+      maximums merge across files; other results are shown per file.</p>
+    <div class="row">
+      <button id="load-files" class="lab-btn lab-btn--secondary">download files</button>
+      <span id="files-status" class="note"></span>
+    </div>
+    <textarea id="sql" class="lab-input" spellcheck="false" rows="4">SELECT ioc_type, count(*), sum(observations) FROM sightings GROUP BY ioc_type</textarea>
+    <div class="row">
+      <button id="run-sql" class="lab-btn">run</button>
+      <span id="sql-status" class="note"></span>
+    </div>
+    <div id="sql-out"></div>
+  </section>
+</main>
+
+<footer>
+  <span>LAB271 <span class="bs">\</span> FRANK <span class="bs">\</span> a Schuberg Philis lab</span>
+  <img class="on-light" src="lab271/Combo_OnWhite.svg" alt="LAB271 / Schuberg Philis">
+  <img class="on-dark" src="lab271/Combo_OnDark.svg" alt="LAB271 / Schuberg Philis">
+</footer>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>

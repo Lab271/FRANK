@@ -266,3 +266,14 @@ logs/
 .tmp/
 .temp/
 AGENTS.md
+
+# Phase 3 (Rust)
+/target/
+/web/pkg/
+/data/
+/tokens
+/deploy/podman/data/
+/deploy/podman/tokens
+.terraform/
+*.tfstate*
+*.tfvars

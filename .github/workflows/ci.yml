@@ -1,0 +1,46 @@
+name: FRANK CI
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: fmt, clippy, test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: wasm32-unknown-unknown
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+      - run: cargo fmt --all --check
+      - run: cargo clippy --workspace --all-targets --locked -- -D warnings
+      - run: cargo clippy -p frank-wasm --target wasm32-unknown-unknown --locked -- -D warnings
+      - run: cargo test --workspace --locked
+
+  image:
+    name: container image
+    runs-on: ubuntu-latest
+    needs: rust
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - name: Build
+        run: podman build -t ghcr.io/lab271/frank:${{ github.sha }} -f Containerfile .
+      - name: Push (main only)
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | podman login ghcr.io -u "${{ github.actor }}" --password-stdin
+          podman tag ghcr.io/lab271/frank:${{ github.sha }} ghcr.io/lab271/frank:latest
+          podman push ghcr.io/lab271/frank:${{ github.sha }}
+          podman push ghcr.io/lab271/frank:latest

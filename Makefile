@@ -1,113 +1,69 @@
-.ONESHELL:
+# FRANK Phase 3 (ADR-016). Phase 2 (Python) lives in legacy/phase2.
 SHELL := /bin/bash
-VENV := .venv
-PYTHON_VERSION := 3.11
-PACKAGE := frank
+CARGO ?= rustup run stable cargo
+DATA ?= ./data
+TOKENS ?= ./tokens
+IMAGE ?= ghcr.io/lab271/frank
+VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
+WASM_BINDGEN_VERSION := 0.2.129
+FRANK := target/release/frank
+COMPOSE := podman compose -f deploy/podman/compose.yaml
+N ?= 60
 
-.PHONY: help version check env sync lock test lint format type-check clean docker-up docker-down docker-logs docker-build env-help
+.PHONY: help check build server wasm test lint fmt run token demo image up down clean
 
-version: ## Show project version
-	@uv run python -c "from $(PACKAGE) import __version__; print(f'version: {__version__}')"
+help: ## Show targets
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-13s %s\n", $$1, $$2}'
 
-check: ## Verify required tooling is available
-	@echo "Checking for required tools..."
-	@printf "Checking for 'uv'... "
-	@command -v uv >/dev/null 2>&1 || { echo >&2 "✗ 'uv' is required but not installed. Please install it from https://github.com/astral-sh/uv"; exit 1; }
-	@printf "\rChecking for 'pytest'... "
-	@uv run pytest --version > /dev/null 2>&1 || { echo >&2 "✗ pytest is not installed"; exit 1; }
-	@printf "\rChecking for 'ruff'... "
-	@uv run ruff --version > /dev/null 2>&1 || { echo >&2 "✗ ruff is not installed"; exit 1; }
-	@printf "\rChecking for 'mypy'... "
-	@uv run mypy --version > /dev/null 2>&1 || { echo >&2 "✗ mypy is not installed"; exit 1; }
-	@printf "\r\033[K✓ All required tools are installed\n"
+check: ## Verify the toolchain
+	@rustup target list --installed | grep -q wasm32-unknown-unknown || { echo "rustup target add wasm32-unknown-unknown"; exit 1; }
+	@wasm-bindgen --version | grep -q $(WASM_BINDGEN_VERSION) || { echo "cargo install wasm-bindgen-cli --version $(WASM_BINDGEN_VERSION) --locked"; exit 1; }
+	@echo "toolchain ok"
 
-env: ## Create and populate the development virtual environment
-	@echo "Setting up development environment with Python $(PYTHON_VERSION)..."
-	uv venv $(VENV) --python $(PYTHON_VERSION) --clear > /dev/null
-	@echo "✓ Virtual environment created at $(VENV)/"
-	@uv sync > /dev/null
-	@uv sync --all-groups > /dev/null
-	@if [ ! -f uv.lock ]; then \
-		echo "No uv.lock found, generating lock file..."; \
-		uv lock; \
-	fi
-	@uv run python -c "from $(PACKAGE) import __version__; print(f'version: {__version__}')"
-	@echo "To activate: source $(VENV)/bin/activate"
-	@echo "✓ Development environment is ready"
+build: server wasm ## Build the server (release) and the browser module
 
-sync: ## Sync dependencies into the virtual environment
-	@echo "Syncing dependencies into virtual environment..."
-	uv sync > /dev/null
-	uv sync --all-groups > /dev/null
-	@echo "✓ Dependencies synced"
+server: ## Build the server binary only
+	$(CARGO) build --release --locked -p frank
 
-lock: ## Lock dependencies into uv.lock
-	@echo "Locking dependencies..."
-	uv lock
+wasm: ## Build web/pkg (frank-wasm for the browser)
+	$(CARGO) build --release --locked -p frank-wasm --target wasm32-unknown-unknown
+	wasm-bindgen --target web --no-typescript --out-dir web/pkg \
+		target/wasm32-unknown-unknown/release/frank_wasm.wasm
 
-test: ## Run tests with coverage
-	@echo "Running tests..."
-	uv run pytest --cov=src/$(PACKAGE) tests/
+test: ## Run all tests
+	$(CARGO) test --workspace --locked
 
-lint: ## Lint code with ruff
-	@echo "Linting with ruff..."
-	uv run ruff check src/ tests/
+lint: ## fmt check + clippy (native and wasm32), as CI runs them
+	$(CARGO) fmt --all --check
+	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
+	$(CARGO) clippy -p frank-wasm --target wasm32-unknown-unknown --locked -- -D warnings
 
-format: ## Format code with ruff
-	@echo "Formatting with ruff..."
-	uv run ruff check --fix src/ tests/
-	uv run ruff format src/ tests/
+fmt: ## Format the code
+	$(CARGO) fmt --all
 
-type-check: ## Run type checks with mypy
-	@echo "Type checking with mypy..."
-	uv run mypy src/
+run: build ## Run on this machine (data in ./data, tokens in ./tokens)
+	@[ -s $(TOKENS) ] || echo "note: no tokens yet, so only public statistics work: make token TIER=partner LABEL=me (then restart)" >&2
+	FRANK_DATA=$(DATA) FRANK_TOKENS=$(TOKENS) $(FRANK) serve
 
-clean: ## Clean up artifacts and caches
-	@echo "Cleaning up..."
-	@find . -type d -name __pycache__ -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name .pytest_cache -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name .mypy_cache -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name .ruff_cache -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name htmlcov -exec rm -rf {} + 2>/dev/null || true
-	@find . -type d -name "*.egg-info" -exec rm -rf {} + 2>/dev/null || true
-	@find . -type f -name "*.pyc" -delete
-	@find . -type f -name ".coverage" -delete
-	@echo "✓ Cleaned"
+token: server ## Create a token for run and up: make token TIER=partner LABEL=me (then restart)
+	@[ -n "$(TIER)" ] && [ -n "$(LABEL)" ] || { echo "usage: make token TIER=observer|contributor|partner|core LABEL=<who>" >&2; exit 2; }
+	@FRANK_TOKENS=$(TOKENS) $(FRANK) token $(TIER) "$(LABEL)"
 
-env-help: ## Show environment deployment options
-	@echo "FRANK Deployment Environments"
-	@echo ""
-	@echo "Local Development:"
-	@echo "  environments/local-docker/   - Docker Compose (recommended)"
-	@echo "  environments/local-python/   - Python virtualenv (debugging)"
-	@echo ""
-	@echo "AWS Deployment:"
-	@echo "  environments/aws-dev/        - Development environment"
-	@echo "  environments/aws-preprod/    - Pre-production environment"
-	@echo "  environments/aws-prod/       - Production environment"
-	@echo ""
-	@echo "Quick Start:"
-	@echo "  cd environments/local-docker && make stage3"
-	@echo ""
-	@echo "Documentation:"
-	@echo "  cat environments/README.md"
+demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data (server stopped)
+	@! pgrep -f "frank.* serve" >/dev/null || { echo "stop the running frank server first (it holds the table lock), or POST the file to /v1/sightings" >&2; exit 1; }
+	python3 scripts/demo_sightings.py $(N) > target/demo-sightings.json
+	FRANK_DATA=$(DATA) $(FRANK) ingest target/demo-sightings.json
 
-docker-build: ## Build all Docker images
-	@echo "Building Docker images..."
-	@cd environments/local-docker && docker-compose build
+image: ## Build the container image with podman
+	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-docker-up: ## Start all services (Web GUI + Management API + Mock Cognito)
-	@echo "Starting FRANK platform services..."
-	@cd environments/local-docker && $(MAKE) stage3
+up: image ## Run in podman (data in deploy/podman/data, tokens shared with run; FRANK_PORT, default 8080)
+	mkdir -p deploy/podman/data && touch $(TOKENS)
+	$(COMPOSE) up -d
 
-docker-down: ## Stop all services
-	@echo "Stopping FRANK platform services..."
-	@cd environments/local-docker && $(MAKE) down
+down: ## Stop the podman deployment
+	$(COMPOSE) down
 
-docker-logs: ## Follow logs from all services
-	@cd environments/local-docker && $(MAKE) logs
-
-.DEFAULT_GOAL := help
-
-help: ## Show this help message
-	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' Makefile | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-16s\033[0m %s\n", $$1, $$2}'
+clean: ## Remove build output
+	$(CARGO) clean
+	rm -rf web/pkg
