@@ -1,0 +1,69 @@
+#cloud-config
+# FRANK VM: podman runs the FRANK image; data lives on the attached
+# volume at /srv/frank (plain files: sightings/, iocs.db, tokens).
+package_update: true
+packages:
+  - podman
+  - caddy
+
+write_files:
+  - path: /etc/frank/frank.env
+    permissions: "0644"
+    content: |
+      FRANK_IMAGE=${image}
+      FRANK_RETENTION_DAYS=${retention_days}
+  - path: /etc/systemd/system/frank.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=FRANK threat-sighting sharing
+      Wants=network-online.target
+      After=network-online.target srv-frank.mount
+      Requires=srv-frank.mount
+
+      [Service]
+      EnvironmentFile=/etc/frank/frank.env
+      ExecStartPre=-/usr/bin/podman rm -f frank
+      ExecStartPre=/usr/bin/podman pull --authfile /etc/frank/auth.json $${FRANK_IMAGE}
+      ExecStart=/usr/bin/podman run --name frank --rm \
+        -p 127.0.0.1:8080:8080 \
+        -v /srv/frank/data:/data:Z \
+        -v /srv/frank/tokens:/etc/frank/tokens:ro,Z \
+        -e FRANK_RETENTION_DAYS=$${FRANK_RETENTION_DAYS} \
+        $${FRANK_IMAGE}
+      ExecStop=/usr/bin/podman stop -t 30 frank
+      Restart=always
+      RestartSec=5
+
+      [Install]
+      WantedBy=multi-user.target
+  - path: /etc/caddy/Caddyfile
+    permissions: "0644"
+    content: |
+      ${domain} {
+        encode zstd gzip
+        reverse_proxy 127.0.0.1:8080
+      }
+
+runcmd:
+  # The data volume: formatted once, mounted on /srv/frank.
+  - |
+    for i in $(seq 1 60); do [ -e "${data_disk}" ] && break; sleep 5; done
+    blkid "${data_disk}" || mkfs.ext4 -L frank-data "${data_disk}"
+    mkdir -p /srv/frank
+    grep -q frank-data /etc/fstab || echo "LABEL=frank-data /srv/frank ext4 defaults,nofail 0 2" >> /etc/fstab
+    systemctl daemon-reload
+    mount -a
+    mkdir -p /srv/frank/data && touch /srv/frank/tokens
+    chown -R 65532:65532 /srv/frank/data /srv/frank/tokens
+    chmod 600 /srv/frank/tokens
+  - |
+    umask 077
+    if [ -n "${registry_token}" ]; then
+      printf '%s' '${registry_token}' | podman login --authfile /etc/frank/auth.json -u '${registry_user}' --password-stdin '${registry}'
+    else
+      echo '{}' > /etc/frank/auth.json
+    fi
+  - systemctl daemon-reload
+  - systemctl enable --now frank.service
+  - systemctl restart caddy

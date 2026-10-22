@@ -1,0 +1,27 @@
+[package]
+name = "frank"
+description = "FRANK server: sightings in a striped Parquet table, IoCs in a row table"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[dependencies]
+frank-core.workspace = true
+db-core = { workspace = true, features = ["ingest", "engine-column", "engine-row"] }
+serde.workspace = true
+serde_json.workspace = true
+time.workspace = true
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
+tower-http = { version = "0.6", features = ["fs", "trace", "limit"] }
+clap = { version = "4", features = ["derive", "env"] }
+sha2 = "0.10"
+getrandom = "0.3"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"

@@ -1,0 +1,29 @@
+[workspace]
+resolver = "2"
+members = ["crates/frank-core", "crates/frank", "crates/frank-wasm"]
+
+[workspace.package]
+version = "0.9.0"
+edition = "2021"
+license = "Apache-2.0"
+repository = "https://github.com/Lab271/FRANK"
+rust-version = "1.85"
+
+[workspace.dependencies]
+frank-core = { path = "crates/frank-core" }
+# db-core pinned to the commit that adds BatchEngine::from_bytes
+# runs batch queries without threads and reads nanosecond timestamps
+# (t-rust-db/db-core#708); move to
+# a release tag once it is merged.
+db-core = { git = "https://github.com/t-rust-db/db-core", rev = "f592b4a1f96f6f341bdf2a772e9051d31b306454", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
+
+[profile.release]
+lto = true
+codegen-units = 1
+strip = true
+
+[profile.release.package.frank-wasm]
+opt-level = "s"

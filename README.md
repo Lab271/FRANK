@@ -1,87 +1,89 @@
 # FRANK
-This is the Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling (FRANK) project. We have developed this in a 5-stage infra scaling process.
 
-<!-- Simple minimalist badge -->
-[![Python 3.13](https://img.shields.io/badge/python-v3.13-blue.svg)](https://www.python.org/downloads/release/python-3137/) 
-[![Python 3.11](https://img.shields.io/badge/python-v3.11-blue.svg)](https://www.python.org/downloads/release/python-3110/)
+Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where security teams share **sighting statistics** for SIGMA rules and IoCs (how often, where and when a threat was seen) without sharing who they or their customers are.
+
+## Version: 0.9.0
+
+Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is in [`legacy/phase2/`](legacy/phase2/), and its final state is tagged `phase2-final`.
+
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
-![AWS](https://img.shields.io/badge/AWS-Cloud-orange.svg?style=flat&logo=amazon-aws&logoColor=white)
+## How it works
 
-![example workflow](https://github.com/LAB271/FRANK/actions/workflows/main.yml/badge.svg)
+```
+ submission (JSON) ──► frank-core: parse, normalise, drop identities ──► sighting rows
+                                                                          │
+                       ┌──────────────────────────────────────────────────┤
+                       ▼                                                  ▼
+   data/sightings/   striped Parquet table              data/iocs.db   row table
+   live/date=…/hour=…/*.parquet  (hour files)           one row per IoC per day,
+   archive/date=…/*.parquet      (merged days)          indexed on IoC, day, IP
+                       │                                                  │
+                       └──────────────► HTTP API (tiered) ◄───────────────┘
+                                             │
+                          web UI + frank-wasm (preview, SQL over Parquet in the browser)
+```
 
+- **Anonymised by schema:** a sighting row has no column for an organisation, so none can be stored.
+- **Tiers** (ADR-002): public sees totals; observer sees breakdowns with cells under 3 suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files; core operates.
+- **Open data format:** every table is plain Parquet, so DuckDB reads it as well.
 
-This project contains everything from design to implementation of the FRANK project. To get started, clone this project and run:
+## Run it
+
+Needs Rust (stable), the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` 0.2.129 (`make check` says what is missing).
+
+**On this machine:**
 
 ```bash
-    $ uv sync                 # install all packages for development (uses uv package manager)
-    $ source .venv/bin/activate  # start the virtual env
-    # PS I have alias venv="source .venv/bin/activate"
-    $ uv run pytest           # run all unittests locally
+make build                         # server + web/pkg
+target/release/frank token partner "me"   # prints a token once; stores its hash in ./tokens
+make demo                          # optional: load the example submissions
+make run                           # http://127.0.0.1:8080, data in ./data
 ```
 
-This will prep your machine to run FRANK locally. It assumes Docker/Python/uv/AWS CLI to be available, you can test it with `make check`.
-
-**Build System**: This project uses [Hatch](https://hatch.pypa.io/) as the build system and [uv](https://docs.astral.sh/uv/) as the package manager for fast dependency installation and Python version management.
-
-## Deployment Environments
-
-FRANK supports multiple deployment environments, each optimized for different use cases:
-
-### Local Development
-- **[local-docker](environments/local-docker/)** - Docker Compose for full-stack local development (recommended)
-- **[local-python](environments/local-python/)** - Python virtualenv for debugging and quick iteration
-
-### AWS Deployment
-- **[aws-dev](environments/aws-dev/)** - Development environment for testing AWS integrations
-- **[aws-preprod](environments/aws-preprod/)** - Pre-production environment for final validation
-- **[aws-prod](environments/aws-prod/)** - Production environment with high availability
-
-See **[environments/README.md](environments/README.md)** for complete deployment documentation.
-
-### Quick Start
+**In podman** (data and tokens stay on the host as plain files under `deploy/podman/`):
 
 ```bash
-# Local development with Docker (Stage 3 - Full stack)
-cd environments/local-docker
-make stage3
-
-# Or run natively in Python (Stage 1 - SQLite)
-cd environments/local-python
-cp .env.stage1.example .env
-./run-stage1.sh
+make image
+make podman-token TIER=partner LABEL=me   # prints the token once
+make up                            # http://127.0.0.1:8080 (FRANK_PORT to change)
+make down
 ```
 
-### Environment Configuration
+**On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS.
 
-FRANK uses environment-based configuration to adapt behavior across deployment targets:
-
-```python
-from frank.config import Environment, EnvironmentConfig
-
-# Get current environment configuration
-config = EnvironmentConfig.get()
-
-# Check environment type
-if config.is_local:
-    print(f"Running in {config.environment.value} (Stage {config.stage})")
-elif config.is_production:
-    print("Running in production - AWS")
+```bash
+cd deploy/stackit
+export STACKIT_SERVICE_ACCOUNT_KEY_PATH=…
+tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
+  -var ssh_public_key="$(cat ~/.ssh/id_ed25519.pub)" -var admin_cidr=203.0.113.4/32
 ```
 
-**Environment Variables:**
-- `FRANK_ENVIRONMENT`: Deployment target (`local-python`, `local-docker`, `aws-dev`, `aws-preprod`, `aws-prod`)
-- `FRANK_STAGE`: Infrastructure stage (1-4)
+## API
 
-**Available Environments:**
-- `Environment.LOCAL_PYTHON` - Native Python execution
-- `Environment.LOCAL_DOCKER` - Docker Compose stack
-- `Environment.AWS_DEV` - AWS development account
-- `Environment.AWS_PREPROD` - AWS pre-production
-- `Environment.AWS_PROD` - AWS production
+| Route | Tier | What |
+|---|---|---|
+| `GET /health` | none | liveness |
+| `GET /v1/whoami` | any | the token's tier |
+| `POST /v1/preview` | any | the rows a submission would share, nothing stored |
+| `GET /v1/statistics?days=30` | any | totals; breakdowns from observer up |
+| `POST /v1/sightings` | contributor | one submission or an array (max 100), Phase 2 JSON format |
+| `GET /v1/iocs?type=ipv4&value=…` | contributor | days seen, counts, SIGMA rules |
+| `GET /v1/iocs/range?cidr=185.220.0.0/16` | contributor | addresses seen in a block |
+| `GET /v1/files`, `GET /v1/files/{path}` | partner | the table's Parquet files |
 
-See `src/frank/config/environments.py` for the complete API and helper properties (`is_local`, `is_aws`, `is_production`, etc.).
+Send tokens as `Authorization: Bearer <token>`.
 
-## Architecture
+## Develop
 
-Start to understand the [evolutionary design](docs/evolutionary_design.md) principles, before you continue coding on FRANK. 
+```bash
+make test        # cargo test --workspace
+make lint        # fmt, clippy (native and wasm32)
+```
+
+| Crate | Role |
+|---|---|
+| `crates/frank-core` | wire model, normalisation, anonymised rows (shared by server and browser) |
+| `crates/frank` | server: stores, API, auth, maintenance (flush hourly files, merge days, retention) |
+| `crates/frank-wasm` | browser module: preview, Parquet analysis |
+| `web/` | static UI |
