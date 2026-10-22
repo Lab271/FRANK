@@ -3,4 +3,5 @@
 
 pub mod api;
 pub mod auth;
+pub mod reporter;
 pub mod store;

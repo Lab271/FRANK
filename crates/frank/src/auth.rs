@@ -16,6 +16,9 @@ use sha2::{Digest, Sha256};
 pub struct Caller {
     pub tier: Tier,
     pub label: String,
+    /// The token's SHA-256: a stable id that is not the token itself.
+    /// Empty for the public tier.
+    pub id: String,
 }
 
 impl Caller {
@@ -24,6 +27,7 @@ impl Caller {
         Caller {
             tier: Tier::Public,
             label: "public".into(),
+            id: String::new(),
         }
     }
 }
@@ -64,7 +68,8 @@ impl Tokens {
             let tier = Tier::parse(tier)
                 .ok_or_else(|| format!("line {}: unknown tier {tier:?}", n + 1))?;
             let label = parts.next().unwrap_or("").trim().to_string();
-            by_hash.insert(hash.to_ascii_lowercase(), Caller { tier, label });
+            let id = hash.to_ascii_lowercase();
+            by_hash.insert(id.clone(), Caller { tier, label, id });
         }
         Ok(Tokens { by_hash })
     }

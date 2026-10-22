@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where security teams share **sighting statistics** for SIGMA rules and IoCs (how often, where and when a threat was seen) without sharing who they or their customers are.
 
-## Version: 0.11.0
+## Version: 0.11.1
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is in [`legacy/phase2/`](legacy/phase2/), and its final state is tagged `phase2-final`.
 
@@ -25,7 +25,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
 ```
 
 - **Anonymised by schema:** a sighting row has no column for an organisation, so none can be stored.
-- **Tiers** (ADR-002): public sees totals; observer sees breakdowns with cells under 3 suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files; core operates.
+- **Tiers** (ADR-002): public sees totals; observer sees breakdowns with cells of fewer than 3 distinct reporters suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files; core operates.
 - **Open data format:** every table is plain Parquet, so DuckDB reads it as well.
 
 ## Run it

@@ -6,6 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use frank::api::{rebuild_iocs, router, App};
 use frank::auth::{hash, Tokens};
+use frank::reporter::Reporters;
 use frank::store::{Iocs, Sightings};
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -41,9 +42,11 @@ fn harness(name: &str) -> Harness {
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
     let tokens = Tokens::parse(&format!(
-        "{} observer obs\n{} contributor mdr\n{} partner lab\n",
+        "{} observer obs\n{} contributor mdr\n{} contributor mdr2\n{} contributor mdr3\n{} partner lab\n",
         hash("o"),
         hash("c"),
+        hash("c2"),
+        hash("c3"),
         hash("p")
     ))
     .unwrap();
@@ -53,6 +56,7 @@ fn harness(name: &str) -> Harness {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
         tokens,
+        reporters: Reporters::open(&dir, now).unwrap(),
         now,
     }));
     Harness {
@@ -256,17 +260,27 @@ async fn nothing_identifying_is_stored() {
 #[tokio::test]
 async fn small_cells_are_suppressed_below_partner() {
     let h = harness("stats");
-    let mut batch: Vec<Value> = (0..3)
-        .map(|i| sighting("energy", &format!("10.0.0.{i}"), "r1"))
+    // energy: three reporters, one sighting each. water: one reporter,
+    // three sightings (six rows), which is still one reporter (#148).
+    for (i, tok) in ["c", "c2", "c3"].iter().enumerate() {
+        let s = sighting("energy", &format!("10.0.0.{i}"), "r1");
+        assert_eq!(
+            call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s))
+                .await
+                .0,
+            StatusCode::CREATED
+        );
+    }
+    let water: Vec<Value> = (0..3)
+        .map(|i| sighting("water", &format!("10.0.1.{i}"), "r2"))
         .collect();
-    batch.push(sighting("water", "10.0.1.1", "r2"));
     assert_eq!(
         call(
             &h.app,
             "POST",
             "/v1/sightings",
             Some("c"),
-            Some(json!(batch))
+            Some(json!(water))
         )
         .await
         .0,
@@ -281,22 +295,29 @@ async fn small_cells_are_suppressed_below_partner() {
     assert!(public.get("by_target_sector").is_none(), "{public}");
 
     let (_, obs) = call(&h.app, "GET", "/v1/statistics?days=7", Some("o"), None).await;
-    let sectors: Vec<&str> = obs["by_target_sector"]
-        .as_array()
-        .unwrap()
-        .iter()
-        .map(|c| c["key"].as_str().unwrap())
-        .collect();
     assert_eq!(
-        sectors,
-        ["energy"],
-        "water (2 rows) is under the k threshold"
+        obs["by_target_sector"],
+        json!([{"key": "energy", "count": 6, "reporters": 3}]),
+        "water has 6 rows but one reporter, under the k threshold"
     );
     assert!(obs.get("top_rules").is_none());
 
+    let (_, contrib) = call(&h.app, "GET", "/v1/statistics", Some("c"), None).await;
+    assert_eq!(
+        contrib["top_rules"],
+        json!([{"key": "r1", "count": 6, "reporters": 3}])
+    );
+
     let (_, partner) = call(&h.app, "GET", "/v1/statistics", Some("p"), None).await;
-    assert_eq!(partner["by_target_sector"].as_array().unwrap().len(), 2);
-    assert_eq!(partner["top_rules"][0], json!({"key": "r1", "count": 6}));
+    assert_eq!(
+        partner["by_target_sector"].as_array().unwrap().len(),
+        2,
+        "partners see exact cells"
+    );
+    assert_eq!(
+        partner["top_rules"][1],
+        json!({"key": "r2", "count": 6, "reporters": 1})
+    );
 
     assert_eq!(
         call(&h.app, "GET", "/v1/statistics?days=0", None, None)
@@ -304,6 +325,84 @@ async fn small_cells_are_suppressed_below_partner() {
             .0,
         StatusCode::UNPROCESSABLE_ENTITY
     );
+}
+
+#[tokio::test]
+async fn lookups_count_reporters() {
+    let h = harness("reporters");
+    for tok in ["c", "c", "c2"] {
+        call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some(tok),
+            Some(sighting("energy", "198.51.100.7", "r1")),
+        )
+        .await;
+    }
+    let (_, ioc) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=ipv4&value=198.51.100.7",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (ioc["count"].as_i64(), ioc["reporters"].as_i64()),
+        (Some(3), Some(2)),
+        "{ioc}"
+    );
+}
+
+#[tokio::test]
+async fn files_hold_pseudonyms_not_tokens() {
+    let h = harness("pseudonyms");
+    call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(sighting("energy", "198.51.100.8", "r1")),
+    )
+    .await;
+    call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c2"),
+        Some(sighting("energy", "198.51.100.9", "r1")),
+    )
+    .await;
+    let req = Request::get("/v1/files/open/current.parquet")
+        .header("authorization", "Bearer p")
+        .body(Body::empty())
+        .unwrap();
+    let bytes = h
+        .app
+        .clone()
+        .oneshot(req)
+        .await
+        .unwrap()
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
+    let text = String::from_utf8_lossy(&bytes);
+    for secret in [hash("c"), hash("c2"), "mdr2".to_string()] {
+        assert!(
+            !text.contains(&secret),
+            "{secret} leaked into the Parquet file"
+        );
+    }
+    use db_core::engine::{column::BatchEngine, Cell, Engine};
+    let mut e = BatchEngine::from_bytes("sightings", bytes).unwrap();
+    let r = e
+        .run_query("SELECT count(DISTINCT reporter) FROM sightings")
+        .unwrap();
+    assert_eq!(r.rows, vec![vec![Cell::Int(2)]]);
 }
 
 #[tokio::test]

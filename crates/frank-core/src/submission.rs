@@ -75,6 +75,10 @@ pub struct SightingRow {
     pub confidence: u8,
     pub observations: u32,
     pub tlp: Tlp,
+    /// Who reported it, as a pseudonym the server assigns (#148): never
+    /// taken from the submission, empty until the server sets it.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub reporter: String,
 }
 
 impl Submission {
@@ -208,6 +212,7 @@ impl Submission {
             confidence: self.confidence,
             observations: self.observations,
             tlp: self.tlp,
+            reporter: String::new(),
         };
         if self.iocs.is_empty() {
             vec![row(None)]
