@@ -25,7 +25,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
 ```
 
 - **Anonymised by schema:** a sighting row has no column for an organisation, so none can be stored.
-- **Tiers** (ADR-002): public sees totals; observer sees breakdowns with cells under 3 suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files; core operates.
+- **Tiers** (ADR-002): public sees totals; observer sees breakdowns with cells of fewer than 3 distinct reporters suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files; core operates.
 - **Open data format:** every table is plain Parquet, so DuckDB reads it as well.
 
 ## Run it

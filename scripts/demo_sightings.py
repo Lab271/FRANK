@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
-"""Synthetic FRANK submissions for demos: `demo_sightings.py [N] > file.json`.
+"""Synthetic FRANK submissions for demos: `demo_sightings.py [N] [DIR]`.
+
+Writes one file per synthetic MDR (`DIR/mdr-<n>.json`, default `target/demo`):
+`frank ingest` counts each file as one reporter, so the statistics see three
+reporters, as k-anonymity needs (#148).
 
 Dated over the last 7 days, so they show up in the default statistics
 window and stay inside retention. A mix of TLP levels, so every tier sees
@@ -49,7 +53,20 @@ def submission(rng: random.Random, now: dt.datetime) -> dict:
 
 
 if __name__ == "__main__":
+    import pathlib
+
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 60
+    out = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "target/demo")
+    out.mkdir(parents=True, exist_ok=True)
+    for old in out.glob("mdr-*.json"):
+        old.unlink()
     rng = random.Random(42)
     now = dt.datetime.now(dt.timezone.utc)
-    json.dump([submission(rng, now) for _ in range(n)], sys.stdout, indent=1)
+    by_mdr: dict[str, list] = {}
+    for _ in range(n):
+        s = submission(rng, now)
+        mdr = s["submission"]["submitter"]["organisation_id"].removeprefix("identity-")
+        by_mdr.setdefault(mdr, []).append(s)
+    for mdr, subs in sorted(by_mdr.items()):
+        (out / f"{mdr}.json").write_text(json.dumps(subs, indent=1))
+        print(f"{out / mdr}.json: {len(subs)}")

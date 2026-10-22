@@ -51,8 +51,8 @@ token: server ## Create a token for run and up: make token TIER=partner LABEL=me
 
 demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data (server stopped)
 	@! pgrep -f "frank.* serve" >/dev/null || { echo "stop the running frank server first (it holds the table lock), or POST the file to /v1/sightings" >&2; exit 1; }
-	python3 scripts/demo_sightings.py $(N) > target/demo-sightings.json
-	FRANK_DATA=$(DATA) $(FRANK) ingest target/demo-sightings.json
+	python3 scripts/demo_sightings.py $(N) target/demo
+	FRANK_DATA=$(DATA) $(FRANK) ingest target/demo/mdr-*.json
 
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .

@@ -8,6 +8,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use frank::api::{self, App};
 use frank::auth::{add_token, Tokens};
+use frank::reporter::Reporters;
 use frank::store::{Iocs, Sightings};
 use frank_core::{Submission, Tier};
 use tower_http::services::ServeDir;
@@ -103,10 +104,12 @@ fn main() -> Result<(), String> {
                 );
             }
             let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
+            let reporters = Reporters::open(&cli.data, now_ns)?;
             let app = Arc::new(App {
                 sightings,
                 iocs,
                 tokens,
+                reporters,
                 now: now_ns,
             });
             tokio::runtime::Runtime::new()
@@ -124,8 +127,11 @@ fn open(data: &Path, retention_days: Option<u32>) -> Result<(Sightings, Iocs), S
     Ok((sightings, iocs))
 }
 
+/// Loads files with the server stopped. Each file counts as one reporter,
+/// `ingest:<file name>`, so separate sources stay distinct (#148).
 fn ingest(data: &Path, files: &[PathBuf]) -> Result<(), String> {
     let (s, i) = open(data, None)?;
+    let reporters = Reporters::open(data, now_ns)?;
     let mut total = 0;
     for f in files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
@@ -135,11 +141,18 @@ fn ingest(data: &Path, files: &[PathBuf]) -> Result<(), String> {
             serde_json::Value::Array(a) => a,
             v => vec![v],
         };
+        let name = f
+            .file_stem()
+            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
+        let reporter = reporters.key(&format!("ingest:{name}"))?;
         let mut rows = Vec::new();
         for item in &items {
             let sub = Submission::from_value(item, now_ns())
                 .map_err(|e| format!("{}: {e}", f.display()))?;
-            rows.extend(sub.rows(&api::new_sighting_id()?));
+            rows.extend(sub.rows(&api::new_sighting_id()?).into_iter().map(|mut r| {
+                r.reporter.clone_from(&reporter);
+                r
+            }));
         }
         s.append(&rows).map_err(|e| e.to_string())?;
         i.record(&rows)?;

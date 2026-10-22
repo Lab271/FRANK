@@ -28,6 +28,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::auth::{hex, random, Caller, Tokens};
+use crate::reporter::Reporters;
 use crate::store::sightings::scalar;
 use crate::store::{Iocs, Sightings};
 
@@ -42,6 +43,7 @@ pub struct App {
     pub sightings: Sightings,
     pub iocs: Iocs,
     pub tokens: Tokens,
+    pub reporters: Reporters,
     /// Wall clock in ns; tests set their own.
     pub now: fn() -> i64,
 }
@@ -169,11 +171,15 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&body, (app.now)())?;
+    let reporter = app.reporters.key(&caller.id).map_err(internal)?;
     let mut ids = Vec::with_capacity(subs.len());
     let mut rows = Vec::new();
     for s in &subs {
         let id = new_sighting_id().map_err(internal)?;
-        rows.extend(s.rows(&id));
+        rows.extend(s.rows(&id).into_iter().map(|mut r| {
+            r.reporter.clone_from(&reporter);
+            r
+        }));
         ids.push(id);
     }
     let n = rows.len();
@@ -207,8 +213,9 @@ fn tlp_visible(tier: Tier) -> String {
     format!("tlp IN ({})", levels.join(", "))
 }
 
-/// `(key, count)` rows of a two-column GROUP BY over the rows `visible`
-/// selects, small cells dropped unless `exact`.
+/// `(key, count, reporters)` per value of `column` over the rows `visible`
+/// selects. Unless `exact`, a cell with fewer than [`MIN_CELL`] distinct
+/// reporters is dropped: k-anonymity counts reporters, not rows (#148).
 fn breakdown(
     s: &Sightings,
     column: &str,
@@ -218,14 +225,14 @@ fn breakdown(
     exact: bool,
 ) -> Result<Vec<Value>, ApiError> {
     let sql = format!(
-        "SELECT {column}, count(*) AS n FROM sightings WHERE ts >= {since} AND {visible} GROUP BY {column} ORDER BY n DESC"
+        "SELECT {column}, count(*) AS n, count(DISTINCT reporter) AS r FROM sightings WHERE ts >= {since} AND {visible} GROUP BY {column} ORDER BY n DESC"
     );
     let r = s.query(&sql).map_err(internal)?;
     Ok(r.rows
         .iter()
-        .filter_map(|row| match (&row[0], &row[1]) {
-            (Cell::Text(k), Cell::Int(n)) if exact || *n >= MIN_CELL => {
-                Some(json!({ "key": k, "count": n }))
+        .filter_map(|row| match (&row[0], &row[1], &row[2]) {
+            (Cell::Text(k), Cell::Int(n), Cell::Int(r)) if exact || *r >= MIN_CELL => {
+                Some(json!({ "key": k, "count": n, "reporters": r }))
             }
             _ => None,
         })
@@ -294,28 +301,43 @@ async fn ioc_lookup(
             .iocs
             .lookup(&ioc, &Tlp::visible_to(caller.tier))
             .map_err(internal)?;
-        let rules = if days.is_empty() {
-            Vec::new()
+        let (rules, reporters) = if days.is_empty() {
+            (Vec::new(), 0)
         } else {
-            let sql = format!(
-                "SELECT rule_id, count(*) AS n FROM sightings WHERE ioc_value = {} AND ts >= {} AND {} GROUP BY rule_id ORDER BY n DESC",
+            let filter = format!(
+                "ioc_value = {} AND ts >= {} AND {}",
                 sql_quote(&ioc.value),
                 days[0].first_ts,
                 tlp_visible(caller.tier),
             );
-            let r = app.sightings.query(&sql).map_err(internal)?;
-            r.rows
+            let r = app
+                .sightings
+                .query(&format!(
+                    "SELECT rule_id, count(*) AS n FROM sightings WHERE {filter} GROUP BY rule_id ORDER BY n DESC"
+                ))
+                .map_err(internal)?;
+            let rules = r
+                .rows
                 .iter()
                 .filter_map(|row| match (&row[0], &row[1]) {
                     (Cell::Text(k), Cell::Int(n)) => Some(json!({ "rule_id": k, "count": n })),
                     _ => None,
                 })
-                .collect()
+                .collect();
+            let reporters = app
+                .sightings
+                .query(&format!(
+                    "SELECT count(DISTINCT reporter) FROM sightings WHERE {filter}"
+                ))
+                .map(|r| scalar(&r))
+                .map_err(internal)?;
+            (rules, reporters)
         };
         Ok(Json(json!({
             "ioc": ioc,
             "known": !days.is_empty(),
             "count": days.iter().map(|d| d.count).sum::<i64>(),
+            "reporters": reporters,
             "first_seen": days.first().map(|d| d.first_ts),
             "last_seen": days.iter().map(|d| d.last_ts).max(),
             "days": days,
@@ -476,6 +498,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             confidence: 0,
             observations: u32::try_from(*n).unwrap_or(1),
             tlp,
+            reporter: String::new(),
         });
     }
     iocs.clear()?;
