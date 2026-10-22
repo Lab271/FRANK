@@ -7,9 +7,11 @@ use std::path::Path;
 
 use db_core::engine::{Cell, QueryResult};
 use db_core::storage::ingest::{
-    Ack, IngestError, Layout, RecordValue, Table, TableOptions, TierOptions,
+    Ack, IngestError, Layout, PageBody, RecordValue, Table, TableOptions, TierOptions,
 };
-use db_core::storage::parquet::writer::{ColumnSpec, ColumnType, Compression, WriterOptions};
+use db_core::storage::parquet::writer::{
+    ColumnSpec, ColumnType, Compression, ParquetWriter, WriterOptions,
+};
 use frank_core::SightingRow;
 
 /// The table's directory name, which is also its name in SQL.
@@ -127,6 +129,40 @@ impl Sightings {
             .iter()
             .map(|f| (f.path.clone(), f.rows, f.bytes))
             .collect())
+    }
+
+    /// Rows not yet in a file: the open hour, plus any closed hour the
+    /// next flush has not written yet.
+    pub fn open_rows(&self) -> Result<u64, IngestError> {
+        let snap = self.table.snapshot()?;
+        Ok(snap.pages().iter().map(|p| p.len() as u64).sum())
+    }
+
+    /// The rows not yet in a file as one Parquet file, written now from the
+    /// table's in-memory pages. An hour file is only written once the hour
+    /// closes (db-core ADR 0028); this lets readers see the open hour too.
+    pub fn open_rows_parquet(&self) -> Result<Vec<u8>, String> {
+        let snap = self.table.snapshot().map_err(|e| e.to_string())?;
+        let mut w = ParquetWriter::new(
+            Vec::new(),
+            schema(),
+            WriterOptions {
+                compression: Compression::Zstd,
+                ..WriterOptions::default()
+            },
+        )
+        .map_err(|e| e.to_string())?;
+        for page in snap.pages() {
+            if let PageBody::Rows(rows) = &page.body {
+                if !rows.is_empty() {
+                    w.write_columns(rows.columns().to_vec())
+                        .map_err(|e| e.to_string())?;
+                }
+            }
+        }
+        w.finish()
+            .map(|(bytes, _)| bytes)
+            .map_err(|e| e.to_string())
     }
 
     /// The table directory.

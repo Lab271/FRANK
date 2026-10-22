@@ -361,6 +361,51 @@ async fn partners_get_listed_files_only() {
 }
 
 #[tokio::test]
+async fn the_open_hour_is_a_file_too() {
+    let h = harness("open");
+    call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(json!([
+            sighting("energy", "1.2.3.4", "r1"),
+            sighting("water", "1.2.3.5", "r2")
+        ])),
+    )
+    .await;
+    let (_, files) = call(&h.app, "GET", "/v1/files", Some("p"), None).await;
+    let open = files["files"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|f| f["open"] == true)
+        .expect("open file listed");
+    assert_eq!(open["rows"], 4);
+    let req = Request::get("/v1/files/open/current.parquet")
+        .header("authorization", "Bearer p")
+        .body(Body::empty())
+        .unwrap();
+    let resp = h.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
+    assert_eq!(&bytes[..4], b"PAR1");
+    // The browser engine reads it like any hour file.
+    use db_core::engine::{column::BatchEngine, Cell, Engine};
+    let mut e = BatchEngine::from_bytes("sightings", bytes).unwrap();
+    let r = e
+        .run_query("SELECT count(*), count(DISTINCT rule_id) FROM sightings")
+        .unwrap();
+    assert_eq!(r.rows, vec![vec![Cell::Int(4), Cell::Int(2)]]);
+}
+
+#[tokio::test]
 async fn iocs_rebuild_from_sightings() {
     let h = harness("rebuild");
     call(

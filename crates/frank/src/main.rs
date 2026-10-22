@@ -11,6 +11,7 @@ use frank::auth::{add_token, Tokens};
 use frank::store::{Iocs, Sightings};
 use frank_core::{Submission, Tier};
 use tower_http::services::ServeDir;
+use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -158,7 +159,16 @@ async fn serve(
 ) -> Result<(), String> {
     let maintenance = tokio::spawn(maintain(app.clone(), retention_days));
     let router = api::router(app.clone())
-        .fallback_service(ServeDir::new(&web))
+        // The UI and its WASM module change with every build: browsers
+        // revalidate them (Last-Modified) instead of reusing a stale copy.
+        .fallback_service(
+            axum::Router::new()
+                .fallback_service(ServeDir::new(&web))
+                .layer(SetResponseHeaderLayer::if_not_present(
+                    axum::http::header::CACHE_CONTROL,
+                    axum::http::HeaderValue::from_static("no-cache"),
+                )),
+        )
         .layer(TraceLayer::new_for_http());
     let listener = tokio::net::TcpListener::bind(listen)
         .await

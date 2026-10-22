@@ -35,6 +35,8 @@ const DAY_NS: i64 = 86_400 * 1_000_000_000;
 /// Most submissions in one POST.
 const MAX_BATCH: usize = 100;
 const MAX_BODY: usize = 2 * 1024 * 1024;
+/// The rows not yet in a file, served as one Parquet file written on request.
+pub const OPEN_FILE: &str = "open/current.parquet";
 
 pub struct App {
     pub sightings: Sightings,
@@ -357,10 +359,14 @@ async fn files(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Val
     require(&app, &headers, Tier::Partner)?;
     blocking(move || {
         let files = app.sightings.files().map_err(internal)?;
-        let files: Vec<Value> = files
+        let mut files: Vec<Value> = files
             .into_iter()
             .map(|(path, rows, bytes)| json!({ "path": path, "rows": rows, "bytes": bytes }))
             .collect();
+        let open = app.sightings.open_rows().map_err(internal)?;
+        if open > 0 {
+            files.push(json!({ "path": OPEN_FILE, "rows": open, "bytes": null, "open": true }));
+        }
         Ok(Json(
             json!({ "table": crate::store::sightings::NAME, "files": files }),
         ))
@@ -383,6 +389,17 @@ async fn file(
         return Err(ApiError(StatusCode::NOT_FOUND, "no such file".into()));
     }
     blocking(move || {
+        if path == OPEN_FILE {
+            let bytes = app.sightings.open_rows_parquet().map_err(internal)?;
+            return Ok((
+                [
+                    (header::CONTENT_TYPE, "application/vnd.apache.parquet"),
+                    (header::CACHE_CONTROL, "no-store"),
+                ],
+                bytes,
+            )
+                .into_response());
+        }
         let listed = app
             .sightings
             .files()

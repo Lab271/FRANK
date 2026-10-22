@@ -55,7 +55,7 @@ async function whoami() {
     const me = await (await api("/v1/whoami")).json();
     $("tier").textContent = me.label ? `${me.tier} · ${me.label}` : me.tier;
   } catch (e) {
-    $("tier").textContent = "invalid token";
+    $("tier").textContent = `rejected: ${e.message}`;
   }
   loadStats();
 }
@@ -63,7 +63,9 @@ async function whoami() {
 $("token").value = token;
 $("auth").addEventListener("submit", (ev) => {
   ev.preventDefault();
-  token = $("token").value.trim();
+  // Accept a pasted "Bearer <token>" as well as the bare token.
+  token = $("token").value.trim().replace(/^bearer\s+/i, "");
+  $("token").value = token;
   try { sessionStorage.setItem("frank-token", token); } catch { /* storage blocked */ }
   whoami();
 });
@@ -212,7 +214,7 @@ $("load-files").addEventListener("click", async () => {
     }
     status.textContent = list.files.length
       ? `${list.files.length} file(s), ${rows.toLocaleString()} rows, ${(bytes / 1024).toFixed(0)} KiB in browser memory`
-      : "no closed hours flushed yet (files appear an hour after the first sighting)";
+      : "no sightings yet";
   } catch (e) {
     status.textContent = "";
     show($("sql-out"), errorNode(e));
