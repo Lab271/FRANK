@@ -1,0 +1,51 @@
+/* GENERATED from tokens.json; edit tokens.json, regenerate, never hand-edit.
+   Every accent ships as an on-light/on-dark pair (decision 10). Published steps only; never interpolate.
+   --c-tq is graphics-only turquoise; use --c-tq-text on light canvases, --c-tq-text-soft on soft blue. */
+:root{
+  --c-canvas:#FFFFFF;
+  --c-canvas-2:#FAF9F5;
+  --c-panel:#F7F5EF;
+  --c-softblue:#E8F2FD;
+  --c-text:#020C17;
+  --c-muted:#6B7280;
+  --c-border:#ECE9DF;
+  --c-tq:#1EE8ED;
+  --c-tq-text:#18B9BD;
+  --c-tq-text-soft:#128B8E;
+  --c-orange:#FF7000;
+  --c-orange-w20:#FFE2CC;
+  --c-orange-w55:#FFBE8A;
+  --c-orange-cta:#FF7000;
+  --c-orange-cta-text:#FFFFFF;
+  --c-cobalt:#1E80ED;
+  --c-violet:#6D5FF7;
+  --c-magenta:#FF0089;
+  --c-green:#2AC0A1;
+  --c-mark-ink:#020C17;
+  --c-dark-card:#020C17;
+  --c-dark-card-text:#FFFFFF;
+}
+[data-theme="dark"]{
+  --c-canvas:#020C17;
+  --c-canvas-2:#061323;
+  --c-panel:#082646;
+  --c-softblue:#082646;
+  --c-text:#FFFFFF;
+  --c-muted:#8AA0B8;
+  --c-border:#12263F;
+  --c-tq:#1EE8ED;
+  --c-tq-text:#1EE8ED;
+  --c-tq-text-soft:#1EE8ED;
+  --c-orange:#FF8D33;
+  --c-orange-w20:#3A1F0A;
+  --c-orange-w55:#7A4415;
+  --c-orange-cta:#FF8D33;
+  --c-orange-cta-text:#020C17;
+  --c-cobalt:#1E80ED;
+  --c-violet:#6D5FF7;
+  --c-magenta:#FF0089;
+  --c-green:#2AC0A1;
+  --c-mark-ink:#FFFFFF;
+  --c-dark-card:#082646;
+  --c-dark-card-text:#FFFFFF;
+}

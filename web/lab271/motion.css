@@ -1,0 +1,10 @@
+/* Motion; inherited interaction values (the parent's rules, unchanged) plus the
+   Lab271 brand-motion note. Calm and functional: fades and short translations;
+   hover changes color/opacity never size; press scales to 0.98. Brand motion
+   (the logo morph) lives in motion/logo-morph/; geometry, not gradients. */
+:root{
+  --motion-fast:160ms; /* @kind other */
+  --motion-slow:240ms; /* @kind other */
+  --motion-ease:cubic-bezier(.2,0,.2,1); /* @kind other */
+  --motion-press-scale:0.98; /* @kind other */
+}

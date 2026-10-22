@@ -1,0 +1,14 @@
+/* One font, two registers (decision 13). Mono leads all small type (< 14px). */
+:root{
+  --lab-type-family-sans:'TT Interphases','Avenir Next','Poppins','Inter',sans-serif;
+  --lab-type-family-mono:'TT Interphases Mono','Courier New',monospace;
+  --lab-type-tracking-tight:-0.04em;
+  --lab-type-size-display:clamp(40px, 5vw, 68px);
+  --lab-type-size-h2:clamp(26px, 2.8vw, 36px);
+  --lab-type-size-h3:21px;
+  --lab-type-size-body:16px;
+  --lab-type-size-small:13px;
+  --lab-type-size-micro:10px;
+  --lab-type-leading-display:1.09;
+  --lab-type-leading-body:1.5;
+}

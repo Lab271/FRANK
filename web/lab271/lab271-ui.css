@@ -1,0 +1,63 @@
+/* lab271-ui \ the parent's web kit, refracted.
+   GENERATED from tokens.json. Load lab271-tokens.css first — every value here is a token. */
+
+/* == buttons == */
+.lab-btn{display:inline-flex;align-items:center;gap:10px;white-space:nowrap;height:44px;padding:0 22px;border:0;border-radius:var(--lab-shape-radius-pill);background:var(--c-tq);color:#020C17;font-family:var(--lab-type-family-mono);font-size:13px;letter-spacing:0.06em;cursor:pointer;text-decoration:none;transition:opacity 200ms cubic-bezier(.2,0,.2,1)}
+.lab-btn:hover{opacity:.82}
+.lab-btn:active{transform:scale(.98)}
+.lab-btn:focus-visible{outline:2px solid var(--c-tq);outline-offset:2px}
+.lab-btn--secondary{background:transparent;border:1px solid var(--c-tq-text);color:var(--c-tq-text)}
+.lab-btn--cta{background:var(--c-orange-cta);color:var(--c-orange-cta-text)} /* download CTAs and results only; one per surface */
+.lab-link{color:var(--c-tq-text);text-decoration:none}
+.lab-link:hover{text-decoration:underline}
+.lab-disabled,.lab-btn[disabled]{opacity:.45;pointer-events:none}
+
+/* == labels == */
+.lab-eyebrow{font-family:var(--lab-type-family-mono);font-size:11px;letter-spacing:0.08em;color:var(--c-tq-text)}
+.lab-label{display:inline-flex;align-items:center;white-space:nowrap;height:28px;padding:0 14px;border-radius:var(--lab-shape-radius-pill) var(--lab-shape-radius-pill) var(--lab-shape-radius-pill) 0;background:var(--c-softblue);color:var(--c-tq-text-soft);font-family:var(--lab-type-family-mono);font-size:11px;letter-spacing:0.08em}
+.lab-chip{display:inline-flex;align-items:center;white-space:nowrap;height:28px;padding:0 14px;border-radius:var(--lab-shape-radius-pill);border:1px solid var(--c-border);background:transparent;color:var(--c-muted);font-family:var(--lab-type-family-mono);font-size:11px;letter-spacing:0.08em;cursor:pointer}
+.lab-chip[aria-pressed="true"]{border-color:var(--c-tq-text);color:var(--c-tq-text)}
+.lab-tag{display:inline-flex;align-items:center;white-space:nowrap;height:28px;padding:0 14px;border-radius:var(--lab-shape-radius-pill);background:var(--c-dark-card);color:var(--c-dark-card-text);font-family:var(--lab-type-family-mono);font-size:11px;letter-spacing:0.08em}
+
+/* == cards == */
+.lab-card{color:var(--c-text);background:var(--c-canvas);border:1px solid var(--c-border);border-radius:var(--lab-shape-radius-card) var(--lab-shape-radius-card) var(--lab-shape-radius-card) 0;padding:20px 22px}
+.lab-card--photo{padding:0;overflow:hidden}
+.lab-card-media{aspect-ratio:16/7;background:var(--c-softblue);display:flex;align-items:center;justify-content:center} /* edge to edge inside the card, no inner frame */
+.lab-card-body{padding:16px 22px}
+.lab-finding-bar{width:56px;height:6px;background:var(--c-orange);border-radius:3px;margin:8px 0 10px}
+
+/* == nav == */
+.lab-nav{position:sticky;top:0;z-index:10;display:flex;align-items:center;gap:26px;height:60px;padding:0 24px;background:color-mix(in srgb,var(--c-canvas) 82%,transparent);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);border-bottom:1px solid var(--c-border)}
+.lab-nav-link{font-family:var(--lab-type-family-mono);font-size:12.5px;letter-spacing:0.06em;color:var(--c-muted);text-decoration:none}
+.lab-nav-link:hover{color:var(--c-text)}
+.lab-nav-link[aria-current]{color:var(--c-tq-text)}
+.lab-nav-link[aria-current]::before{content:"\\ "}
+
+/* == fields == */
+.lab-field{display:flex;flex-direction:column;gap:8px;max-width:380px}
+.lab-field-label{font-family:var(--lab-type-family-mono);font-size:11px;letter-spacing:0.08em;color:var(--c-muted)}
+.lab-input{height:44px;padding:0 16px;border:1px solid var(--c-border);border-radius:10px 10px 10px 0;background:var(--c-canvas);color:var(--c-text);font-family:var(--lab-type-family-sans);font-size:15px;box-sizing:border-box;width:100%}
+.lab-input::placeholder{color:var(--c-muted)}
+.lab-input:focus-visible{outline:2px solid var(--c-tq);outline-offset:2px;border-color:var(--c-tq)}
+textarea.lab-input{height:auto;min-height:96px;padding:12px 16px;resize:vertical}
+
+/* == code == */
+.lab-code{background:#020C17;color:#FFFFFF;font-family:var(--lab-type-family-mono);font-size:13px;line-height:1.7;padding:18px 22px;border-radius:var(--lab-shape-radius-card) var(--lab-shape-radius-card) var(--lab-shape-radius-card) 0;overflow:auto} /* always midnight, both themes */
+.lab-code .k{color:#1EE8ED}
+.lab-code .c{color:#8AA0B8}
+
+/* == tables == */
+.lab-table{width:100%;border-collapse:collapse;font-size:14px;color:var(--c-text)}
+.lab-table th{font-family:var(--lab-type-family-mono);font-weight:400;font-size:11px;letter-spacing:0.08em;color:var(--c-muted);text-align:left;padding:0 16px 8px 0;border-bottom:1px solid var(--c-text)}
+.lab-table td{padding:11px 16px 11px 0;border-bottom:1px solid var(--c-border)}
+.lab-list{list-style:none;margin:0;padding:0;color:var(--c-text)}
+.lab-list li{position:relative;padding-left:22px;line-height:1.5;margin:7px 0}
+.lab-list li::before{content:"\\";position:absolute;left:0;font-family:var(--lab-type-family-mono);color:var(--c-tq-text)}
+
+/* == states == */
+.lab-toast{position:fixed;bottom:24px;right:24px;white-space:nowrap;width:max-content;background:var(--c-dark-card);color:var(--c-dark-card-text);font-family:var(--lab-type-family-mono);font-size:12px;padding:12px 18px;border-radius:10px 10px 10px 0;z-index:50}
+.lab-loader{display:inline-flex;gap:4px}
+.lab-loader i{width:8px;height:8px;background:var(--c-tq);animation:lab-blink 1s cubic-bezier(.2,0,.2,1) infinite}
+.lab-loader i:nth-child(2){animation-delay:160ms}
+.lab-loader i:nth-child(3){animation-delay:320ms}
+@keyframes lab-blink{0%,100%{opacity:.15}50%{opacity:1}}

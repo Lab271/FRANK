@@ -1,0 +1,4 @@
+/* Base defaults; canvas, ink, reading rhythm, link colors. */
+body{margin:0;background:var(--c-canvas);color:var(--c-text);font-family:var(--lab-type-family-sans);font-size:var(--lab-type-size-body);line-height:var(--lab-type-leading-body);-webkit-font-smoothing:antialiased}
+a{color:var(--c-tq-text)}
+a:hover{color:var(--c-tq-text-soft)}
