@@ -2,62 +2,73 @@
 SHELL := /bin/bash
 CARGO ?= rustup run stable cargo
 DATA ?= ./data
+TOKENS ?= ./tokens
 IMAGE ?= ghcr.io/lab271/frank
 VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 WASM_BINDGEN_VERSION := 0.2.129
+FRANK := target/release/frank
+COMPOSE := podman compose -f deploy/podman/compose.yaml
+N ?= 60
 
-.PHONY: help build wasm test lint fmt run token demo image up podman-token down clean check
+.PHONY: help check build server wasm test lint fmt run token demo image up podman-token down clean
 
 help: ## Show targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-10s %s\n", $$1, $$2}'
+	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-13s %s\n", $$1, $$2}'
 
 check: ## Verify the toolchain
 	@rustup target list --installed | grep -q wasm32-unknown-unknown || { echo "rustup target add wasm32-unknown-unknown"; exit 1; }
 	@wasm-bindgen --version | grep -q $(WASM_BINDGEN_VERSION) || { echo "cargo install wasm-bindgen-cli --version $(WASM_BINDGEN_VERSION) --locked"; exit 1; }
 	@echo "toolchain ok"
 
-build: wasm ## Build the server (release) and the browser module
-	$(CARGO) build --release -p frank
+build: server wasm ## Build the server (release) and the browser module
+
+server: ## Build the server binary only
+	$(CARGO) build --release --locked -p frank
 
 wasm: ## Build web/pkg (frank-wasm for the browser)
-	$(CARGO) build --release -p frank-wasm --target wasm32-unknown-unknown
+	$(CARGO) build --release --locked -p frank-wasm --target wasm32-unknown-unknown
 	wasm-bindgen --target web --no-typescript --out-dir web/pkg \
 		target/wasm32-unknown-unknown/release/frank_wasm.wasm
 
 test: ## Run all tests
-	$(CARGO) test --workspace
+	$(CARGO) test --workspace --locked
 
-lint: ## fmt check + clippy
+lint: ## fmt check + clippy (native and wasm32), as CI runs them
 	$(CARGO) fmt --all --check
-	$(CARGO) clippy --workspace --all-targets -- -D warnings
-	$(CARGO) clippy -p frank-wasm --target wasm32-unknown-unknown -- -D warnings
+	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
+	$(CARGO) clippy -p frank-wasm --target wasm32-unknown-unknown --locked -- -D warnings
 
 fmt: ## Format the code
 	$(CARGO) fmt --all
 
 run: build ## Run on this machine (data in ./data, tokens in ./tokens)
-	FRANK_DATA=$(DATA) target/release/frank serve
+	@[ -s $(TOKENS) ] || echo "note: no tokens yet, so only public statistics work: make token TIER=partner LABEL=me (then restart)" >&2
+	FRANK_DATA=$(DATA) FRANK_TOKENS=$(TOKENS) $(FRANK) serve
 
-token: ## Create a token: make token TIER=partner LABEL=me
-	@target/release/frank token $(TIER) "$(LABEL)"
+token: server ## Create a token: make token TIER=partner LABEL=me (restart the server after)
+	@[ -n "$(TIER)" ] && [ -n "$(LABEL)" ] || { echo "usage: make token TIER=observer|contributor|partner|core LABEL=<who>" >&2; exit 2; }
+	@FRANK_TOKENS=$(TOKENS) $(FRANK) token $(TIER) "$(LABEL)"
 
-demo: build ## Load the example submissions into ./data
-	target/release/frank ingest examples/minimal.json examples/demo/*.json
+demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data (server stopped)
+	@! pgrep -f "frank.* serve" >/dev/null || { echo "stop the running frank server first (it holds the table lock), or POST the file to /v1/sightings" >&2; exit 1; }
+	python3 scripts/demo_sightings.py $(N) > target/demo-sightings.json
+	FRANK_DATA=$(DATA) $(FRANK) ingest target/demo-sightings.json
 
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-up: ## Run in podman (data and tokens on the host under ./deploy/podman)
+up: image ## Run in podman (data and tokens on the host under deploy/podman; FRANK_PORT, default 8080)
 	mkdir -p deploy/podman/data && touch deploy/podman/tokens
-	podman compose -f deploy/podman/compose.yaml up -d
+	$(COMPOSE) up -d
 
 podman-token: ## Token for the podman deployment: make podman-token TIER=partner LABEL=me
+	@[ -n "$(TIER)" ] && [ -n "$(LABEL)" ] || { echo "usage: make podman-token TIER=observer|contributor|partner|core LABEL=<who>" >&2; exit 2; }
 	@touch deploy/podman/tokens
 	@podman run --rm -v $(CURDIR)/deploy/podman/tokens:/etc/frank/tokens:Z $(IMAGE):latest token $(TIER) "$(LABEL)"
-	@echo "restart to load it: podman compose -f deploy/podman/compose.yaml restart" >&2
+	@echo "restart to load it: $(COMPOSE) restart" >&2
 
 down: ## Stop the podman deployment
-	podman compose -f deploy/podman/compose.yaml down
+	$(COMPOSE) down
 
 clean: ## Remove build output
 	$(CARGO) clean

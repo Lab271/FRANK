@@ -36,8 +36,8 @@ Needs Rust (stable), the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` 
 
 ```bash
 make build                         # server + web/pkg
-target/release/frank token partner "me"   # prints a token once; stores its hash in ./tokens
-make demo                          # optional: load the example submissions
+make token TIER=partner LABEL=me   # prints a token once; stores its hash in ./tokens
+make demo                          # optional: 60 synthetic sightings from the last 7 days
 make run                           # http://127.0.0.1:8080, data in ./data
 ```
 
