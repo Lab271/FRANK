@@ -59,7 +59,7 @@ image: ## Build the container image with podman
 
 up: image ## Run in podman (data in deploy/podman/data, tokens shared with run; FRANK_PORT, default 8080)
 	mkdir -p deploy/podman/data && touch $(TOKENS)
-	$(COMPOSE) up -d
+	$(COMPOSE) up -d --force-recreate
 
 down: ## Stop the podman deployment
 	$(COMPOSE) down
