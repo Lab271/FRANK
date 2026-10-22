@@ -11,11 +11,10 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 frank-core = { path = "crates/frank-core" }
-# db-core pinned to the commit that adds BatchEngine::from_bytes
-# runs batch queries without threads and reads nanosecond timestamps
-# (t-rust-db/db-core#708); move to
-# a release tag once it is merged.
-db-core = { git = "https://github.com/t-rust-db/db-core", rev = "f592b4a1f96f6f341bdf2a772e9051d31b306454", default-features = false }
+# db-core pinned to the commit of t-rust-db/db-core#708, which lets the
+# column engine run in a browser (Parquet from bytes, no threads, no clock)
+# and reads nanosecond timestamps. Move to a release tag once it is merged.
+db-core = { git = "https://github.com/t-rust-db/db-core", rev = "fdf0cc878dcff087ea2485a3afb079c253b44fc3", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }
