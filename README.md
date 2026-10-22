@@ -69,6 +69,8 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `POST /v1/sightings` | contributor | one submission or an array (max 100), Phase 2 JSON format |
 | `GET /v1/iocs?type=ipv4&value=…` | contributor | days seen, counts, SIGMA rules |
 | `GET /v1/iocs/range?cidr=185.220.0.0/16` | contributor | addresses seen in a block |
+| `GET /v1/explore?group=rule&sector=energy&days=30` | observer (rule, IoC, campaign, technique: contributor) | grouped rows with `count`, `reporters`, first/last seen |
+| `GET /v1/rules/{id}?days=30` | contributor | one rule's prevalence: trend, sectors, severities, techniques, campaigns, IoCs |
 | `GET /v1/files`, `GET /v1/files/{path}` | partner | the table's Parquet files |
 
 Send tokens as `Authorization: Bearer <token>`.

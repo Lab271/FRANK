@@ -36,6 +36,7 @@
 
 <nav role="tablist" class="lab-nav">
   <button role="tab" class="lab-nav-link" data-tab="stats" aria-selected="true">statistics</button>
+  <button role="tab" class="lab-nav-link" data-tab="explore">explore</button>
   <button role="tab" class="lab-nav-link" data-tab="submit">submit</button>
   <button role="tab" class="lab-nav-link" data-tab="lookup">lookup</button>
   <button role="tab" class="lab-nav-link" data-tab="analyse">analyse locally</button>
@@ -53,6 +54,24 @@
     <div id="tiles" class="tiles"></div>
     <div id="breakdowns" class="grid"></div>
     <p class="note" id="stats-note"></p>
+  </section>
+
+  <section id="explore" role="tabpanel" hidden>
+    <div class="row">
+      <label>group by <select id="ex-group" class="lab-input">
+        <option value="rule">SIGMA rule</option><option value="ioc">IoC</option>
+        <option value="campaign">campaign</option><option value="technique">ATT&amp;CK technique</option>
+        <option value="sector">target sector</option><option value="ioc_type">IoC type</option>
+        <option value="severity">severity</option>
+      </select></label>
+      <label>window <select id="ex-days" class="lab-input">
+        <option value="1">1 day</option><option value="7">7 days</option>
+        <option value="30" selected>30 days</option><option value="365">365 days</option>
+      </select></label>
+    </div>
+    <div id="ex-filters" class="row chips"></div>
+    <div id="ex-list"></div>
+    <p class="note" id="ex-note"></p>
   </section>
 
   <section id="submit" role="tabpanel" hidden>
@@ -101,6 +120,14 @@
     <div id="sql-out"></div>
   </section>
 </main>
+
+<aside id="pane" class="pane" aria-hidden="true" aria-label="Details">
+  <div class="pane-head">
+    <span id="pane-kind" class="lab-eyebrow"></span>
+    <button id="pane-close" class="lab-btn lab-btn--secondary" aria-label="Close details">close</button>
+  </div>
+  <div id="pane-body"></div>
+</aside>
 
 <footer>
   <span>LAB271 <span class="bs">\</span> FRANK <span class="bs">\</span> a Schuberg Philis lab</span>

@@ -41,23 +41,53 @@ function table(columns, rows) {
   return el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...body)));
 }
 
-// --- tabs and token -------------------------------------------------------
+const iso = (ns) => new Date(ns / 1e6).toISOString().replace(".000", "");
+const isoDay = (ns) => iso(ns).slice(0, 10);
 
+// --- tabs, routing and token ----------------------------------------------
+// The URL hash is the state: "#stats", "#explore?group=rule&sector=energy&pane=rule:r1".
+
+const TIERS = ["public", "observer", "contributor", "partner", "core"];
+let tier = "public";
+const atLeast = (t) => TIERS.indexOf(tier) >= TIERS.indexOf(t);
+
+function showTab(name) {
+  for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === name);
+  for (const p of document.querySelectorAll("main section")) p.hidden = p.id !== name;
+}
+
+let lastExplore = "";
 for (const b of document.querySelectorAll("nav button")) {
   b.addEventListener("click", () => {
-    for (const o of document.querySelectorAll("nav button")) o.setAttribute("aria-selected", o === b);
-    for (const p of document.querySelectorAll("main section")) p.hidden = p.id !== b.dataset.tab;
+    location.hash = b.dataset.tab === "explore" ? (lastExplore || `explore?group=${defaultGroup()}`) : b.dataset.tab;
   });
 }
+
+function route() {
+  const [name, qs] = location.hash.slice(1).split("?");
+  const tab = document.getElementById(name || "stats") ? (name || "stats") : "stats";
+  showTab(tab);
+  if (tab === "explore") {
+    lastExplore = location.hash.slice(1);
+    loadExplore(new URLSearchParams(qs || ""));
+  } else {
+    closePane();
+  }
+}
+window.addEventListener("hashchange", route);
 
 async function whoami() {
   try {
     const me = await (await api("/v1/whoami")).json();
+    tier = me.tier;
     $("tier").textContent = me.label ? `${me.tier} · ${me.label}` : me.tier;
   } catch (e) {
+    tier = "public";
     $("tier").textContent = `rejected: ${e.message}`;
   }
+  for (const o of $("ex-group").options) o.disabled = !atLeast(DIMENSION_TIER[o.value]);
   loadStats();
+  route();
 }
 
 $("token").value = token;
@@ -76,7 +106,7 @@ function tile(k, v) {
   return el("div", { class: "tile" }, el("div", { class: "v" }, Number(v ?? 0).toLocaleString()), el("div", { class: "k" }, k));
 }
 
-function bars(title, cells) {
+function bars(title, cells, dim) {
   const max = Math.max(1, ...cells.map((c) => c.count));
   const card = el("div", { class: "card" }, el("h3", {}, title));
   if (!cells.length) card.append(el("p", { class: "note" }, "nothing above the threshold"));
@@ -84,7 +114,7 @@ function bars(title, cells) {
     const fill = el("div", { class: "fill" });
     fill.style.width = `${(100 * c.count) / max}%`;
     card.append(el("div", { class: "bar" },
-      el("span", { class: "label", title: c.key }, c.key), el("span", { class: "n" }, c.count.toLocaleString()),
+      linkTo(c.key, () => seed(dim, c.key), "label"), el("span", { class: "n" }, c.count.toLocaleString()),
       el("div", { class: "track" }, fill)));
   }
   return card;
@@ -95,12 +125,13 @@ async function loadStats() {
     const s = await (await api(`/v1/statistics?days=${$("days").value}`)).json();
     show($("tiles"), tile("sightings", s.sightings), tile("observations", s.observations), tile("distinct IoCs (retained)", s.iocs));
     const sections = [
-      ["by_ioc_type", "IoC types"], ["by_severity", "Severity"], ["by_target_sector", "Target sectors"],
-      ["top_rules", "SIGMA rules"], ["top_techniques", "ATT&CK techniques"], ["top_campaigns", "Campaigns"],
+      ["by_ioc_type", "IoC types", "ioc_type"], ["by_severity", "Severity", "severity"],
+      ["by_target_sector", "Target sectors", "sector"], ["top_rules", "SIGMA rules", "rule"],
+      ["top_techniques", "ATT&CK techniques", "technique"], ["top_campaigns", "Campaigns", "campaign"],
     ];
-    show($("breakdowns"), ...sections.filter(([k]) => s[k]).map(([k, t]) => bars(t, s[k])));
+    show($("breakdowns"), ...sections.filter(([k]) => s[k]).map(([k, t, d]) => bars(t, s[k], d)));
     $("stats-note").textContent = s.min_cell > 1
-      ? `Cells under ${s.min_cell} are suppressed at the ${s.tier} tier.`
+      ? `Cells with fewer than ${s.min_cell} reporters are suppressed at the ${s.tier} tier. Click a bar to explore.`
       : s.tier === "public" ? "Public tier: totals only. A token shows more." : "";
   } catch (e) {
     show($("breakdowns"), errorNode(e));
@@ -174,7 +205,6 @@ $("ioc-form").addEventListener("submit", async (ev) => {
       show($("lookup-out"), el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`));
       return;
     }
-    const iso = (ns) => new Date(ns / 1e6).toISOString().replace(".000", "");
     show($("lookup-out"),
       el("p", {}, `${r.ioc.type} ${r.ioc.value}: seen ${r.count}×, first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
       table(["day", "count", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)])),
@@ -237,5 +267,196 @@ $("run-sql").addEventListener("click", () => {
     show($("sql-out"), errorNode(e));
   }
 });
+
+// --- explore ----------------------------------------------------------------
+// One list grouped by a dimension, filtered by others; a sliding pane for one
+// rule or IoC. The server runs fixed queries only (#157).
+
+const DIMENSION_TIER = {
+  rule: "contributor", ioc: "contributor", campaign: "contributor", technique: "contributor",
+  sector: "observer", ioc_type: "observer", severity: "observer",
+};
+const DIMENSION_LABEL = {
+  rule: "SIGMA rule", ioc: "IoC", campaign: "campaign", technique: "technique",
+  sector: "sector", ioc_type: "IoC type", severity: "severity",
+};
+const defaultGroup = () => (atLeast("contributor") ? "rule" : "sector");
+
+function linkTo(text, onClick, cls = "") {
+  const b = el("button", { class: `link ${cls}`.trim(), type: "button", title: text }, text);
+  b.addEventListener("click", onClick);
+  return b;
+}
+
+function go(params) {
+  location.hash = `explore?${params}`;
+}
+
+function current() {
+  return new URLSearchParams(location.hash.split("?")[1] || "");
+}
+
+/** From the dashboard: open Explore filtered on one value. */
+function seed(dim, key) {
+  if (dim === "rule") {
+    go(new URLSearchParams({ group: "ioc", rule: key, pane: `rule:${key}` }));
+    return;
+  }
+  const group = atLeast("contributor") ? "rule" : (dim === "sector" ? "ioc_type" : "sector");
+  go(new URLSearchParams({ group, [dim]: key }));
+}
+
+/** From a list row: open the entity, or narrow to it. */
+function drill(group, key) {
+  const p = current();
+  if (group === "rule" || group === "ioc") {
+    p.set("pane", `${group}:${key}`);
+  } else {
+    p.set(group, key);
+    p.set("group", atLeast("contributor") ? "rule" : (group === "sector" ? "ioc_type" : "sector"));
+  }
+  go(p);
+}
+
+let exploreSeq = 0;
+async function loadExplore(params) {
+  const group = params.get("group") || defaultGroup();
+  $("ex-group").value = group;
+  $("ex-days").value = params.get("days") || "30";
+  const filters = [...params].filter(([k]) => k in DIMENSION_TIER);
+  show($("ex-filters"), ...filters.map(([k, v]) => {
+    const chip = el("button", { class: "chip", type: "button", title: "remove filter" }, `${DIMENSION_LABEL[k]}: ${v}`);
+    chip.addEventListener("click", () => { const p = current(); p.delete(k); go(p); });
+    return chip;
+  }));
+  const pane = params.get("pane");
+  if (pane) openPane(pane.slice(0, pane.indexOf(":")), pane.slice(pane.indexOf(":") + 1));
+  else closePane();
+
+  const query = new URLSearchParams([["group", group], ["days", $("ex-days").value], ...filters]);
+  const seq = ++exploreSeq;
+  try {
+    const r = await (await api(`/v1/explore?${query}`)).json();
+    if (seq !== exploreSeq) return;
+    const rows = r.rows.map((x) => {
+      const tr = el("tr", { class: "go", tabindex: "0" },
+        el("td", {}, x.key), el("td", { class: "num" }, x.count.toLocaleString()),
+        el("td", { class: "num" }, x.reporters), el("td", {}, isoDay(x.first_seen)), el("td", {}, isoDay(x.last_seen)));
+      const open = () => drill(group, x.key);
+      tr.addEventListener("click", open);
+      tr.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+      return tr;
+    });
+    const head = el("tr", {}, ...[DIMENSION_LABEL[group], "rows", "reporters", "first seen", "last seen"].map((c) => el("th", {}, c)));
+    show($("ex-list"), rows.length
+      ? el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows)))
+      : el("p", { class: "note" }, "Nothing above the threshold for these filters."));
+    $("ex-note").textContent = r.min_cell > 1
+      ? `Groups with fewer than ${r.min_cell} reporters are hidden at the ${tier} tier.` : "";
+  } catch (e) {
+    if (seq === exploreSeq) show($("ex-list"), errorNode(e));
+  }
+}
+
+for (const id of ["ex-group", "ex-days"]) {
+  $(id).addEventListener("change", () => {
+    const p = current();
+    p.set(id === "ex-group" ? "group" : "days", $(id).value);
+    p.delete("pane");
+    go(p);
+  });
+}
+
+// --- detail pane ---------------------------------------------------------------
+
+function closePane() {
+  $("pane").classList.remove("open");
+  $("pane").setAttribute("aria-hidden", "true");
+}
+
+$("pane-close").addEventListener("click", () => { const p = current(); p.delete("pane"); go(p); });
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && $("pane").classList.contains("open")) $("pane-close").click();
+});
+
+function spark(trend) {
+  const ns = "http://www.w3.org/2000/svg";
+  const svg = document.createElementNS(ns, "svg");
+  const w = 6, gap = 2, h = 48, max = Math.max(1, ...trend.map((d) => d[1]));
+  svg.setAttribute("viewBox", `0 0 ${trend.length * (w + gap)} ${h}`);
+  svg.setAttribute("preserveAspectRatio", "none");
+  svg.setAttribute("class", "spark");
+  svg.setAttribute("role", "img");
+  svg.setAttribute("aria-label", `per day, ${trend[0]?.[0]} to ${trend.at(-1)?.[0]}`);
+  trend.forEach(([day, n], i) => {
+    const r = document.createElementNS(ns, "rect");
+    const bh = n ? Math.max(2, (h * n) / max) : 1;
+    r.setAttribute("x", i * (w + gap)); r.setAttribute("y", h - bh);
+    r.setAttribute("width", w); r.setAttribute("height", bh);
+    if (!n) r.setAttribute("class", "zero");
+    const t = document.createElementNS(ns, "title");
+    t.textContent = `${day}: ${n}`;
+    r.append(t);
+    svg.append(r);
+  });
+  return svg;
+}
+
+function kpis(pairs) {
+  return el("div", { class: "kpis" }, ...pairs.map(([k, v]) => tile(k, v)));
+}
+
+/** A short list whose items narrow Explore or open another pane. */
+function linkList(title, cells, onPick) {
+  if (!cells?.length) return [];
+  return [el("h3", {}, title), el("div", {}, ...cells.map((c) =>
+    el("div", { class: "bar" }, linkTo(c.key, () => onPick(c.key), "label"),
+      el("span", { class: "n" }, c.reporters === undefined ? `${c.count}` : `${c.count} · ${c.reporters} rep.`))))];
+}
+
+let paneSeq = 0;
+async function openPane(kind, key) {
+  $("pane").classList.add("open");
+  $("pane").setAttribute("aria-hidden", "false");
+  $("pane-kind").textContent = kind === "rule" ? "SIGMA rule" : "IoC";
+  show($("pane-body"), el("p", { class: "note" }, "loading…"));
+  const seq = ++paneSeq;
+  const filterOn = (dim) => (v) => { const p = current(); p.set(dim, v); p.delete("pane"); go(p); };
+  const openOther = (k) => (v) => { const p = current(); p.set("pane", `${k}:${v}`); go(p); };
+  try {
+    let nodes;
+    if (kind === "rule") {
+      const days = current().get("days") || "30";
+      const r = await (await api(`/v1/rules/${encodeURIComponent(key)}?days=${days}`)).json();
+      nodes = !r.known
+        ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen by enough reporters in this window to show.")]
+        : [el("h2", {}, r.rule),
+          kpis([["rows", r.count], ["reporters", r.reporters]]),
+          el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
+          el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+          ...linkList("IoCs", r.iocs, openOther("ioc")),
+          ...linkList("target sectors", r.sectors, filterOn("sector")),
+          ...linkList("severity", r.severities, filterOn("severity")),
+          ...linkList("techniques", r.techniques, filterOn("technique")),
+          ...linkList("campaigns", r.campaigns, filterOn("campaign"))];
+    } else {
+      const sep = key.indexOf(":");
+      const q = new URLSearchParams({ type: key.slice(0, sep), value: key.slice(sep + 1) });
+      const r = await (await api(`/v1/iocs?${q}`)).json();
+      nodes = !r.known
+        ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen in the retained days.")]
+        : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
+          kpis([["rows", r.count], ["reporters", r.reporters]]),
+          el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
+          el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+          ...linkList("SIGMA rules", r.rules.map((x) => ({ key: x.rule_id, count: x.count })), openOther("rule")),
+          el("h3", {}, "days seen"),
+          table(["day", "rows", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
+    }
+    if (seq === paneSeq) show($("pane-body"), ...nodes);
+  } catch (e) {
+    if (seq === paneSeq) show($("pane-body"), errorNode(e));
+  }
+}
 
 whoami();

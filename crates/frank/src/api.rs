@@ -28,6 +28,7 @@ use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::auth::{hex, random, Caller, Tokens};
+use crate::explore::{self as ex, Dimension};
 use crate::reporter::Reporters;
 use crate::store::sightings::scalar;
 use crate::store::{Iocs, Sightings};
@@ -38,6 +39,8 @@ const MAX_BATCH: usize = 100;
 const MAX_BODY: usize = 2 * 1024 * 1024;
 /// The rows not yet in a file, served as one Parquet file written on request.
 pub const OPEN_FILE: &str = "open/current.parquet";
+/// Days in a detail pane's trend.
+const TREND_DAYS: i64 = 30;
 
 pub struct App {
     pub sightings: Sightings,
@@ -102,6 +105,8 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/sightings", post(submit))
         .route("/v1/iocs", get(ioc_lookup))
         .route("/v1/iocs/range", get(ioc_range))
+        .route("/v1/explore", get(explore))
+        .route("/v1/rules/{id}", get(rule_detail))
         .route("/v1/files", get(files))
         .route("/v1/files/{*path}", get(file))
         .layer(DefaultBodyLimit::max(MAX_BODY))
@@ -301,8 +306,9 @@ async fn ioc_lookup(
             .iocs
             .lookup(&ioc, &Tlp::visible_to(caller.tier))
             .map_err(internal)?;
-        let (rules, reporters) = if days.is_empty() {
-            (Vec::new(), 0)
+        let now = (app.now)();
+        let (rules, reporters, trend) = if days.is_empty() {
+            (Vec::new(), 0, ex::trend(&[], now, TREND_DAYS))
         } else {
             let filter = format!(
                 "ioc_value = {} AND ts >= {} AND {}",
@@ -331,7 +337,8 @@ async fn ioc_lookup(
                 ))
                 .map(|r| scalar(&r))
                 .map_err(internal)?;
-            (rules, reporters)
+            let ts = times(&app.sightings, &filter)?;
+            (rules, reporters, ex::trend(&ts, now, TREND_DAYS))
         };
         Ok(Json(json!({
             "ioc": ioc,
@@ -342,6 +349,141 @@ async fn ioc_lookup(
             "last_seen": days.iter().map(|d| d.last_ts).max(),
             "days": days,
             "rules": rules,
+            "trend": trend,
+        })))
+    })
+    .await
+}
+
+/// The `ts` of every row `filter` selects, for a trend.
+fn times(s: &Sightings, filter: &str) -> Result<Vec<i64>, ApiError> {
+    let r = s
+        .query(&format!("SELECT ts FROM sightings WHERE {filter}"))
+        .map_err(internal)?;
+    Ok(r.rows
+        .iter()
+        .filter_map(|row| match row.first() {
+            Some(Cell::Int(t)) => Some(*t),
+            _ => None,
+        })
+        .collect())
+}
+
+/// The rows of an Explore query: `{key, count, reporters, first_seen,
+/// last_seen}`, at most `limit`. Below partner (`exact` false) a group
+/// with fewer than [`MIN_CELL`] distinct reporters is dropped (#148).
+fn grouped(
+    s: &Sightings,
+    q: &ex::Query,
+    since: i64,
+    visible: &str,
+    exact: bool,
+    limit: usize,
+) -> Result<Vec<Value>, ApiError> {
+    let sql = q.sql(since, visible).map_err(unprocessable)?;
+    let r = s.query(&sql).map_err(internal)?;
+    let k = q.group.columns().len();
+    Ok(r.rows
+        .iter()
+        .filter_map(|row| {
+            let key: Option<Vec<&str>> = row[..k]
+                .iter()
+                .map(|c| match c {
+                    Cell::Text(t) => Some(t.as_str()),
+                    _ => None,
+                })
+                .collect();
+            match (key, &row[k], &row[k + 1], &row[k + 2], &row[k + 3]) {
+                (Some(key), Cell::Int(n), Cell::Int(r), Cell::Int(first), Cell::Int(last))
+                    if exact || *r >= MIN_CELL =>
+                {
+                    Some(json!({
+                        "key": key.join(":"),
+                        "count": n,
+                        "reporters": r,
+                        "first_seen": first,
+                        "last_seen": last,
+                    }))
+                }
+                _ => None,
+            }
+        })
+        .take(limit)
+        .collect())
+}
+
+/// `GET /v1/explore?group=rule&sector=energy&days=30` (#157).
+async fn explore(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(params): Query<BTreeMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let q = ex::Query::parse(&params).map_err(unprocessable)?;
+    let caller = require(&app, &headers, q.min_tier())?;
+    let since = (app.now)() - q.days * DAY_NS;
+    let visible = tlp_visible(caller.tier);
+    let exact = caller.tier >= Tier::Partner;
+    blocking(move || {
+        let rows = grouped(&app.sightings, &q, since, &visible, exact, 100)?;
+        Ok(Json(json!({
+            "group": q.group.name(),
+            "days": q.days,
+            "filters": q.filters.iter().map(|(d, v)| (d.name(), v)).collect::<BTreeMap<_, _>>(),
+            "min_cell": if exact { 1 } else { MIN_CELL },
+            "rows": rows,
+        })))
+    })
+    .await
+}
+
+/// `GET /v1/rules/{id}?days=30`: one rule's prevalence (#157). A rule seen
+/// by fewer than [`MIN_CELL`] reporters is reported as unknown below
+/// partner, as it would be in a list.
+async fn rule_detail(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+    Query(q): Query<StatsQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Contributor)?;
+    let days = q.days.unwrap_or(TREND_DAYS);
+    if !(1..=3650).contains(&days) {
+        return Err(unprocessable("days must be 1-3650"));
+    }
+    let now = (app.now)();
+    let since = now - days * DAY_NS;
+    let visible = tlp_visible(caller.tier);
+    let exact = caller.tier >= Tier::Partner;
+    let by = move |group| ex::Query {
+        group,
+        days,
+        filters: vec![(Dimension::Rule, id.clone())],
+    };
+    blocking(move || {
+        let s = &app.sightings;
+        let total = grouped(s, &by(Dimension::Rule), since, &visible, exact, 1)?;
+        let Some(total) = total.into_iter().next() else {
+            return Ok(Json(
+                json!({ "rule": by(Dimension::Rule).filters[0].1, "known": false }),
+            ));
+        };
+        let base = by(Dimension::Rule);
+        let filter = base.where_clause(since, &visible).map_err(unprocessable)?;
+        let list = |d, n| grouped(s, &by(d), since, &visible, exact, n);
+        Ok(Json(json!({
+            "rule": total["key"],
+            "known": true,
+            "days": days,
+            "count": total["count"],
+            "reporters": total["reporters"],
+            "first_seen": total["first_seen"],
+            "last_seen": total["last_seen"],
+            "trend": ex::trend(&times(s, &filter)?, now, days.min(90)),
+            "sectors": list(Dimension::Sector, 20)?,
+            "severities": list(Dimension::Severity, 10)?,
+            "techniques": list(Dimension::Technique, 10)?,
+            "campaigns": list(Dimension::Campaign, 10)?,
+            "iocs": list(Dimension::Ioc, 15)?,
         })))
     })
     .await
