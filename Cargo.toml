@@ -11,10 +11,10 @@ rust-version = "1.85"
 
 [workspace.dependencies]
 frank-core = { path = "crates/frank-core" }
-# db-core pinned to the commit of t-rust-db/db-core#708, which lets the
-# column engine run in a browser (Parquet from bytes, no threads, no clock)
-# and reads nanosecond timestamps. Move to a release tag once it is merged.
-db-core = { git = "https://github.com/t-rust-db/db-core", rev = "fdf0cc878dcff087ea2485a3afb079c253b44fc3", default-features = false }
+# db-core pinned to the head of t-rust-db/db-core#708 (main at 0.167.0 plus
+# the browser fixes: no threads, no clock, nanosecond timestamps). Move to a
+# release tag once it is merged.
+db-core = { git = "https://github.com/t-rust-db/db-core", rev = "a7c16933c562c2a85e2f2cac35a41a307c1f5b6c", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }

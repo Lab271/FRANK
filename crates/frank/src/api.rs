@@ -198,14 +198,13 @@ struct StatsQuery {
     days: Option<i64>,
 }
 
-/// The SQL condition for the TLP levels `tier` may see (#149). Written as
-/// `OR`s: db-core's column engine does not take `IN (...)` lists yet.
+/// The SQL condition for the TLP levels `tier` may see (#149).
 fn tlp_visible(tier: Tier) -> String {
     let levels: Vec<String> = Tlp::visible_to(tier)
         .into_iter()
-        .map(|t| format!("tlp = {}", sql_quote(t.as_str())))
+        .map(|t| sql_quote(t.as_str()))
         .collect();
-    format!("({})", levels.join(" OR "))
+    format!("tlp IN ({})", levels.join(", "))
 }
 
 /// `(key, count)` rows of a two-column GROUP BY over the rows `visible`
