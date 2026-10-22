@@ -9,10 +9,12 @@
 pub mod observable;
 pub mod submission;
 pub mod tier;
+pub mod tlp;
 
 pub use observable::{Ioc, IocType};
 pub use submission::{Error, SightingRow, Submission};
 pub use tier::Tier;
+pub use tlp::Tlp;
 
 /// The smallest count a public or observer answer shows for one cell
 /// (sector, type, ...); smaller cells are suppressed (k-anonymity).

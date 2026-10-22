@@ -2,7 +2,8 @@
 """Synthetic FRANK submissions for demos: `demo_sightings.py [N] > file.json`.
 
 Dated over the last 7 days, so they show up in the default statistics
-window and stay inside retention. Only documentation addresses
+window and stay inside retention. A mix of TLP levels, so every tier sees
+something. Only documentation addresses
 (RFC 5737) and `.example` domains (RFC 2606): no real indicators.
 """
 import datetime as dt
@@ -34,6 +35,7 @@ def submission(rng: random.Random, now: dt.datetime) -> dict:
         digest = hashlib.sha256(f"loader-{rng.randint(1, 3)}".encode()).hexdigest()
         obs["files"] = [{"type": "executable", "hash_sha256": digest}]
     return {"submission": {
+        "tlp_level": rng.choices(["clear", "green", "amber", "amber+strict"], weights=[3, 5, 2, 1])[0],
         "submitter": {"organisation_id": f"identity-mdr-{rng.randint(1, 3)}", "sector": "cybersecurity_services"},
         "hit_target": {"organisation_id": f"identity-cust-{rng.randint(1, 40)}", "sector": rng.choice(SECTORS),
                        "organisation_size": rng.choice(["small", "medium", "large"])},

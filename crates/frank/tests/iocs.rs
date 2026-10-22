@@ -1,7 +1,7 @@
 //! The `iocs` row table across transactions and reopen.
 
 use frank::store::Iocs;
-use frank_core::{Ioc, IocType, Submission};
+use frank_core::{Ioc, IocType, Submission, Tlp};
 
 const NOW: i64 = 1_792_670_400_000_000_000;
 
@@ -23,18 +23,20 @@ fn every_transaction_is_kept() {
         for i in 0..5 {
             iocs.record(&rows(&format!("10.0.0.{i}"))).unwrap();
         }
-        assert_eq!(iocs.count().unwrap(), 5, "same handle");
+        assert_eq!(iocs.count(&Tlp::SHARED).unwrap(), 5, "same handle");
         for i in 0..5 {
             assert_eq!(
-                iocs.lookup(&ip(&format!("10.0.0.{i}"))).unwrap().len(),
+                iocs.lookup(&ip(&format!("10.0.0.{i}")), &Tlp::SHARED)
+                    .unwrap()
+                    .len(),
                 1,
                 "10.0.0.{i}"
             );
         }
     }
     let iocs = Iocs::open(&dir).unwrap();
-    assert_eq!(iocs.count().unwrap(), 5, "after reopen");
+    assert_eq!(iocs.count(&Tlp::SHARED).unwrap(), 5, "after reopen");
     iocs.record(&rows("10.0.0.9")).unwrap();
-    assert_eq!(iocs.count().unwrap(), 6);
+    assert_eq!(iocs.count(&Tlp::SHARED).unwrap(), 6);
     std::fs::remove_dir_all(&dir).ok();
 }

@@ -19,7 +19,7 @@ use std::thread;
 use db_core::engine::row::RowEngine;
 use db_core::engine::{Cell, Engine, QueryResult};
 use db_core::storage::row::header::DatabaseHeader;
-use frank_core::{sql_quote, Ioc, SightingRow};
+use frank_core::{sql_quote, Ioc, SightingRow, Tlp};
 use serde::Serialize;
 
 pub const FILE: &str = "iocs.db";
@@ -27,8 +27,8 @@ const DAY_NS: i64 = 86_400 * 1_000_000_000;
 
 const SCHEMA: [&str; 5] = [
     "CREATE TABLE ioc_day (k TEXT NOT NULL, kd TEXT NOT NULL, ioc_type TEXT NOT NULL, \
-     value TEXT NOT NULL, day INTEGER NOT NULL, ip_hex TEXT, first_ts INTEGER NOT NULL, \
-     last_ts INTEGER NOT NULL, n INTEGER NOT NULL)",
+     value TEXT NOT NULL, day INTEGER NOT NULL, tlp TEXT NOT NULL, ip_hex TEXT, \
+     first_ts INTEGER NOT NULL, last_ts INTEGER NOT NULL, n INTEGER NOT NULL)",
     "CREATE INDEX ioc_day_k ON ioc_day (k)",
     "CREATE UNIQUE INDEX ioc_day_kd ON ioc_day (kd)",
     "CREATE INDEX ioc_day_ip ON ioc_day (ip_hex)",
@@ -84,10 +84,13 @@ impl Iocs {
         rx.recv().map_err(|_| "iocs thread stopped".to_string())?
     }
 
-    /// Counts `rows` into their IoCs' days, in one transaction.
+    /// Counts `rows` into their IoCs' days, in one transaction. Each TLP
+    /// level counts separately, so a lookup shows a tier only what it may
+    /// see (#149).
     pub fn record(&self, rows: &[SightingRow]) -> Result<(), String> {
-        // (key, day) -> (ioc, first, last, count): one upsert per pair.
-        let mut agg: BTreeMap<(String, i64), (Ioc, i64, i64, i64)> = BTreeMap::new();
+        // (key, day, tlp) -> (ioc, first, last, count): one upsert each.
+        type Key = (String, i64, Tlp);
+        let mut agg: BTreeMap<Key, (Ioc, i64, i64, i64)> = BTreeMap::new();
         for r in rows {
             let (Some(t), Some(v)) = (r.ioc_type, r.ioc_value.clone()) else {
                 continue;
@@ -97,7 +100,7 @@ impl Iocs {
                 value: v,
             };
             let e = agg
-                .entry((ioc.key(), r.ts_ns.div_euclid(DAY_NS)))
+                .entry((ioc.key(), r.ts_ns.div_euclid(DAY_NS), r.tlp))
                 .or_insert((ioc, r.ts_ns, r.ts_ns, 0));
             e.1 = e.1.min(r.ts_ns);
             e.2 = e.2.max(r.ts_ns);
@@ -109,8 +112,8 @@ impl Iocs {
         self.run(move |db| {
             exec(db, "BEGIN")?;
             let result = (|| {
-                for ((k, day), (ioc, first, last, n)) in &agg {
-                    upsert(db, k, *day, ioc, *first, *last, *n)?;
+                for (key, value) in &agg {
+                    upsert(db, key, value)?;
                 }
                 Ok(())
             })();
@@ -124,37 +127,52 @@ impl Iocs {
         })
     }
 
-    /// Every retained day `ioc` was seen on, oldest first.
-    pub fn lookup(&self, ioc: &Ioc) -> Result<Vec<IocDay>, String> {
+    /// Every retained day `ioc` was seen on at the `visible` TLP levels,
+    /// oldest first. The key is an index seek; TLP is filtered here, as
+    /// the row engine plans one indexed predicate (db-core #695).
+    pub fn lookup(&self, ioc: &Ioc, visible: &[Tlp]) -> Result<Vec<IocDay>, String> {
         let sql = format!(
-            "SELECT day, first_ts, last_ts, n FROM ioc_day WHERE k = {} ORDER BY day",
+            "SELECT day, first_ts, last_ts, n, tlp FROM ioc_day WHERE k = {}",
             sql_quote(&ioc.key())
         );
+        let visible = levels(visible);
         self.run(move |db| {
             let r = query(db, &sql)?;
-            Ok(r.rows
-                .iter()
-                .map(|row| IocDay {
-                    day: day_label(int(&row[0])),
-                    first_ts: int(&row[1]),
-                    last_ts: int(&row[2]),
-                    count: int(&row[3]),
-                })
-                .collect())
+            let mut days: BTreeMap<i64, IocDay> = BTreeMap::new();
+            for row in r.rows.iter().filter(|row| shown(&row[4], &visible)) {
+                let day = int(&row[0]);
+                let d = days.entry(day).or_insert_with(|| IocDay {
+                    day: day_label(day),
+                    first_ts: i64::MAX,
+                    last_ts: i64::MIN,
+                    count: 0,
+                });
+                d.first_ts = d.first_ts.min(int(&row[1]));
+                d.last_ts = d.last_ts.max(int(&row[2]));
+                d.count += int(&row[3]);
+            }
+            Ok(days.into_values().collect())
         })
     }
 
     /// IP addresses seen in `[lo, hi]` (32-hex-digit form), with counts.
-    pub fn ip_range(&self, lo: &str, hi: &str, limit: usize) -> Result<Vec<(String, i64)>, String> {
+    pub fn ip_range(
+        &self,
+        lo: &str,
+        hi: &str,
+        visible: &[Tlp],
+        limit: usize,
+    ) -> Result<Vec<(String, i64)>, String> {
         let sql = format!(
-            "SELECT value, n FROM ioc_day WHERE ip_hex BETWEEN {} AND {}",
+            "SELECT value, n, tlp FROM ioc_day WHERE ip_hex BETWEEN {} AND {}",
             sql_quote(lo),
             sql_quote(hi)
         );
+        let visible = levels(visible);
         self.run(move |db| {
             let r = query(db, &sql)?;
             let mut by_value: BTreeMap<String, i64> = BTreeMap::new();
-            for row in &r.rows {
+            for row in r.rows.iter().filter(|row| shown(&row[2], &visible)) {
                 if let Cell::Text(v) = &row[0] {
                     *by_value.entry(v.clone()).or_default() += int(&row[1]);
                 }
@@ -163,11 +181,18 @@ impl Iocs {
         })
     }
 
-    /// Distinct IoCs over the retained days.
-    pub fn count(&self) -> Result<i64, String> {
-        self.run(|db| {
-            let r = query(db, "SELECT count(DISTINCT k) FROM ioc_day")?;
-            Ok(r.rows.first().and_then(|r| r.first()).map_or(0, int))
+    /// Distinct IoCs over the retained days, at the `visible` TLP levels.
+    pub fn count(&self, visible: &[Tlp]) -> Result<i64, String> {
+        let visible = levels(visible);
+        self.run(move |db| {
+            let r = query(db, "SELECT k, tlp FROM ioc_day")?;
+            let keys: std::collections::BTreeSet<String> = r
+                .rows
+                .iter()
+                .filter(|row| shown(&row[1], &visible))
+                .map(|row| row[0].to_string())
+                .collect();
+            Ok(i64::try_from(keys.len()).unwrap_or(i64::MAX))
         })
     }
 
@@ -208,6 +233,12 @@ fn owner(
                 return;
             }
         }
+    } else if query(&mut db, "SELECT tlp FROM ioc_day LIMIT 1").is_err() {
+        let _ = ready.send(Err(format!(
+            "{} predates TLP (#149): delete it and run `frank rebuild-iocs`",
+            path.display()
+        )));
+        return;
     }
     let _ = ready.send(Ok(()));
     while let Ok(job) = jobs.recv() {
@@ -217,14 +248,11 @@ fn owner(
 
 fn upsert(
     db: &mut RowEngine,
-    k: &str,
-    day: i64,
-    ioc: &Ioc,
-    first: i64,
-    last: i64,
-    n: i64,
+    (k, day, tlp): &(String, i64, Tlp),
+    (ioc, first, last, n): &(Ioc, i64, i64, i64),
 ) -> Result<(), String> {
-    let kd = sql_quote(&format!("{k}|{day}"));
+    let (day, tlp, first, last, n) = (*day, *tlp, *first, *last, *n);
+    let kd = sql_quote(&format!("{k}|{day}|{tlp}"));
     let found = query(
         db,
         &format!("SELECT first_ts, last_ts, n FROM ioc_day WHERE kd = {kd}"),
@@ -240,11 +268,12 @@ fn upsert(
     } else {
         let ip = ioc.ip_hex().map_or("NULL".to_string(), |h| sql_quote(&h));
         let sql = format!(
-            "INSERT INTO ioc_day (k, kd, ioc_type, value, day, ip_hex, first_ts, last_ts, n) \
-             VALUES ({}, {kd}, {}, {}, {day}, {ip}, {first}, {last}, {n})",
+            "INSERT INTO ioc_day (k, kd, ioc_type, value, day, tlp, ip_hex, first_ts, last_ts, n) \
+             VALUES ({}, {kd}, {}, {}, {day}, {}, {ip}, {first}, {last}, {n})",
             sql_quote(k),
             sql_quote(ioc.ioc_type.as_str()),
             sql_quote(&ioc.value),
+            sql_quote(tlp.as_str()),
         );
         exec(db, &sql)
     }
@@ -256,6 +285,16 @@ fn query(db: &mut RowEngine, sql: &str) -> Result<QueryResult, String> {
 
 fn exec(db: &mut RowEngine, sql: &str) -> Result<(), String> {
     query(db, sql).map(|_| ())
+}
+
+/// The `visible` levels as stored text.
+fn levels(visible: &[Tlp]) -> Vec<&'static str> {
+    visible.iter().map(|t| t.as_str()).collect()
+}
+
+/// Whether a stored `tlp` cell is one of `visible`.
+fn shown(tlp: &Cell, visible: &[&str]) -> bool {
+    matches!(tlp, Cell::Text(t) if visible.contains(&t.as_str()))
 }
 
 fn int(c: &Cell) -> i64 {

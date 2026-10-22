@@ -33,6 +33,7 @@ fn schema() -> Vec<ColumnSpec> {
         text("severity"),
         ColumnSpec::new("confidence", ColumnType::Int64, false),
         ColumnSpec::new("observations", ColumnType::Int64, false),
+        ColumnSpec::new("tlp", ColumnType::Utf8, false),
     ]
 }
 
@@ -53,6 +54,7 @@ fn record(r: &SightingRow) -> Vec<RecordValue> {
         opt(&r.severity),
         RecordValue::Int(i64::from(r.confidence)),
         RecordValue::Int(i64::from(r.observations)),
+        RecordValue::Str(r.tlp.as_str().into()),
     ]
 }
 
