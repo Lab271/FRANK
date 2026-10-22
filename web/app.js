@@ -134,7 +134,7 @@ $("example").addEventListener("click", () => {
 });
 
 const ROW_COLUMNS = ["ts_ns", "rule_id", "technique", "campaign", "ioc_type", "ioc_value",
-  "reporter_sector", "target_sector", "target_size", "severity", "confidence", "observations"];
+  "reporter_sector", "target_sector", "target_size", "severity", "confidence", "observations", "tlp"];
 
 async function doPreview() {
   await wasm;

@@ -274,7 +274,10 @@ async fn small_cells_are_suppressed_below_partner() {
     );
 
     let (_, public) = call(&h.app, "GET", "/v1/statistics", None, None).await;
-    assert_eq!(public["sightings"], 4);
+    assert_eq!(
+        public["sightings"], 0,
+        "GREEN (the default) is not public: {public}"
+    );
     assert!(public.get("by_target_sector").is_none(), "{public}");
 
     let (_, obs) = call(&h.app, "GET", "/v1/statistics?days=7", Some("o"), None).await;
@@ -405,6 +408,137 @@ async fn the_open_hour_is_a_file_too() {
     assert_eq!(r.rows, vec![vec![Cell::Int(4), Cell::Int(2)]]);
 }
 
+/// `sighting` at TLP `tlp`.
+fn with_tlp(mut s: Value, tlp: &str) -> Value {
+    s["submission"]["tlp_level"] = json!(tlp);
+    s
+}
+
+#[tokio::test]
+async fn tlp_red_is_refused() {
+    let h = harness("tlp-red");
+    let (st, err) = call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(with_tlp(sighting("energy", "1.2.3.4", "r1"), "TLP:RED")),
+    )
+    .await;
+    assert_eq!(st, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(err["error"].as_str().unwrap().contains("TLP:RED"), "{err}");
+}
+
+#[tokio::test]
+async fn each_tier_sees_its_tlp_levels() {
+    let h = harness("tlp");
+    // One sighting per level, each with its own IoC.
+    let batch: Vec<Value> = [
+        ("clear", "10.9.0.1"),
+        ("green", "10.9.0.2"),
+        ("amber", "10.9.0.3"),
+        ("amber+strict", "10.9.0.4"),
+    ]
+    .iter()
+    .map(|(t, ip)| with_tlp(sighting("energy", ip, &format!("r-{t}")), t))
+    .collect();
+    assert_eq!(
+        call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some("c"),
+            Some(json!(batch))
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+
+    let sightings = |v: &Value| v["sightings"].as_i64().unwrap();
+    let (_, public) = call(&h.app, "GET", "/v1/statistics", None, None).await;
+    let (_, obs) = call(&h.app, "GET", "/v1/statistics", Some("o"), None).await;
+    let (_, contrib) = call(&h.app, "GET", "/v1/statistics", Some("c"), None).await;
+    let (_, partner) = call(&h.app, "GET", "/v1/statistics", Some("p"), None).await;
+    assert_eq!(
+        [
+            sightings(&public),
+            sightings(&obs),
+            sightings(&contrib),
+            sightings(&partner)
+        ],
+        [1, 2, 3, 4]
+    );
+    let rules: Vec<&str> = contrib["top_rules"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|c| c["key"].as_str().unwrap())
+        .collect();
+    assert!(!rules.contains(&"r-amber+strict"), "{rules:?}");
+
+    // AMBER+STRICT is partner-only, in the IoC table too.
+    let lookup = |tok| {
+        call(
+            &h.app,
+            "GET",
+            "/v1/iocs?type=ipv4&value=10.9.0.4",
+            Some(tok),
+            None,
+        )
+    };
+    assert_eq!(lookup("c").await.1["known"], false);
+    assert_eq!(lookup("p").await.1["known"], true);
+    let (_, range) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs/range?cidr=10.9.0.0/24",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(range["addresses"].as_array().unwrap().len(), 3, "{range}");
+    // The shared domain is counted only at visible levels.
+    let (_, dom) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=domain&value=evil.example",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(dom["count"], 3);
+    assert_eq!(public["iocs"], 2, "the CLEAR sighting's ip and domain");
+
+    // Partners download everything stored; nothing stored is RED.
+    let req = Request::get("/v1/files/open/current.parquet")
+        .header("authorization", "Bearer p")
+        .body(Body::empty())
+        .unwrap();
+    let bytes = h
+        .app
+        .clone()
+        .oneshot(req)
+        .await
+        .unwrap()
+        .into_body()
+        .collect()
+        .await
+        .unwrap()
+        .to_bytes()
+        .to_vec();
+    use db_core::engine::{column::BatchEngine, Cell, Engine};
+    let mut e = BatchEngine::from_bytes("sightings", bytes).unwrap();
+    let r = e
+        .run_query("SELECT count(*) FROM sightings WHERE tlp = 'red'")
+        .unwrap();
+    assert_eq!(r.rows, vec![vec![Cell::Int(0)]]);
+    let all = e
+        .run_query("SELECT count(DISTINCT tlp) FROM sightings")
+        .unwrap();
+    assert_eq!(all.rows, vec![vec![Cell::Int(4)]]);
+}
+
 #[tokio::test]
 async fn iocs_rebuild_from_sightings() {
     let h = harness("rebuild");
@@ -420,8 +554,11 @@ async fn iocs_rebuild_from_sightings() {
     )
     .await;
     let ioc = frank_core::Ioc::new(frank_core::IocType::Ipv4, "1.2.3.4").unwrap();
-    let before = h.iocs.lookup(&ioc).unwrap();
+    let before = h.iocs.lookup(&ioc, &frank_core::Tlp::SHARED).unwrap();
     rebuild_iocs(&h.sightings, &h.iocs).unwrap();
-    assert_eq!(h.iocs.lookup(&ioc).unwrap(), before);
+    assert_eq!(
+        h.iocs.lookup(&ioc, &frank_core::Tlp::SHARED).unwrap(),
+        before
+    );
     assert_eq!(before[0].count, 2);
 }

@@ -22,12 +22,13 @@ Phase 3 is the production build. Three things in the Phase 2 outcome drive the r
    - `sightings/`: a striped (tiered) db-core table. Each closed hour is flushed to `live/` as one Parquet file sorted by `(rule_id, ioc_value)`; closed days merge into `archive/`; retention drops whole days. The files are plain Parquet with hive partitions, so DuckDB and pyarrow read them too.
    - `iocs.db`: a db-core row table (SQLite format), one row per IoC per day with B-tree indexes on the key, the day and the IP address (as 32 hex digits). "Is this IoC known", "when" and "which addresses in this CIDR block" are index seeks, not scans.
 2. **Anonymisation by schema.** A submission is reduced to sighting rows (`frank-core::SightingRow`) that have no column for an organisation's identity. Submitter and target identities are dropped at parsing time; sector and size are kept as `[a-z0-9_]` labels only. Public and observer statistics suppress cells under `MIN_CELL` (3).
-3. **No SQL from callers.** The HTTP API runs fixed, typed queries. Values reaching SQL are normalised IoCs, quoted by doubling quotes.
-4. **The browser runs FRANK code as WebAssembly** (`frank-wasm`, `wasm32-unknown-unknown`):
+3. **TLP is the submitter's disclosure control, next to the tier** (#149). Each stored row carries its TLP level, and every query shows a tier only the levels it may see: CLEAR is public, GREEN observer, AMBER contributor, AMBER+STRICT partner. TLP:RED is refused at submission, because it is meant for named recipients, not for a platform. The `iocs` table keys its rows by TLP as well, so an IoC lookup can't reveal an AMBER+STRICT sighting to a contributor. GREEN is the default, so a public visitor sees only what was explicitly marked CLEAR.
+4. **No SQL from callers.** The HTTP API runs fixed, typed queries. Values reaching SQL are normalised IoCs, quoted by doubling quotes.
+5. **The browser runs FRANK code as WebAssembly** (`frank-wasm`, `wasm32-unknown-unknown`):
    - the submission preview runs the server's own parsing, so a contributor sees exactly what will be shared before sending it;
    - partners download the Parquet files (`/v1/files`, listed files only) and query them in the browser on db-core's column engine. Counts, sums, minimums and maximums merge across files.
-5. **Tokens instead of Cognito:** a tokens file of `sha256(token) tier label` lines, managed with `frank token`. OIDC can replace it later without changing the tiers.
-6. **Three deployments, one image and one on-disk layout:** `frank serve` on a machine; `deploy/podman` (compose, data on a host bind mount); `deploy/stackit` (OpenTofu: a VM running the image with podman, data on a separate block volume, Caddy for TLS).
+6. **Tokens instead of Cognito:** a tokens file of `sha256(token) tier label` lines, managed with `frank token`. OIDC can replace it later without changing the tiers.
+7. **Three deployments, one image and one on-disk layout:** `frank serve` on a machine; `deploy/podman` (compose, data on a host bind mount); `deploy/stackit` (OpenTofu: a VM running the image with podman, data on a separate block volume, Caddy for TLS).
 
 ## Consequences
 

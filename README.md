@@ -73,6 +73,8 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 
 Send tokens as `Authorization: Bearer <token>`.
 
+Each submission may carry `tlp_level` (default GREEN). Every query shows a tier only the TLP levels it may see: CLEAR is public, GREEN observer, AMBER contributor, AMBER+STRICT partner. TLP:RED is refused.
+
 ## Develop
 
 ```bash

@@ -11,6 +11,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::observable::{Ioc, IocType};
+use crate::tlp::Tlp;
 
 /// Most IoCs one submission may carry.
 pub const MAX_IOCS: usize = 1000;
@@ -51,6 +52,8 @@ pub struct Submission {
     pub reporter_sector: Option<String>,
     pub target_sector: Option<String>,
     pub target_size: Option<String>,
+    /// The submitter's disclosure level; GREEN when not given.
+    pub tlp: Tlp,
     pub iocs: Vec<Ioc>,
 }
 
@@ -71,6 +74,7 @@ pub struct SightingRow {
     pub severity: Option<String>,
     pub confidence: u8,
     pub observations: u32,
+    pub tlp: Tlp,
 }
 
 impl Submission {
@@ -154,6 +158,7 @@ impl Submission {
             })
             .unwrap_or_default();
 
+        let tlp = tlp_level(sighting, root)?;
         let iocs = observables(sighting.get("observables"))?;
         let rule_id = sigma.and_then(|s| text(s, "rule_id"));
         if iocs.is_empty() && rule_id.is_none() {
@@ -180,6 +185,7 @@ impl Submission {
             target_size: target.and_then(|t| {
                 label(t, "organisation_size").or_else(|| label(t, "organization_size"))
             }),
+            tlp,
             iocs,
         })
     }
@@ -201,6 +207,7 @@ impl Submission {
             severity: self.severity.clone(),
             confidence: self.confidence,
             observations: self.observations,
+            tlp: self.tlp,
         };
         if self.iocs.is_empty() {
             vec![row(None)]
@@ -222,6 +229,24 @@ fn time_field(v: &Value, key: &str) -> Result<Option<i64>, Error> {
             "{key}: expected an RFC 3339 string"
         ))),
     }
+}
+
+/// The TLP level: `tlp_level` (or `tlp`) on the sighting, the submission
+/// or its `metadata`, the first found; GREEN when none is given (spec 001).
+/// TLP:RED is refused: it is meant for named people, not for a platform.
+fn tlp_level(sighting: &Value, root: &Value) -> Result<Tlp, Error> {
+    let given = [sighting, root, root.get("metadata").unwrap_or(&Value::Null)]
+        .into_iter()
+        .flat_map(|v| [v.get("tlp_level"), v.get("tlp")])
+        .flatten()
+        .find_map(Value::as_str);
+    let tlp = given.map_or(Ok(Tlp::Green), Tlp::parse)?;
+    if tlp == Tlp::Red {
+        return Err(Error::Invalid(
+            "TLP:RED is not shared on FRANK: it is meant for named recipients only".into(),
+        ));
+    }
+    Ok(tlp)
 }
 
 /// 0-100, or a 0.0-1.0 score as Phase 2's API took it.
@@ -432,6 +457,38 @@ mod tests {
             ),
             Error::Invalid(_)
         ));
+    }
+
+    #[test]
+    fn tlp_defaults_to_green_and_red_is_refused() {
+        let with = |tlp: &str| {
+            format!(
+                r#"{{"submission": {{{tlp} "sighting": {{"sigma_detection": {{"rule_id": "r"}}}}}}}}"#
+            )
+        };
+        assert_eq!(Submission::parse(&with(""), NOW).unwrap().tlp, Tlp::Green);
+        assert_eq!(
+            Submission::parse(&with(r#""tlp_level": "TLP:AMBER","#), NOW)
+                .unwrap()
+                .tlp,
+            Tlp::Amber
+        );
+        let meta = r#"{"submission": {"metadata": {"tlp": "amber+strict"}, "sighting": {"sigma_detection": {"rule_id": "r"}}}}"#;
+        assert_eq!(Submission::parse(meta, NOW).unwrap().tlp, Tlp::AmberStrict);
+        let sighting_wins = r#"{"tlp_level": "amber", "sighting": {"tlp_level": "clear", "sigma_detection": {"rule_id": "r"}}}"#;
+        assert_eq!(
+            Submission::parse(sighting_wins, NOW).unwrap().tlp,
+            Tlp::Clear
+        );
+        assert!(
+            matches!(Submission::parse(&with(r#""tlp_level": "RED","#), NOW), Err(Error::Invalid(m)) if m.contains("TLP:RED"))
+        );
+        assert!(matches!(
+            Submission::parse(&with(r#""tlp_level": "purple","#), NOW),
+            Err(Error::Invalid(_))
+        ));
+        let s = Submission::parse(&with(r#""tlp_level": "amber","#), NOW).unwrap();
+        assert!(s.rows("x").iter().all(|r| r.tlp == Tlp::Amber));
     }
 
     #[test]

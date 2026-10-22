@@ -23,7 +23,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use db_core::engine::Cell;
-use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, MIN_CELL};
+use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -198,17 +198,28 @@ struct StatsQuery {
     days: Option<i64>,
 }
 
-/// `(key, count)` rows of a two-column GROUP BY, small cells dropped
-/// unless `exact`.
+/// The SQL condition for the TLP levels `tier` may see (#149). Written as
+/// `OR`s: db-core's column engine does not take `IN (...)` lists yet.
+fn tlp_visible(tier: Tier) -> String {
+    let levels: Vec<String> = Tlp::visible_to(tier)
+        .into_iter()
+        .map(|t| format!("tlp = {}", sql_quote(t.as_str())))
+        .collect();
+    format!("({})", levels.join(" OR "))
+}
+
+/// `(key, count)` rows of a two-column GROUP BY over the rows `visible`
+/// selects, small cells dropped unless `exact`.
 fn breakdown(
     s: &Sightings,
     column: &str,
+    visible: &str,
     since: i64,
     limit: usize,
     exact: bool,
 ) -> Result<Vec<Value>, ApiError> {
     let sql = format!(
-        "SELECT {column}, count(*) AS n FROM sightings WHERE ts >= {since} GROUP BY {column} ORDER BY n DESC"
+        "SELECT {column}, count(*) AS n FROM sightings WHERE ts >= {since} AND {visible} GROUP BY {column} ORDER BY n DESC"
     );
     let r = s.query(&sql).map_err(internal)?;
     Ok(r.rows
@@ -234,27 +245,29 @@ async fn statistics(
         return Err(unprocessable("days must be 1-3650"));
     }
     let since = (app.now)() - days * DAY_NS;
+    let visible = tlp_visible(caller.tier);
     blocking(move || {
         let s = &app.sightings;
+        let v = visible.as_str();
         let q = |sql: &str| s.query(sql).map(|r| scalar(&r)).map_err(internal);
         let mut out = json!({
             "tier": caller.tier,
             "days": days,
-            "sightings": q(&format!("SELECT count(DISTINCT sighting_id) FROM sightings WHERE ts >= {since}"))?,
-            "observations": q(&format!("SELECT sum(observations) FROM sightings WHERE ts >= {since}"))?,
-            "iocs": app.iocs.count().map_err(internal)?,
+            "sightings": q(&format!("SELECT count(DISTINCT sighting_id) FROM sightings WHERE ts >= {since} AND {v}"))?,
+            "observations": q(&format!("SELECT sum(observations) FROM sightings WHERE ts >= {since} AND {v}"))?,
+            "iocs": app.iocs.count(&Tlp::visible_to(caller.tier)).map_err(internal)?,
         });
         let exact = caller.tier >= Tier::Partner;
         if caller.tier >= Tier::Observer {
             out["min_cell"] = json!(if exact { 1 } else { MIN_CELL });
-            out["by_ioc_type"] = json!(breakdown(s, "ioc_type", since, 20, exact)?);
-            out["by_severity"] = json!(breakdown(s, "severity", since, 10, exact)?);
-            out["by_target_sector"] = json!(breakdown(s, "target_sector", since, 30, exact)?);
+            out["by_ioc_type"] = json!(breakdown(s, "ioc_type", v, since, 20, exact)?);
+            out["by_severity"] = json!(breakdown(s, "severity", v, since, 10, exact)?);
+            out["by_target_sector"] = json!(breakdown(s, "target_sector", v, since, 30, exact)?);
         }
         if caller.tier >= Tier::Contributor {
-            out["top_rules"] = json!(breakdown(s, "rule_id", since, 25, exact)?);
-            out["top_techniques"] = json!(breakdown(s, "technique", since, 25, exact)?);
-            out["top_campaigns"] = json!(breakdown(s, "campaign", since, 25, exact)?);
+            out["top_rules"] = json!(breakdown(s, "rule_id", v, since, 25, exact)?);
+            out["top_techniques"] = json!(breakdown(s, "technique", v, since, 25, exact)?);
+            out["top_campaigns"] = json!(breakdown(s, "campaign", v, since, 25, exact)?);
         }
         Ok(Json(out))
     })
@@ -273,19 +286,23 @@ async fn ioc_lookup(
     headers: HeaderMap,
     Query(q): Query<IocQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    require(&app, &headers, Tier::Contributor)?;
+    let caller = require(&app, &headers, Tier::Contributor)?;
     let t = IocType::parse(&q.ioc_type)
         .ok_or_else(|| unprocessable(format!("unknown IoC type {:?}", q.ioc_type)))?;
     let ioc = Ioc::new(t, &q.value).map_err(unprocessable)?;
     blocking(move || {
-        let days = app.iocs.lookup(&ioc).map_err(internal)?;
+        let days = app
+            .iocs
+            .lookup(&ioc, &Tlp::visible_to(caller.tier))
+            .map_err(internal)?;
         let rules = if days.is_empty() {
             Vec::new()
         } else {
             let sql = format!(
-                "SELECT rule_id, count(*) AS n FROM sightings WHERE ioc_value = {} AND ts >= {} GROUP BY rule_id ORDER BY n DESC",
+                "SELECT rule_id, count(*) AS n FROM sightings WHERE ioc_value = {} AND ts >= {} AND {} GROUP BY rule_id ORDER BY n DESC",
                 sql_quote(&ioc.value),
                 days[0].first_ts,
+                tlp_visible(caller.tier),
             );
             let r = app.sightings.query(&sql).map_err(internal)?;
             r.rows
@@ -341,11 +358,14 @@ async fn ioc_range(
     headers: HeaderMap,
     Query(q): Query<RangeQuery>,
 ) -> Result<Json<Value>, ApiError> {
-    require(&app, &headers, Tier::Contributor)?;
+    let caller = require(&app, &headers, Tier::Contributor)?;
     let (lo, hi) = cidr_bounds(&q.cidr)
         .ok_or_else(|| unprocessable("expected a CIDR block such as 185.220.0.0/16"))?;
     blocking(move || {
-        let hits = app.iocs.ip_range(&lo, &hi, 1000).map_err(internal)?;
+        let hits = app
+            .iocs
+            .ip_range(&lo, &hi, &Tlp::visible_to(caller.tier), 1000)
+            .map_err(internal)?;
         let hits: Vec<Value> = hits
             .into_iter()
             .map(|(v, n)| json!({ "value": v, "count": n }))
@@ -425,14 +445,17 @@ async fn file(
 /// Per-day counts, for the rebuild: (day, ioc) totals over all sightings.
 pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String> {
     let r = sightings.query(
-        "SELECT ts, ioc_type, ioc_value, observations FROM sightings WHERE ioc_type IS NOT NULL",
+        "SELECT ts, ioc_type, ioc_value, observations, tlp FROM sightings WHERE ioc_type IS NOT NULL",
     )?;
     let mut rows = Vec::with_capacity(r.rows.len());
     let mut types: BTreeMap<String, IocType> = BTreeMap::new();
     for row in &r.rows {
-        let (Cell::Int(ts), Cell::Text(t), Cell::Text(v), Cell::Int(n)) =
-            (&row[0], &row[1], &row[2], &row[3])
+        let (Cell::Int(ts), Cell::Text(t), Cell::Text(v), Cell::Int(n), Cell::Text(tlp)) =
+            (&row[0], &row[1], &row[2], &row[3], &row[4])
         else {
+            continue;
+        };
+        let Ok(tlp) = Tlp::parse(tlp) else {
             continue;
         };
         let Some(t) = types.get(t).copied().or_else(|| IocType::parse(t)) else {
@@ -453,6 +476,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             severity: None,
             confidence: 0,
             observations: u32::try_from(*n).unwrap_or(1),
+            tlp,
         });
     }
     iocs.clear()?;
