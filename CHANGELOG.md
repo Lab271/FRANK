@@ -2,6 +2,17 @@
 
 All notable changes to FRANK. Format follows [Keep a Changelog](https://keepachangelog.com/), versioning follows [SemVer](https://semver.org/). Phase 2 (Python) releases up to 0.8.0 are tagged in git; its final state is `phase2-final`.
 
+## [0.11.1] - 2026-10-22
+
+### Fixed
+
+- **k-anonymity counts distinct reporters, not rows** (#148). One contributor sending three sightings used to clear the threshold of 3 alone. Each row now carries a reporter pseudonym (HMAC-SHA256 of the token's hash under a secret that rotates every 30 days and is deleted when its window ends). Statistics below partner drop cells with fewer than 3 distinct reporters; breakdowns and IoC lookups report `reporters` next to `count`.
+
+### Changed
+
+- `frank ingest` counts each input file as one reporter; `make demo` writes one file per synthetic MDR.
+- The `sightings` table has a `reporter` column: data from 0.11.0 has to be reloaded.
+
 ## [0.11.0] - 2026-10-22
 
 ### Added
