@@ -270,13 +270,17 @@ fn technique(s: &str) -> Option<String> {
 
 /// Every IoC in `observables`: typed entries (`{"type", "value"}`) in any
 /// list, plus the hash fields of `files` entries and the addresses of
-/// `email` entries. Untyped entries are skipped; a typed entry with a bad
-/// value is an error. Duplicates are dropped.
+/// `email` entries. Untyped entries and blank values are skipped (a form
+/// left empty, ADR-008); a malformed value is an error. Duplicates are
+/// dropped.
 fn observables(obs: Option<&Value>) -> Result<Vec<Ioc>, Error> {
     let mut out = Vec::new();
     let Some(obs) = obs.and_then(Value::as_object) else {
         return Ok(out);
     };
+    fn present(v: Option<&Value>) -> Option<&str> {
+        v.and_then(Value::as_str).filter(|s| !s.trim().is_empty())
+    }
     for (section, entries) in obs {
         let Some(entries) = entries.as_array() else {
             continue;
@@ -286,21 +290,21 @@ fn observables(obs: Option<&Value>) -> Result<Vec<Ioc>, Error> {
                 .get("type")
                 .and_then(Value::as_str)
                 .and_then(IocType::parse);
-            if let (Some(t), Some(v)) = (typed, e.get("value").and_then(Value::as_str)) {
+            if let (Some(t), Some(v)) = (typed, present(e.get("value"))) {
                 out.push(Ioc::new(t, v)?);
             }
             if section == "files" {
                 for key in ["hash_md5", "hash_sha1", "hash_sha256", "hash_sha512"] {
-                    if let Some(h) = e.get(key).and_then(Value::as_str) {
+                    if let Some(h) = present(e.get(key)) {
                         out.push(Ioc::new(IocType::FileHash, h)?);
                     }
                 }
             }
             if section == "email" {
-                if let Some(s) = e.get("sender").and_then(Value::as_str) {
+                if let Some(s) = present(e.get("sender")) {
                     out.push(Ioc::new(IocType::Email, s)?);
                 }
-                if let Some(ip) = e.get("sender_ip").and_then(Value::as_str) {
+                if let Some(ip) = present(e.get("sender_ip")) {
                     let t = if ip.contains(':') {
                         IocType::Ipv6
                     } else {
@@ -428,6 +432,22 @@ mod tests {
             ),
             Error::Invalid(_)
         ));
+    }
+
+    #[test]
+    fn blank_observables_are_skipped() {
+        let json = r#"{"sighting": {"observables": {"network": [
+            {"type": "ipv4", "value": ""}, {"type": "ipv4", "value": "  "},
+            {"type": "domain", "value": "evil.example"}],
+            "files": [{"hash_md5": ""}]}}}"#;
+        let s = Submission::parse(json, NOW).unwrap();
+        assert_eq!(s.iocs.len(), 1);
+        let only_blank =
+            r#"{"sighting": {"observables": {"network": [{"type": "ipv4", "value": ""}]}}}"#;
+        assert!(
+            matches!(Submission::parse(only_blank, NOW), Err(Error::Invalid(_))),
+            "nothing left to share"
+        );
     }
 
     #[test]
