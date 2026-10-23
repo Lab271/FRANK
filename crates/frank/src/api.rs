@@ -27,11 +27,10 @@ use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::auth::{hex, random, Caller, Tokens};
+use crate::auth::{hex, random, Caller};
 use crate::explore::{self as ex, Dimension};
-use crate::reporter::Reporters;
 use crate::store::sightings::scalar;
-use crate::store::{Iocs, Sightings};
+use crate::store::{Iocs, Participants, Sightings};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 /// Most submissions in one POST.
@@ -45,8 +44,7 @@ const TREND_DAYS: i64 = 30;
 pub struct App {
     pub sightings: Sightings,
     pub iocs: Iocs,
-    pub tokens: Tokens,
-    pub reporters: Reporters,
+    pub participants: Participants,
     /// Wall clock in ns; tests set their own.
     pub now: fn() -> i64,
 }
@@ -77,8 +75,9 @@ fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Caller, ApiErro
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
     let caller = app
-        .tokens
+        .participants
         .caller(auth)
+        .map_err(internal)?
         .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown token".into()))?;
     if caller.tier < tier {
         return Err(ApiError(
@@ -119,7 +118,15 @@ async fn health() -> Json<Value> {
 
 async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
     let c = require(&app, &headers, Tier::Public)?;
-    Ok(Json(json!({ "tier": c.tier, "label": c.label })))
+    if c.user.is_empty() {
+        return Ok(Json(json!({ "tier": c.tier, "label": c.label() })));
+    }
+    Ok(Json(json!({
+        "tier": c.tier,
+        "label": c.label(),
+        "user": c.user,
+        "participant": { "id": c.participant, "name": c.organisation, "status": c.tier },
+    })))
 }
 
 /// One submission or an array of them.
@@ -176,7 +183,8 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&body, (app.now)())?;
-    let reporter = app.reporters.key(&caller.id).map_err(internal)?;
+    // Sightings are stored under the organisation, never the user (#159).
+    let reporter = caller.participant.clone();
     let mut ids = Vec::with_capacity(subs.len());
     let mut rows = Vec::new();
     for s in &subs {
@@ -196,7 +204,7 @@ async fn submit(
         app2.iocs.record(&rows).map_err(internal)
     })
     .await?;
-    tracing::info!(caller = %caller.label, sightings = ids.len(), rows = n, "accepted");
+    tracing::info!(caller = %caller.label(), sightings = ids.len(), rows = n, "accepted");
     Ok((
         StatusCode::CREATED,
         Json(json!({ "sighting_ids": ids, "rows": n })),

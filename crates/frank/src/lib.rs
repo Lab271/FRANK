@@ -4,5 +4,4 @@
 pub mod api;
 pub mod auth;
 pub mod explore;
-pub mod reporter;
 pub mod store;

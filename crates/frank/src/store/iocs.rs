@@ -7,20 +7,16 @@
 //! (`k = type:value`, `kd = k|day`, a UNIQUE index as the upsert target),
 //! IP addresses as 32 hex digits, and upsert as SELECT then UPDATE or
 //! INSERT.
-//!
-//! `RowEngine` is single-threaded, so one thread owns it and the rest of
-//! the server sends it jobs.
 
 use std::collections::BTreeMap;
 use std::path::Path;
-use std::sync::mpsc;
-use std::thread;
 
 use db_core::engine::row::RowEngine;
-use db_core::engine::{Cell, Engine, QueryResult};
-use db_core::storage::row::header::DatabaseHeader;
+use db_core::engine::Cell;
 use frank_core::{sql_quote, Ioc, SightingRow, Tlp};
 use serde::Serialize;
+
+use super::rowdb::{exec, int, query, transaction, RowDb};
 
 pub const FILE: &str = "iocs.db";
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -44,44 +40,36 @@ pub struct IocDay {
     pub count: i64,
 }
 
-type Job = Box<dyn FnOnce(&mut RowEngine) + Send>;
-
 /// A handle to the thread that owns the database.
 #[derive(Clone)]
 pub struct Iocs {
-    jobs: mpsc::Sender<Job>,
+    db: RowDb,
 }
 
 impl Iocs {
     /// Opens `data/iocs.db`, creating it and its schema if needed.
     pub fn open(data: &Path) -> Result<Iocs, String> {
         let path = data.join(FILE);
-        let fresh = !path.exists() || std::fs::metadata(&path).map_err(err)?.len() == 0;
-        if fresh {
-            std::fs::write(&path, DatabaseHeader::new_empty_page1(4096)).map_err(err)?;
-        }
-        let (ready_tx, ready_rx) = mpsc::channel();
-        let (jobs, rx) = mpsc::channel::<Job>();
-        thread::Builder::new()
-            .name("iocs".into())
-            .spawn(move || owner(&path, fresh, &ready_tx, &rx))
-            .map_err(err)?;
-        ready_rx.recv().map_err(err)??;
-        Ok(Iocs { jobs })
+        let shown = path.display().to_string();
+        let db = RowDb::open(&path, "iocs", move |db, fresh| {
+            if fresh {
+                SCHEMA.iter().try_for_each(|ddl| exec(db, ddl))
+            } else if query(db, "SELECT tlp FROM ioc_day LIMIT 1").is_err() {
+                Err(format!(
+                    "{shown} predates TLP (#149): delete it and run `frank rebuild-iocs`"
+                ))
+            } else {
+                Ok(())
+            }
+        })?;
+        Ok(Iocs { db })
     }
 
-    /// Runs `f` on the database thread and waits for its answer.
     fn run<T: Send + 'static>(
         &self,
         f: impl FnOnce(&mut RowEngine) -> Result<T, String> + Send + 'static,
     ) -> Result<T, String> {
-        let (tx, rx) = mpsc::channel();
-        self.jobs
-            .send(Box::new(move |db| {
-                let _ = tx.send(f(db));
-            }))
-            .map_err(|_| "iocs thread stopped".to_string())?;
-        rx.recv().map_err(|_| "iocs thread stopped".to_string())?
+        self.db.run(f)
     }
 
     /// Counts `rows` into their IoCs' days, in one transaction. Each TLP
@@ -110,20 +98,10 @@ impl Iocs {
             return Ok(());
         }
         self.run(move |db| {
-            exec(db, "BEGIN")?;
-            let result = (|| {
-                for (key, value) in &agg {
-                    upsert(db, key, value)?;
-                }
-                Ok(())
-            })();
-            match result {
-                Ok(()) => exec(db, "COMMIT"),
-                Err(e) => {
-                    let _ = exec(db, "ROLLBACK");
-                    Err(e)
-                }
-            }
+            transaction(db, |db| {
+                agg.iter()
+                    .try_for_each(|(key, value)| upsert(db, key, value))
+            })
         })
     }
 
@@ -213,39 +191,6 @@ impl Iocs {
     }
 }
 
-fn owner(
-    path: &Path,
-    fresh: bool,
-    ready: &mpsc::Sender<Result<(), String>>,
-    jobs: &mpsc::Receiver<Job>,
-) {
-    let mut db = match RowEngine::open(path).map_err(err) {
-        Ok(db) => db,
-        Err(e) => {
-            let _ = ready.send(Err(e));
-            return;
-        }
-    };
-    if fresh {
-        for ddl in SCHEMA {
-            if let Err(e) = exec(&mut db, ddl) {
-                let _ = ready.send(Err(e));
-                return;
-            }
-        }
-    } else if query(&mut db, "SELECT tlp FROM ioc_day LIMIT 1").is_err() {
-        let _ = ready.send(Err(format!(
-            "{} predates TLP (#149): delete it and run `frank rebuild-iocs`",
-            path.display()
-        )));
-        return;
-    }
-    let _ = ready.send(Ok(()));
-    while let Ok(job) = jobs.recv() {
-        job(&mut db);
-    }
-}
-
 fn upsert(
     db: &mut RowEngine,
     (k, day, tlp): &(String, i64, Tlp),
@@ -279,14 +224,6 @@ fn upsert(
     }
 }
 
-fn query(db: &mut RowEngine, sql: &str) -> Result<QueryResult, String> {
-    db.run_query(sql).map_err(|e| format!("{e}: {sql}"))
-}
-
-fn exec(db: &mut RowEngine, sql: &str) -> Result<(), String> {
-    query(db, sql).map(|_| ())
-}
-
 /// The `visible` levels as stored text.
 fn levels(visible: &[Tlp]) -> Vec<&'static str> {
     visible.iter().map(|t| t.as_str()).collect()
@@ -297,20 +234,9 @@ fn shown(tlp: &Cell, visible: &[&str]) -> bool {
     matches!(tlp, Cell::Text(t) if visible.contains(&t.as_str()))
 }
 
-fn int(c: &Cell) -> i64 {
-    match c {
-        Cell::Int(n) => *n,
-        _ => 0,
-    }
-}
-
 /// Days since the epoch as `YYYY-MM-DD`.
 pub fn day_label(day: i64) -> String {
     time::OffsetDateTime::from_unix_timestamp(day * 86_400)
         .map(|t| t.date().to_string())
         .unwrap_or_default()
-}
-
-fn err(e: impl std::fmt::Display) -> String {
-    e.to_string()
 }

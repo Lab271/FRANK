@@ -5,9 +5,10 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use frank::api::{rebuild_iocs, router, App};
-use frank::auth::{hash, Tokens};
-use frank::reporter::Reporters;
-use frank::store::{Iocs, Sightings};
+use frank::auth::hash;
+use frank::store::participants::{self as parts, FILE};
+use frank::store::{Iocs, Participants, Sightings};
+use frank_core::Tier;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -27,6 +28,8 @@ struct Harness {
     app: axum::Router,
     sightings: Sightings,
     iocs: Iocs,
+    /// `participants.db`, for changes made while the server runs.
+    db: std::path::PathBuf,
     _dir: TempDir,
 }
 
@@ -41,28 +44,32 @@ fn harness(name: &str) -> Harness {
     let dir = std::env::temp_dir().join(format!("frank-api-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let tokens = Tokens::parse(&format!(
-        "{} observer obs\n{} contributor mdr\n{} contributor mdr2\n{} contributor mdr3\n{} partner lab\n",
-        hash("o"),
-        hash("c"),
-        hash("c2"),
-        hash("c3"),
-        hash("p")
-    ))
-    .unwrap();
+    // One organisation per test token, each with one user of its name.
+    let db = dir.join(FILE);
+    for (token, name, status) in [
+        ("o", "obs", Tier::Observer),
+        ("c", "mdr", Tier::Contributor),
+        ("c2", "mdr2", Tier::Contributor),
+        ("c3", "mdr3", Tier::Contributor),
+        ("p", "lab", Tier::Partner),
+    ] {
+        parts::add_organisation(&db, name, status, "cyber_partner", None, None).unwrap();
+        parts::add_user(&db, name, name, "human").unwrap();
+        parts::add_token_hash(&db, name, &hash(token)).unwrap();
+    }
     let sightings = Sightings::open(&dir, None, now).unwrap();
     let iocs = Iocs::open(&dir).unwrap();
     let app = router(Arc::new(App {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
-        tokens,
-        reporters: Reporters::open(&dir, now).unwrap(),
+        participants: Participants::open(&dir).unwrap(),
         now,
     }));
     Harness {
         app,
         sightings,
         iocs,
+        db,
         _dir: TempDir(dir),
     }
 }
@@ -356,8 +363,8 @@ async fn lookups_count_reporters() {
 }
 
 #[tokio::test]
-async fn files_hold_pseudonyms_not_tokens() {
-    let h = harness("pseudonyms");
+async fn files_hold_participant_ids_not_names_or_tokens() {
+    let h = harness("participant-ids");
     call(
         &h.app,
         "POST",
@@ -391,7 +398,12 @@ async fn files_hold_pseudonyms_not_tokens() {
         .to_bytes()
         .to_vec();
     let text = String::from_utf8_lossy(&bytes);
-    for secret in [hash("c"), hash("c2"), "mdr2".to_string()] {
+    for secret in [
+        hash("c"),
+        hash("c2"),
+        "mdr2".to_string(),
+        "identity-secret-org".to_string(),
+    ] {
         assert!(
             !text.contains(&secret),
             "{secret} leaked into the Parquet file"
@@ -848,4 +860,77 @@ async fn iocs_rebuild_from_sightings() {
         before
     );
     assert_eq!(before[0].count, 2);
+}
+
+/// The epic's acceptance criteria (#159): the organisation is the
+/// reporter, its status is every user's tier, tokens revoke one by one.
+#[tokio::test]
+async fn participants_are_the_reporters() {
+    let h = harness("participants");
+    parts::add_user(&h.db, "mdr", "mdr-feed", "machine").unwrap();
+    let feed = parts::add_token(&h.db, "mdr-feed").unwrap();
+
+    // Two users of one organisation are one reporter.
+    for (token, ip) in [("c", "198.51.100.1"), (feed.as_str(), "198.51.100.2")] {
+        let (status, _) = call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some(token),
+            Some(sighting("energy", ip, "r9")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let r = h
+        .sightings
+        .query("SELECT count(DISTINCT reporter), min(reporter) FROM sightings")
+        .unwrap();
+    let id = parts::organisation_id(&h.db, "mdr").unwrap();
+    assert_eq!(
+        r.rows[0][0],
+        db_core::engine::Cell::Int(1),
+        "one organisation, one reporter"
+    );
+    assert_eq!(r.rows[0][1], db_core::engine::Cell::Text(id.clone()));
+
+    let (_, me) = call(&h.app, "GET", "/v1/whoami", Some(&feed), None).await;
+    assert_eq!(me["participant"]["id"], id.as_str());
+    assert_eq!(
+        (me["user"].as_str(), me["label"].as_str()),
+        (Some("mdr-feed"), Some("mdr-feed@mdr"))
+    );
+
+    // A status change reaches every user on the next request, without
+    // new tokens or a restart.
+    let s = sighting("water", "198.51.100.3", "r9");
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("o"), Some(s.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    parts::set_status(&h.db, "obs", Tier::Contributor).unwrap();
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("o"), Some(s))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    parts::set_status(&h.db, "mdr", Tier::Observer).unwrap();
+    for t in ["c", feed.as_str()] {
+        let (_, me) = call(&h.app, "GET", "/v1/whoami", Some(t), None).await;
+        assert_eq!(me["tier"], "observer");
+    }
+
+    // Revoking one token leaves the organisation's other users working.
+    parts::revoke(&h.db, &hash(&feed)[..12]).unwrap();
+    assert_eq!(
+        call(&h.app, "GET", "/v1/whoami", Some(&feed), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&h.app, "GET", "/v1/whoami", Some("c"), None).await.0,
+        StatusCode::OK
+    );
 }
