@@ -41,8 +41,14 @@ impl std::error::Error for Error {}
 /// crate docs.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct Submission {
+    /// The sender's id for this sighting, `sighting--{uuid}` (lower case):
+    /// with the participant, the key it is registered under (#159).
+    pub sighting_id: Option<String>,
     /// When the threat was observed, ns since the epoch (UTC).
     pub ts_ns: i64,
+    /// Whether `ts_ns` came from the submission rather than the clock.
+    #[serde(skip)]
+    pub ts_given: bool,
     pub confidence: u8,
     pub observations: u32,
     pub severity: Option<String>,
@@ -121,14 +127,14 @@ impl Submission {
                 ));
             }
         }
-        let ts_ns = time_field(sighting, "timestamp")?
+        let given = time_field(sighting, "timestamp")?
             .or(last)
             .or(first)
             .or(time_field(
                 root.get("metadata").unwrap_or(&Value::Null),
                 "timestamp",
-            )?)
-            .unwrap_or(now_ns);
+            )?);
+        let ts_ns = given.unwrap_or(now_ns);
         if ts_ns > now_ns.saturating_add(MAX_CLOCK_SKEW_NS) {
             return Err(Error::Invalid("sighting is dated in the future".into()));
         }
@@ -171,8 +177,15 @@ impl Submission {
             ));
         }
 
+        let sighting_id = match sighting.get("sighting_id") {
+            None | Some(Value::Null) => None,
+            Some(v) => Some(sighting_id(v)?),
+        };
+
         Ok(Submission {
+            sighting_id,
             ts_ns,
+            ts_given: given.is_some(),
             confidence,
             observations,
             severity: sighting
@@ -219,6 +232,27 @@ impl Submission {
         } else {
             self.iocs.iter().map(|i| row(Some(i))).collect()
         }
+    }
+}
+
+/// A sighting id: a UUID, bare or with the STIX `sighting--` prefix (or
+/// Phase 2's `sighting-`), stored as `sighting--{uuid}` in lower case.
+fn sighting_id(v: &Value) -> Result<String, Error> {
+    let bad = || Error::Invalid("sighting_id must be a UUID (or sighting--<uuid>)".into());
+    let s = v.as_str().ok_or_else(bad)?.trim().to_ascii_lowercase();
+    let u = s
+        .strip_prefix("sighting--")
+        .or_else(|| s.strip_prefix("sighting-"))
+        .unwrap_or(&s);
+    let groups: Vec<&str> = u.split('-').collect();
+    let ok = groups.iter().map(|g| g.len()).eq([8, 4, 4, 4, 12])
+        && groups
+            .iter()
+            .all(|g| g.bytes().all(|b| b.is_ascii_hexdigit()));
+    if ok {
+        Ok(format!("sighting--{u}"))
+    } else {
+        Err(bad())
     }
 }
 
@@ -530,5 +564,54 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.reporter_sector, None);
+    }
+
+    #[test]
+    fn the_sender_names_the_sighting() {
+        let with = |id: &str| {
+            Submission::parse(
+                &format!(
+                    r#"{{"sighting": {{"sighting_id": "{id}", "sigma_detection": {{"rule_id": "r"}}}}}}"#
+                ),
+                NOW,
+            )
+        };
+        let want = Some("sighting--0f8fad5b-d9cb-469f-a165-70867728950e".to_string());
+        assert_eq!(
+            with("0F8FAD5B-D9CB-469F-A165-70867728950E")
+                .unwrap()
+                .sighting_id,
+            want
+        );
+        assert_eq!(
+            with("sighting--0f8fad5b-d9cb-469f-a165-70867728950e")
+                .unwrap()
+                .sighting_id,
+            want
+        );
+        assert_eq!(
+            with("sighting-0f8fad5b-d9cb-469f-a165-70867728950e")
+                .unwrap()
+                .sighting_id,
+            want,
+            "Phase 2 spelling"
+        );
+        assert!(with("not-a-uuid").is_err());
+        assert!(with("sight_789").is_err());
+        assert!(
+            with("0f8fad5b-d9cb-469f-a165-70867728950").is_err(),
+            "one digit short"
+        );
+        let s = Submission::parse(MINIMAL, NOW).unwrap();
+        assert!(s.ts_given);
+        let bare = Submission::parse(
+            r#"{"sighting": {"sigma_detection": {"rule_id": "r"}}}"#,
+            NOW,
+        )
+        .unwrap();
+        assert_eq!(
+            (bare.sighting_id, bare.ts_ns, bare.ts_given),
+            (None, NOW, false)
+        );
     }
 }

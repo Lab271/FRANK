@@ -5,9 +5,9 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use frank::api::{rebuild_iocs, router, App};
-use frank::auth::hash;
+use frank::auth::{hash, uuid4};
 use frank::store::participants::{self as parts, FILE};
-use frank::store::{Iocs, Participants, Sightings};
+use frank::store::{Iocs, Participants, Registry, Sightings};
 use frank_core::Tier;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
@@ -63,6 +63,8 @@ fn harness(name: &str) -> Harness {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
         participants: Participants::open(&dir).unwrap(),
+        registry: Registry::open(&dir).unwrap(),
+        submit_lock: std::sync::Mutex::new(()),
         now,
     }));
     Harness {
@@ -101,11 +103,12 @@ async fn call(
     )
 }
 
+/// A new sighting: each call has its own sender id.
 fn sighting(sector: &str, ip: &str, rule: &str) -> Value {
     json!({"submission": {
         "submitter": {"organisation_id": "identity-secret-org", "sector": "msp"},
         "hit_target": {"organisation_id": "identity-victim", "sector": sector},
-        "sighting": {"timestamp": "2026-10-22T10:00:00Z", "severity": "high",
+        "sighting": {"sighting_id": uuid4().unwrap(), "timestamp": "2026-10-22T10:00:00Z", "severity": "high",
             "sigma_detection": {"rule_id": rule},
             "observables": {"network": [{"type": "ipv4", "value": ip}, {"type": "domain", "value": "Evil.example"}]}}}})
 }
@@ -181,7 +184,8 @@ async fn submit_then_look_up() {
     .await;
     assert_eq!(st, StatusCode::CREATED, "{body}");
     assert_eq!(body["rows"], 4);
-    assert!(body["sighting_ids"][0]
+    assert_eq!(body["receipts"].as_array().unwrap().len(), 2);
+    assert!(body["receipts"][0]["sighting_id"]
         .as_str()
         .unwrap()
         .starts_with("sighting--"));
@@ -932,5 +936,80 @@ async fn participants_are_the_reporters() {
     assert_eq!(
         call(&h.app, "GET", "/v1/whoami", Some("c"), None).await.0,
         StatusCode::OK
+    );
+}
+
+/// The sender's id is the registration (#159): a resend is answered with
+/// the original receipt, other content under the same id is a conflict.
+#[tokio::test]
+async fn a_resend_is_recognised() {
+    let h = harness("resend");
+    let s = sighting("energy", "198.51.100.20", "r1");
+    let (status, first) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s.clone())).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let receipt = &first["receipts"][0];
+    assert_eq!(receipt["status"], "created");
+    assert!(receipt["sighting_id"]
+        .as_str()
+        .unwrap()
+        .starts_with("sighting--"));
+
+    // The same sighting again, keys reordered: same receipt, nothing new.
+    let reordered: Value =
+        serde_json::from_str(&s.to_string().replace("\"severity\":\"high\",", "")).unwrap();
+    let mut reordered = reordered;
+    reordered["submission"]["sighting"]["severity"] = json!("HIGH");
+    let (status, again) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(reordered)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again["receipts"][0]["status"], "duplicate");
+    assert_eq!(again["receipts"][0]["digest"], receipt["digest"]);
+    assert_eq!(again["receipts"][0]["received"], receipt["received"]);
+    assert_eq!(again["rows"], 0);
+
+    // Another organisation may use the same id: it is its own sighting.
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("c2"), Some(s.clone()))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+
+    // Other content under a registered id: 409, and nothing of the batch.
+    let mut changed = s.clone();
+    changed["submission"]["sighting"]["severity"] = json!("low");
+    let fresh = sighting("energy", "198.51.100.21", "r1");
+    let (status, err) = call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(json!([fresh, changed])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{err}");
+    let n = h
+        .sightings
+        .query("SELECT count(*) FROM sightings WHERE ioc_value = '198.51.100.21'")
+        .unwrap();
+    assert_eq!(
+        n.rows[0][0],
+        db_core::engine::Cell::Int(0),
+        "the batch was refused whole"
+    );
+
+    // No id: refused, with the reason.
+    let mut bare = sighting("energy", "198.51.100.22", "r1");
+    bare["submission"]["sighting"]
+        .as_object_mut()
+        .unwrap()
+        .remove("sighting_id");
+    let (status, err) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(bare)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        err["error"]
+            .as_str()
+            .unwrap()
+            .contains("sighting_id is required"),
+        "{err}"
     );
 }

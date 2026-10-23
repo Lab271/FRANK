@@ -8,6 +8,7 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use frank::api::{self, App};
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
+use frank::store::registry::{self, Registry};
 use frank::store::{Iocs, Participants, Sightings};
 use frank_core::{Submission, Tier};
 use tower_http::services::ServeDir;
@@ -223,6 +224,8 @@ fn main() -> Result<(), String> {
                 sightings,
                 iocs,
                 participants,
+                registry: Registry::open(&cli.data)?,
+                submit_lock: std::sync::Mutex::new(()),
                 now: now_ns,
             });
             tokio::runtime::Runtime::new()
@@ -290,10 +293,14 @@ fn participant(db: &Path, cmd: ParticipantCmd) -> Result<(), String> {
 }
 
 /// Loads files with the server stopped, stored under `reporter` (a
-/// participant id).
+/// participant id) and registered like a POST from user `ingest`: a
+/// sighting without an id gets one derived from its content, so loading a
+/// file twice adds nothing. A file with a conflicting sighting is refused
+/// whole.
 fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> {
     let (s, i) = open(data, None)?;
-    let mut total = 0;
+    let reg = Registry::open(data)?;
+    let (mut created, mut duplicates) = (0, 0);
     for f in files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
         let v: serde_json::Value =
@@ -302,22 +309,50 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> 
             serde_json::Value::Array(a) => a,
             v => vec![v],
         };
-        let mut rows = Vec::new();
+        let mut subs = Vec::with_capacity(items.len());
         for item in &items {
             let sub = Submission::from_value(item, now_ns())
                 .map_err(|e| format!("{}: {e}", f.display()))?;
-            rows.extend(sub.rows(&api::new_sighting_id()?).into_iter().map(|mut r| {
+            let digest = registry::digest(&sub);
+            let id = sub
+                .sighting_id
+                .clone()
+                .unwrap_or_else(|| registry::derived_id(&digest));
+            subs.push((id, digest, sub));
+        }
+        let known = reg.find(reporter, subs.iter().map(|(id, _, _)| id.clone()).collect())?;
+        if let Some((id, _, _)) = subs
+            .iter()
+            .find(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
+        {
+            return Err(format!(
+                "{}: {id} is registered with other content",
+                f.display()
+            ));
+        }
+        let mut rows = Vec::new();
+        let mut fresh = Vec::new();
+        for (id, digest, sub) in subs {
+            if known.contains_key(&id) || fresh.iter().any(|(f, _)| *f == id) {
+                duplicates += 1;
+                continue;
+            }
+            rows.extend(sub.rows(&id).into_iter().map(|mut r| {
                 r.reporter = reporter.to_string();
                 r
             }));
+            fresh.push((id, digest));
         }
-        s.append(&rows).map_err(|e| e.to_string())?;
-        i.record(&rows)?;
-        total += items.len();
+        created += fresh.len();
+        if !fresh.is_empty() {
+            s.append(&rows).map_err(|e| e.to_string())?;
+            i.record(&rows)?;
+            reg.register(reporter, "ingest", fresh, now_ns())?;
+        }
     }
     s.flush().map_err(|e| e.to_string())?;
     s.close().map_err(|e| e.to_string())?;
-    eprintln!("ingested {total} submissions");
+    eprintln!("ingested {created} sightings ({duplicates} already registered)");
     Ok(())
 }
 
@@ -382,6 +417,7 @@ async fn maintain(app: api::Shared, retention_days: u32) {
                 let merged = app.sightings.compact().map_err(|e| e.to_string())?;
                 let keep_from = now_ns().div_euclid(DAY_NS) - i64::from(retention_days);
                 app.iocs.retain_from(keep_from)?;
+                app.registry.retain_from(keep_from)?;
                 tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
             }
             Ok(())

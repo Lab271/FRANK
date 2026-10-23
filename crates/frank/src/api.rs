@@ -27,10 +27,11 @@ use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::auth::{hex, random, Caller};
+use crate::auth::Caller;
 use crate::explore::{self as ex, Dimension};
+use crate::store::registry::{self, Receipt};
 use crate::store::sightings::scalar;
-use crate::store::{Iocs, Participants, Sightings};
+use crate::store::{Iocs, Participants, Registry, Sightings};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 /// Most submissions in one POST.
@@ -45,6 +46,9 @@ pub struct App {
     pub sightings: Sightings,
     pub iocs: Iocs,
     pub participants: Participants,
+    pub registry: Registry,
+    /// Makes "is it registered, store it, register it" one step.
+    pub submit_lock: std::sync::Mutex<()>,
     /// Wall clock in ns; tests set their own.
     pub now: fn() -> i64,
 }
@@ -163,19 +167,11 @@ async fn preview(
     Ok(Json(json!({ "rows": rows })))
 }
 
-pub fn new_sighting_id() -> Result<String, String> {
-    let b = random::<16>()?;
-    let h = hex(&b);
-    Ok(format!(
-        "sighting--{}-{}-{}-{}-{}",
-        &h[..8],
-        &h[8..12],
-        &h[12..16],
-        &h[16..20],
-        &h[20..]
-    ))
-}
-
+/// Stores a batch of submissions from one sender. Each carries the
+/// sender's `sighting_id`; with the participant it is the registration
+/// (#159). A sighting sent again with the same content gets its original
+/// receipt; other content under a registered id is a conflict (409) and
+/// nothing of the batch is stored. 201 when anything was new, else 200.
 async fn submit(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -183,33 +179,83 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&body, (app.now)())?;
-    // Sightings are stored under the organisation, never the user (#159).
-    let reporter = caller.participant.clone();
-    let mut ids = Vec::with_capacity(subs.len());
-    let mut rows = Vec::new();
-    for s in &subs {
-        let id = new_sighting_id().map_err(internal)?;
-        rows.extend(s.rows(&id).into_iter().map(|mut r| {
-            r.reporter.clone_from(&reporter);
-            r
-        }));
-        ids.push(id);
+    let mut items: Vec<(String, String, Submission)> = Vec::with_capacity(subs.len());
+    for (i, s) in subs.into_iter().enumerate() {
+        let id = s.sighting_id.clone().ok_or_else(|| {
+            unprocessable(format!(
+                "[{i}] sighting.sighting_id is required: a UUID the sender chooses, so a resend is recognised"
+            ))
+        })?;
+        let digest = registry::digest(&s);
+        match items.iter().find(|(other, _, _)| *other == id) {
+            Some((_, d, _)) if *d == digest => {}
+            Some(_) => {
+                return Err(unprocessable(format!(
+                    "[{i}] {id} appears twice in the batch with different content"
+                )))
+            }
+            None => items.push((id, digest, s)),
+        }
     }
-    let n = rows.len();
     let app2 = app.clone();
-    blocking(move || {
-        app2.sightings.append(&rows).map_err(internal)?;
-        // The rows are durable; the IoC table can be rebuilt from them
-        // (`frank rebuild-iocs`) if this step fails.
-        app2.iocs.record(&rows).map_err(internal)
+    let caller2 = caller.clone();
+    let (receipts, rows) = blocking(move || {
+        let app = app2;
+        let _one_at_a_time = app.submit_lock.lock().map_err(internal)?;
+        let ids = items.iter().map(|(id, _, _)| id.clone()).collect();
+        let known = app.registry.find(&caller2.participant, ids).map_err(internal)?;
+        let conflicts: Vec<&str> = items
+            .iter()
+            .filter(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
+            .map(|(id, _, _)| id.as_str())
+            .collect();
+        if !conflicts.is_empty() {
+            return Err(ApiError(
+                StatusCode::CONFLICT,
+                format!(
+                    "already registered with other content: {}; nothing was stored (corrections: #161)",
+                    conflicts.join(", ")
+                ),
+            ));
+        }
+        let now = (app.now)();
+        let mut rows = Vec::new();
+        let mut fresh = Vec::new();
+        let mut receipts = Vec::with_capacity(items.len());
+        for (id, digest, s) in items {
+            if let Some((_, received)) = known.get(&id) {
+                receipts.push(Receipt { sighting_id: id, digest, received: *received, status: "duplicate" });
+                continue;
+            }
+            // Sightings are stored under the organisation, never the user.
+            rows.extend(s.rows(&id).into_iter().map(|mut r| {
+                r.reporter.clone_from(&caller2.participant);
+                r
+            }));
+            fresh.push((id.clone(), digest.clone()));
+            receipts.push(Receipt { sighting_id: id, digest, received: now, status: "created" });
+        }
+        if !fresh.is_empty() {
+            // Rows first: a crash before the registration leaves a sighting
+            // a resend stores again, never a registered one that is lost.
+            app.sightings.append(&rows).map_err(internal)?;
+            // The IoC table can be rebuilt from the rows (`frank rebuild-iocs`).
+            app.iocs.record(&rows).map_err(internal)?;
+            app.registry
+                .register(&caller2.participant, &caller2.user, fresh, now)
+                .map_err(internal)?;
+        }
+        Ok((receipts, rows.len()))
     })
     .await?;
-    tracing::info!(caller = %caller.label(), sightings = ids.len(), rows = n, "accepted");
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({ "sighting_ids": ids, "rows": n })),
-    )
-        .into_response())
+    let created = receipts.iter().filter(|r| r.status == "created").count();
+    tracing::info!(caller = %caller.label(), created, duplicates = receipts.len() - created, rows, "accepted");
+    let status = if created > 0 {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(json!({ "receipts": receipts, "rows": rows }))).into_response())
 }
 
 #[derive(Deserialize)]

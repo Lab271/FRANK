@@ -15,6 +15,7 @@ import hashlib
 import json
 import random
 import sys
+import uuid
 
 CAMPAIGNS = [  # name, SIGMA rule, ATT&CK technique, severity, IPs, domains, weight
     ("npm_worm_2026_q4", "sigma-rule-npm-postinstall-exfil", "T1195.001", "high",
@@ -44,6 +45,9 @@ def submission(rng: random.Random, now: dt.datetime) -> dict:
         "hit_target": {"organisation_id": f"identity-cust-{rng.randint(1, 40)}", "sector": rng.choice(SECTORS),
                        "organisation_size": rng.choice(["small", "medium", "large"])},
         "sighting": {
+            # The sender's id (#159). Random, not from the seeded rng: the
+            # times move with the clock, so a rerun is new sightings.
+            "sighting_id": str(uuid.uuid4()),
             "timestamp": ts.strftime("%Y-%m-%dT%H:%M:%SZ"),
             "confidence": rng.randint(55, 95), "severity": sev,
             "observation_count": rng.randint(1, 25),
