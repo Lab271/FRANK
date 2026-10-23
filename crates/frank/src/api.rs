@@ -11,6 +11,7 @@
 //! | `GET  /v1/iocs`           | contributor |
 //! | `GET  /v1/iocs/range`     | contributor |
 //! | `GET  /v1/files`, `/v1/files/{*path}` | partner |
+//! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
 
 use std::collections::BTreeMap;
 use std::net::IpAddr;
@@ -110,6 +111,7 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/iocs/range", get(ioc_range))
         .route("/v1/explore", get(explore))
         .route("/v1/rules/{id}", get(rule_detail))
+        .route("/v1/participants", get(participants))
         .route("/v1/files", get(files))
         .route("/v1/files/{*path}", get(file))
         .layer(DefaultBodyLimit::max(MAX_BODY))
@@ -588,6 +590,31 @@ async fn ioc_range(
             .map(|(v, n)| json!({ "value": v, "count": n }))
             .collect();
         Ok(Json(json!({ "cidr": q.cidr, "addresses": hits })))
+    })
+    .await
+}
+
+/// The participants (#159). A partner sees the ids that appear in the
+/// sighting files and each one's status; core also sees who they are.
+async fn participants(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Partner)?;
+    blocking(move || {
+        let orgs =
+            crate::store::participants::organisations(app.participants.path()).map_err(internal)?;
+        let list: Vec<Value> = orgs
+            .into_iter()
+            .map(|o| {
+                if caller.tier >= Tier::Core {
+                    json!(o)
+                } else {
+                    json!({ "id": o.id, "status": o.status })
+                }
+            })
+            .collect();
+        Ok(Json(json!({ "participants": list })))
     })
     .await
 }

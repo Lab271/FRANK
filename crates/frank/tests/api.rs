@@ -1013,3 +1013,72 @@ async fn a_resend_is_recognised() {
         "{err}"
     );
 }
+
+/// Who reported is shown by status (#159): never below partner, ids to a
+/// partner, names to core.
+#[tokio::test]
+async fn reporters_are_shown_by_status() {
+    let h = harness("identity");
+    parts::add_organisation(&h.db, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
+    parts::add_user(&h.db, "ops", "ops", "human").unwrap();
+    parts::add_token_hash(&h.db, "ops", &hash("k")).unwrap();
+    let mdr = parts::organisation_id(&h.db, "mdr").unwrap();
+    for t in ["c", "c2", "c3"] {
+        call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some(t),
+            Some(sighting("energy", "198.51.100.30", "r1")),
+        )
+        .await;
+    }
+    // Every aggregate a contributor or partner can ask for: no id, no name.
+    for token in ["o", "c", "p"] {
+        for uri in [
+            "/v1/statistics",
+            "/v1/explore?group=sector",
+            "/v1/explore?group=rule",
+            "/v1/rules/r1",
+            "/v1/iocs?type=ipv4&value=198.51.100.30",
+        ] {
+            let (_, body) = call(&h.app, "GET", uri, Some(token), None).await;
+            let text = body.to_string();
+            assert!(
+                !text.contains(&mdr),
+                "{uri} as {token} shows a reporter id: {text}"
+            );
+            assert!(
+                !text.contains("\"mdr2\""),
+                "{uri} as {token} shows a reporter name"
+            );
+        }
+    }
+    assert_eq!(
+        call(&h.app, "GET", "/v1/participants", Some("c"), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, partner) = call(&h.app, "GET", "/v1/participants", Some("p"), None).await;
+    let seen = partner["participants"].as_array().unwrap();
+    assert!(seen
+        .iter()
+        .any(|p| p["id"] == mdr.as_str() && p["status"] == "contributor"));
+    assert!(
+        seen.iter().all(|p| p.get("name").is_none()),
+        "a partner sees ids, not names"
+    );
+    let (_, core) = call(&h.app, "GET", "/v1/participants", Some("k"), None).await;
+    let mdr_entry = core["participants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == mdr.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (mdr_entry["name"].as_str(), mdr_entry["users"][0].as_str()),
+        (Some("mdr"), Some("mdr"))
+    );
+}
