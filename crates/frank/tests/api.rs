@@ -28,6 +28,7 @@ struct Harness {
     app: axum::Router,
     sightings: Sightings,
     iocs: Iocs,
+    registry: Registry,
     /// `participants.db`, for changes made while the server runs.
     db: std::path::PathBuf,
     _dir: TempDir,
@@ -59,11 +60,12 @@ fn harness(name: &str) -> Harness {
     }
     let sightings = Sightings::open(&dir, None, now).unwrap();
     let iocs = Iocs::open(&dir).unwrap();
+    let registry = Registry::open(&dir, &sightings).unwrap();
     let app = router(Arc::new(App {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
         participants: Participants::open(&dir).unwrap(),
-        registry: Registry::open(&dir).unwrap(),
+        registry: registry.clone(),
         submit_lock: std::sync::Mutex::new(()),
         now,
     }));
@@ -71,6 +73,7 @@ fn harness(name: &str) -> Harness {
         app,
         sightings,
         iocs,
+        registry,
         db,
         _dir: TempDir(dir),
     }
@@ -965,6 +968,18 @@ async fn a_resend_is_recognised() {
     assert_eq!(again["receipts"][0]["digest"], receipt["digest"]);
     assert_eq!(again["receipts"][0]["received"], receipt["received"]);
     assert_eq!(again["rows"], 0);
+
+    // The registration is in the sightings: the index rebuilt from them
+    // gives the same receipt.
+    let r = h
+        .sightings
+        .query("SELECT DISTINCT digest, received FROM sightings")
+        .unwrap();
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(h.registry.rebuild(&h.sightings).unwrap(), 1);
+    let (status, rebuilt) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s.clone())).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rebuilt["receipts"][0], again["receipts"][0]);
 
     // Another organisation may use the same id: it is its own sighting.
     assert_eq!(

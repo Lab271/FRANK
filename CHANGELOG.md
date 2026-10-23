@@ -8,9 +8,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 - **Participants** (#159): organisations with one status (observer, contributor, partner, core) and an opaque id `identity--{uuid}`; users (people and API clients) belong to one organisation and inherit its status; tokens belong to users. All in `participants/participants.db` (`--participants`, `FRANK_PARTICIPANTS`), a SQLite-format row table apart from the data directory, so wiping `data/` keeps them. Changes apply on the next request, with the server running.
 - CLI: `frank participant add|list|set-status`, `frank user add`, `frank token new|list|revoke`; `frank ingest --as <participant> [--create]`. Make targets `participant`, `participants`, `user`, `token`.
-- **The sender's `sighting_id` is the registration** (#159). `POST /v1/sightings` requires it (a UUID; `sighting--` and Phase 2's `sighting-` forms accepted) and answers with receipts: a resend with the same content gets its original receipt (200), other content under a registered id is 409 and nothing of the batch is stored. `data/registry.db` records which user sent what; the Parquet files never do. `frank ingest` derives an id from the content when a file has none, so loading a file twice adds nothing.
+- **The sender's `sighting_id` is the registration** (#159). `POST /v1/sightings` requires it (a UUID; `sighting--` and Phase 2's `sighting-` forms accepted) and answers with receipts: a resend with the same content gets its original receipt (200), other content under a registered id is 409 and nothing of the batch is stored. The registration is stored with the sighting: new `digest` and `received` columns in the Parquet; `data/registry.db` is an index over them for a fast resend check, rebuilt from the sightings when missing (P9a on #159: a scan of the Parquet per POST costs seconds, db-core #737). Which user sent what is not in either. `frank ingest` derives an id from the content when a file has none, so loading a file twice adds nothing.
 - `GET /v1/participants`: ids and status for partners; names, type, sector and users for core. `GET /v1/whoami` returns the user and participant.
-- STACKIT: a nightly timer copies `participants.db` and `registry.db` with `sqlite3 .backup` and keeps two weeks.
+- STACKIT: a nightly timer copies `participants.db` with `sqlite3 .backup` and keeps two weeks.
+- `frank rebuild` (was `rebuild-iocs`, still accepted) rebuilds `iocs.db` and `registry.db`.
 
 ### Changed
 
@@ -21,7 +22,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Removed
 
-- The rotating HMAC reporter pseudonyms (#148): `data/secrets/` is no longer used. Data written by 0.12.0 carries the old pseudonyms in its `reporter` column; reload it (`make demo` into an empty `./data`).
+- The rotating HMAC reporter pseudonyms (#148): `data/secrets/` is no longer used. A `sightings/` table written by 0.12.0 (old pseudonyms, no `digest` column) is refused at startup: move it aside and reload (`make demo` into an empty `./data`).
 
 ## [0.12.0] - 2026-10-23
 

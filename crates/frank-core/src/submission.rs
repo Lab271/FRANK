@@ -85,6 +85,17 @@ pub struct SightingRow {
     /// taken from the submission, empty until the server sets it.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub reporter: String,
+    /// SHA-256 of the normalised submission (#159): with `reporter` and
+    /// `sighting_id` the registration. Set by the server.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub digest: String,
+    /// When the server first stored it, ns since the epoch; 0 until set.
+    #[serde(skip_serializing_if = "is_zero")]
+    pub received_ns: i64,
+}
+
+fn is_zero(n: &i64) -> bool {
+    *n == 0
 }
 
 impl Submission {
@@ -226,6 +237,8 @@ impl Submission {
             observations: self.observations,
             tlp: self.tlp,
             reporter: String::new(),
+            digest: String::new(),
+            received_ns: 0,
         };
         if self.iocs.is_empty() {
             vec![row(None)]

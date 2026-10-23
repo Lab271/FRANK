@@ -1,8 +1,9 @@
 #cloud-config
 # FRANK VM: podman runs the FRANK image; data lives on the attached
 # volume at /srv/frank (plain files: data/ with sightings/, iocs.db and
-# registry.db; participants/participants.db). Nightly copies of the two databases that cannot be rebuilt
-# go to /srv/frank/backup.
+# registry.db; participants/participants.db). Nightly copies of
+# participants.db, the one database that cannot be rebuilt, go to
+# /srv/frank/backup.
 package_update: true
 packages:
   - podman
@@ -45,25 +46,23 @@ write_files:
     permissions: "0755"
     content: |
       #!/bin/sh
-      # Copies of the row databases that cannot be rebuilt from the
-      # sightings (#159): participants.db (organisations, users, tokens)
-      # and registry.db. sqlite3 .backup takes SQLite's locks, which
+      # A copy of participants.db (organisations, users, tokens; #159),
+      # which cannot be rebuilt from the sightings as iocs.db and
+      # registry.db can. sqlite3 .backup takes SQLite's locks, which
       # db-core honours, so FRANK keeps running. Two weeks are kept.
       set -eu
       d=/srv/frank/backup/$(date -u +%F)
       mkdir -p "$d"
-      for f in participants/participants.db data/registry.db; do
-        if [ -f /srv/frank/$f ]; then
-          sqlite3 /srv/frank/$f ".backup '$d/$(basename $f)'"
-        fi
-      done
+      if [ -f /srv/frank/participants/participants.db ]; then
+        sqlite3 /srv/frank/participants/participants.db ".backup '$d/participants.db'"
+      fi
       chmod -R go-rwx /srv/frank/backup
       find /srv/frank/backup -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} +
   - path: /etc/systemd/system/frank-backup.service
     permissions: "0644"
     content: |
       [Unit]
-      Description=Back up FRANK's participants and registry
+      Description=Back up FRANK's participants
       Requires=srv-frank.mount
       After=srv-frank.mount
 
@@ -74,7 +73,7 @@ write_files:
     permissions: "0644"
     content: |
       [Unit]
-      Description=Nightly backup of FRANK's participants and registry
+      Description=Nightly backup of FRANK's participants
 
       [Timer]
       OnCalendar=*-*-* 03:15:00

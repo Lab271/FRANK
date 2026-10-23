@@ -3,7 +3,7 @@
 //! ```text
 //! <data>/sightings/                 striped Parquet table (db-core ingest)
 //! <data>/iocs.db                    row table, one row per IoC per day
-//! <data>/registry.db                row table: who registered which sighting id
+//! <data>/registry.db                row table: resend index (participant, sighting id → digest)
 //! <participants>/participants.db    row tables: organisations, users, tokens (#159)
 //! ```
 //!

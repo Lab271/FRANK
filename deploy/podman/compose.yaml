@@ -3,7 +3,7 @@
 # directories `make run` uses: run one of the two at a time.
 #   data/sightings/                Parquet table (live/, archive/, wal/)
 #   data/iocs.db                   row table
-#   data/registry.db               who registered which sighting id
+#   data/registry.db               resend index, rebuilt from the sightings
 #   participants/participants.db   organisations, users, tokens (#159)
 # Participants and tokens apply on the next request: `make participant
 # NAME=me STATUS=partner` works with the container running.

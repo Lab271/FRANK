@@ -22,7 +22,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
                        └──────────────► HTTP API (by status) ◄────────────┘
                                              ▲
                    participants/participants.db: organisations, users, tokens
-                   data/registry.db: who registered which sighting id
+                   data/registry.db: resend index (rebuilt from the sightings)
                                              │
                           web UI + frank-wasm (preview, SQL over Parquet in the browser)
 ```
@@ -69,7 +69,7 @@ An old `./tokens` file is imported once when the server starts on an empty `part
 
 Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`.
 
-**Backups.** `iocs.db` can be rebuilt from the sightings (`frank rebuild-iocs`); `participants.db` and `registry.db` cannot. On STACKIT a nightly timer copies both with `sqlite3 .backup` (safe while FRANK runs) to `/srv/frank/backup/<date>/` and keeps two weeks. That copy sits on the same volume: take volume snapshots or copy `/srv/frank/backup` off the VM for a backup that survives losing the volume. Elsewhere: `sqlite3 participants/participants.db ".backup /somewhere/participants.db"`.
+**Backups.** `iocs.db` and `registry.db` are indexes rebuilt from the sightings (`frank rebuild`, server stopped); `participants.db` cannot be rebuilt. On STACKIT a nightly timer copies it with `sqlite3 .backup` (safe while FRANK runs) to `/srv/frank/backup/<date>/` and keeps two weeks. That copy sits on the same volume: take volume snapshots or copy `/srv/frank/backup` off the VM for a backup that survives losing the volume. Elsewhere: `sqlite3 participants/participants.db ".backup /somewhere/participants.db"`.
 
 ```bash
 cd deploy/stackit

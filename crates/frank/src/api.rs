@@ -229,23 +229,23 @@ async fn submit(
                 receipts.push(Receipt { sighting_id: id, digest, received: *received, status: "duplicate" });
                 continue;
             }
-            // Sightings are stored under the organisation, never the user.
+            // Sightings are stored under the organisation, never the user,
+            // and carry their registration.
             rows.extend(s.rows(&id).into_iter().map(|mut r| {
                 r.reporter.clone_from(&caller2.participant);
+                r.digest.clone_from(&digest);
+                r.received_ns = now;
                 r
             }));
-            fresh.push((id.clone(), digest.clone()));
+            fresh.push((caller2.participant.clone(), id.clone(), digest.clone(), now));
             receipts.push(Receipt { sighting_id: id, digest, received: now, status: "created" });
         }
         if !fresh.is_empty() {
-            // Rows first: a crash before the registration leaves a sighting
-            // a resend stores again, never a registered one that is lost.
+            // Rows first: they hold the registration. Both indexes can be
+            // rebuilt from them (`frank rebuild`).
             app.sightings.append(&rows).map_err(internal)?;
-            // The IoC table can be rebuilt from the rows (`frank rebuild-iocs`).
             app.iocs.record(&rows).map_err(internal)?;
-            app.registry
-                .register(&caller2.participant, &caller2.user, fresh, now)
-                .map_err(internal)?;
+            app.registry.register(fresh).map_err(internal)?;
         }
         Ok((receipts, rows.len()))
     })
@@ -722,6 +722,8 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             observations: u32::try_from(*n).unwrap_or(1),
             tlp,
             reporter: String::new(),
+            digest: String::new(),
+            received_ns: 0,
         });
     }
     iocs.clear()?;

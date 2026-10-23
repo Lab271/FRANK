@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use db_core::storage::ingest::IngestError;
 use frank::api::{self, App};
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
 use frank::store::registry::{self, Registry};
@@ -75,8 +76,10 @@ enum Command {
         #[arg(long)]
         create: bool,
     },
-    /// Rebuild `iocs.db` from the sightings, with the server stopped.
-    RebuildIocs,
+    /// Rebuild `iocs.db` and `registry.db` from the sightings, with the
+    /// server stopped.
+    #[command(alias = "rebuild-iocs")]
+    Rebuild,
 }
 
 #[derive(Subcommand)]
@@ -210,11 +213,12 @@ fn main() -> Result<(), String> {
             };
             ingest(&cli.data, &files, &id)
         }
-        Command::RebuildIocs => {
+        Command::Rebuild => {
             let (s, i) = open(&cli.data, None)?;
             let n = api::rebuild_iocs(&s, &i)?;
+            let r = Registry::open(&cli.data, &s)?.rebuild(&s)?;
             s.close().map_err(|e| e.to_string())?;
-            eprintln!("rebuilt iocs from {n} sighting rows");
+            eprintln!("rebuilt iocs from {n} sighting rows, the registry with {r} registrations");
             Ok(())
         }
         Command::Serve {
@@ -240,11 +244,12 @@ fn main() -> Result<(), String> {
                 );
             }
             let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
+            let registry = Registry::open(&cli.data, &sightings)?;
             let app = Arc::new(App {
                 sightings,
                 iocs,
                 participants,
-                registry: Registry::open(&cli.data)?,
+                registry,
                 submit_lock: std::sync::Mutex::new(()),
                 now: now_ns,
             });
@@ -257,8 +262,15 @@ fn main() -> Result<(), String> {
 
 fn open(data: &Path, retention_days: Option<u32>) -> Result<(Sightings, Iocs), String> {
     std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
-    let sightings =
-        Sightings::open(data, retention_days, now_ns).map_err(|e| format!("sightings: {e}"))?;
+    let sightings = Sightings::open(data, retention_days, now_ns).map_err(|e| match e {
+        // 0.13 added `digest` and `received`; a table's schema is fixed.
+        IngestError::SchemaMismatch => format!(
+            "{}: written by FRANK 0.12 or older (no digest column, pseudonymous \
+             reporters): move it aside and reload the sightings",
+            data.join(frank::store::sightings::NAME).display()
+        ),
+        e => format!("sightings: {e}"),
+    })?;
     let iocs = Iocs::open(data).map_err(|e| format!("iocs: {e}"))?;
     Ok((sightings, iocs))
 }
@@ -319,7 +331,7 @@ fn participant(db: &Path, cmd: ParticipantCmd) -> Result<(), String> {
 /// whole.
 fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> {
     let (s, i) = open(data, None)?;
-    let reg = Registry::open(data)?;
+    let reg = Registry::open(data, &s)?;
     let (mut created, mut duplicates) = (0, 0);
     for f in files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
@@ -351,23 +363,26 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> 
             ));
         }
         let mut rows = Vec::new();
-        let mut fresh = Vec::new();
+        let mut fresh: Vec<registry::Registration> = Vec::new();
+        let now = now_ns();
         for (id, digest, sub) in subs {
-            if known.contains_key(&id) || fresh.iter().any(|(f, _)| *f == id) {
+            if known.contains_key(&id) || fresh.iter().any(|f| f.1 == id) {
                 duplicates += 1;
                 continue;
             }
             rows.extend(sub.rows(&id).into_iter().map(|mut r| {
                 r.reporter = reporter.to_string();
+                r.digest.clone_from(&digest);
+                r.received_ns = now;
                 r
             }));
-            fresh.push((id, digest));
+            fresh.push((reporter.to_string(), id, digest, now));
         }
         created += fresh.len();
         if !fresh.is_empty() {
             s.append(&rows).map_err(|e| e.to_string())?;
             i.record(&rows)?;
-            reg.register(reporter, "ingest", fresh, now_ns())?;
+            reg.register(fresh)?;
         }
     }
     s.flush().map_err(|e| e.to_string())?;
