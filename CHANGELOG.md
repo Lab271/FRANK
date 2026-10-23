@@ -6,7 +6,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Added
 
-- **Participants** (#159): organisations with one status (observer, contributor, partner, core) and an opaque id `identity--{uuid}`; users (people and API clients) belong to one organisation and inherit its status; tokens belong to users. All in `data/participants.db`, a SQLite-format row table. Changes apply on the next request, with the server running.
+- **Participants** (#159): organisations with one status (observer, contributor, partner, core) and an opaque id `identity--{uuid}`; users (people and API clients) belong to one organisation and inherit its status; tokens belong to users. All in `participants/participants.db` (`--participants`, `FRANK_PARTICIPANTS`), a SQLite-format row table apart from the data directory, so wiping `data/` keeps them. Changes apply on the next request, with the server running.
 - CLI: `frank participant add|list|set-status`, `frank user add`, `frank token new|list|revoke`; `frank ingest --as <participant> [--create]`. Make targets `participant`, `participants`, `user`, `token`.
 - **The sender's `sighting_id` is the registration** (#159). `POST /v1/sightings` requires it (a UUID; `sighting--` and Phase 2's `sighting-` forms accepted) and answers with receipts: a resend with the same content gets its original receipt (200), other content under a registered id is 409 and nothing of the batch is stored. `data/registry.db` records which user sent what; the Parquet files never do. `frank ingest` derives an id from the content when a file has none, so loading a file twice adds nothing.
 - `GET /v1/participants`: ids and status for partners; names, type, sector and users for core. `GET /v1/whoami` returns the user and participant.
@@ -15,7 +15,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 ### Changed
 
 - **Sightings are stored under the organisation** (#159, ADR-016 revised): the `reporter` column holds the participant id. Counts of distinct reporters are exact over any window; two users of one organisation are one reporter.
-- `make run` and `make up` share `./data`; run one of the two at a time. Podman's old `deploy/podman/data` is no longer used.
+- `make run` and `make up` share `./data` and `./participants`; run one of the two at a time. Podman's old `deploy/podman/data` is no longer used.
 - A `./tokens` file is imported once into an empty `participants.db`, one organisation per line.
 - The web UI writes a new `sighting_id` into the form before sending, and shows the receipts.
 

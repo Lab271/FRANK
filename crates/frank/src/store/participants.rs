@@ -1,5 +1,6 @@
 //! Participants (#159, ADR-016): organisations with one status, their
-//! users, and the users' tokens, in `<data>/participants.db`.
+//! users, and the users' tokens, in `<participants>/participants.db`,
+//! a directory of its own (with SQLite's journal) apart from the data.
 //!
 //! The server only reads this file. It keeps the tokens in memory and
 //! reloads them when the file changes, so `frank participant`, `frank
@@ -84,9 +85,9 @@ struct Cache {
 type Stamp = (u64, SystemTime, [u8; 4]);
 
 impl Participants {
-    /// Opens `<data>/participants.db`, creating it if needed.
-    pub fn open(data: &Path) -> Result<Participants, String> {
-        let path = data.join(FILE);
+    /// Opens `<dir>/participants.db`, creating it if needed.
+    pub fn open(dir: &Path) -> Result<Participants, String> {
+        let path = dir.join(FILE);
         with_db(&path, |_| Ok(()))?;
         let p = Participants {
             path,

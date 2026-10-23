@@ -1,7 +1,7 @@
 #cloud-config
 # FRANK VM: podman runs the FRANK image; data lives on the attached
-# volume at /srv/frank (plain files: sightings/, iocs.db, participants.db,
-# registry.db). Nightly copies of the two databases that cannot be rebuilt
+# volume at /srv/frank (plain files: data/ with sightings/, iocs.db and
+# registry.db; participants/participants.db). Nightly copies of the two databases that cannot be rebuilt
 # go to /srv/frank/backup.
 package_update: true
 packages:
@@ -31,6 +31,7 @@ write_files:
       ExecStart=/usr/bin/podman run --name frank --rm \
         -p 127.0.0.1:8080:8080 \
         -v /srv/frank/data:/data:Z \
+        -v /srv/frank/participants:/participants:Z \
         -v /srv/frank/tokens:/etc/frank/tokens:ro,Z \
         -e FRANK_RETENTION_DAYS=$${FRANK_RETENTION_DAYS} \
         $${FRANK_IMAGE}
@@ -51,9 +52,9 @@ write_files:
       set -eu
       d=/srv/frank/backup/$(date -u +%F)
       mkdir -p "$d"
-      for db in participants registry; do
-        if [ -f /srv/frank/data/$db.db ]; then
-          sqlite3 /srv/frank/data/$db.db ".backup '$d/$db.db'"
+      for f in participants/participants.db data/registry.db; do
+        if [ -f /srv/frank/$f ]; then
+          sqlite3 /srv/frank/$f ".backup '$d/$(basename $f)'"
         fi
       done
       chmod -R go-rwx /srv/frank/backup
@@ -98,8 +99,8 @@ runcmd:
     grep -q frank-data /etc/fstab || echo "LABEL=frank-data /srv/frank ext4 defaults,nofail 0 2" >> /etc/fstab
     systemctl daemon-reload
     mount -a
-    mkdir -p /srv/frank/data && touch /srv/frank/tokens
-    chown -R 65532:65532 /srv/frank/data /srv/frank/tokens
+    mkdir -p /srv/frank/data /srv/frank/participants && touch /srv/frank/tokens
+    chown -R 65532:65532 /srv/frank/data /srv/frank/participants /srv/frank/tokens
     chmod 600 /srv/frank/tokens
   - |
     umask 077

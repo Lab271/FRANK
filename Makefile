@@ -2,6 +2,7 @@
 SHELL := /bin/bash
 CARGO ?= rustup run stable cargo
 DATA ?= ./data
+PARTICIPANTS ?= ./participants
 TOKENS ?= ./tokens
 IMAGE ?= ghcr.io/lab271/frank
 VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
@@ -41,40 +42,40 @@ lint: ## fmt check + clippy (native and wasm32), as CI runs them
 fmt: ## Format the code
 	$(CARGO) fmt --all
 
-run: build ## Run on this machine (data in ./data, shared with up)
-	FRANK_DATA=$(DATA) FRANK_TOKENS=$(TOKENS) $(FRANK) serve
+run: build ## Run on this machine (./data and ./participants, shared with up)
+	FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) FRANK_TOKENS=$(TOKENS) $(FRANK) serve
 
-# Participants, users and tokens live in $(DATA)/participants.db and take
+# Participants, users and tokens live in $(PARTICIPANTS)/participants.db and take
 # effect on the next request, with the server running or not.
 participant: server ## Register an organisation with a token: make participant NAME=me STATUS=partner
 	@[ -n "$(NAME)" ] && [ -n "$(STATUS)" ] || { echo "usage: make participant NAME=<organisation> STATUS=observer|contributor|partner|core" >&2; exit 2; }
-	@FRANK_DATA=$(DATA) $(FRANK) participant add "$(NAME)" --status $(STATUS) --with-token
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) participant add "$(NAME)" --status $(STATUS) --with-token
 
 participants: server ## List organisations and tokens
-	@FRANK_DATA=$(DATA) $(FRANK) participant list
-	@FRANK_DATA=$(DATA) $(FRANK) token list
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) participant list
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token list
 
 user: server ## Add a user with a token: make user PARTICIPANT=me NAME=alice [MACHINE=1]
 	@[ -n "$(PARTICIPANT)" ] && [ -n "$(NAME)" ] || { echo "usage: make user PARTICIPANT=<organisation> NAME=<user> [MACHINE=1]" >&2; exit 2; }
-	@FRANK_DATA=$(DATA) $(FRANK) user add "$(PARTICIPANT)" "$(NAME)" $(if $(MACHINE),--machine)
-	@FRANK_DATA=$(DATA) $(FRANK) token new "$(NAME)"
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) user add "$(PARTICIPANT)" "$(NAME)" $(if $(MACHINE),--machine)
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token new "$(NAME)"
 
 token: server ## Another token for a user: make token NAME=alice
 	@[ -n "$(NAME)" ] || { echo "usage: make token NAME=<user>" >&2; exit 2; }
-	@FRANK_DATA=$(DATA) $(FRANK) token new "$(NAME)"
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token new "$(NAME)"
 
 demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data (server stopped)
 	@! pgrep -f "frank.* serve" >/dev/null || { echo "stop the running frank server first (it holds the table lock), or POST the file to /v1/sightings" >&2; exit 1; }
 	python3 scripts/demo_sightings.py $(N) target/demo
 	@for f in target/demo/mdr-*.json; do \
-	  FRANK_DATA=$(DATA) $(FRANK) ingest --as "$$(basename $$f .json)" --create $$f || exit 1; \
+	  FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) ingest --as "$$(basename $$f .json)" --create $$f || exit 1; \
 	done
 
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-up: image ## Run in podman (the same ./data as run; FRANK_PORT, default 8080)
-	mkdir -p data && touch $(TOKENS)
+up: image ## Run in podman (the same ./data and ./participants as run; FRANK_PORT, default 8080)
+	mkdir -p data participants && touch $(TOKENS)
 	$(COMPOSE) up -d --force-recreate
 
 down: ## Stop the podman deployment

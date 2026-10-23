@@ -21,7 +21,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
                        │                                                  │
                        └──────────────► HTTP API (by status) ◄────────────┘
                                              ▲
-                   data/participants.db: organisations, users, tokens
+                   participants/participants.db: organisations, users, tokens
                    data/registry.db: who registered which sighting id
                                              │
                           web UI + frank-wasm (preview, SQL over Parquet in the browser)
@@ -42,17 +42,17 @@ Needs Rust (stable), the `wasm32-unknown-unknown` target and `wasm-bindgen-cli` 
 make build                                # server + web/pkg
 make participant NAME=me STATUS=partner   # registers an organisation, prints a token once
 make demo                                 # optional: 60 synthetic sightings, one participant per MDR
-make run                                  # http://127.0.0.1:8080, data in ./data
+make run                                  # http://127.0.0.1:8080, data in ./data, participants in ./participants
 ```
 
-**In podman** (the same `./data` as `make run`, so participants, tokens and sightings are shared; run one of the two at a time):
+**In podman** (the same `./data` and `./participants` as `make run`, so participants, tokens and sightings are shared; run one of the two at a time):
 
 ```bash
 make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT to change)
 make down
 ```
 
-**Participants, users and tokens** live in `data/participants.db` and apply on the next request, with the server running:
+**Participants, users and tokens** live in `participants/participants.db`, apart from the data: wiping `data/` keeps them. Changes apply on the next request, with the server running:
 
 ```bash
 make participant NAME=acme-mdr STATUS=contributor   # organisation + a user of the same name + token
@@ -69,7 +69,7 @@ An old `./tokens` file is imported once when the server starts on an empty `part
 
 Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`.
 
-**Backups.** `iocs.db` can be rebuilt from the sightings (`frank rebuild-iocs`); `participants.db` and `registry.db` cannot. On STACKIT a nightly timer copies both with `sqlite3 .backup` (safe while FRANK runs) to `/srv/frank/backup/<date>/` and keeps two weeks. That copy sits on the same volume: take volume snapshots or copy `/srv/frank/backup` off the VM for a backup that survives losing the volume. Elsewhere: `sqlite3 data/participants.db ".backup /somewhere/participants.db"`.
+**Backups.** `iocs.db` can be rebuilt from the sightings (`frank rebuild-iocs`); `participants.db` and `registry.db` cannot. On STACKIT a nightly timer copies both with `sqlite3 .backup` (safe while FRANK runs) to `/srv/frank/backup/<date>/` and keeps two weeks. That copy sits on the same volume: take volume snapshots or copy `/srv/frank/backup` off the VM for a backup that survives losing the volume. Elsewhere: `sqlite3 participants/participants.db ".backup /somewhere/participants.db"`.
 
 ```bash
 cd deploy/stackit

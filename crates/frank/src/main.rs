@@ -23,9 +23,18 @@ const DAY_NS: i64 = 86_400 * 1_000_000_000;
     about = "FRANK: threat-sighting sharing between known participants"
 )]
 struct Cli {
-    /// Data directory: `sightings/` (Parquet), `iocs.db`, `participants.db`.
+    /// Data directory: `sightings/` (Parquet), `iocs.db`.
     #[arg(long, env = "FRANK_DATA", default_value = "./data", global = true)]
     data: PathBuf,
+    /// Directory of `participants.db` (organisations, users, tokens): apart
+    /// from the data, so wiping the data keeps the participants.
+    #[arg(
+        long,
+        env = "FRANK_PARTICIPANTS",
+        default_value = "./participants",
+        global = true
+    )]
+    participants: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -136,8 +145,19 @@ fn main() -> Result<(), String> {
         )
         .init();
     let cli = Cli::parse();
-    std::fs::create_dir_all(&cli.data).map_err(|e| format!("{}: {e}", cli.data.display()))?;
-    let db = cli.data.join(PARTICIPANTS);
+    for dir in [&cli.data, &cli.participants] {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let db = cli.participants.join(PARTICIPANTS);
+    let old = cli.data.join(PARTICIPANTS);
+    if old.exists() && !db.exists() {
+        return Err(format!(
+            "{} moved out of the data directory: mv {}* {}/",
+            old.display(),
+            old.display(),
+            cli.participants.display()
+        ));
+    }
     match cli.command {
         Command::Participant(cmd) => participant(&db, cmd),
         Command::User(UserCmd::Add {
@@ -203,7 +223,7 @@ fn main() -> Result<(), String> {
             web,
             retention_days,
         } => {
-            let participants = Participants::open(&cli.data)?;
+            let participants = Participants::open(&cli.participants)?;
             if participants.active_tokens()? == 0 && tokens.exists() {
                 let created = parts::import_tokens_file(&db, &tokens)?;
                 tracing::warn!(

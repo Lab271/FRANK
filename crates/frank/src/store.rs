@@ -1,11 +1,13 @@
-//! FRANK's stores under one data directory (ADR-016):
+//! FRANK's stores (ADR-016):
 //!
 //! ```text
-//! <data>/sightings/        striped Parquet table (db-core ingest)
-//! <data>/iocs.db           row table, one row per IoC per day
-//! <data>/participants.db   row tables: organisations, users, tokens (#159)
-//! <data>/registry.db       row table: who registered which sighting id
+//! <data>/sightings/                 striped Parquet table (db-core ingest)
+//! <data>/iocs.db                    row table, one row per IoC per day
+//! <data>/registry.db                row table: who registered which sighting id
+//! <participants>/participants.db    row tables: organisations, users, tokens (#159)
 //! ```
+//!
+//! The participants sit apart from the data: wiping the data keeps them.
 
 pub mod iocs;
 pub mod participants;
