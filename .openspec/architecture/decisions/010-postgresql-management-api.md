@@ -1,6 +1,6 @@
 # ADR-0009: PostgreSQL for Management API Data Storage
 
-**Status:** Accepted
+**Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (organisations in `participants.db`, a db-core row table; the organisation model itself is kept)
 **Date:** 2026-01-31
 **Deciders:** Development Team
 **Tags:** infrastructure, database, management-api, postgresql, aws-rds
