@@ -2,6 +2,27 @@
 
 All notable changes to FRANK. Format follows [Keep a Changelog](https://keepachangelog.com/), versioning follows [SemVer](https://semver.org/). Phase 2 (Python) releases up to 0.8.0 are tagged in git; its final state is `phase2-final`.
 
+## [Unreleased]
+
+### Added
+
+- **Participants** (#159): organisations with one status (observer, contributor, partner, core) and an opaque id `identity--{uuid}`; users (people and API clients) belong to one organisation and inherit its status; tokens belong to users. All in `data/participants.db`, a SQLite-format row table. Changes apply on the next request, with the server running.
+- CLI: `frank participant add|list|set-status`, `frank user add`, `frank token new|list|revoke`; `frank ingest --as <participant> [--create]`. Make targets `participant`, `participants`, `user`, `token`.
+- **The sender's `sighting_id` is the registration** (#159). `POST /v1/sightings` requires it (a UUID; `sighting--` and Phase 2's `sighting-` forms accepted) and answers with receipts: a resend with the same content gets its original receipt (200), other content under a registered id is 409 and nothing of the batch is stored. `data/registry.db` records which user sent what; the Parquet files never do. `frank ingest` derives an id from the content when a file has none, so loading a file twice adds nothing.
+- `GET /v1/participants`: ids and status for partners; names, type, sector and users for core. `GET /v1/whoami` returns the user and participant.
+- STACKIT: a nightly timer copies `participants.db` and `registry.db` with `sqlite3 .backup` and keeps two weeks.
+
+### Changed
+
+- **Sightings are stored under the organisation** (#159, ADR-016 revised): the `reporter` column holds the participant id. Counts of distinct reporters are exact over any window; two users of one organisation are one reporter.
+- `make run` and `make up` share `./data`; run one of the two at a time. Podman's old `deploy/podman/data` is no longer used.
+- A `./tokens` file is imported once into an empty `participants.db`, one organisation per line.
+- The web UI writes a new `sighting_id` into the form before sending, and shows the receipts.
+
+### Removed
+
+- The rotating HMAC reporter pseudonyms (#148): `data/secrets/` is no longer used. Data written by 0.12.0 carries the old pseudonyms in its `reporter` column; reload it (`make demo` into an empty `./data`).
+
 ## [0.12.0] - 2026-10-23
 
 ### Added

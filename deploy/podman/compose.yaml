@@ -1,13 +1,15 @@
 # FRANK in podman: `make up` from the repo root.
-# Data and tokens stay on the host as plain files:
-#   deploy/podman/data/sightings/   Parquet table (live/, archive/, wal/)
-#   deploy/podman/data/iocs.db      row table
-#   tokens (repo root)              `<sha256> <tier> <label>` lines, shared
-#                                   with `make run`
-# Tokens are read at start: `make token TIER=partner LABEL=me`, then
-# `podman compose -f deploy/podman/compose.yaml restart`.
+# The data stays on the host in ./data (repo root), the same directory
+# `make run` uses: run one of the two at a time.
+#   data/sightings/        Parquet table (live/, archive/, wal/)
+#   data/iocs.db           row table
+#   data/participants.db   organisations, users, tokens (#159)
+#   data/registry.db       who registered which sighting id
+# Participants and tokens apply on the next request: `make participant
+# NAME=me STATUS=partner` works with the container running.
+# An old ./tokens file is imported once into an empty participants.db.
 # The container runs as uid 65532. On Linux, give it the data directory once:
-# `podman unshare chown -R 65532:65532 deploy/podman/data tokens`.
+# `podman unshare chown -R 65532:65532 data tokens`.
 # Host port: FRANK_PORT (default 8080).
 services:
   frank:
@@ -18,7 +20,7 @@ services:
     ports:
       - "127.0.0.1:${FRANK_PORT:-8080}:8080"
     volumes:
-      - ./data:/data:Z
+      - ../../data:/data:Z
       - ../../tokens:/etc/frank/tokens:ro,Z
     environment:
       FRANK_RETENTION_DAYS: "400"

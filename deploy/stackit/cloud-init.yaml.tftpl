@@ -1,10 +1,13 @@
 #cloud-config
 # FRANK VM: podman runs the FRANK image; data lives on the attached
-# volume at /srv/frank (plain files: sightings/, iocs.db, tokens).
+# volume at /srv/frank (plain files: sightings/, iocs.db, participants.db,
+# registry.db). Nightly copies of the two databases that cannot be rebuilt
+# go to /srv/frank/backup.
 package_update: true
 packages:
   - podman
   - caddy
+  - sqlite3
 
 write_files:
   - path: /etc/frank/frank.env
@@ -37,6 +40,47 @@ write_files:
 
       [Install]
       WantedBy=multi-user.target
+  - path: /usr/local/bin/frank-backup
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # Copies of the row databases that cannot be rebuilt from the
+      # sightings (#159): participants.db (organisations, users, tokens)
+      # and registry.db. sqlite3 .backup takes SQLite's locks, which
+      # db-core honours, so FRANK keeps running. Two weeks are kept.
+      set -eu
+      d=/srv/frank/backup/$(date -u +%F)
+      mkdir -p "$d"
+      for db in participants registry; do
+        if [ -f /srv/frank/data/$db.db ]; then
+          sqlite3 /srv/frank/data/$db.db ".backup '$d/$db.db'"
+        fi
+      done
+      chmod -R go-rwx /srv/frank/backup
+      find /srv/frank/backup -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} +
+  - path: /etc/systemd/system/frank-backup.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Back up FRANK's participants and registry
+      Requires=srv-frank.mount
+      After=srv-frank.mount
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/frank-backup
+  - path: /etc/systemd/system/frank-backup.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Nightly backup of FRANK's participants and registry
+
+      [Timer]
+      OnCalendar=*-*-* 03:15:00
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
   - path: /etc/caddy/Caddyfile
     permissions: "0644"
     content: |
@@ -66,4 +110,5 @@ runcmd:
     fi
   - systemctl daemon-reload
   - systemctl enable --now frank.service
+  - systemctl enable --now frank-backup.timer
   - systemctl restart caddy

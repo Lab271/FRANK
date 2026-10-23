@@ -73,8 +73,8 @@ demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-up: image ## Run in podman (data in deploy/podman/data, tokens shared with run; FRANK_PORT, default 8080)
-	mkdir -p deploy/podman/data && touch $(TOKENS)
+up: image ## Run in podman (the same ./data as run; FRANK_PORT, default 8080)
+	mkdir -p data && touch $(TOKENS)
 	$(COMPOSE) up -d --force-recreate
 
 down: ## Stop the podman deployment
