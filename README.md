@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where security teams share **sighting statistics** for SIGMA rules and IoCs (how often, where and when a threat was seen) without sharing who they or their customers are.
 
-## Version: 0.11.1
+## Version: 0.12.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is in [`legacy/phase2/`](legacy/phase2/), and its final state is tagged `phase2-final`.
 
@@ -69,6 +69,8 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `POST /v1/sightings` | contributor | one submission or an array (max 100), Phase 2 JSON format |
 | `GET /v1/iocs?type=ipv4&value=…` | contributor | days seen, counts, SIGMA rules |
 | `GET /v1/iocs/range?cidr=185.220.0.0/16` | contributor | addresses seen in a block |
+| `GET /v1/explore?group=rule&sector=energy&days=30` | observer (rule, IoC, campaign, technique: contributor) | grouped rows with `count`, `reporters`, first/last seen |
+| `GET /v1/rules/{id}?days=30` | contributor | one rule's prevalence: trend, sectors, severities, techniques, campaigns, IoCs |
 | `GET /v1/files`, `GET /v1/files/{path}` | partner | the table's Parquet files |
 
 Send tokens as `Authorization: Bearer <token>`.

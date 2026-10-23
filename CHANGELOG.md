@@ -2,6 +2,17 @@
 
 All notable changes to FRANK. Format follows [Keep a Changelog](https://keepachangelog.com/), versioning follows [SemVer](https://semver.org/). Phase 2 (Python) releases up to 0.8.0 are tagged in git; its final state is `phase2-final`.
 
+## [0.12.0] - 2026-10-23
+
+### Added
+
+- **Explore** (#157): one list grouped by a dimension (rule, IoC, campaign, technique, sector, IoC type, severity) and filtered by others, from a fixed whitelist (`GET /v1/explore`). Tier per dimension as in `/v1/statistics`; groups under 3 reporters are hidden below partner; TLP applies.
+- **Detail pane**: `GET /v1/rules/{id}` gives one rule's trend, sectors, severities, techniques, campaigns and IoCs; `GET /v1/iocs` gains a 30-day trend. The web UI opens them in a sliding pane; panes link to each other and dashboard bars link into Explore. The view lives in the URL hash, so it can be bookmarked.
+
+### Changed
+
+- `make up` recreates the container, so a rebuilt image is always the one running.
+
 ## [0.11.1] - 2026-10-22
 
 ### Fixed

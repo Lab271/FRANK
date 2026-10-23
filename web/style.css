@@ -101,3 +101,36 @@ footer img { height: 34px; width: auto; display: block; }
   footer { margin: 0 var(--lab-space-2); }
   .lab-nav { gap: 18px; }
 }
+
+/* explore: filter chips, clickable rows, the sliding detail pane */
+.chips:empty { display: none; }
+.chip {
+  display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px;
+  border: 1px solid var(--c-border); border-radius: 99px; background: var(--c-canvas);
+  font-family: var(--lab-type-family-mono); font-size: 12px; cursor: pointer;
+}
+.chip::after { content: "×"; color: var(--c-muted); }
+tr.go { cursor: pointer; }
+tr.go:hover td { background: var(--c-panel); }
+.link { background: none; border: 0; padding: 0; color: var(--c-tq-text); cursor: pointer; font: inherit; text-align: left; }
+.link:hover { text-decoration: underline; }
+.bar .label.link { color: inherit; }
+.pane {
+  position: fixed; top: 0; right: 0; bottom: 0; width: min(520px, 100%); z-index: 10;
+  background: var(--c-canvas); border-left: 1px solid var(--c-border);
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.12); overflow-y: auto;
+  padding: var(--lab-space-2) var(--lab-space-3) var(--lab-space-4);
+  transform: translateX(100%); visibility: hidden;
+  transition: transform var(--motion-fast) var(--motion-ease), visibility 0s linear var(--motion-fast);
+}
+.pane.open { transform: none; visibility: visible; transition: transform var(--motion-fast) var(--motion-ease); }
+.pane-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-bottom: 8px; }
+.pane h2 { margin: 0 0 4px; font-size: var(--lab-type-size-h3, 20px); overflow-wrap: anywhere; }
+.pane .kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 12px 0; }
+.pane .kpis .tile { padding: 10px 14px; }
+.pane .kpis .tile .v { font-size: 22px; }
+.pane h3 { margin: 18px 0 6px; font-family: var(--lab-type-family-mono); font-weight: 400; font-size: 11px; letter-spacing: 0.08em; color: var(--c-tq-text); }
+.spark { display: block; width: 100%; height: 48px; }
+.spark rect { fill: var(--c-tq); }
+.spark rect.zero { fill: var(--c-border); }
+@media (max-width: 640px) { .pane { width: 100%; padding: var(--lab-space-2); } }

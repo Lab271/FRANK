@@ -638,6 +638,194 @@ async fn each_tier_sees_its_tlp_levels() {
     assert_eq!(all.rows, vec![vec![Cell::Int(4)]]);
 }
 
+/// Three reporters for rule r1 in energy, one reporter for r2 in water.
+async fn explore_fixture(h: &Harness) {
+    for (i, tok) in ["c", "c2", "c3"].iter().enumerate() {
+        let s = sighting("energy", &format!("198.51.100.{i}"), "r1");
+        assert_eq!(
+            call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s))
+                .await
+                .0,
+            StatusCode::CREATED
+        );
+    }
+    let water: Vec<Value> = (0..3)
+        .map(|i| sighting("water", &format!("203.0.113.{i}"), "r2"))
+        .collect();
+    assert_eq!(
+        call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some("c"),
+            Some(json!(water))
+        )
+        .await
+        .0,
+        StatusCode::CREATED
+    );
+}
+
+fn keys(v: &Value) -> Vec<String> {
+    v["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["key"].as_str().unwrap().to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn explore_groups_filters_and_suppresses() {
+    let h = harness("explore");
+    explore_fixture(&h).await;
+
+    let (st, rules) = call(&h.app, "GET", "/v1/explore?group=rule", Some("c"), None).await;
+    assert_eq!(st, StatusCode::OK, "{rules}");
+    assert_eq!(keys(&rules), ["r1"], "r2 has one reporter");
+    let r1 = &rules["rows"][0];
+    assert_eq!(
+        (r1["count"].as_i64(), r1["reporters"].as_i64()),
+        (Some(6), Some(3))
+    );
+    assert!(r1["first_seen"].as_i64() <= r1["last_seen"].as_i64());
+
+    let (_, partner) = call(&h.app, "GET", "/v1/explore?group=rule", Some("p"), None).await;
+    assert_eq!(keys(&partner), ["r1", "r2"], "partners see exact cells");
+
+    let (_, iocs) = call(
+        &h.app,
+        "GET",
+        "/v1/explore?group=ioc&sector=ENERGY",
+        Some("p"),
+        None,
+    )
+    .await;
+    assert!(
+        keys(&iocs).contains(&"domain:evil.example".to_string()),
+        "{iocs}"
+    );
+    assert!(
+        keys(&iocs).iter().all(|k| !k.starts_with("ipv4:203.")),
+        "water filtered out: {iocs}"
+    );
+
+    let (_, filtered) = call(
+        &h.app,
+        "GET",
+        "/v1/explore?group=sector&rule=r1",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(keys(&filtered), ["energy"]);
+}
+
+#[tokio::test]
+async fn explore_enforces_tiers_and_refuses_unknown_names() {
+    let h = harness("explore-tiers");
+    explore_fixture(&h).await;
+    let status = |uri: &'static str, tok: Option<&'static str>| {
+        let app = h.app.clone();
+        async move { call(&app, "GET", uri, tok, None).await.0 }
+    };
+    assert_eq!(
+        status("/v1/explore?group=sector", Some("o")).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        status("/v1/explore?group=rule", Some("o")).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status("/v1/explore?group=sector&ioc=ipv4:198.51.100.1", Some("o")).await,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        status("/v1/explore?group=sector", None).await,
+        StatusCode::FORBIDDEN
+    );
+    for bad in [
+        "/v1/explore",
+        "/v1/explore?group=org",
+        "/v1/explore?group=rule&reporter=x",
+        "/v1/explore?group=rule&days=0",
+    ] {
+        assert_eq!(
+            status(bad, Some("p")).await,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "{bad}"
+        );
+    }
+}
+
+#[tokio::test]
+async fn explore_respects_tlp() {
+    let h = harness("explore-tlp");
+    for tok in ["c", "c2", "c3"] {
+        let s = with_tlp(
+            sighting("energy", "198.51.100.50", "r-strict"),
+            "amber+strict",
+        );
+        call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s)).await;
+    }
+    let (_, contrib) = call(&h.app, "GET", "/v1/explore?group=rule", Some("c"), None).await;
+    assert!(
+        keys(&contrib).is_empty(),
+        "AMBER+STRICT is partner-only: {contrib}"
+    );
+    let (_, partner) = call(&h.app, "GET", "/v1/explore?group=rule", Some("p"), None).await;
+    assert_eq!(keys(&partner), ["r-strict"]);
+}
+
+#[tokio::test]
+async fn rule_detail_shows_prevalence() {
+    let h = harness("rule-detail");
+    explore_fixture(&h).await;
+    let (st, r1) = call(&h.app, "GET", "/v1/rules/r1", Some("c"), None).await;
+    assert_eq!(st, StatusCode::OK, "{r1}");
+    assert_eq!(
+        (
+            r1["known"].as_bool(),
+            r1["count"].as_i64(),
+            r1["reporters"].as_i64()
+        ),
+        (Some(true), Some(6), Some(3))
+    );
+    assert_eq!(r1["sectors"][0]["key"], "energy");
+    let trend = r1["trend"].as_array().unwrap();
+    assert_eq!(trend.len(), 30);
+    assert_eq!(
+        trend.iter().map(|d| d[1].as_i64().unwrap()).sum::<i64>(),
+        6,
+        "every row is in the trend"
+    );
+    assert_eq!(trend.last().unwrap()[0], "2026-10-22");
+
+    let (_, r2) = call(&h.app, "GET", "/v1/rules/r2", Some("c"), None).await;
+    assert_eq!(
+        r2,
+        json!({"rule": "r2", "known": false}),
+        "one reporter: hidden below partner"
+    );
+    let (_, r2p) = call(&h.app, "GET", "/v1/rules/r2", Some("p"), None).await;
+    assert_eq!(r2p["reporters"], 1);
+    assert_eq!(
+        call(&h.app, "GET", "/v1/rules/r1", Some("o"), None).await.0,
+        StatusCode::FORBIDDEN
+    );
+
+    let (_, ioc) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=domain&value=evil.example",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(ioc["trend"].as_array().unwrap().len(), 30);
+}
+
 #[tokio::test]
 async fn iocs_rebuild_from_sightings() {
     let h = harness("rebuild");
