@@ -7,7 +7,7 @@ use std::path::Path;
 
 use db_core::engine::{Cell, QueryResult};
 use db_core::storage::ingest::{
-    Ack, IngestError, Layout, PageBody, RecordValue, Table, TableOptions, TierOptions,
+    Ack, IngestError, Layout, Manifest, PageBody, RecordValue, Table, TableOptions, TierOptions,
 };
 use db_core::storage::parquet::writer::{
     ColumnSpec, ColumnType, Compression, ParquetWriter, WriterOptions,
@@ -88,6 +88,15 @@ impl Sightings {
         retention_days: Option<u32>,
         clock: fn() -> i64,
     ) -> Result<Sightings, IngestError> {
+        // db-core adds trailing nullable columns to a stored schema (#740),
+        // which would take a 0.12 table (no `digest`, pseudonymous
+        // reporters) as it is. Refuse it instead.
+        let stored = Manifest::read(&data.join(NAME))
+            .map_err(|e| IngestError::Corrupt(e.to_string()))?
+            .and_then(|m| m.schema);
+        if stored.is_some_and(|s| !s.iter().any(|c| c.name == "digest")) {
+            return Err(IngestError::SchemaMismatch);
+        }
         let options = TableOptions {
             schema: Some(schema()),
             layout: Layout::Tiered(TierOptions {
