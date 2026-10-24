@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.13.0] - 2026-10-24
+
 ### Added
 
 - **Participants** (#159): organisations with one status (observer, contributor, partner, core) and an opaque id `identity--{uuid}`; users (people and API clients) belong to one organisation and inherit its status; tokens belong to users. All in `participants/participants.db` (`--participants`, `FRANK_PARTICIPANTS`), a SQLite-format row table apart from the data directory, so wiping `data/` keeps them. Changes apply on the next request, with the server running.
@@ -24,6 +26,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 ### Removed
 
 - The rotating HMAC reporter pseudonyms (#148): `data/secrets/` is no longer used. A `sightings/` table written by 0.12.0 (old pseudonyms, no `digest` column) is refused at startup: move it aside and reload (`make demo` into an empty `./data`).
+
+### Fixed
+
+- Web UI: filter chips use the text colour.
 
 ## [0.12.0] - 2026-10-23
 
