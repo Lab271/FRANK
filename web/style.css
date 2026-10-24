@@ -107,7 +107,7 @@ footer img { height: 34px; width: auto; display: block; }
 .chip {
   display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px;
   border: 1px solid var(--c-border); border-radius: 99px; background: var(--c-canvas);
-  font-family: var(--lab-type-family-mono); font-size: 12px; cursor: pointer;
+  color: var(--c-text); font-family: var(--lab-type-family-mono); font-size: 12px; cursor: pointer;
 }
 .chip::after { content: "×"; color: var(--c-muted); }
 tr.go { cursor: pointer; }
