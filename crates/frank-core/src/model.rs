@@ -807,7 +807,11 @@ fn common(b: &mut SightingBuilder, v: &Value) -> Result<(), Error> {
 
 /// A sighting id: a UUID, bare or with the STIX `sighting--` prefix (or
 /// Phase 2's `sighting-`), stored as `sighting--{uuid}` in lower case.
-fn sighting_id(s: &str) -> Result<String, Error> {
+///
+/// # Errors
+///
+/// [`Error::Invalid`] for anything else.
+pub fn sighting_id(s: &str) -> Result<String, Error> {
     let bad = || Error::Invalid("sighting_id must be a UUID (or sighting--<uuid>)".into());
     let s = s.trim().to_ascii_lowercase();
     let u = s

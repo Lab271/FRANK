@@ -1,0 +1,522 @@
+# FRANK's HTTP API, written by hand (#160). Served as JSON at
+# /v1/openapi.json; a test fails when a route of the router is missing
+# here. `x-min-status` is the lowest participant status an operation
+# needs (public: no token).
+openapi: 3.1.0
+info:
+  title: FRANK
+  summary: Sightings of detection rules and indicators, shared between participants.
+  description: |
+    FRANK passes on what participants send and does not judge it.
+
+    Authenticate with `Authorization: Bearer <token>`. A token belongs to a
+    user of a participant, and the participant's status (observer,
+    contributor, partner, core) decides what it may see. Each status also
+    sees the TLP levels allowed to it; TLP:RED is never accepted.
+  version: "0.15"
+  license:
+    name: Apache-2.0
+    identifier: Apache-2.0
+servers:
+  - url: /
+security:
+  - bearer: []
+tags:
+  - name: submit
+    description: Sending sightings.
+  - name: records
+    description: Sighting records for machine clients.
+  - name: statistics
+    description: Aggregates, with small cells suppressed below partner.
+  - name: lookup
+    description: IoC and rule lookups.
+  - name: files
+    description: The sighting Parquet files, for local analysis.
+  - name: platform
+    description: Health, identity, participants and this document.
+
+paths:
+  /health:
+    get:
+      tags: [platform]
+      summary: Liveness and version
+      security: []
+      x-min-status: public
+      responses:
+        "200":
+          description: The server is up.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { const: ok }
+                  version: { type: string }
+
+  /v1/openapi.json:
+    get:
+      tags: [platform]
+      summary: This document, as JSON
+      security: []
+      x-min-status: public
+      responses:
+        "200":
+          description: The OpenAPI document.
+          content:
+            application/json: {}
+
+  /v1/whoami:
+    get:
+      tags: [platform]
+      summary: The caller's status, user and participant
+      x-min-status: public
+      responses:
+        "200":
+          description: Without a token, only the public tier.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  tier: { $ref: "#/components/schemas/Status" }
+                  label: { type: string }
+                  user: { type: string }
+                  participant:
+                    type: object
+                    properties:
+                      id: { type: string, examples: ["identity--8c1d2a7e-5b3f-4e6a-9d0c-1f2e3a4b5c6d"] }
+                      name: { type: string }
+                      status: { $ref: "#/components/schemas/Status" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+
+  /v1/preview:
+    post:
+      tags: [submit]
+      summary: The rows a submission would share, without storing it
+      description: What leaves the sender, shown before it leaves. Nothing is stored.
+      x-min-status: public
+      requestBody: { $ref: "#/components/requestBodies/Sightings" }
+      responses:
+        "200":
+          description: The rows of the shared `sightings` table.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  rows: { type: array, items: { type: object } }
+        "415": { $ref: "#/components/responses/UnsupportedType" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/sightings:
+    post:
+      tags: [submit]
+      summary: Send sightings
+      description: |
+        One sighting, a list of up to 100, or a STIX 2.1 bundle. Each needs a
+        `sighting_id` the sender chooses (a UUID): with the participant it is
+        the registration. Sent again with the same content, a sighting gets
+        its original receipt (`duplicate`); other content under a registered
+        id is a conflict and nothing of the batch is stored.
+      x-min-status: contributor
+      requestBody: { $ref: "#/components/requestBodies/Sightings" }
+      responses:
+        "201":
+          description: At least one sighting was new.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Receipts" }
+        "200":
+          description: Every sighting was registered before.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Receipts" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "409":
+          description: A sighting id is registered with other content.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "415": { $ref: "#/components/responses/UnsupportedType" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+    get:
+      tags: [records]
+      summary: List sighting records
+      description: |
+        The records of the visible sightings stored since 0.15, oldest first,
+        a page at a time. Partners and core list all; a contributor lists its
+        own with `mine=true`. Follow `next_cursor` until it is null.
+      x-min-status: contributor
+      parameters:
+        - name: since
+          in: query
+          description: From this time (RFC 3339); the last 30 days by default.
+          schema: { type: string, format: date-time }
+        - name: until
+          in: query
+          description: Before this time (RFC 3339).
+          schema: { type: string, format: date-time }
+        - name: rule
+          in: query
+          description: Only sightings of this rule id.
+          schema: { type: string }
+        - name: ioc
+          in: query
+          description: Only sightings carrying this IoC, as `type:value`.
+          schema: { type: string, examples: ["ipv4:198.51.100.7"] }
+        - name: mine
+          in: query
+          description: Only the caller's participant's sightings. Required below partner.
+          schema: { type: boolean, default: false }
+        - name: cursor
+          in: query
+          description: The `next_cursor` of the previous page.
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 500, default: 100 }
+      responses:
+        "200":
+          description: One page.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  sightings: { type: array, items: { $ref: "#/components/schemas/Item" } }
+                  next_cursor: { type: [string, "null"] }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/sightings/{id}:
+    get:
+      tags: [records]
+      summary: One sighting record
+      description: Below partner, only the caller's participant's own; anything else is 404.
+      x-min-status: contributor
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The sighting id, `sighting--{uuid}` or the bare UUID.
+          schema: { type: string }
+      responses:
+        "200":
+          description: The record.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Item" }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "404":
+          description: No such sighting visible to the caller.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/summary:
+    get:
+      tags: [records]
+      summary: What the caller's participant sent
+      x-min-status: contributor
+      parameters:
+        - $ref: "#/components/parameters/Days"
+      responses:
+        "200":
+          description: The participant's sightings in the window, and everyone's it can see.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  participant: { type: string }
+                  days: { type: integer }
+                  sightings: { type: integer }
+                  observations: { type: integer }
+                  iocs: { type: integer, description: Sighting × IoC pairs. }
+                  last_received: { type: [string, "null"], format: date-time }
+                  network:
+                    type: object
+                    properties:
+                      sightings: { type: integer }
+        "401": { $ref: "#/components/responses/Unauthorized" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/statistics:
+    get:
+      tags: [statistics]
+      summary: Totals and breakdowns
+      description: |
+        The public tier sees totals; observers also breakdowns by IoC type,
+        severity and target sector; contributors also the top rules,
+        techniques and campaigns. Below partner a cell with fewer than three
+        reporters is left out.
+      x-min-status: public
+      parameters:
+        - $ref: "#/components/parameters/Days"
+      responses:
+        "200":
+          description: Statistics for the caller's status.
+          content:
+            application/json:
+              schema: { type: object }
+
+  /v1/explore:
+    get:
+      tags: [statistics]
+      summary: Group sightings by one dimension, filtered by others
+      description: |
+        `group` and every filter name a dimension: rule, ioc, campaign,
+        technique, sector, ioc_type, severity. Sectors, IoC types and
+        severities need observer; the others contributor. Grouping by
+        technique cannot be filtered by ioc or ioc_type.
+      x-min-status: observer
+      parameters:
+        - name: group
+          in: query
+          required: true
+          schema: { enum: [rule, ioc, campaign, technique, sector, ioc_type, severity] }
+        - $ref: "#/components/parameters/Days"
+        - { name: rule, in: query, schema: { type: string } }
+        - { name: ioc, in: query, schema: { type: string }, description: "`type:value`" }
+        - { name: campaign, in: query, schema: { type: string } }
+        - { name: technique, in: query, schema: { type: string } }
+        - { name: sector, in: query, schema: { type: string } }
+        - { name: ioc_type, in: query, schema: { type: string } }
+        - { name: severity, in: query, schema: { type: string } }
+      responses:
+        "200":
+          description: Up to 100 groups, most sightings first.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/rules/{id}:
+    get:
+      tags: [lookup]
+      summary: One rule's prevalence
+      x-min-status: contributor
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/Days"
+      responses:
+        "200":
+          description: Counts, trend and breakdowns; `known` false below the reporting threshold.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/iocs:
+    get:
+      tags: [lookup]
+      summary: Look up one IoC
+      x-min-status: contributor
+      parameters:
+        - { name: type, in: query, required: true, schema: { type: string, examples: [ipv4] } }
+        - { name: value, in: query, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Whether it is known, when, by how many reporters, under which rules.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/iocs/range:
+    get:
+      tags: [lookup]
+      summary: Known addresses in a CIDR block
+      x-min-status: contributor
+      parameters:
+        - { name: cidr, in: query, required: true, schema: { type: string, examples: ["185.220.0.0/16"] } }
+      responses:
+        "200":
+          description: Up to 1000 addresses with their counts.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/participants:
+    get:
+      tags: [platform]
+      summary: The participants
+      description: Partners see ids and status; core also names, type, sector and users.
+      x-min-status: partner
+      responses:
+        "200":
+          description: The participants.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/files:
+    get:
+      tags: [files]
+      summary: The sighting Parquet files
+      x-min-status: partner
+      responses:
+        "200":
+          description: Each file's path, rows and bytes, the open hour last.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
+  /v1/files/{path}:
+    get:
+      tags: [files]
+      summary: One sighting Parquet file
+      x-min-status: partner
+      parameters:
+        - { name: path, in: path, required: true, schema: { type: string }, description: A path from /v1/files. }
+      responses:
+        "200":
+          description: The file.
+          content:
+            application/vnd.apache.parquet: {}
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404":
+          description: No such file.
+
+components:
+  securitySchemes:
+    bearer:
+      type: http
+      scheme: bearer
+
+  parameters:
+    Days:
+      name: days
+      in: query
+      description: The window, in days back from now.
+      schema: { type: integer, minimum: 1, maximum: 3650, default: 30 }
+
+  requestBodies:
+    Sightings:
+      required: true
+      description: |
+        One sighting, a list of them, or a STIX 2.1 bundle. JSON and YAML take
+        Phase 2's submission format or `frank/1` (what a record holds). A
+        bundle takes each `sighting` with its SIGMA `indicator` and the SCOs
+        of its `observed-data`; identities and relationships are ignored.
+      content:
+        application/json:
+          schema: { type: [object, array] }
+          example:
+            sighting:
+              sighting_id: 0f8fad5b-d9cb-469f-a165-70867728950e
+              last_observed: "2026-10-22T10:00:00Z"
+              observation_count: 3
+              sigma_detection: { rule_id: 3b6ab547-8ec2-4991-b9d2-2b06702a48d7 }
+              observables:
+                network: [{ type: ipv4, value: 198.51.100.7, role: c2_server, port: 443 }]
+        application/yaml:
+          schema: { type: [object, array] }
+        application/stix+json:
+          schema:
+            type: object
+            required: [type, objects]
+            properties:
+              type: { const: bundle }
+              objects: { type: array, items: { type: object } }
+
+  responses:
+    Unauthorized:
+      description: The token is not known.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Forbidden:
+      description: The caller's status is too low.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    UnsupportedType:
+      description: The Content-Type is not JSON, YAML or STIX.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Unprocessable:
+      description: The request cannot be used; `error` says why.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+
+  schemas:
+    Status:
+      enum: [public, observer, contributor, partner, core]
+    Error:
+      type: object
+      properties:
+        error: { type: string }
+    Receipts:
+      type: object
+      properties:
+        receipts:
+          type: array
+          items:
+            type: object
+            properties:
+              sighting_id: { type: string }
+              digest: { type: string, description: SHA-256 of the normalised sighting. }
+              received: { type: integer, description: First registered, ns since the epoch. }
+              status: { enum: [created, duplicate] }
+    Item:
+      type: object
+      properties:
+        sighting_id: { type: string }
+        reporter: { type: string, description: The participant id that sent it. }
+        received: { type: string, format: date-time }
+        record: { $ref: "#/components/schemas/Record" }
+    Record:
+      description: A normalised sighting (`frank/1`). The target's identity is never included.
+      type: object
+      required: [format, timestamp, count, confidence, tlp, sighting_of]
+      properties:
+        format: { const: frank/1 }
+        sighting_id: { type: string }
+        timestamp: { type: string, format: date-time }
+        first_seen: { type: string, format: date-time }
+        last_seen: { type: string, format: date-time }
+        count: { type: integer, minimum: 1 }
+        confidence: { type: integer, minimum: 0, maximum: 100 }
+        severity: { enum: [info, low, medium, high, critical] }
+        tlp: { enum: [clear, green, amber, amber+strict] }
+        sighting_of:
+          type: object
+          properties:
+            rule:
+              type: object
+              properties:
+                id: { type: string }
+                title: { type: string }
+                level: { enum: [informational, low, medium, high, critical] }
+            campaign: { type: string }
+            techniques: { type: array, items: { type: string, examples: [T1059.001] } }
+        description: { type: string }
+        reporter_sector: { type: string }
+        target:
+          type: object
+          properties:
+            sector: { type: string }
+            size: { type: string }
+            region: { type: string }
+        evidence:
+          type: array
+          items:
+            type: object
+            required: [type, value]
+            properties:
+              type: { enum: [ipv4, ipv6, domain, url, email, certificate, file_hash, registry_key, mutex] }
+              value: { type: string }
+              role: { type: string, description: "The sender's role for it, kept as given." }
+              context: { type: object, description: "The sender's other fields for it: port, protocol, file name, ..." }

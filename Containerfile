@@ -13,6 +13,7 @@ WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY examples examples
+COPY api api
 COPY web web
 RUN cargo build --release --locked -p frank \
  && cargo build --release --locked -p frank-wasm --target wasm32-unknown-unknown \
