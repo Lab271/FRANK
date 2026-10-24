@@ -3,7 +3,7 @@
 # Data lives outside the container: mount host directories on /data and
 # /participants.
 
-FROM docker.io/library/rust:1.96-slim AS build
+FROM docker.io/library/rust:1.98-slim AS build
 ARG WASM_BINDGEN_VERSION=0.2.129
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
