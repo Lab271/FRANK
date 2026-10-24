@@ -577,6 +577,54 @@ const ordered = (rec) => {
   return Object.fromEntries(Object.entries(rec).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)));
 };
 
+/** The record as YAML or JSON (a switch, remembered per browser), with a
+ * copy button for the text shown. */
+function recordView(rec) {
+  const data = ordered(rec);
+  const lines = { yaml: yamlLines(data), json: JSON.stringify(data, null, 2).split("\n") };
+  const highlight = { yaml: yamlLine, json: jsonLine };
+  let mode = "yaml";
+  try { if (localStorage.getItem("frank.record") === "json") mode = "json"; } catch { /* no storage */ }
+  const pre = el("pre", { class: "yaml" });
+  const chip = (m) => el("button", { class: "lab-chip", type: "button" }, m.toUpperCase());
+  const chips = { yaml: chip("yaml"), json: chip("json") };
+  const copy = el("button", { class: "lab-chip", type: "button" }, "copy");
+  const render = () => {
+    pre.replaceChildren(...lines[mode].map((line) => el("span", { class: "y-line" }, ...highlight[mode](line))));
+    for (const [m, c] of Object.entries(chips)) c.setAttribute("aria-pressed", String(m === mode));
+  };
+  for (const [m, c] of Object.entries(chips)) {
+    c.addEventListener("click", () => {
+      mode = m;
+      try { localStorage.setItem("frank.record", m); } catch { /* no storage */ }
+      render();
+    });
+  }
+  copy.addEventListener("click", () => {
+    navigator.clipboard.writeText(`${lines[mode].join("\n")}\n`).then(
+      () => { copy.textContent = "copied"; },
+      () => { copy.textContent = "copy failed"; },
+    ).finally(() => setTimeout(() => { copy.textContent = "copy"; }, 1500));
+  });
+  render();
+  return [el("div", { class: "rec-head" }, el("h3", {}, "record (frank/1)"), chips.yaml, chips.json, copy), pre];
+}
+
+/** One line of indented JSON as highlighted nodes, coloured as yamlLine
+ * colours YAML. Text only, never HTML. */
+function jsonLine(line) {
+  const [, indent, key, value, comma] = /^(\s*)(?:("(?:[^"\\]|\\.)*"): )?(.*?)(,?)$/.exec(line);
+  const out = [indent];
+  if (key) out.push(el("span", { class: "y-key" }, key), ": ");
+  if (/^[[\]{}]/.test(value)) out.push(el("span", { class: "y-dash" }, value));
+  else if (value) {
+    const bare = value.replace(/^"(.*)"$/, "$1");
+    out.push(el("span", { class: `y-val${yamlType(bare) || (value.startsWith("\"") ? " y-str" : "")}` }, value));
+  }
+  if (comma) out.push(el("span", { class: "y-dash" }, comma));
+  return [el("span", { class: "y-code" }, ...out)];
+}
+
 async function sightingNodes(id, filterOn, openOther) {
   const s = await (await api(`/v1/sightings/${encodeURIComponent(id)}`)).json();
   const rec = s.record;
@@ -592,8 +640,7 @@ async function sightingNodes(id, filterOn, openOther) {
     ...(rule?.id ? linkList("rule", [{ key: rule.id, count: rule.level || "" }], openOther("rule")) : []),
     ...linkList("IoCs", iocs.map((k) => ({ key: k, count: "" })), openOther("ioc")),
     ...linkList("techniques", (rec.sighting_of?.techniques || []).map((t) => ({ key: t, count: "" })), filterOn("technique")),
-    el("h3", {}, "record (frank/1)"),
-    el("pre", { class: "yaml" }, ...yamlLines(ordered(rec)).map((line) => el("span", { class: "y-line" }, ...yamlLine(line)))),
+    ...recordView(rec),
   ];
 }
 
