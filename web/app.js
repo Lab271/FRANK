@@ -568,6 +568,15 @@ function yamlLines(v, indent = "") {
   return out;
 }
 
+// The record's keys in reading order: what it is, what was seen, against
+// whom, the evidence last; any other key before the evidence, by name.
+const RECORD_ORDER = ["format", "sighting_id", "timestamp", "tlp", "severity", "confidence", "count",
+  "reporter_sector", "sighting_of", "target"];
+const ordered = (rec) => {
+  const rank = (k) => (RECORD_ORDER.includes(k) ? RECORD_ORDER.indexOf(k) : k === "evidence" ? 2e9 : 1e9);
+  return Object.fromEntries(Object.entries(rec).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)));
+};
+
 async function sightingNodes(id, filterOn, openOther) {
   const s = await (await api(`/v1/sightings/${encodeURIComponent(id)}`)).json();
   const rec = s.record;
@@ -584,7 +593,7 @@ async function sightingNodes(id, filterOn, openOther) {
     ...linkList("IoCs", iocs.map((k) => ({ key: k, count: "" })), openOther("ioc")),
     ...linkList("techniques", (rec.sighting_of?.techniques || []).map((t) => ({ key: t, count: "" })), filterOn("technique")),
     el("h3", {}, "record (frank/1)"),
-    el("pre", { class: "yaml" }, ...yamlLines(rec).map((line) => el("span", { class: "y-line" }, ...yamlLine(line)))),
+    el("pre", { class: "yaml" }, ...yamlLines(ordered(rec)).map((line) => el("span", { class: "y-line" }, ...yamlLine(line)))),
   ];
 }
 
@@ -638,6 +647,17 @@ const ANNOTATED = [
 ];
 const MARKS = ["public", "observer", "contributor", "partner", "never"];
 
+/** The highlight class of a scalar value: number, true/false/null, quoted
+ * string, time, id (`sighting--…`, `identity-…`, a UUID), else none. */
+function yamlType(v) {
+  if (/^[-+]?\d+(\.\d+)?$/.test(v)) return " y-num";
+  if (/^(true|false|null|~)$/.test(v)) return " y-bool";
+  if (/^"/.test(v)) return " y-str";
+  if (/^\d{4}-\d\d-\d\dT/.test(v)) return " y-time";
+  if (/^([a-z]+--?)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(v)) return " y-id";
+  return "";
+}
+
 /** One YAML line as highlighted nodes: indent, list dash, key, value,
  * comment, in one inline span: as flex items of `.y-line` the indent
  * (whitespace only) would not render, and a copy would split the line.
@@ -651,7 +671,7 @@ function yamlLine(line) {
   if (key) out.push(el("span", { class: "y-key" }, key), ":");
   const hash = /^\s*"/.test(rest) ? -1 : rest.search(/\s#/);
   const value = hash < 0 ? rest : rest.slice(0, hash);
-  out.push(el("span", { class: "y-val" }, value));
+  out.push(el("span", { class: `y-val${yamlType(value.trim())}` }, value));
   if (hash >= 0) out.push(el("span", { class: "y-com" }, rest.slice(hash)));
   return [el("span", { class: "y-code" }, ...out)];
 }

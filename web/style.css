@@ -158,7 +158,11 @@ pre.curl { padding: 10px 14px; white-space: pre; }
 .y-line.mark-never .y-val { text-decoration: line-through; }
 .y-mark { margin-left: auto; padding-left: 24px; color: var(--c-muted); font-size: 11px; }
 .y-key { color: var(--c-text); font-weight: 700; }
-.y-val { color: var(--c-text); }
+.y-val { color: var(--c-tq-text-soft); }
+.y-num, .y-bool { color: var(--c-violet); }
+.y-str { color: var(--c-tq-text-soft); }
+.y-time { color: var(--c-cobalt); }
+.y-id { color: var(--c-magenta); }
 .y-dash, .y-com { color: var(--c-muted); }
 
 /* api: one card per endpoint */
