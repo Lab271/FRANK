@@ -8,6 +8,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 - db-core pinned to release v0.173.0 instead of a branch head. It carries the browser fixes, set-probe `IN` lists (a 100-id resend check over 2M rows: about 1 s to 21 ms, db-core #737) and nullable columns appended to an existing table (db-core #740).
 
+### Fixed
+
+- A `sightings/` table written by 0.12 is still refused at startup. db-core #740 would add the `digest` and `received` columns to it and keep the old pseudonymous reporters; `Sightings::open` now checks the stored schema first.
+
 ## [0.13.0] - 2026-10-24
 
 ### Added

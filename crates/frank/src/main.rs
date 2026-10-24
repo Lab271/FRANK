@@ -291,8 +291,8 @@ fn main() -> Result<(), String> {
 fn open(data: &Path, retention_days: Option<u32>) -> Result<(Sightings, Iocs), String> {
     std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
     let sightings = Sightings::open(data, retention_days, now_ns).map_err(|e| match e {
-        // 0.13 added `digest` and `received`; a table's schema is fixed
-        // until db-core #740.
+        // 0.13 added `digest` and `received`; `Sightings::open` refuses a
+        // table without them.
         IngestError::SchemaMismatch => format!(
             "{}: written by FRANK 0.12 or older (no digest column, pseudonymous \
              reporters): move it aside and reload the sightings",
