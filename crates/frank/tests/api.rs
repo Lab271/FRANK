@@ -313,15 +313,15 @@ async fn small_cells_are_suppressed_below_partner() {
     let (_, obs) = call(&h.app, "GET", "/v1/statistics?days=7", Some("o"), None).await;
     assert_eq!(
         obs["by_target_sector"],
-        json!([{"key": "energy", "count": 6, "reporters": 3}]),
-        "water has 6 rows but one reporter, under the k threshold"
+        json!([{"key": "energy", "count": 3, "reporters": 3}]),
+        "three sightings of two IoCs each; water has one reporter, under the k threshold"
     );
     assert!(obs.get("top_rules").is_none());
 
     let (_, contrib) = call(&h.app, "GET", "/v1/statistics", Some("c"), None).await;
     assert_eq!(
         contrib["top_rules"],
-        json!([{"key": "r1", "count": 6, "reporters": 3}])
+        json!([{"key": "r1", "count": 3, "reporters": 3}])
     );
 
     let (_, partner) = call(&h.app, "GET", "/v1/statistics", Some("p"), None).await;
@@ -332,7 +332,7 @@ async fn small_cells_are_suppressed_below_partner() {
     );
     assert_eq!(
         partner["top_rules"][1],
-        json!({"key": "r2", "count": 6, "reporters": 1})
+        json!({"key": "r2", "count": 3, "reporters": 1})
     );
 
     assert_eq!(
@@ -707,7 +707,8 @@ async fn explore_groups_filters_and_suppresses() {
     let r1 = &rules["rows"][0];
     assert_eq!(
         (r1["count"].as_i64(), r1["reporters"].as_i64()),
-        (Some(6), Some(3))
+        (Some(3), Some(3)),
+        "sightings, not sighting x IoC rows"
     );
     assert!(r1["first_seen"].as_i64() <= r1["last_seen"].as_i64());
 
@@ -811,15 +812,15 @@ async fn rule_detail_shows_prevalence() {
             r1["count"].as_i64(),
             r1["reporters"].as_i64()
         ),
-        (Some(true), Some(6), Some(3))
+        (Some(true), Some(3), Some(3))
     );
     assert_eq!(r1["sectors"][0]["key"], "energy");
     let trend = r1["trend"].as_array().unwrap();
     assert_eq!(trend.len(), 30);
     assert_eq!(
         trend.iter().map(|d| d[1].as_i64().unwrap()).sum::<i64>(),
-        6,
-        "every row is in the trend"
+        3,
+        "every sighting is in the trend, once"
     );
     assert_eq!(trend.last().unwrap()[0], "2026-10-22");
 
@@ -1129,4 +1130,88 @@ async fn reporters_are_shown_by_status() {
         (mdr_entry["name"].as_str(), mdr_entry["users"][0].as_str()),
         (Some("mdr"), Some("mdr"))
     );
+}
+
+/// #160: a sighting is counted once, with its observation count once, and
+/// every one of its techniques is ranked.
+#[tokio::test]
+async fn counts_follow_the_sighting_grain() {
+    let h = harness("grain");
+    let s = json!({"sighting": {"sighting_id": uuid4().unwrap(), "timestamp": "2026-10-22T10:00:00Z",
+        "observation_count": 10, "sigma_detection": {"rule_id": "r1"},
+        "threat_context": {"mitre_attack": {"techniques": ["T1059", "T1071.001"]}},
+        "observables": {"network": [{"type": "ipv4", "value": "198.51.100.1"},
+            {"type": "ipv4", "value": "198.51.100.2"}, {"type": "domain", "value": "a.example"}]}}});
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("p"), Some(s))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let (_, st) = call(&h.app, "GET", "/v1/statistics", Some("p"), None).await;
+    assert_eq!(
+        (&st["sightings"], &st["observations"]),
+        (&json!(1), &json!(10)),
+        "{st}"
+    );
+    assert_eq!(
+        st["top_rules"],
+        json!([{"key": "r1", "count": 1, "reporters": 1}])
+    );
+    assert_eq!(
+        keys_of(&st["top_techniques"]),
+        ["T1059", "T1071.001"],
+        "{st}"
+    );
+    assert_eq!(
+        st["by_ioc_type"],
+        json!([{"key": "ipv4", "count": 2, "reporters": 1}, {"key": "domain", "count": 1, "reporters": 1}]),
+        "by IoC type counts the IoCs"
+    );
+
+    let ex = |uri: &'static str| {
+        let app = h.app.clone();
+        async move { call(&app, "GET", uri, Some("p"), None).await }
+    };
+    let (_, t) = ex("/v1/explore?group=technique&rule=r1").await;
+    assert_eq!(keys(&t), ["T1059", "T1071.001"], "{t}");
+    assert!(t["rows"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .all(|r| r["count"] == 1));
+    let (_, r) = ex("/v1/explore?group=rule&technique=t1071.001").await;
+    assert_eq!(r["rows"][0]["count"], 1, "{r}");
+    let (_, r) = ex("/v1/explore?group=rule&technique=T1071").await;
+    assert_eq!(
+        keys(&r),
+        Vec::<String>::new(),
+        "a technique, not a prefix: {r}"
+    );
+    let (_, r) = ex("/v1/explore?group=rule&ioc=ipv4:198.51.100.2").await;
+    assert_eq!(r["rows"][0]["count"], 1, "an IoC past seq 0: {r}");
+    let (code, _) = ex("/v1/explore?group=technique&ioc=ipv4:198.51.100.2").await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let r = h
+        .sightings
+        .query("SELECT seq, detail FROM sightings ORDER BY seq")
+        .unwrap();
+    assert_eq!(r.rows.len(), 3);
+    let detail = r.rows[0][1].to_string();
+    assert!(
+        detail.contains("frank/1") && detail.contains("T1071.001"),
+        "{detail}"
+    );
+    assert!(r.rows[1..]
+        .iter()
+        .all(|row| row[1] == db_core::engine::Cell::Null));
+}
+
+fn keys_of(v: &Value) -> Vec<String> {
+    v.as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r["key"].as_str().unwrap().to_string())
+        .collect()
 }

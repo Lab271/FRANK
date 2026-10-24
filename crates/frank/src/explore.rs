@@ -6,6 +6,10 @@ use std::collections::BTreeMap;
 
 use frank_core::{sql_quote, Tier};
 
+/// One row per sighting: the first of its IoC rows (#160). Rows stored
+/// before `seq` existed are all counted, as they were then.
+pub const FIRST_ROW: &str = "(seq = 0 OR seq IS NULL)";
+
 /// What a list can be grouped and filtered by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Dimension {
@@ -73,9 +77,11 @@ impl Dimension {
         }
     }
 
-    /// The SQL condition for one filter value. An IoC filter is
-    /// `type:value`; categories are lower case.
-    fn condition(self, value: &str) -> Result<String, String> {
+    /// The SQL condition for one filter value, on `sightings` or (`on_techniques`)
+    /// `sighting_techniques`. An IoC filter is `type:value`; categories
+    /// are lower case, techniques upper case. On `sightings` a technique
+    /// is one item of the comma-separated list.
+    fn condition(self, value: &str, on_techniques: bool) -> Result<String, String> {
         let v = value.trim();
         if v.is_empty() || v.len() > 2048 || v.chars().any(char::is_control) {
             return Err(format!("{}: not a usable filter value", self.name()));
@@ -91,6 +97,20 @@ impl Dimension {
                     "ioc_type = {} AND ioc_value = {}",
                     sql_quote(t.as_str()),
                     sql_quote(&ioc.value)
+                )
+            }
+            Dimension::Technique if on_techniques => {
+                format!("technique = {}", sql_quote(&v.to_ascii_uppercase()))
+            }
+            Dimension::Technique => {
+                let t = v.to_ascii_uppercase();
+                let like = |p: String| format!("technique LIKE {}", sql_quote(&p));
+                format!(
+                    "(technique = {} OR {} OR {} OR {})",
+                    sql_quote(&t),
+                    like(format!("{t},%")),
+                    like(format!("%,{t}")),
+                    like(format!("%,{t},%"))
                 )
             }
             Dimension::Sector | Dimension::IocType | Dimension::Severity => {
@@ -134,16 +154,44 @@ impl Query {
                 }
                 other => {
                     let d = Dimension::parse(other).ok_or(format!("unknown filter {other:?}"))?;
-                    d.condition(v)?;
+                    d.condition(v, false)?;
                     filters.push((d, v.clone()));
                 }
             }
         }
+        let group = group.ok_or("group is required")?;
+        if group == Dimension::Technique {
+            if let Some((d, _)) = filters
+                .iter()
+                .find(|(d, _)| matches!(d, Dimension::Ioc | Dimension::IocType))
+            {
+                return Err(format!(
+                    "group=technique cannot be filtered by {}: techniques are counted apart from IoCs",
+                    d.name()
+                ));
+            }
+        }
         Ok(Query {
-            group: group.ok_or("group is required")?,
+            group,
             days,
             filters,
         })
+    }
+
+    /// The table the query reads: techniques are counted in their own.
+    #[must_use]
+    pub fn on_techniques(&self) -> bool {
+        self.group == Dimension::Technique
+    }
+
+    /// Whether the query involves IoCs, which every row of a sighting has
+    /// one of; else counting `seq = 0` rows counts sightings.
+    fn by_ioc(&self) -> bool {
+        self.filters
+            .iter()
+            .map(|(d, _)| *d)
+            .chain([self.group])
+            .any(|d| matches!(d, Dimension::Ioc | Dimension::IocType))
     }
 
     /// The tier the request needs: the highest of its dimensions.
@@ -161,18 +209,30 @@ impl Query {
     pub fn where_clause(&self, since: i64, visible: &str) -> Result<String, String> {
         let mut parts = vec![format!("ts >= {since}"), visible.to_string()];
         for (d, v) in &self.filters {
-            parts.push(d.condition(v)?);
+            parts.push(d.condition(v, self.on_techniques())?);
+        }
+        if !self.on_techniques() && !self.by_ioc() {
+            parts.push(FIRST_ROW.to_string());
         }
         Ok(parts.join(" AND "))
     }
 
-    /// The grouped query: the group's columns, then rows, distinct
-    /// reporters, first and last time.
+    /// The grouped query: the group's columns, then sightings, distinct
+    /// reporters, first and last time. A sighting is one row of the
+    /// selection (db-core takes one `count(DISTINCT ...)` a query, which
+    /// the reporters need): its `seq = 0` row, its row for an IoC, or its
+    /// row for a technique. Grouped by IoC type, a sighting counts once
+    /// per IoC of the type.
     pub fn sql(&self, since: i64, visible: &str) -> Result<String, String> {
         let cols = self.group.columns().join(", ");
+        let table = if self.on_techniques() {
+            "sighting_techniques"
+        } else {
+            "sightings"
+        };
         Ok(format!(
             "SELECT {cols}, count(*) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
-             FROM sightings WHERE {} GROUP BY {cols} ORDER BY n DESC",
+             FROM {table} WHERE {} GROUP BY {cols} ORDER BY n DESC",
             self.where_clause(since, visible)?
         ))
     }
@@ -224,6 +284,32 @@ mod tests {
         assert!(Query::parse(&params(&[("group", "rule"), ("reporter", "x")])).is_err());
         assert!(Query::parse(&params(&[("group", "rule"), ("days", "0")])).is_err());
         assert!(Query::parse(&params(&[("group", "rule"), ("ioc", "nope")])).is_err());
+        assert!(
+            Query::parse(&params(&[("group", "technique"), ("ioc_type", "ipv4")])).is_err(),
+            "no join"
+        );
+    }
+
+    #[test]
+    fn techniques_are_their_own_table() {
+        let q = Query::parse(&params(&[("group", "technique"), ("rule", "r1")])).unwrap();
+        let sql = q.sql(0, "tlp = 'green'").unwrap();
+        assert!(sql.contains("FROM sighting_techniques"), "{sql}");
+        let q = Query::parse(&params(&[("group", "rule"), ("technique", "t1059")])).unwrap();
+        let w = q.where_clause(0, "tlp = 'green'").unwrap();
+        assert!(w.contains("technique LIKE '%,T1059,%'"), "{w}");
+        assert!(q.sql(0, "x").unwrap().contains("FROM sightings "));
+        assert!(w.ends_with(FIRST_ROW), "{w}");
+        let q = Query::parse(&params(&[("group", "rule"), ("ioc", "ipv4:198.51.100.7")])).unwrap();
+        assert!(
+            !q.where_clause(0, "x").unwrap().contains("seq"),
+            "an IoC is on any row"
+        );
+        let q = Query::parse(&params(&[("group", "technique"), ("technique", "t1059")])).unwrap();
+        assert!(q
+            .where_clause(0, "x")
+            .unwrap()
+            .contains("technique = 'T1059'"));
     }
 
     #[test]
