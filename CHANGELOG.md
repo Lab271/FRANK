@@ -4,6 +4,21 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.15.0] - 2026-10-24
+
+### Added
+
+- **Sightings stored at the right grain** (#160, D2): `sightings` gains `seq` (the IoC's position in its sighting) and `detail` (the normalised sighting as `frank/1` JSON, on the `seq = 0` row, without the target's id since partners download these files). `technique` holds all techniques, comma-separated. db-core adds the two columns to an existing table; its rows read NULL there.
+- `data/sighting_techniques/`: one row per sighting × technique, for ranking techniques. Not served in `/v1/files`.
+
+### Fixed
+
+- **Counts are per sighting, not per sighting × IoC.** `observations` in `/v1/statistics` no longer multiplies by the number of IoCs; rules, sectors, severities and campaigns in statistics, Explore and rule pages count sightings. Techniques count every technique of a sighting, not the first. Grouped by IoC type, a sighting counts once per IoC of the type. Rows stored before this release still count as they did: reload the data (`make demo` into an empty `./data`) for exact numbers.
+
+### Changed
+
+- Explore refuses `group=technique` with an `ioc` or `ioc_type` filter (422): techniques are counted in their own table and db-core's table query cannot join.
+
 ## [0.14.1] - 2026-10-24
 
 ### Fixed
