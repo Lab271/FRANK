@@ -24,7 +24,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use db_core::engine::Cell;
-use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, Tlp, MIN_CELL};
+use frank_core::{sql_quote, Ioc, IocType, Sighting, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -138,7 +138,7 @@ async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Va
 }
 
 /// One submission or an array of them.
-fn submissions(body: &Value, now: i64) -> Result<Vec<Submission>, ApiError> {
+fn submissions(body: &Value, now: i64) -> Result<Vec<Sighting>, ApiError> {
     let items: Vec<&Value> = match body {
         Value::Array(a) if a.len() > MAX_BATCH => {
             return Err(unprocessable(format!("more than {MAX_BATCH} submissions")))
@@ -149,9 +149,7 @@ fn submissions(body: &Value, now: i64) -> Result<Vec<Submission>, ApiError> {
     items
         .into_iter()
         .enumerate()
-        .map(|(i, v)| {
-            Submission::from_value(v, now).map_err(|e| unprocessable(format!("[{i}] {e}")))
-        })
+        .map(|(i, v)| Sighting::from_value(v, now).map_err(|e| unprocessable(format!("[{i}] {e}"))))
         .collect()
 }
 
@@ -183,7 +181,7 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&body, (app.now)())?;
-    let mut items: Vec<(String, String, Submission)> = Vec::with_capacity(subs.len());
+    let mut items: Vec<(String, String, Sighting)> = Vec::with_capacity(subs.len());
     for (i, s) in subs.into_iter().enumerate() {
         let id = s.sighting_id.clone().ok_or_else(|| {
             unprocessable(format!(

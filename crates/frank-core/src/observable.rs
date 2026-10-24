@@ -4,7 +4,7 @@ use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
 
 use serde::{Deserialize, Serialize};
 
-use crate::submission::Error;
+use crate::model::Error;
 
 /// Longest IoC value accepted (a long URL fits; a log line does not).
 pub const MAX_VALUE_LEN: usize = 2048;

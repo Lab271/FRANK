@@ -1,7 +1,7 @@
 //! The `iocs` row table across transactions and reopen.
 
 use frank::store::Iocs;
-use frank_core::{Ioc, IocType, Submission, Tlp};
+use frank_core::{Ioc, IocType, Sighting, Tlp};
 
 const NOW: i64 = 1_792_670_400_000_000_000;
 
@@ -9,7 +9,7 @@ fn rows(ip: &str) -> Vec<frank_core::SightingRow> {
     let json = format!(
         r#"{{"sighting": {{"observables": {{"network": [{{"type": "ipv4", "value": "{ip}"}}]}}}}}}"#
     );
-    Submission::parse(&json, NOW).unwrap().rows("s")
+    Sighting::parse(&json, NOW).unwrap().rows("s")
 }
 
 #[test]

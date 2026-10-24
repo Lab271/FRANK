@@ -13,7 +13,7 @@ use frank::auth::hash;
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
 use frank::store::registry::{self, Registry};
 use frank::store::{Iocs, Participants, Sightings};
-use frank_core::{Submission, Tier};
+use frank_core::{Sighting, Tier};
 use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -393,7 +393,7 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Resu
         };
         let mut subs = Vec::with_capacity(items.len());
         for item in &items {
-            let sub = Submission::from_value(item, now_ns())
+            let sub = Sighting::from_value(item, now_ns())
                 .map_err(|e| format!("{}: {e}", f.display()))?;
             let digest = registry::digest(&sub);
             let id = sub

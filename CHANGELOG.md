@@ -4,8 +4,13 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- **The normalised sighting** (#160, D1): `frank_core::Sighting` (`frank/1`) replaces `Submission` and is built by `SightingBuilder` from Phase 2's format or `frank/1` (`"format": "frank/1"`, what a `Sighting` serialises to). It keeps what was dropped before: all ATT&CK techniques, every observable with the sender's `role` and its other fields (port, protocol, file name, ...) as context, the SIGMA rule's title and level, the description, first and last seen, the target's region and id. Nothing is filtered on `role` (ADR-016). Storage is unchanged until D2: one row per sighting × IoC with the first technique.
+
 ### Changed
 
+- **Digests are taken over the normalised sighting.** A sighting registered by 0.13 and resent unchanged now gets 409 instead of its receipt: its digest covered fewer fields.
 - db-core pinned to release v0.173.0 instead of a branch head. It carries the browser fixes, set-probe `IN` lists (a 100-id resend check over 2M rows: about 1 s to 21 ms, db-core #737) and nullable columns appended to an existing table (db-core #740).
 
 ### Fixed

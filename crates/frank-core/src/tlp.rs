@@ -4,7 +4,7 @@
 
 use serde::Serialize;
 
-use crate::submission::Error;
+use crate::model::Error;
 use crate::tier::Tier;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize)]
