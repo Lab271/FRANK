@@ -807,7 +807,11 @@ fn common(b: &mut SightingBuilder, v: &Value) -> Result<(), Error> {
 
 /// A sighting id: a UUID, bare or with the STIX `sighting--` prefix (or
 /// Phase 2's `sighting-`), stored as `sighting--{uuid}` in lower case.
-fn sighting_id(s: &str) -> Result<String, Error> {
+///
+/// # Errors
+///
+/// [`Error::Invalid`] for anything else.
+pub fn sighting_id(s: &str) -> Result<String, Error> {
     let bad = || Error::Invalid("sighting_id must be a UUID (or sighting--<uuid>)".into());
     let s = s.trim().to_ascii_lowercase();
     let u = s
@@ -846,7 +850,8 @@ fn text_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key)?.as_str()
 }
 
-fn time_field(v: &Value, key: &str) -> Result<Option<i64>, Error> {
+/// An RFC 3339 time field, as ns since the epoch.
+pub(crate) fn time_field(v: &Value, key: &str) -> Result<Option<i64>, Error> {
     match v.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => OffsetDateTime::parse(s, &Rfc3339)

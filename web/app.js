@@ -73,6 +73,8 @@ function route() {
   } else {
     closePane();
   }
+  if (tab === "about") loadAbout();
+  if (tab === "api") loadApi();
 }
 window.addEventListener("hashchange", route);
 
@@ -196,12 +198,15 @@ function nameSightings() {
   if (added) $("submission").value = JSON.stringify(doc, null, 2);
 }
 
+/** JSON (also a STIX bundle) when the text starts like JSON, else YAML. */
+const contentType = (text) => (/^\s*[[{]/.test(text) ? "application/json" : "application/yaml");
+
 $("do-submit").addEventListener("click", async () => {
   if (!(await doPreview())) return;
   nameSightings();
   try {
     const r = await (await api("/v1/sightings", {
-      method: "POST", headers: { "content-type": "application/json" }, body: $("submission").value,
+      method: "POST", headers: { "content-type": contentType($("submission").value) }, body: $("submission").value,
     })).json();
     const created = r.receipts.filter((x) => x.status === "created").length;
     const resent = r.receipts.length - created;
@@ -367,7 +372,7 @@ async function loadExplore(params) {
       tr.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
       return tr;
     });
-    const head = el("tr", {}, ...[DIMENSION_LABEL[group], "rows", "reporters", "first seen", "last seen"].map((c) => el("th", {}, c)));
+    const head = el("tr", {}, ...[DIMENSION_LABEL[group], "sightings", "reporters", "first seen", "last seen"].map((c) => el("th", {}, c)));
     show($("ex-list"), rows.length
       ? el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows)))
       : el("p", { class: "note" }, "Nothing above the threshold for these filters."));
@@ -438,22 +443,25 @@ let paneSeq = 0;
 async function openPane(kind, key) {
   $("pane").classList.add("open");
   $("pane").setAttribute("aria-hidden", "false");
-  $("pane-kind").textContent = kind === "rule" ? "SIGMA rule" : "IoC";
+  $("pane-kind").textContent = { rule: "SIGMA rule", ioc: "IoC", sighting: "sighting" }[kind] || kind;
   show($("pane-body"), el("p", { class: "note" }, "loading…"));
   const seq = ++paneSeq;
   const filterOn = (dim) => (v) => { const p = current(); p.set(dim, v); p.delete("pane"); go(p); };
   const openOther = (k) => (v) => { const p = current(); p.set("pane", `${k}:${v}`); go(p); };
   try {
     let nodes;
-    if (kind === "rule") {
+    if (kind === "sighting") {
+      nodes = await sightingNodes(key, filterOn, openOther);
+    } else if (kind === "rule") {
       const days = current().get("days") || "30";
       const r = await (await api(`/v1/rules/${encodeURIComponent(key)}?days=${days}`)).json();
       nodes = !r.known
         ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen by enough reporters in this window to show.")]
         : [el("h2", {}, r.rule),
-          kpis([["rows", r.count], ["reporters", r.reporters]]),
+          kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+          ...sightingsList("rule", key),
           ...linkList("IoCs", r.iocs, openOther("ioc")),
           ...linkList("target sectors", r.sectors, filterOn("sector")),
           ...linkList("severity", r.severities, filterOn("severity")),
@@ -466,16 +474,331 @@ async function openPane(kind, key) {
       nodes = !r.known
         ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen in the retained days.")]
         : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
-          kpis([["rows", r.count], ["reporters", r.reporters]]),
+          kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+          ...sightingsList("ioc", key),
           ...linkList("SIGMA rules", r.rules.map((x) => ({ key: x.rule_id, count: x.count })), openOther("rule")),
           el("h3", {}, "days seen"),
-          table(["day", "rows", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
+          table(["day", "sightings", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
     }
     if (seq === paneSeq) show($("pane-body"), ...nodes);
   } catch (e) {
     if (seq === paneSeq) show($("pane-body"), errorNode(e));
+  }
+}
+
+// --- sightings ----------------------------------------------------------------
+// From a rule or IoC pane down to single sightings (#160): the records that
+// match the pane and Explore's filters, newest first; one record as YAML.
+// Partners and core see everyone's, contributors their own.
+
+/** The pane's "sightings" section: filled in after the pane opens. */
+function sightingsList(kind, key) {
+  if (!atLeast("contributor")) return [];
+  const mine = !atLeast("partner");
+  const box = el("div", {}, el("p", { class: "note" }, "loading…"));
+  const p = current();
+  const days = Number(p.get("days") || "30");
+  const q = new URLSearchParams([...p].filter(([k]) => k in DIMENSION_TIER && k !== kind));
+  q.set(kind, key);
+  q.set("since", new Date(Date.now() - days * 86_400_000).toISOString());
+  q.set("order", "desc");
+  q.set("limit", "20");
+  if (mine) q.set("mine", "true");
+  const seq = paneSeq; // openPane has counted this pane
+  const rows = el("tbody");
+  const more = el("button", { class: "lab-btn lab-btn--secondary", type: "button" }, "more");
+  async function page(cursor) {
+    if (cursor) q.set("cursor", cursor);
+    try {
+      const r = await (await api(`/v1/sightings?${q}`)).json();
+      if (seq !== paneSeq) return;
+      for (const s of r.sightings) {
+        const rec = s.record;
+        const tr = el("tr", { class: "go", tabindex: "0" },
+          el("td", {}, rec.timestamp.replace(/:\d\d(\.\d+)?Z$/, "Z")), el("td", { class: "num" }, rec.count),
+          el("td", { class: "num" }, rec.confidence), el("td", {}, rec.tlp), el("td", {}, s.reporter.slice(10, 18)));
+        const open = () => { const h = current(); h.set("pane", `sighting:${s.sighting_id}`); go(h); };
+        tr.addEventListener("click", open);
+        tr.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+        rows.append(tr);
+      }
+      more.hidden = !r.next_cursor;
+      more.onclick = () => page(r.next_cursor);
+      show(box, rows.children.length
+        ? el("div", { class: "table-wrap" }, el("table", {},
+          el("thead", {}, el("tr", {}, ...["time", "count", "conf.", "TLP", "reporter"].map((c) => el("th", {}, c)))), rows))
+        : el("p", { class: "note" }, "No records in this window. Records exist for sightings stored since 0.15."), more);
+    } catch (e) {
+      if (seq === paneSeq) show(box, errorNode(e));
+    }
+  }
+  page();
+  return [el("h3", {}, mine ? "your sightings, newest first" : "sightings, newest first"), box];
+}
+
+/** A JSON value as YAML lines: block style, strings quoted when plain
+ * YAML would read them as something else. */
+function yamlLines(v, indent = "") {
+  const scalar = (x) => {
+    if (typeof x !== "string") return String(x);
+    const plain = /^[\w./@+-][\w ./@:+-]*$/.test(x) && !/: |:$| #/.test(x) && !/\s$/.test(x)
+      && !/^(true|false|null|~|[-+]?(\d[\d_]*)?\.?\d+([eE][-+]?\d+)?)$/i.test(x);
+    return plain ? x : JSON.stringify(x);
+  };
+  const out = [];
+  const nested = (x) => x && typeof x === "object" && Object.keys(x).length > 0;
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      if (nested(x)) {
+        const inner = yamlLines(x, `${indent}  `);
+        out.push(`${indent}- ${inner[0].trimStart()}`, ...inner.slice(1));
+      } else {
+        out.push(`${indent}- ${scalar(x)}`);
+      }
+    }
+    return out;
+  }
+  for (const [k, x] of Object.entries(v)) {
+    if (nested(x)) out.push(`${indent}${k}:`, ...yamlLines(x, `${indent}  `));
+    else if (x && typeof x === "object") out.push(`${indent}${k}: ${Array.isArray(x) ? "[]" : "{}"}`);
+    else out.push(`${indent}${k}: ${scalar(x)}`);
+  }
+  return out;
+}
+
+// The record's keys in reading order: what it is, what was seen, against
+// whom, the evidence last; any other key before the evidence, by name.
+const RECORD_ORDER = ["format", "sighting_id", "timestamp", "tlp", "severity", "confidence", "count",
+  "reporter_sector", "sighting_of", "target"];
+const ordered = (rec) => {
+  const rank = (k) => (RECORD_ORDER.includes(k) ? RECORD_ORDER.indexOf(k) : k === "evidence" ? 2e9 : 1e9);
+  return Object.fromEntries(Object.entries(rec).sort(([a], [b]) => rank(a) - rank(b) || a.localeCompare(b)));
+};
+
+/** The record as YAML or JSON (a switch, remembered per browser), with a
+ * copy button for the text shown. */
+function recordView(rec) {
+  const data = ordered(rec);
+  const lines = { yaml: yamlLines(data), json: JSON.stringify(data, null, 2).split("\n") };
+  const highlight = { yaml: yamlLine, json: jsonLine };
+  let mode = "yaml";
+  try { if (localStorage.getItem("frank.record") === "json") mode = "json"; } catch { /* no storage */ }
+  const pre = el("pre", { class: "yaml" });
+  const chip = (m) => el("button", { class: "lab-chip", type: "button" }, m.toUpperCase());
+  const chips = { yaml: chip("yaml"), json: chip("json") };
+  const copy = el("button", { class: "lab-chip", type: "button" }, "copy");
+  const render = () => {
+    pre.replaceChildren(...lines[mode].map((line) => el("span", { class: "y-line" }, ...highlight[mode](line))));
+    for (const [m, c] of Object.entries(chips)) c.setAttribute("aria-pressed", String(m === mode));
+  };
+  for (const [m, c] of Object.entries(chips)) {
+    c.addEventListener("click", () => {
+      mode = m;
+      try { localStorage.setItem("frank.record", m); } catch { /* no storage */ }
+      render();
+    });
+  }
+  copy.addEventListener("click", () => {
+    navigator.clipboard.writeText(`${lines[mode].join("\n")}\n`).then(
+      () => { copy.textContent = "copied"; },
+      () => { copy.textContent = "copy failed"; },
+    ).finally(() => setTimeout(() => { copy.textContent = "copy"; }, 1500));
+  });
+  render();
+  return [el("div", { class: "rec-head" }, el("h3", {}, "record (frank/1)"), chips.yaml, chips.json, copy), pre];
+}
+
+/** One line of indented JSON as highlighted nodes, coloured as yamlLine
+ * colours YAML. Text only, never HTML. */
+function jsonLine(line) {
+  const [, indent, key, value, comma] = /^(\s*)(?:("(?:[^"\\]|\\.)*"): )?(.*?)(,?)$/.exec(line);
+  const out = [indent];
+  if (key) out.push(el("span", { class: "y-key" }, key), ": ");
+  if (/^[[\]{}]/.test(value)) out.push(el("span", { class: "y-dash" }, value));
+  else if (value) {
+    const bare = value.replace(/^"(.*)"$/, "$1");
+    out.push(el("span", { class: `y-val${yamlType(bare) || (value.startsWith("\"") ? " y-str" : "")}` }, value));
+  }
+  if (comma) out.push(el("span", { class: "y-dash" }, comma));
+  return [el("span", { class: "y-code" }, ...out)];
+}
+
+async function sightingNodes(id, filterOn, openOther) {
+  const s = await (await api(`/v1/sightings/${encodeURIComponent(id)}`)).json();
+  const rec = s.record;
+  const rule = rec.sighting_of?.rule;
+  const iocs = [...new Map((rec.evidence || []).map((o) => [`${o.type}:${o.value}`, o])).keys()];
+  const back = el("button", { class: "lab-btn lab-btn--secondary", type: "button" }, "back");
+  back.addEventListener("click", () => history.back());
+  return [
+    back,
+    el("h2", {}, rule?.title || rule?.id || s.sighting_id),
+    kpis([["count", rec.count], ["confidence", rec.confidence]]),
+    el("p", { class: "note" }, `${rec.tlp.toUpperCase()} · seen ${rec.timestamp} · received ${s.received} · from ${s.reporter}`),
+    ...(rule?.id ? linkList("rule", [{ key: rule.id, count: rule.level || "" }], openOther("rule")) : []),
+    ...linkList("IoCs", iocs.map((k) => ({ key: k, count: "" })), openOther("ioc")),
+    ...linkList("techniques", (rec.sighting_of?.techniques || []).map((t) => ({ key: t, count: "" })), filterOn("technique")),
+    ...recordView(rec),
+  ];
+}
+
+// --- about ------------------------------------------------------------------
+// What each status may do and see (ADR-002, #149, #160). The field marks are
+// kept by hand next to DIMENSION_TIER, which encodes the same rules.
+
+const STATUS_TEXT = {
+  public: "No token. Platform totals of TLP:CLEAR sightings.",
+  observer: "Breakdowns by IoC type, severity and target sector; cells with fewer than three reporters are left out.",
+  contributor: "Sends sightings. Sees rules, techniques, campaigns and IoC lookups, and lists its own sightings.",
+  partner: "Sees exact cells and full records, lists all sightings, downloads the sighting files and analyses them locally.",
+  core: "Runs the platform. Sees the participants by name.",
+};
+const TLP_MIN = [["TLP:CLEAR", "public"], ["TLP:GREEN", "observer"], ["TLP:AMBER", "contributor"],
+  ["TLP:AMBER+STRICT", "partner"], ["TLP:RED", null]];
+
+// [line, lowest status that sees it ("never": not stored; "": structure)].
+const ANNOTATED = [
+  ["submission:", ""],
+  ["  submitter:", ""],
+  ["    organisation_id: identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", "never"],
+  ["    sector: cybersecurity_services", "partner"],
+  ["  hit_target:", ""],
+  ["    organisation_id: identity-c9b5d123-8877-4422-9966-112233445566", "never"],
+  ["    sector: energy", "observer"],
+  ["    organisation_size: large", "partner"],
+  ["    region: nl_north_holland", "partner"],
+  ["  sighting:", ""],
+  ["    sighting_id: 0f8fad5b-d9cb-469f-a165-70867728950e", "partner"],
+  ["    tlp_level: TLP:AMBER    # decides who sees any of this", "public"],
+  ["    last_observed: 2026-10-22T10:00:00Z", "partner"],
+  ["    observation_count: 12", "public"],
+  ["    confidence: 80", "partner"],
+  ["    severity: high", "observer"],
+  ["    description: PowerShell download cradle beaconing to a fresh domain.", "partner"],
+  ["    sigma_detection:", ""],
+  ["      rule_id: 3b6ab547-8ec2-4991-b9d2-2b06702a48d7", "contributor"],
+  ["      rule_name: PowerShell Download Cradle", "partner"],
+  ["      level: high", "partner"],
+  ["    threat_context:", ""],
+  ["      campaign: { name: npm_worm }", "contributor"],
+  ["      mitre_attack:", ""],
+  ["        techniques: [T1059.001, T1071.001]", "contributor"],
+  ["    observables:", ""],
+  ["      network:", ""],
+  ["        - type: ipv4", "observer"],
+  ["          value: 198.51.100.23", "contributor"],
+  ["          role: c2_server    # kept as sent, never a filter", "partner"],
+  ["          port: 443", "partner"],
+];
+const MARKS = ["public", "observer", "contributor", "partner", "never"];
+
+/** The highlight class of a scalar value: number, true/false/null, quoted
+ * string, time, id (`sighting--…`, `identity-…`, a UUID), else none. */
+function yamlType(v) {
+  if (/^[-+]?\d+(\.\d+)?$/.test(v)) return " y-num";
+  if (/^(true|false|null|~)$/.test(v)) return " y-bool";
+  if (/^"/.test(v)) return " y-str";
+  if (/^\d{4}-\d\d-\d\dT/.test(v)) return " y-time";
+  if (/^([a-z]+--?)?[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-/i.test(v)) return " y-id";
+  return "";
+}
+
+/** One YAML line as highlighted nodes: indent, list dash, key, value,
+ * comment, in one inline span: as flex items of `.y-line` the indent
+ * (whitespace only) would not render, and a copy would split the line.
+ * Text only, never HTML. */
+function yamlLine(line) {
+  const out = [];
+  const m = /^(\s*)(- )?(?:([^\s:#][^:#]*?):(?=\s|$))?(.*)$/.exec(line);
+  const [, indent, dash, key, rest] = m || ["", "", "", "", line];
+  out.push(indent);
+  if (dash) out.push(el("span", { class: "y-dash" }, dash));
+  if (key) out.push(el("span", { class: "y-key" }, key), ":");
+  const hash = /^\s*"/.test(rest) ? -1 : rest.search(/\s#/);
+  const value = hash < 0 ? rest : rest.slice(0, hash);
+  out.push(el("span", { class: `y-val${yamlType(value.trim())}` }, value));
+  if (hash >= 0) out.push(el("span", { class: "y-com" }, rest.slice(hash)));
+  return [el("span", { class: "y-code" }, ...out)];
+}
+
+let aboutDone = false;
+function loadAbout() {
+  if (aboutDone) return;
+  aboutDone = true;
+  show($("about-statuses"), ...TIERS.map((t) =>
+    el("div", { class: "card" }, el("h3", {}, t), el("p", {}, STATUS_TEXT[t]))));
+  show($("about-tlp"), table(["level", ...TIERS], TLP_MIN.map(([level, min]) =>
+    [level, ...TIERS.map((t) => (min && TIERS.indexOf(t) >= TIERS.indexOf(min) ? "✓" : "–"))])));
+  show($("about-legend"), ...MARKS.map((m) =>
+    el("span", { class: `mark mark-${m}` }, m === "never" ? "never stored" : `${m} and up`)));
+  show($("about-yaml"), ...ANNOTATED.map(([line, mark]) => {
+    const row = el("span", { class: `y-line${mark ? ` mark-${mark}` : ""}` }, ...yamlLine(line));
+    if (mark) row.append(el("span", { class: "y-mark" }, mark === "never" ? "never stored" : mark));
+    return row;
+  }));
+}
+
+// --- api --------------------------------------------------------------------
+// Rendered from /v1/openapi.json (api/openapi.yaml).
+
+const FORMATS = [
+  ["application/json", "sighting.json", "Phase 2's submission format or frank/1; one sighting or a list."],
+  ["application/yaml", "sighting.yaml", "The same documents as YAML. Anchors and aliases are not accepted."],
+  ["application/stix+json", "sighting.stix.json",
+    "A STIX 2.1 bundle: each sighting with its SIGMA indicator and the SCOs of its observed-data. Identities and relationships are ignored."],
+];
+
+function curl(method, path, secured, extra = []) {
+  const parts = ["curl"];
+  if (method !== "get") parts.push(`-X ${method.toUpperCase()}`);
+  if (secured) parts.push('-H "Authorization: Bearer $FRANK_TOKEN"');
+  parts.push(...extra, `"${location.origin}${path}"`);
+  return parts.join(" \\\n  ");
+}
+
+let apiDone = false;
+async function loadApi() {
+  if (apiDone) return;
+  try {
+    const doc = await (await api("/v1/openapi.json")).json();
+    apiDone = true;
+    show($("api-formats"), ...FORMATS.map(([type, file, text]) => el("div", { class: "card endpoint" },
+      el("h3", {}, type), el("p", {}, text),
+      el("pre", { class: "curl" }, curl("post", "/v1/sightings", true,
+        [`-H "Content-Type: ${type}"`, `--data-binary @examples/formats/${file}`])))));
+    const resolve = (p) => (p.$ref ? p.$ref.split("/").slice(1).reduce((o, k) => o?.[k], doc) : p);
+    const groups = (doc.tags || []).map((t) => {
+      const ops = [];
+      for (const [path, item] of Object.entries(doc.paths)) {
+        for (const [method, op] of Object.entries(item)) {
+          if ((op.tags || []).includes(t.name)) ops.push([path, method, op]);
+        }
+      }
+      return [t, ops];
+    });
+    show($("api-out"), ...groups.flatMap(([t, ops]) => [
+      el("h3", { class: "api-tag" }, `${t.name} \\ ${t.description || ""}`),
+      ...ops.map(([path, method, op]) => {
+        const min = op["x-min-status"] || "public";
+        const secured = !(Array.isArray(op.security) && op.security.length === 0);
+        const params = (op.parameters || []).map(resolve);
+        return el("div", { class: "card endpoint" },
+          el("div", { class: "endpoint-head" },
+            el("span", { class: "method" }, method.toUpperCase()), el("code", {}, path),
+            el("span", { class: `lab-label pill${atLeast(min) ? "" : " locked"}` }, `${min}+`)),
+          el("p", {}, op.summary || ""),
+          ...(op.description ? [el("p", { class: "note" }, op.description)] : []),
+          ...(params.length ? [table(["parameter", "in", "", "description"], params.map((p) =>
+            [p.name, p.in, p.required ? "required" : "", p.description || ""]))] : []),
+          el("pre", { class: "curl" }, method === "post"
+            ? curl(method, path, secured, ['-H "Content-Type: application/json"', "--data-binary @sighting.json"])
+            : curl(method, path, secured)));
+      }),
+    ]));
+  } catch (e) {
+    show($("api-out"), errorNode(e));
   }
 }
 

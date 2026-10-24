@@ -4,6 +4,20 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.16.0] - 2026-10-24
+
+### Added
+
+- YAML and STIX 2.1 input (#160, D3): `POST /v1/sightings` and `/v1/preview` read the format the `Content-Type` names (`application/json`, `application/yaml`, `application/stix+json`); an unknown one is 415. A STIX bundle maps each `sighting` with its SIGMA `indicator` and the SCOs of its `observed-data`; identities and relationships are ignored. YAML aliases are refused.
+- `frank ingest` and the browser preview take JSON, YAML and STIX bundles, told apart by the content.
+- Sighting records for machine clients (#160, D4): `GET /v1/sightings` (`since`, `until`, `rule`, `ioc`, `mine`, `cursor`, `limit`) lists normalised records oldest first with a cursor; `GET /v1/sightings/{id}` returns one. Partners and core list all; contributors their own (`mine=true`). Only sightings stored since 0.15 have records.
+- `GET /v1/summary`: what the caller's participant sent in the window, and the sightings it can see from everyone.
+- `GET /v1/openapi.json`, from the hand-written `api/openapi.yaml` with each operation's lowest status (`x-min-status`); a test fails when a route is missing from it.
+- Web UI `about` and `api` tabs (#160, D5): the "FRANK does not judge" principle, what each status may do, statuses × TLP, and an example message with each field marked by the lowest status that sees it; the endpoints from `/v1/openapi.json` with their lowest status and `curl` examples, and the three input formats.
+- The submit tab takes YAML and STIX as well as JSON.
+- Explore reaches single sightings: a rule or IoC pane lists its sightings newest first (partners all, contributors their own), carrying Explore's filters and window; a sighting opens as its record in YAML, with links back to its rule, IoCs and techniques. `GET /v1/sightings` takes Explore's filters (`campaign`, `technique`, `sector`, `ioc_type`, `severity`) and `order=desc`. Explore counts are labelled sightings.
+- A sighting record shows as YAML or JSON, coloured by value type, with a copy button; what is copied can be submitted again as-is.
+
 ## [0.15.0] - 2026-10-24
 
 ### Added

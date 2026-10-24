@@ -81,7 +81,11 @@ impl Dimension {
     /// `sighting_techniques`. An IoC filter is `type:value`; categories
     /// are lower case, techniques upper case. On `sightings` a technique
     /// is one item of the comma-separated list.
-    fn condition(self, value: &str, on_techniques: bool) -> Result<String, String> {
+    ///
+    /// # Errors
+    ///
+    /// A value that is not usable for the dimension.
+    pub fn condition(self, value: &str, on_techniques: bool) -> Result<String, String> {
         let v = value.trim();
         if v.is_empty() || v.len() > 2048 || v.chars().any(char::is_control) {
             return Err(format!("{}: not a usable filter value", self.name()));

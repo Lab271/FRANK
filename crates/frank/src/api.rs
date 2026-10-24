@@ -24,13 +24,14 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use db_core::engine::Cell;
-use frank_core::{sql_quote, Ioc, IocType, Sighting, Tier, Tlp, MIN_CELL};
+use frank_core::{sql_quote, Format, Ioc, IocType, Sighting, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
 use crate::audit::Audit;
 use crate::auth::Caller;
 use crate::explore::{self as ex, Dimension, FIRST_ROW};
+use crate::records;
 use crate::store::registry::{self, Receipt};
 use crate::store::sightings::{scalar, NAME as SIGHTINGS, TECHNIQUES};
 use crate::store::{Iocs, Participants, Registry, Sightings};
@@ -108,7 +109,10 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/whoami", get(whoami))
         .route("/v1/preview", post(preview))
         .route("/v1/statistics", get(statistics))
-        .route("/v1/sightings", post(submit))
+        .route("/v1/sightings", get(list).post(submit))
+        .route("/v1/sightings/{id}", get(sighting))
+        .route("/v1/summary", get(summary))
+        .route("/v1/openapi.json", get(openapi))
         .route("/v1/iocs", get(ioc_lookup))
         .route("/v1/iocs/range", get(ioc_range))
         .route("/v1/explore", get(explore))
@@ -137,20 +141,27 @@ async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Va
     })))
 }
 
-/// One submission or an array of them.
-fn submissions(body: &Value, now: i64) -> Result<Vec<Sighting>, ApiError> {
-    let items: Vec<&Value> = match body {
-        Value::Array(a) if a.len() > MAX_BATCH => {
-            return Err(unprocessable(format!("more than {MAX_BATCH} submissions")))
-        }
-        Value::Array(a) => a.iter().collect(),
-        v => vec![v],
+/// The sightings of a request body (#160): one, a list or a STIX bundle,
+/// in the format its `Content-Type` names; JSON when it names none.
+fn submissions(headers: &HeaderMap, body: &str, now: i64) -> Result<Vec<Sighting>, ApiError> {
+    let format = match headers.get(header::CONTENT_TYPE) {
+        None => Format::Json,
+        Some(ct) => ct
+            .to_str()
+            .ok()
+            .and_then(Format::from_content_type)
+            .ok_or_else(|| {
+                ApiError(
+                    StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                    "send application/json, application/yaml or application/stix+json".into(),
+                )
+            })?,
     };
-    items
-        .into_iter()
-        .enumerate()
-        .map(|(i, v)| Sighting::from_value(v, now).map_err(|e| unprocessable(format!("[{i}] {e}"))))
-        .collect()
+    let subs = frank_core::formats::parse(body, format, now).map_err(unprocessable)?;
+    if subs.len() > MAX_BATCH {
+        return Err(unprocessable(format!("more than {MAX_BATCH} submissions")));
+    }
+    Ok(subs)
 }
 
 /// The rows a submission would add, without storing anything: what leaves
@@ -158,10 +169,10 @@ fn submissions(body: &Value, now: i64) -> Result<Vec<Sighting>, ApiError> {
 async fn preview(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Json(body): Json<Value>,
+    body: String,
 ) -> Result<Json<Value>, ApiError> {
     require(&app, &headers, Tier::Public)?;
-    let subs = submissions(&body, (app.now)())?;
+    let subs = submissions(&headers, &body, (app.now)())?;
     let rows: Vec<_> = subs
         .iter()
         .flat_map(|s| s.rows("sighting--preview"))
@@ -177,10 +188,10 @@ async fn preview(
 async fn submit(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Json(body): Json<Value>,
+    body: String,
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
-    let subs = submissions(&body, (app.now)())?;
+    let subs = submissions(&headers, &body, (app.now)())?;
     let mut items: Vec<(String, String, Sighting)> = Vec::with_capacity(subs.len());
     for (i, s) in subs.into_iter().enumerate() {
         let id = s.sighting_id.clone().ok_or_else(|| {
@@ -718,6 +729,172 @@ async fn file(
             bytes,
         )
             .into_response())
+    })
+    .await
+}
+
+/// The API description (`api/openapi.yaml`), as JSON.
+async fn openapi() -> Result<Json<Value>, ApiError> {
+    frank_core::yaml::to_json(include_str!("../../../api/openapi.yaml"))
+        .map(Json)
+        .map_err(internal)
+}
+
+/// `GET /v1/sightings` (#160): the records of the visible sightings, in
+/// time order, a page at a time. Partners and core list all; a
+/// contributor lists its own (`mine=true`).
+async fn list(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(params): Query<BTreeMap<String, String>>,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Contributor)?;
+    let q = records::List::parse(&params, (app.now)()).map_err(unprocessable)?;
+    if caller.tier < Tier::Partner && !q.mine {
+        return Err(ApiError(
+            StatusCode::FORBIDDEN,
+            "below partner, a participant lists its own sightings: mine=true".into(),
+        ));
+    }
+    let reporter = q.mine.then(|| caller.participant.clone());
+    let visible = tlp_visible(caller.tier);
+    blocking(move || {
+        let s = &app.sightings;
+        let r = reporter.as_deref();
+        let ids: Option<Vec<String>> = match q.ioc_sql(&visible, r) {
+            None => None,
+            Some(sql) => Some(
+                s.query(&sql)
+                    .map_err(internal)?
+                    .rows
+                    .into_iter()
+                    .filter_map(|row| match row.into_iter().next() {
+                        Some(Cell::Text(id)) => Some(id),
+                        _ => None,
+                    })
+                    .collect(),
+            ),
+        };
+        if ids.as_ref().is_some_and(Vec::is_empty) {
+            return Ok(Json(json!({ "sightings": [], "next_cursor": null })));
+        }
+        let rows = s
+            .query(&q.sql(&visible, r, ids.as_deref()))
+            .map_err(internal)?
+            .rows;
+        let more = rows.len() > q.limit;
+        let mut items: Vec<(String, Value)> = rows
+            .iter()
+            .take(q.limit)
+            .filter_map(|row| records::item(row))
+            .collect();
+        let next = if more {
+            items.last().map(|(c, _)| c.clone())
+        } else {
+            None
+        };
+        let items: Vec<Value> = items.drain(..).map(|(_, v)| v).collect();
+        Ok(Json(json!({ "sightings": items, "next_cursor": next })))
+    })
+    .await
+}
+
+/// `GET /v1/sightings/{id}` (#160): one record. Below partner only the
+/// caller's own; anything else is not found.
+async fn sighting(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Contributor)?;
+    let id = frank_core::model::sighting_id(&id).map_err(unprocessable)?;
+    let mut filter = format!(
+        "sighting_id = {} AND seq = 0 AND {}",
+        sql_quote(&id),
+        tlp_visible(caller.tier)
+    );
+    if caller.tier < Tier::Partner {
+        filter.push_str(&format!(
+            " AND reporter = {}",
+            sql_quote(&caller.participant)
+        ));
+    }
+    blocking(move || {
+        let r = app
+            .sightings
+            .query(&format!(
+                "SELECT {} FROM sightings WHERE {filter}",
+                records::COLUMNS
+            ))
+            .map_err(internal)?;
+        let items: Vec<Value> = r
+            .rows
+            .iter()
+            .filter_map(|row| records::item(row).map(|(_, v)| v))
+            .collect();
+        // Two participants may have chosen the same id: the caller's own first.
+        items
+            .iter()
+            .find(|v| v["reporter"] == caller.participant.as_str())
+            .or(items.first())
+            .cloned()
+            .map(Json)
+            .ok_or_else(|| ApiError(StatusCode::NOT_FOUND, format!("no sighting {id}")))
+    })
+    .await
+}
+
+/// `GET /v1/summary?days=30` (#160): what the caller's participant sent in
+/// the window, and the sightings it can see from everyone.
+async fn summary(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<StatsQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Contributor)?;
+    let days = q.days.unwrap_or(30);
+    if !(1..=3650).contains(&days) {
+        return Err(unprocessable("days must be 1-3650"));
+    }
+    let since = (app.now)() - days * DAY_NS;
+    let visible = tlp_visible(caller.tier);
+    blocking(move || {
+        let s = &app.sightings;
+        let own = format!(
+            "reporter = {} AND ts >= {since}",
+            sql_quote(&caller.participant)
+        );
+        let r = s
+            .query(&format!(
+                "SELECT count(*), sum(observations), max(received) FROM sightings WHERE {own} AND {FIRST_ROW}"
+            ))
+            .map_err(internal)?;
+        let row = r.rows.first();
+        let int = |i: usize| match row.map(|r| &r[i]) {
+            Some(Cell::Int(n)) => Some(*n),
+            _ => None,
+        };
+        let iocs = s
+            .query(&format!(
+                "SELECT count(*) FROM sightings WHERE {own} AND ioc_type IS NOT NULL"
+            ))
+            .map(|r| scalar(&r))
+            .map_err(internal)?;
+        let network = s
+            .query(&format!(
+                "SELECT count(*) FROM sightings WHERE ts >= {since} AND {visible} AND {FIRST_ROW}"
+            ))
+            .map(|r| scalar(&r))
+            .map_err(internal)?;
+        Ok(Json(json!({
+            "participant": caller.participant,
+            "days": days,
+            "sightings": int(0).unwrap_or(0),
+            "observations": int(1).unwrap_or(0),
+            "iocs": iocs,
+            "last_received": int(2).map_or(Value::Null, records::rfc3339),
+            "network": { "sightings": network },
+        })))
     })
     .await
 }

@@ -5,4 +5,5 @@ pub mod api;
 pub mod audit;
 pub mod auth;
 pub mod explore;
+pub mod records;
 pub mod store;

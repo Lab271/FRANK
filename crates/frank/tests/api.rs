@@ -1215,3 +1215,212 @@ fn keys_of(v: &Value) -> Vec<String> {
         .map(|r| r["key"].as_str().unwrap().to_string())
         .collect()
 }
+
+/// POSTs `body` as `content_type`.
+async fn post_as(app: &axum::Router, content_type: &str, body: &str) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/sightings")
+        .header("authorization", "Bearer c")
+        .header("content-type", content_type)
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// #160: the Content-Type picks the format; one sighting in three formats
+/// is one registration.
+#[tokio::test]
+async fn json_yaml_and_stix_are_one_sighting() {
+    let h = harness("formats");
+    let formats = [
+        (
+            "application/json",
+            include_str!("../../../examples/formats/sighting.json"),
+        ),
+        (
+            "application/yaml",
+            include_str!("../../../examples/formats/sighting.yaml"),
+        ),
+        (
+            "application/stix+json;version=2.1",
+            include_str!("../../../examples/formats/sighting.stix.json"),
+        ),
+    ];
+    let mut statuses = Vec::new();
+    for (ct, body) in formats {
+        let (code, r) = post_as(&h.app, ct, body).await;
+        assert!(code.is_success(), "{ct}: {r}");
+        statuses.push(r["receipts"][0]["status"].as_str().unwrap().to_string());
+    }
+    assert_eq!(statuses, ["created", "duplicate", "duplicate"]);
+    let (code, _) = post_as(&h.app, "text/plain", formats[0].1).await;
+    assert_eq!(code, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    let (code, r) = post_as(&h.app, "application/yaml", "a: *nope\n").await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY, "{r}");
+    assert!(h.sightings.query("SELECT count(*) FROM sightings").is_ok());
+}
+
+/// #160: every route of the router is in the OpenAPI document, with the
+/// lowest status it needs.
+#[tokio::test]
+async fn every_route_is_in_the_openapi_document() {
+    let h = harness("openapi");
+    let (code, doc) = call(&h.app, "GET", "/v1/openapi.json", None, None).await;
+    assert_eq!(code, StatusCode::OK);
+    let source = include_str!("../src/api.rs");
+    let mut routes = 0;
+    for line in source.lines().map(str::trim) {
+        let Some(rest) = line.strip_prefix(".route(\"") else {
+            continue;
+        };
+        let (path, handlers) = rest.split_once('"').unwrap();
+        let path = path.replace("{*", "{");
+        for method in ["get", "post", "put", "patch", "delete"] {
+            if !(handlers.contains(&format!(" {method}("))
+                || handlers.contains(&format!(".{method}(")))
+            {
+                continue;
+            }
+            routes += 1;
+            let op = &doc["paths"][&path][method];
+            assert!(op.is_object(), "{method} {path} is not in api/openapi.yaml");
+            assert!(
+                op["x-min-status"].is_string(),
+                "{method} {path}: x-min-status"
+            );
+        }
+    }
+    assert!(
+        routes >= 16,
+        "found {routes} routes: has the router's layout changed?"
+    );
+}
+
+/// #160: records for machine clients, by status.
+#[tokio::test]
+async fn records_are_listed_by_status() {
+    let h = harness("records");
+    let mut ids = Vec::new();
+    for (tok, ip) in [
+        ("c", "198.51.100.1"),
+        ("c", "198.51.100.2"),
+        ("c", "198.51.100.3"),
+        ("c2", "203.0.113.9"),
+    ] {
+        let s = sighting("energy", ip, "r1");
+        ids.push(
+            s["submission"]["sighting"]["sighting_id"]
+                .as_str()
+                .unwrap()
+                .to_string(),
+        );
+        let (code, r) = call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s)).await;
+        assert_eq!(code, StatusCode::CREATED, "{r}");
+    }
+    let get = |uri: String, tok: &'static str| {
+        let app = h.app.clone();
+        async move { call(&app, "GET", &uri, Some(tok), None).await }
+    };
+
+    let (code, all) = get("/v1/sightings".into(), "p").await;
+    assert_eq!(code, StatusCode::OK, "{all}");
+    assert_eq!(all["sightings"].as_array().unwrap().len(), 4);
+    assert!(all["next_cursor"].is_null());
+    let first = &all["sightings"][0];
+    assert_eq!(first["record"]["format"], "frank/1");
+    assert!(first["record"]["evidence"].as_array().unwrap().len() == 2);
+    assert!(
+        !all.to_string().contains("identity-victim"),
+        "no target identity: {all}"
+    );
+
+    let (_, page) = get("/v1/sightings?limit=3".into(), "p").await;
+    assert_eq!(page["sightings"].as_array().unwrap().len(), 3);
+    let cursor = page["next_cursor"].as_str().unwrap().to_string();
+    let (_, rest) = get(format!("/v1/sightings?limit=3&cursor={cursor}"), "p").await;
+    assert_eq!(rest["sightings"].as_array().unwrap().len(), 1);
+    assert!(rest["next_cursor"].is_null());
+    let mut seen: Vec<&Value> = page["sightings"].as_array().unwrap().iter().collect();
+    seen.extend(rest["sightings"].as_array().unwrap());
+    let mut listed: Vec<&str> = seen
+        .iter()
+        .map(|s| s["sighting_id"].as_str().unwrap())
+        .collect();
+    listed.sort_unstable();
+    listed.dedup();
+    assert_eq!(listed.len(), 4, "two pages, each sighting once");
+
+    let (_, by_ioc) = get("/v1/sightings?ioc=domain:evil.example".into(), "p").await;
+    assert_eq!(
+        by_ioc["sightings"].as_array().unwrap().len(),
+        4,
+        "an IoC on seq 1"
+    );
+    let (_, by_ip) = get("/v1/sightings?ioc=ipv4:203.0.113.9".into(), "p").await;
+    assert_eq!(by_ip["sightings"].as_array().unwrap().len(), 1);
+
+    let n = |v: &Value| v["sightings"].as_array().map_or(0, Vec::len);
+    let (_, water) = get("/v1/sightings?sector=water".into(), "p").await;
+    assert_eq!(n(&water), 0, "Explore's filters: {water}");
+    let (_, energy) = get(
+        "/v1/sightings?sector=Energy&ioc_type=ipv4&rule=r1".into(),
+        "p",
+    )
+    .await;
+    assert_eq!(n(&energy), 4, "{energy}");
+    let (_, newest) = get("/v1/sightings?order=desc&limit=2".into(), "p").await;
+    let (_, oldest) = get("/v1/sightings?limit=4".into(), "p").await;
+    assert_eq!(
+        newest["sightings"][0], oldest["sightings"][3],
+        "newest first"
+    );
+    let cursor = newest["next_cursor"].as_str().unwrap().to_string();
+    let (_, older) = get(
+        format!("/v1/sightings?order=desc&limit=2&cursor={cursor}"),
+        "p",
+    )
+    .await;
+    assert_eq!(
+        older["sightings"][1], oldest["sightings"][0],
+        "and pages backwards"
+    );
+    let (code, _) = get("/v1/sightings?org=x".into(), "p").await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let (code, _) = get("/v1/sightings".into(), "c").await;
+    assert_eq!(code, StatusCode::FORBIDDEN, "a contributor lists its own");
+    let (_, mine) = get("/v1/sightings?mine=true".into(), "c").await;
+    assert_eq!(mine["sightings"].as_array().unwrap().len(), 3);
+    let (code, _) = get("/v1/sightings".into(), "o").await;
+    assert_eq!(code, StatusCode::FORBIDDEN);
+
+    let (code, own) = get(format!("/v1/sightings/{}", ids[0]), "c").await;
+    assert_eq!(code, StatusCode::OK, "{own}");
+    assert_eq!(
+        own["record"]["sighting_id"],
+        format!("sighting--{}", ids[0])
+    );
+    let (code, _) = get(format!("/v1/sightings/{}", ids[3]), "c").await;
+    assert_eq!(code, StatusCode::NOT_FOUND, "another's, below partner");
+    let (code, _) = get(format!("/v1/sightings/{}", ids[3]), "p").await;
+    assert_eq!(code, StatusCode::OK);
+    let (code, _) = get("/v1/sightings/not-an-id".into(), "p").await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+
+    let (code, sum) = get("/v1/summary".into(), "c").await;
+    assert_eq!(code, StatusCode::OK, "{sum}");
+    assert_eq!(
+        (&sum["sightings"], &sum["iocs"]),
+        (&json!(3), &json!(6)),
+        "{sum}"
+    );
+    assert_eq!(sum["network"]["sightings"], 4);
+    assert!(sum["last_received"].is_string());
+}

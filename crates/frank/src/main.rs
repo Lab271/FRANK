@@ -14,7 +14,7 @@ use frank::auth::hash;
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
 use frank::store::registry::{self, Registry};
 use frank::store::{Iocs, Participants, Sightings};
-use frank_core::{Sighting, Tier};
+use frank_core::{Format, Tier};
 use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
@@ -70,7 +70,8 @@ enum Command {
     /// Users' bearer tokens.
     #[command(subcommand)]
     Token(TokenCmd),
-    /// Load submissions (JSON files, each one or an array) with the server stopped.
+    /// Load sightings with the server stopped: JSON or YAML files (one or a
+    /// list each) or STIX 2.1 bundles.
     Ingest {
         files: Vec<PathBuf>,
         /// The participant they are stored under.
@@ -388,16 +389,10 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Resu
     let (mut created, mut duplicates) = (0, 0);
     for f in files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
-        let v: serde_json::Value =
-            serde_json::from_str(&text).map_err(|e| format!("{}: {e}", f.display()))?;
-        let items = match v {
-            serde_json::Value::Array(a) => a,
-            v => vec![v],
-        };
-        let mut subs = Vec::with_capacity(items.len());
-        for item in &items {
-            let sub = Sighting::from_value(item, now_ns())
-                .map_err(|e| format!("{}: {e}", f.display()))?;
+        let sightings = frank_core::formats::parse(&text, Format::sniff(&text), now_ns())
+            .map_err(|e| format!("{}: {e}", f.display()))?;
+        let mut subs = Vec::with_capacity(sightings.len());
+        for sub in sightings {
             let digest = registry::digest(&sub);
             let id = sub
                 .sighting_id

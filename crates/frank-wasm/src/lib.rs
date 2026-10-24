@@ -9,14 +9,14 @@ use std::collections::BTreeMap;
 
 use db_core::engine::column::BatchEngine;
 use db_core::engine::{Cell, Engine, FileStats};
-use frank_core::Sighting;
+use frank_core::{formats, Format};
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
 
 const TABLE: &str = "sightings";
 
-/// The sighting rows `submission` (JSON, one or an array) would add, as
-/// JSON. `now_ms` is the browser's clock (`Date.now()`).
+/// The sighting rows `submission` (JSON, YAML or a STIX bundle; one or a
+/// list) would add, as JSON. `now_ms` is the browser's clock (`Date.now()`).
 #[wasm_bindgen]
 pub fn preview(submission: &str, now_ms: f64) -> Result<String, JsError> {
     preview_rows(submission, now_ms).map_err(|e| JsError::new(&e))
@@ -25,16 +25,12 @@ pub fn preview(submission: &str, now_ms: f64) -> Result<String, JsError> {
 fn preview_rows(submission: &str, now_ms: f64) -> Result<String, String> {
     #[allow(clippy::cast_possible_truncation)]
     let now = (now_ms as i64).saturating_mul(1_000_000);
-    let v: Value = serde_json::from_str(submission).map_err(|e| e.to_string())?;
-    let items = match v {
-        Value::Array(a) => a,
-        v => vec![v],
-    };
-    let mut rows = Vec::new();
-    for (i, item) in items.iter().enumerate() {
-        let s = Sighting::from_value(item, now).map_err(|e| format!("[{i}] {e}"))?;
-        rows.extend(s.rows("sighting--preview"));
-    }
+    let sightings =
+        formats::parse(submission, Format::sniff(submission), now).map_err(|e| e.to_string())?;
+    let rows: Vec<_> = sightings
+        .iter()
+        .flat_map(|s| s.rows("sighting--preview"))
+        .collect();
     Ok(json!({ "rows": rows }).to_string())
 }
 
