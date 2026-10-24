@@ -4,6 +4,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Changed
+
+- db-core pinned to release v0.173.0 instead of a branch head. It carries the browser fixes, set-probe `IN` lists (a 100-id resend check over 2M rows: about 1 s to 21 ms, db-core #737) and nullable columns appended to an existing table (db-core #740).
+
 ## [0.13.0] - 2026-10-24
 
 ### Added
