@@ -4,6 +4,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Fixed
+
+- Logs are plain text when not written to a terminal (no ANSI colour codes in container logs), and the hourly maintenance logs `compacted` only when it merged files.
+
 ## [0.14.0] - 2026-10-24
 
 ### Added

@@ -1,5 +1,6 @@
 //! `frank`: the FRANK Phase 3 server and its admin commands.
 
+use std::io::IsTerminal;
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -149,6 +150,8 @@ fn main() -> Result<(), String> {
             tracing_subscriber::EnvFilter::try_from_default_env()
                 .unwrap_or_else(|_| "frank=info,tower_http=info".into()),
         )
+        // Colours only on a terminal: a container's log keeps plain text.
+        .with_ansi(std::io::stdout().is_terminal())
         .init();
     let cli = Cli::parse();
     for dir in [&cli.data, &cli.participants] {
@@ -513,7 +516,9 @@ async fn maintain(app: api::Shared, retention_days: u32) {
                 app.iocs.retain_from(keep_from)?;
                 app.registry.retain_from(keep_from)?;
                 app.audit.retain_from(keep_from)?;
-                tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
+                if merged > 0 {
+                    tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
+                }
             }
             Ok(())
         })
