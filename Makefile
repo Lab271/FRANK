@@ -13,13 +13,21 @@ N ?= 60
 
 .PHONY: help check build server wasm test lint fmt run participant participants user token demo image up down clean
 
-help: ## Show targets
-	@grep -E '^[a-z-]+:.*## ' $(MAKEFILE_LIST) | awk -F':.*## ' '{printf "  %-13s %s\n", $$1, $$2}'
+##@ General
+
+help: ## Show targets by section (colour on a terminal, unless NO_COLOR is set)
+	@if [ -t 1 ] && [ -z "$$NO_COLOR" ]; then b=$$'\033[1m'; c=$$'\033[36m'; d=$$'\033[2m'; r=$$'\033[0m'; fi; \
+	awk -v b="$$b" -v c="$$c" -v d="$$d" -v r="$$r" ' \
+	  BEGIN { FS = ":.*## "; printf "%sFRANK %s%s  %smake <target> [VAR=value]%s\n", b, "$(VERSION)", r, d, r } \
+	  /^##@/ { printf "\n%s%s%s\n", b, substr($$0, 5), r; next } \
+	  /^[a-z-]+:.*## / { printf "  %s%-13s%s %s\n", c, $$1, r, $$2 }' $(MAKEFILE_LIST)
 
 check: ## Verify the toolchain
 	@rustup target list --installed | grep -q wasm32-unknown-unknown || { echo "rustup target add wasm32-unknown-unknown"; exit 1; }
 	@wasm-bindgen --version | grep -q $(WASM_BINDGEN_VERSION) || { echo "cargo install wasm-bindgen-cli --version $(WASM_BINDGEN_VERSION) --locked"; exit 1; }
 	@echo "toolchain ok"
+
+##@ Build
 
 build: server wasm ## Build the server (release) and the browser module
 
@@ -30,6 +38,12 @@ wasm: ## Build web/pkg (frank-wasm for the browser)
 	$(CARGO) build --release --locked -p frank-wasm --target wasm32-unknown-unknown
 	wasm-bindgen --target web --no-typescript --out-dir web/pkg \
 		target/wasm32-unknown-unknown/release/frank_wasm.wasm
+
+clean: ## Remove build output
+	$(CARGO) clean
+	rm -rf web/pkg
+
+##@ Develop
 
 test: ## Run all tests
 	$(CARGO) test --workspace --locked
@@ -44,6 +58,8 @@ fmt: ## Format the code
 
 run: build ## Run on this machine (./data and ./participants, shared with up)
 	FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) FRANK_TOKENS=$(TOKENS) $(FRANK) serve
+
+##@ Participants (participants.db)
 
 # Participants, users and tokens live in $(PARTICIPANTS)/participants.db and take
 # effect on the next request, with the server running or not.
@@ -64,12 +80,16 @@ token: server ## Another token for a user: make token NAME=alice
 	@[ -n "$(NAME)" ] || { echo "usage: make token NAME=<user>" >&2; exit 2; }
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token new "$(NAME)"
 
+##@ Data
+
 demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data (server stopped)
 	@! pgrep -f "frank.* serve" >/dev/null || { echo "stop the running frank server first (it holds the table lock), or POST the file to /v1/sightings" >&2; exit 1; }
 	python3 scripts/demo_sightings.py $(N) target/demo
 	@for f in target/demo/mdr-*.json; do \
 	  FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) ingest --as "$$(basename $$f .json)" --create $$f || exit 1; \
 	done
+
+##@ Container (podman)
 
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
@@ -80,7 +100,3 @@ up: image ## Run in podman (the same ./data and ./participants as run; FRANK_POR
 
 down: ## Stop the podman deployment
 	$(COMPOSE) down
-
-clean: ## Remove build output
-	$(CARGO) clean
-	rm -rf web/pkg
