@@ -2,7 +2,7 @@
 
 ## Status
 
-Accepted
+Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (bearer tokens of users in `participants.db`)
 
 ## Context
 
