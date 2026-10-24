@@ -160,12 +160,16 @@ pub struct Observable {
 }
 
 /// One row of the shared `sightings` table: a sighting × one of its IoCs
-/// (or the sighting alone when it carries none).
+/// (or the sighting alone when it carries none). Count sightings with
+/// `count(DISTINCT sighting_id)` and observations over `seq = 0` rows:
+/// every row repeats the sighting's fields (#160).
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SightingRow {
     pub ts_ns: i64,
     pub sighting_id: String,
     pub rule_id: Option<String>,
+    /// All ATT&CK techniques, comma-separated, for display and filtering;
+    /// ranking reads the `sighting_techniques` table.
     pub technique: Option<String>,
     pub campaign: Option<String>,
     pub ioc_type: Option<IocType>,
@@ -188,6 +192,12 @@ pub struct SightingRow {
     /// When the server first stored it, ns since the epoch; 0 until set.
     #[serde(skip_serializing_if = "is_zero")]
     pub received_ns: i64,
+    /// The IoC's position in the sighting, 0 for the first (or only) row.
+    pub seq: u32,
+    /// The normalised sighting as JSON ([`Sighting::detail`]), on the
+    /// `seq = 0` row only.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 
 fn is_zero(n: &i64) -> bool {
@@ -240,15 +250,29 @@ impl Sighting {
         iocs
     }
 
-    /// The rows this sighting adds to `sightings`, tagged `sighting_id`.
+    /// The sighting as stored for partners, as `frank/1` JSON under
+    /// `sighting_id`: everything but the target's identity, since the
+    /// table's files are handed to partners whole.
+    #[must_use]
+    pub fn detail(&self, sighting_id: &str) -> String {
+        let mut s = self.clone();
+        s.sighting_id = Some(sighting_id.to_string());
+        s.target.id = None;
+        serde_json::to_string(&s).unwrap_or_default()
+    }
+
+    /// The rows this sighting adds to `sightings`, tagged `sighting_id`:
+    /// one per distinct IoC (`seq` 0, 1, ...), the first carrying the
+    /// detail.
     #[must_use]
     pub fn rows(&self, sighting_id: &str) -> Vec<SightingRow> {
         let of = &self.sighting_of;
-        let row = |ioc: Option<&Ioc>| SightingRow {
+        let techniques = (!of.techniques.is_empty()).then(|| of.techniques.join(","));
+        let row = |seq: usize, ioc: Option<&Ioc>| SightingRow {
             ts_ns: self.ts_ns,
             sighting_id: sighting_id.to_string(),
             rule_id: of.rule.as_ref().and_then(|r| r.id.clone()),
-            technique: of.techniques.first().cloned(),
+            technique: techniques.clone(),
             campaign: of.campaign.clone(),
             ioc_type: ioc.map(|i| i.ioc_type),
             ioc_value: ioc.map(|i| i.value.clone()),
@@ -262,12 +286,17 @@ impl Sighting {
             reporter: String::new(),
             digest: String::new(),
             received_ns: 0,
+            seq: u32::try_from(seq).unwrap_or(u32::MAX),
+            detail: (seq == 0).then(|| self.detail(sighting_id)),
         };
         let iocs = self.iocs();
         if iocs.is_empty() {
-            vec![row(None)]
+            vec![row(0, None)]
         } else {
-            iocs.iter().map(|i| row(Some(i))).collect()
+            iocs.iter()
+                .enumerate()
+                .map(|(i, ioc)| row(i, Some(ioc)))
+                .collect()
         }
     }
 }
@@ -912,6 +941,7 @@ fn technique(s: &str) -> Option<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     const NOW: i64 = 1_800_000_000_000_000_000;
     const MINIMAL: &str = include_str!("../../../examples/minimal.json");
@@ -1092,6 +1122,35 @@ mod tests {
         assert_eq!(
             (s.ts_ns, s.ts_given, s.count, s.confidence),
             (NOW, false, 1, 69)
+        );
+    }
+
+    #[test]
+    fn rows_are_one_per_ioc_with_the_detail_on_the_first() {
+        let s = Sighting::parse(
+            r#"{"hit_target": {"organisation_id": "identity-victim", "sector": "energy"},
+                "sighting": {"observation_count": 10,
+                "threat_context": {"mitre_attack": {"techniques": ["T1059", "T1071.001"]}},
+                "observables": {"network": [{"type": "ipv4", "value": "198.51.100.1"},
+                  {"type": "ipv4", "value": "198.51.100.2"}, {"type": "domain", "value": "a.example"}]}}}"#,
+            NOW,
+        )
+        .unwrap();
+        let id = "sighting--0f8fad5b-d9cb-469f-a165-70867728950e";
+        let rows = s.rows(id);
+        assert_eq!(rows.iter().map(|r| r.seq).collect::<Vec<_>>(), [0, 1, 2]);
+        assert!(rows
+            .iter()
+            .all(|r| r.technique.as_deref() == Some("T1059,T1071.001")));
+        assert!(rows[1..].iter().all(|r| r.detail.is_none()));
+        let detail: Value = serde_json::from_str(rows[0].detail.as_ref().unwrap()).unwrap();
+        assert_eq!(detail["sighting_id"], id);
+        assert_eq!(detail["count"], 10);
+        assert_eq!(detail["target"], json!({"sector": "energy"}), "no identity");
+        assert_eq!(
+            Sighting::from_value(&detail, NOW).unwrap().iocs(),
+            s.iocs(),
+            "the detail reads back"
         );
     }
 

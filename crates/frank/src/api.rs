@@ -30,9 +30,9 @@ use serde_json::{json, Value};
 
 use crate::audit::Audit;
 use crate::auth::Caller;
-use crate::explore::{self as ex, Dimension};
+use crate::explore::{self as ex, Dimension, FIRST_ROW};
 use crate::store::registry::{self, Receipt};
-use crate::store::sightings::scalar;
+use crate::store::sightings::{scalar, NAME as SIGHTINGS, TECHNIQUES};
 use crate::store::{Iocs, Participants, Registry, Sightings};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -290,9 +290,11 @@ fn tlp_visible(tier: Tier) -> String {
     format!("tlp IN ({})", levels.join(", "))
 }
 
-/// `(key, count, reporters)` per value of `column` over the rows `visible`
-/// selects. Unless `exact`, a cell with fewer than [`MIN_CELL`] distinct
-/// reporters is dropped: k-anonymity counts reporters, not rows (#148).
+/// `(key, sightings, reporters)` per value of `column` over the rows
+/// `visible` selects, counted as [`ex::Query::sql`] does: `seq = 0` rows,
+/// all rows for the IoC type, `sighting_techniques` for techniques. Unless
+/// `exact`, a cell with fewer than [`MIN_CELL`] distinct reporters is
+/// dropped: k-anonymity counts reporters, not rows (#148).
 fn breakdown(
     s: &Sightings,
     column: &str,
@@ -301,10 +303,20 @@ fn breakdown(
     limit: usize,
     exact: bool,
 ) -> Result<Vec<Value>, ApiError> {
+    let (table, rows) = match column {
+        "technique" => (TECHNIQUES, String::new()),
+        "ioc_type" => (SIGHTINGS, String::new()),
+        _ => (SIGHTINGS, format!(" AND {FIRST_ROW}")),
+    };
     let sql = format!(
-        "SELECT {column}, count(*) AS n, count(DISTINCT reporter) AS r FROM sightings WHERE ts >= {since} AND {visible} GROUP BY {column} ORDER BY n DESC"
+        "SELECT {column}, count(*) AS n, count(DISTINCT reporter) AS r FROM {table} WHERE ts >= {since} AND {visible}{rows} GROUP BY {column} ORDER BY n DESC"
     );
-    let r = s.query(&sql).map_err(internal)?;
+    let r = if column == "technique" {
+        s.query_techniques(&sql)
+    } else {
+        s.query(&sql)
+    }
+    .map_err(internal)?;
     Ok(r.rows
         .iter()
         .filter_map(|row| match (&row[0], &row[1], &row[2]) {
@@ -337,7 +349,7 @@ async fn statistics(
             "tier": caller.tier,
             "days": days,
             "sightings": q(&format!("SELECT count(DISTINCT sighting_id) FROM sightings WHERE ts >= {since} AND {v}"))?,
-            "observations": q(&format!("SELECT sum(observations) FROM sightings WHERE ts >= {since} AND {v}"))?,
+            "observations": q(&format!("SELECT sum(observations) FROM sightings WHERE ts >= {since} AND {v} AND {FIRST_ROW}"))?,
             "iocs": app.iocs.count(&Tlp::visible_to(caller.tier)).map_err(internal)?,
         });
         let exact = caller.tier >= Tier::Partner;
@@ -453,7 +465,12 @@ fn grouped(
     limit: usize,
 ) -> Result<Vec<Value>, ApiError> {
     let sql = q.sql(since, visible).map_err(unprocessable)?;
-    let r = s.query(&sql).map_err(internal)?;
+    let r = if q.on_techniques() {
+        s.query_techniques(&sql)
+    } else {
+        s.query(&sql)
+    }
+    .map_err(internal)?;
     let k = q.group.columns().len();
     Ok(r.rows
         .iter()
@@ -540,7 +557,10 @@ async fn rule_detail(
             ));
         };
         let base = by(Dimension::Rule);
-        let filter = base.where_clause(since, &visible).map_err(unprocessable)?;
+        let filter = format!(
+            "{} AND {FIRST_ROW}",
+            base.where_clause(since, &visible).map_err(unprocessable)?
+        );
         let list = |d, n| grouped(s, &by(d), since, &visible, exact, n);
         Ok(Json(json!({
             "rule": total["key"],
@@ -740,6 +760,8 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             reporter: String::new(),
             digest: String::new(),
             received_ns: 0,
+            seq: 0,
+            detail: None,
         });
     }
     iocs.clear()?;
