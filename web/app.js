@@ -639,7 +639,9 @@ const ANNOTATED = [
 const MARKS = ["public", "observer", "contributor", "partner", "never"];
 
 /** One YAML line as highlighted nodes: indent, list dash, key, value,
- * comment. Text only, never HTML. */
+ * comment, in one inline span: as flex items of `.y-line` the indent
+ * (whitespace only) would not render, and a copy would split the line.
+ * Text only, never HTML. */
 function yamlLine(line) {
   const out = [];
   const m = /^(\s*)(- )?(?:([^\s:#][^:#]*?):(?=\s|$))?(.*)$/.exec(line);
@@ -651,7 +653,7 @@ function yamlLine(line) {
   const value = hash < 0 ? rest : rest.slice(0, hash);
   out.push(el("span", { class: "y-val" }, value));
   if (hash >= 0) out.push(el("span", { class: "y-com" }, rest.slice(hash)));
-  return out;
+  return [el("span", { class: "y-code" }, ...out)];
 }
 
 let aboutDone = false;

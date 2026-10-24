@@ -154,6 +154,7 @@ pre.yaml, pre.curl {
 }
 pre.curl { padding: 10px 14px; white-space: pre; }
 .y-line { display: flex; gap: 0; padding: 0 14px 0 10px; border-left: 4px solid transparent; white-space: pre; }
+.y-code { white-space: pre; }
 .y-line.mark-never .y-val { text-decoration: line-through; }
 .y-mark { margin-left: auto; padding-left: 24px; color: var(--c-muted); font-size: 11px; }
 .y-key { color: var(--c-text); font-weight: 700; }
