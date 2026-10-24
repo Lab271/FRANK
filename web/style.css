@@ -134,3 +134,37 @@ tr.go:hover td { background: var(--c-panel); }
 .spark rect { fill: var(--c-tq); }
 .spark rect.zero { fill: var(--c-border); }
 @media (max-width: 640px) { .pane { width: 100%; padding: var(--lab-space-2); } }
+
+/* about: the annotated example. One turquoise ramp, public lightest to
+   partner strongest (an order, not categories); every line also names its
+   status, so the colour is never the only cue. */
+main section h2 { margin: var(--lab-space-3) 0 6px; font-size: var(--lab-type-size-h3, 20px); }
+main section h2:first-child { margin-top: 0; }
+.card p { margin: 0; font-size: var(--lab-type-size-small); }
+.chips-static { gap: 8px; }
+.mark { padding: 2px 10px 2px 8px; font-family: var(--lab-type-family-mono); font-size: 12px; border-left: 4px solid; }
+.mark-public { border-color: color-mix(in srgb, var(--c-tq) 25%, transparent); }
+.mark-observer { border-color: color-mix(in srgb, var(--c-tq) 45%, transparent); }
+.mark-contributor { border-color: color-mix(in srgb, var(--c-tq) 70%, transparent); }
+.mark-partner { border-color: var(--c-tq); }
+.mark-never { border-left-style: dashed; border-color: var(--c-muted); color: var(--c-muted); }
+pre.yaml, pre.curl {
+  margin: 12px 0 0; padding: 12px 0; overflow-x: auto; background: var(--c-panel);
+  font-family: var(--lab-type-family-mono); font-size: 13px; line-height: 1.7;
+}
+pre.curl { padding: 10px 14px; white-space: pre; }
+.y-line { display: flex; gap: 0; padding: 0 14px 0 10px; border-left: 4px solid transparent; white-space: pre; }
+.y-line.mark-never .y-val { text-decoration: line-through; }
+.y-mark { margin-left: auto; padding-left: 24px; color: var(--c-muted); font-size: 11px; }
+.y-key { color: var(--c-text); font-weight: 700; }
+.y-val { color: var(--c-text); }
+.y-dash, .y-com { color: var(--c-muted); }
+
+/* api: one card per endpoint */
+.api-tag { margin: var(--lab-space-3) 0 8px; font-family: var(--lab-type-family-mono); font-weight: 400; font-size: 12px; color: var(--c-tq-text); }
+.endpoint { margin: 0 0 12px; }
+.endpoint > p { margin: 6px 0 0; }
+.endpoint-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.endpoint-head code { font-size: 14px; overflow-wrap: anywhere; }
+.method { font-family: var(--lab-type-family-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--c-tq-text); }
+.pill.locked { opacity: 0.5; }

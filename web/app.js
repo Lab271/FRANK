@@ -73,6 +73,8 @@ function route() {
   } else {
     closePane();
   }
+  if (tab === "about") loadAbout();
+  if (tab === "api") loadApi();
 }
 window.addEventListener("hashchange", route);
 
@@ -196,12 +198,15 @@ function nameSightings() {
   if (added) $("submission").value = JSON.stringify(doc, null, 2);
 }
 
+/** JSON (also a STIX bundle) when the text starts like JSON, else YAML. */
+const contentType = (text) => (/^\s*[[{]/.test(text) ? "application/json" : "application/yaml");
+
 $("do-submit").addEventListener("click", async () => {
   if (!(await doPreview())) return;
   nameSightings();
   try {
     const r = await (await api("/v1/sightings", {
-      method: "POST", headers: { "content-type": "application/json" }, body: $("submission").value,
+      method: "POST", headers: { "content-type": contentType($("submission").value) }, body: $("submission").value,
     })).json();
     const created = r.receipts.filter((x) => x.status === "created").length;
     const resent = r.receipts.length - created;
@@ -476,6 +481,151 @@ async function openPane(kind, key) {
     if (seq === paneSeq) show($("pane-body"), ...nodes);
   } catch (e) {
     if (seq === paneSeq) show($("pane-body"), errorNode(e));
+  }
+}
+
+// --- about ------------------------------------------------------------------
+// What each status may do and see (ADR-002, #149, #160). The field marks are
+// kept by hand next to DIMENSION_TIER, which encodes the same rules.
+
+const STATUS_TEXT = {
+  public: "No token. Platform totals of TLP:CLEAR sightings.",
+  observer: "Breakdowns by IoC type, severity and target sector; cells with fewer than three reporters are left out.",
+  contributor: "Sends sightings. Sees rules, techniques, campaigns and IoC lookups, and lists its own sightings.",
+  partner: "Sees exact cells and full records, lists all sightings, downloads the sighting files and analyses them locally.",
+  core: "Runs the platform. Sees the participants by name.",
+};
+const TLP_MIN = [["TLP:CLEAR", "public"], ["TLP:GREEN", "observer"], ["TLP:AMBER", "contributor"],
+  ["TLP:AMBER+STRICT", "partner"], ["TLP:RED", null]];
+
+// [line, lowest status that sees it ("never": not stored; "": structure)].
+const ANNOTATED = [
+  ["submission:", ""],
+  ["  submitter:", ""],
+  ["    organisation_id: identity-f431f809-377b-45e0-aa1c-6a4751cae5ff", "never"],
+  ["    sector: cybersecurity_services", "partner"],
+  ["  hit_target:", ""],
+  ["    organisation_id: identity-c9b5d123-8877-4422-9966-112233445566", "never"],
+  ["    sector: energy", "observer"],
+  ["    organisation_size: large", "partner"],
+  ["    region: nl_north_holland", "partner"],
+  ["  sighting:", ""],
+  ["    sighting_id: 0f8fad5b-d9cb-469f-a165-70867728950e", "partner"],
+  ["    tlp_level: TLP:AMBER    # decides who sees any of this", "public"],
+  ["    last_observed: 2026-10-22T10:00:00Z", "partner"],
+  ["    observation_count: 12", "public"],
+  ["    confidence: 80", "partner"],
+  ["    severity: high", "observer"],
+  ["    description: PowerShell download cradle beaconing to a fresh domain.", "partner"],
+  ["    sigma_detection:", ""],
+  ["      rule_id: 3b6ab547-8ec2-4991-b9d2-2b06702a48d7", "contributor"],
+  ["      rule_name: PowerShell Download Cradle", "partner"],
+  ["      level: high", "partner"],
+  ["    threat_context:", ""],
+  ["      campaign: { name: npm_worm }", "contributor"],
+  ["      mitre_attack:", ""],
+  ["        techniques: [T1059.001, T1071.001]", "contributor"],
+  ["    observables:", ""],
+  ["      network:", ""],
+  ["        - type: ipv4", "observer"],
+  ["          value: 198.51.100.23", "contributor"],
+  ["          role: c2_server    # kept as sent, never a filter", "partner"],
+  ["          port: 443", "partner"],
+];
+const MARKS = ["public", "observer", "contributor", "partner", "never"];
+
+/** One YAML line as highlighted nodes: indent, list dash, key, value,
+ * comment. Text only, never HTML. */
+function yamlLine(line) {
+  const out = [];
+  const m = /^(\s*)(- )?(?:([^\s:#][^:#]*?):(?=\s|$))?(.*)$/.exec(line);
+  const [, indent, dash, key, rest] = m || ["", "", "", "", line];
+  out.push(indent);
+  if (dash) out.push(el("span", { class: "y-dash" }, dash));
+  if (key) out.push(el("span", { class: "y-key" }, key), ":");
+  const hash = rest.search(/\s#/);
+  const value = hash < 0 ? rest : rest.slice(0, hash);
+  out.push(el("span", { class: "y-val" }, value));
+  if (hash >= 0) out.push(el("span", { class: "y-com" }, rest.slice(hash)));
+  return out;
+}
+
+let aboutDone = false;
+function loadAbout() {
+  if (aboutDone) return;
+  aboutDone = true;
+  show($("about-statuses"), ...TIERS.map((t) =>
+    el("div", { class: "card" }, el("h3", {}, t), el("p", {}, STATUS_TEXT[t]))));
+  show($("about-tlp"), table(["level", ...TIERS], TLP_MIN.map(([level, min]) =>
+    [level, ...TIERS.map((t) => (min && TIERS.indexOf(t) >= TIERS.indexOf(min) ? "✓" : "–"))])));
+  show($("about-legend"), ...MARKS.map((m) =>
+    el("span", { class: `mark mark-${m}` }, m === "never" ? "never stored" : `${m} and up`)));
+  show($("about-yaml"), ...ANNOTATED.map(([line, mark]) => {
+    const row = el("span", { class: `y-line${mark ? ` mark-${mark}` : ""}` }, ...yamlLine(line));
+    if (mark) row.append(el("span", { class: "y-mark" }, mark === "never" ? "never stored" : mark));
+    return row;
+  }));
+}
+
+// --- api --------------------------------------------------------------------
+// Rendered from /v1/openapi.json (api/openapi.yaml).
+
+const FORMATS = [
+  ["application/json", "sighting.json", "Phase 2's submission format or frank/1; one sighting or a list."],
+  ["application/yaml", "sighting.yaml", "The same documents as YAML. Anchors and aliases are not accepted."],
+  ["application/stix+json", "sighting.stix.json",
+    "A STIX 2.1 bundle: each sighting with its SIGMA indicator and the SCOs of its observed-data. Identities and relationships are ignored."],
+];
+
+function curl(method, path, secured, extra = []) {
+  const parts = ["curl"];
+  if (method !== "get") parts.push(`-X ${method.toUpperCase()}`);
+  if (secured) parts.push('-H "Authorization: Bearer $FRANK_TOKEN"');
+  parts.push(...extra, `"${location.origin}${path}"`);
+  return parts.join(" \\\n  ");
+}
+
+let apiDone = false;
+async function loadApi() {
+  if (apiDone) return;
+  try {
+    const doc = await (await api("/v1/openapi.json")).json();
+    apiDone = true;
+    show($("api-formats"), ...FORMATS.map(([type, file, text]) => el("div", { class: "card endpoint" },
+      el("h3", {}, type), el("p", {}, text),
+      el("pre", { class: "curl" }, curl("post", "/v1/sightings", true,
+        [`-H "Content-Type: ${type}"`, `--data-binary @examples/formats/${file}`])))));
+    const resolve = (p) => (p.$ref ? p.$ref.split("/").slice(1).reduce((o, k) => o?.[k], doc) : p);
+    const groups = (doc.tags || []).map((t) => {
+      const ops = [];
+      for (const [path, item] of Object.entries(doc.paths)) {
+        for (const [method, op] of Object.entries(item)) {
+          if ((op.tags || []).includes(t.name)) ops.push([path, method, op]);
+        }
+      }
+      return [t, ops];
+    });
+    show($("api-out"), ...groups.flatMap(([t, ops]) => [
+      el("h3", { class: "api-tag" }, `${t.name} \\ ${t.description || ""}`),
+      ...ops.map(([path, method, op]) => {
+        const min = op["x-min-status"] || "public";
+        const secured = !(Array.isArray(op.security) && op.security.length === 0);
+        const params = (op.parameters || []).map(resolve);
+        return el("div", { class: "card endpoint" },
+          el("div", { class: "endpoint-head" },
+            el("span", { class: "method" }, method.toUpperCase()), el("code", {}, path),
+            el("span", { class: `lab-label pill${atLeast(min) ? "" : " locked"}` }, `${min}+`)),
+          el("p", {}, op.summary || ""),
+          ...(op.description ? [el("p", { class: "note" }, op.description)] : []),
+          ...(params.length ? [table(["parameter", "in", "", "description"], params.map((p) =>
+            [p.name, p.in, p.required ? "required" : "", p.description || ""]))] : []),
+          el("pre", { class: "curl" }, method === "post"
+            ? curl(method, path, secured, ['-H "Content-Type: application/json"', "--data-binary @sighting.json"])
+            : curl(method, path, secured)));
+      }),
+    ]));
+  } catch (e) {
+    show($("api-out"), errorNode(e));
   }
 }
 

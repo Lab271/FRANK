@@ -40,6 +40,8 @@
   <button role="tab" class="lab-nav-link" data-tab="submit">submit</button>
   <button role="tab" class="lab-nav-link" data-tab="lookup">lookup</button>
   <button role="tab" class="lab-nav-link" data-tab="analyse">analyse locally</button>
+  <button role="tab" class="lab-nav-link" data-tab="about">about</button>
+  <button role="tab" class="lab-nav-link" data-tab="api">api</button>
 </nav>
 
 <main>
@@ -75,9 +77,9 @@
   </section>
 
   <section id="submit" role="tabpanel" hidden>
-    <p class="note">Paste a submission (Phase 2 JSON format, one or an array). The preview runs in
-      your browser, with the same code the server runs (WebAssembly): these rows are everything that is shared.
-      Organisation identities are never stored.</p>
+    <p class="note">Paste a sighting: JSON or YAML (Phase 2's format or <code>frank/1</code>, one or a list),
+      or a STIX 2.1 bundle. The preview runs in your browser, with the same code the server runs (WebAssembly):
+      these rows are everything that is shared. Organisation identities are never stored.</p>
     <textarea id="submission" class="lab-input" spellcheck="false" rows="14"></textarea>
     <div class="row">
       <button id="example" class="lab-btn lab-btn--secondary">load example</button>
@@ -118,6 +120,34 @@
       <span id="sql-status" class="note"></span>
     </div>
     <div id="sql-out"></div>
+  </section>
+
+  <section id="about" role="tabpanel" hidden>
+    <h2>FRANK does not judge</h2>
+    <p class="note">FRANK passes on what participants send. Every observable is kept, with the sender's own
+      words for it (its <code>role</code>, port, file name, ...); nothing is filtered on them. Whether an indicator
+      is malicious is for the reader to decide, with the sighting's confidence and the reporters behind it.</p>
+    <h2>participants</h2>
+    <div id="about-statuses" class="grid"></div>
+    <h2>who sees which TLP level</h2>
+    <p class="note">The sender chooses the TLP level of each sighting; a status sees its levels and those below.
+      TLP:RED is refused: it is meant for named people, not for a platform.</p>
+    <div id="about-tlp"></div>
+    <h2>who sees which field</h2>
+    <p class="note">An example message, each field marked with the lowest status that sees it (when the TLP
+      level allows). Identities of the sender and the target are never stored.</p>
+    <div id="about-legend" class="row chips-static"></div>
+    <pre id="about-yaml" class="yaml"></pre>
+  </section>
+
+  <section id="api" role="tabpanel" hidden>
+    <p class="note">Machine clients use the same API as this page. Send <code>Authorization: Bearer &lt;token&gt;</code>;
+      the status of the token's participant decides what an endpoint returns. The full description is at
+      <a class="link" href="/v1/openapi.json">/v1/openapi.json</a>.</p>
+    <h2>sending sightings</h2>
+    <div id="api-formats"></div>
+    <h2>endpoints</h2>
+    <div id="api-out"></div>
   </section>
 </main>
 
