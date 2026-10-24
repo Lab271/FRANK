@@ -12,6 +12,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 - `GET /v1/participants`: ids and status for partners; names, type, sector and users for core. `GET /v1/whoami` returns the user and participant.
 - STACKIT: a nightly timer copies `participants.db` with `sqlite3 .backup` and keeps two weeks.
 - `frank rebuild` (was `rebuild-iocs`, still accepted) rebuilds `iocs.db` and `registry.db`.
+- **Audit log** (#159): `data/audit/YYYY-MM-DD.jsonl`, one line per submission, ingest and change to participants, users and tokens, naming who did it; tokens only as a hash prefix. Written by the server and the CLI; dropped with the retention.
 
 ### Changed
 

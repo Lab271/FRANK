@@ -5,6 +5,7 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use frank::api::{rebuild_iocs, router, App};
+use frank::audit::Audit;
 use frank::auth::{hash, uuid4};
 use frank::store::participants::{self as parts, FILE};
 use frank::store::{Iocs, Participants, Registry, Sightings};
@@ -66,6 +67,7 @@ fn harness(name: &str) -> Harness {
         iocs: iocs.clone(),
         participants: Participants::open(&dir).unwrap(),
         registry: registry.clone(),
+        audit: Audit::open(&dir).unwrap(),
         submit_lock: std::sync::Mutex::new(()),
         now,
     }));
@@ -1011,6 +1013,37 @@ async fn a_resend_is_recognised() {
         db_core::engine::Cell::Int(0),
         "the batch was refused whole"
     );
+
+    // Each POST is one audit line naming the user, never in the Parquet.
+    let mut lines = Vec::new();
+    for f in std::fs::read_dir(h._dir.0.join("audit")).unwrap() {
+        let text = std::fs::read_to_string(f.unwrap().path()).unwrap();
+        lines.extend(
+            text.lines()
+                .map(|l| serde_json::from_str::<Value>(l).unwrap()),
+        );
+    }
+    let actions: Vec<(&str, &str)> = lines
+        .iter()
+        .map(|l| (l["action"].as_str().unwrap(), l["by"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        actions,
+        [
+            ("submit", "mdr@mdr"),
+            ("submit", "mdr@mdr"),
+            ("submit", "mdr@mdr"),
+            ("submit", "mdr2@mdr2"),
+            ("submit_refused", "mdr@mdr"),
+        ]
+    );
+    assert_eq!(lines[1]["receipts"][0]["status"], "duplicate");
+    assert_eq!(lines[4]["conflicts"][0], receipt["sighting_id"]);
+    let users = h
+        .sightings
+        .query("SELECT count(*) FROM sightings WHERE reporter = 'mdr'")
+        .unwrap();
+    assert_eq!(users.rows[0][0], db_core::engine::Cell::Int(0));
 
     // No id: refused, with the reason.
     let mut bare = sighting("energy", "198.51.100.22", "r1");

@@ -8,10 +8,13 @@ use std::time::Duration;
 use clap::{Parser, Subcommand};
 use db_core::storage::ingest::IngestError;
 use frank::api::{self, App};
+use frank::audit::{self, Audit};
+use frank::auth::hash;
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
 use frank::store::registry::{self, Registry};
 use frank::store::{Iocs, Participants, Sightings};
 use frank_core::{Submission, Tier};
+use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -161,24 +164,33 @@ fn main() -> Result<(), String> {
             cli.participants.display()
         ));
     }
+    let audit = Audit::open(&cli.data)?;
+    let log = |action: &str, fields: serde_json::Value| {
+        audit.record(now_ns(), &audit::cli_user(), action, fields)
+    };
     match cli.command {
-        Command::Participant(cmd) => participant(&db, cmd),
+        Command::Participant(cmd) => participant(&db, cmd, &log),
         Command::User(UserCmd::Add {
             participant,
             name,
             machine,
         }) => {
-            parts::add_user(
-                &db,
-                &participant,
-                &name,
-                if machine { "machine" } else { "human" },
+            let kind = if machine { "machine" } else { "human" };
+            parts::add_user(&db, &participant, &name, kind)?;
+            log(
+                "user_added",
+                json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind }),
             )?;
             eprintln!("added user {name:?} to {participant:?}; create a token with `frank token new {name}`");
             Ok(())
         }
         Command::Token(TokenCmd::New { user }) => {
-            println!("{}", parts::add_token(&db, &user)?);
+            let token = parts::add_token(&db, &user)?;
+            log(
+                "token_issued",
+                json!({ "user": user, "token": &hash(&token)[..12] }),
+            )?;
+            println!("{token}");
             eprintln!("added a token for {user:?}; it is shown once");
             Ok(())
         }
@@ -191,6 +203,10 @@ fn main() -> Result<(), String> {
         }
         Command::Token(TokenCmd::Revoke { prefix }) => {
             parts::revoke(&db, &prefix)?;
+            log(
+                "token_revoked",
+                json!({ "token": prefix.to_ascii_lowercase() }),
+            )?;
             eprintln!("revoked {prefix}…");
             Ok(())
         }
@@ -201,17 +217,24 @@ fn main() -> Result<(), String> {
         } => {
             let id = match parts::organisation_id(&db, &participant) {
                 Ok(id) => id,
-                Err(_) if create => parts::add_organisation(
-                    &db,
-                    &participant,
-                    Tier::Contributor,
-                    "cyber_partner",
-                    None,
-                    None,
-                )?,
+                Err(_) if create => {
+                    let id = parts::add_organisation(
+                        &db,
+                        &participant,
+                        Tier::Contributor,
+                        "cyber_partner",
+                        None,
+                        None,
+                    )?;
+                    log(
+                        "participant_added",
+                        json!({ "participant": id, "name": participant, "status": Tier::Contributor.as_str() }),
+                    )?;
+                    id
+                }
                 Err(e) => return Err(format!("{e} (register it, or pass --create)")),
             };
-            ingest(&cli.data, &files, &id)
+            ingest(&cli.data, &files, &id, &audit)
         }
         Command::Rebuild => {
             let (s, i) = open(&cli.data, None)?;
@@ -230,6 +253,10 @@ fn main() -> Result<(), String> {
             let participants = Participants::open(&cli.participants)?;
             if participants.active_tokens()? == 0 && tokens.exists() {
                 let created = parts::import_tokens_file(&db, &tokens)?;
+                log(
+                    "tokens_imported",
+                    json!({ "file": tokens.display().to_string(), "organisations": created }),
+                )?;
                 tracing::warn!(
                     organisations = ?created,
                     "imported {} as one organisation per token; merge the ones that are one \
@@ -250,6 +277,7 @@ fn main() -> Result<(), String> {
                 iocs,
                 participants,
                 registry,
+                audit: audit.clone(),
                 submit_lock: std::sync::Mutex::new(()),
                 now: now_ns,
             });
@@ -275,7 +303,11 @@ fn open(data: &Path, retention_days: Option<u32>) -> Result<(Sightings, Iocs), S
     Ok((sightings, iocs))
 }
 
-fn participant(db: &Path, cmd: ParticipantCmd) -> Result<(), String> {
+fn participant(
+    db: &Path,
+    cmd: ParticipantCmd,
+    log: &dyn Fn(&str, serde_json::Value) -> Result<(), String>,
+) -> Result<(), String> {
     match cmd {
         ParticipantCmd::Add {
             name,
@@ -294,10 +326,23 @@ fn participant(db: &Path, cmd: ParticipantCmd) -> Result<(), String> {
                 sector.as_deref(),
                 region.as_deref(),
             )?;
+            log(
+                "participant_added",
+                json!({ "participant": id, "name": name, "status": st.as_str(), "type": kind }),
+            )?;
             eprintln!("registered {name:?} ({st}) as {id}");
             if with_token {
                 parts::add_user(db, &name, &name, "human")?;
-                println!("{}", parts::add_token(db, &name)?);
+                log(
+                    "user_added",
+                    json!({ "participant": id, "user": name, "kind": "human" }),
+                )?;
+                let token = parts::add_token(db, &name)?;
+                log(
+                    "token_issued",
+                    json!({ "user": name, "token": &hash(&token)[..12] }),
+                )?;
+                println!("{token}");
                 eprintln!("added user {name:?} and a token for it; the token is shown once");
             }
             Ok(())
@@ -318,6 +363,10 @@ fn participant(db: &Path, cmd: ParticipantCmd) -> Result<(), String> {
         ParticipantCmd::SetStatus { name, status: st } => {
             let st = status(&st)?;
             parts::set_status(db, &name, st)?;
+            log(
+                "status_set",
+                json!({ "participant": parts::organisation_id(db, &name)?, "status": st.as_str() }),
+            )?;
             eprintln!("{name:?} is now {st}");
             Ok(())
         }
@@ -329,7 +378,7 @@ fn participant(db: &Path, cmd: ParticipantCmd) -> Result<(), String> {
 /// sighting without an id gets one derived from its content, so loading a
 /// file twice adds nothing. A file with a conflicting sighting is refused
 /// whole.
-fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> {
+fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Result<(), String> {
     let (s, i) = open(data, None)?;
     let reg = Registry::open(data, &s)?;
     let (mut created, mut duplicates) = (0, 0);
@@ -364,12 +413,15 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> 
         }
         let mut rows = Vec::new();
         let mut fresh: Vec<registry::Registration> = Vec::new();
+        let mut seen = Vec::new();
         let now = now_ns();
         for (id, digest, sub) in subs {
             if known.contains_key(&id) || fresh.iter().any(|f| f.1 == id) {
                 duplicates += 1;
+                seen.push(json!({ "sighting_id": id, "digest": digest, "status": "duplicate" }));
                 continue;
             }
+            seen.push(json!({ "sighting_id": id, "digest": digest, "status": "created" }));
             rows.extend(sub.rows(&id).into_iter().map(|mut r| {
                 r.reporter = reporter.to_string();
                 r.digest.clone_from(&digest);
@@ -384,6 +436,12 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str) -> Result<(), String> 
             i.record(&rows)?;
             reg.register(fresh)?;
         }
+        audit.record(
+            now,
+            &audit::cli_user(),
+            "ingest",
+            json!({ "participant": reporter, "file": f.display().to_string(), "receipts": seen }),
+        )?;
     }
     s.flush().map_err(|e| e.to_string())?;
     s.close().map_err(|e| e.to_string())?;
@@ -453,6 +511,7 @@ async fn maintain(app: api::Shared, retention_days: u32) {
                 let keep_from = now_ns().div_euclid(DAY_NS) - i64::from(retention_days);
                 app.iocs.retain_from(keep_from)?;
                 app.registry.retain_from(keep_from)?;
+                app.audit.retain_from(keep_from)?;
                 tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
             }
             Ok(())

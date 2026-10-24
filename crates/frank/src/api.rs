@@ -28,6 +28,7 @@ use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
+use crate::audit::Audit;
 use crate::auth::Caller;
 use crate::explore::{self as ex, Dimension};
 use crate::store::registry::{self, Receipt};
@@ -48,6 +49,7 @@ pub struct App {
     pub iocs: Iocs,
     pub participants: Participants,
     pub registry: Registry,
+    pub audit: Audit,
     /// Makes "is it registered, store it, register it" one step.
     pub submit_lock: std::sync::Mutex<()>,
     /// Wall clock in ns; tests set their own.
@@ -212,6 +214,14 @@ async fn submit(
             .map(|(id, _, _)| id.as_str())
             .collect();
         if !conflicts.is_empty() {
+            app.audit
+                .record(
+                    (app.now)(),
+                    &caller2.label(),
+                    "submit_refused",
+                    json!({ "participant": caller2.participant, "conflicts": conflicts }),
+                )
+                .map_err(internal)?;
             return Err(ApiError(
                 StatusCode::CONFLICT,
                 format!(
@@ -247,6 +257,14 @@ async fn submit(
             app.iocs.record(&rows).map_err(internal)?;
             app.registry.register(fresh).map_err(internal)?;
         }
+        app.audit
+            .record(
+                now,
+                &caller2.label(),
+                "submit",
+                json!({ "participant": caller2.participant, "receipts": receipts }),
+            )
+            .map_err(internal)?;
         Ok((receipts, rows.len()))
     })
     .await?;

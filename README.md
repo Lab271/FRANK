@@ -23,6 +23,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
                                              ▲
                    participants/participants.db: organisations, users, tokens
                    data/registry.db: resend index (rebuilt from the sightings)
+                   data/audit/: who did what, one JSON line per action
                                              │
                           web UI + frank-wasm (preview, SQL over Parquet in the browser)
 ```
@@ -68,6 +69,8 @@ An old `./tokens` file is imported once when the server starts on an empty `part
 **On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS.
 
 Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`.
+
+**Audit log.** `data/audit/YYYY-MM-DD.jsonl` (UTC) has one line per action: every submission and ingest (participant, user, sighting ids, digests, created/duplicate/refused) and every change to participants, users and tokens, with who did it (`user@organisation`, or `cli:<os user>`). A token appears only as the first 12 hex digits of its hash, as `frank token list` shows it. Days are dropped with the sightings' retention.
 
 **Backups.** `iocs.db` and `registry.db` are indexes rebuilt from the sightings (`frank rebuild`, server stopped); `participants.db` cannot be rebuilt. On STACKIT a nightly timer copies it with `sqlite3 .backup` (safe while FRANK runs) to `/srv/frank/backup/<date>/` and keeps two weeks. That copy sits on the same volume: take volume snapshots or copy `/srv/frank/backup` off the VM for a backup that survives losing the volume. Elsewhere: `sqlite3 participants/participants.db ".backup /somewhere/participants.db"`.
 

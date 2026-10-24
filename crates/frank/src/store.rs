@@ -4,6 +4,7 @@
 //! <data>/sightings/                 striped Parquet table (db-core ingest)
 //! <data>/iocs.db                    row table, one row per IoC per day
 //! <data>/registry.db                row table: resend index (participant, sighting id → digest)
+//! <data>/audit/                     JSON lines: who did what ([`crate::audit`])
 //! <participants>/participants.db    row tables: organisations, users, tokens (#159)
 //! ```
 //!

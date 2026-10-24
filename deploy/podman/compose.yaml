@@ -4,6 +4,7 @@
 #   data/sightings/                Parquet table (live/, archive/, wal/)
 #   data/iocs.db                   row table
 #   data/registry.db               resend index, rebuilt from the sightings
+#   data/audit/                    who did what, one JSON line per action
 #   participants/participants.db   organisations, users, tokens (#159)
 # Participants and tokens apply on the next request: `make participant
 # NAME=me STATUS=partner` works with the container running.
