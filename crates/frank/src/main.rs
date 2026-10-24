@@ -6,11 +6,15 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
+use db_core::storage::ingest::IngestError;
 use frank::api::{self, App};
-use frank::auth::{add_token, Tokens};
-use frank::reporter::Reporters;
-use frank::store::{Iocs, Sightings};
+use frank::audit::{self, Audit};
+use frank::auth::hash;
+use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
+use frank::store::registry::{self, Registry};
+use frank::store::{Iocs, Participants, Sightings};
 use frank_core::{Submission, Tier};
+use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
 use tower_http::trace::TraceLayer;
@@ -18,11 +22,23 @@ use tower_http::trace::TraceLayer;
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 
 #[derive(Parser)]
-#[command(version, about = "FRANK: anonymised threat-sighting sharing")]
+#[command(
+    version,
+    about = "FRANK: threat-sighting sharing between known participants"
+)]
 struct Cli {
-    /// Data directory: `sightings/` (Parquet) and `iocs.db`.
+    /// Data directory: `sightings/` (Parquet), `iocs.db`.
     #[arg(long, env = "FRANK_DATA", default_value = "./data", global = true)]
     data: PathBuf,
+    /// Directory of `participants.db` (organisations, users, tokens): apart
+    /// from the data, so wiping the data keeps the participants.
+    #[arg(
+        long,
+        env = "FRANK_PARTICIPANTS",
+        default_value = "./participants",
+        global = true
+    )]
+    participants: PathBuf,
     #[command(subcommand)]
     command: Command,
 }
@@ -33,7 +49,8 @@ enum Command {
     Serve {
         #[arg(long, env = "FRANK_LISTEN", default_value = "127.0.0.1:8080")]
         listen: SocketAddr,
-        /// Tokens file (`<sha256> <tier> <label>` per line).
+        /// A Phase 3 tokens file (`<sha256> <tier> <label>` lines), imported
+        /// once into `participants.db` while that holds no tokens yet.
         #[arg(long, env = "FRANK_TOKENS", default_value = "./tokens")]
         tokens: PathBuf,
         /// Directory with the web UI (index.html, pkg/).
@@ -43,17 +60,80 @@ enum Command {
         #[arg(long, env = "FRANK_RETENTION_DAYS", default_value_t = 400)]
         retention_days: u32,
     },
-    /// Create a token for a tier; prints it once.
-    Token {
-        tier: String,
-        label: String,
-        #[arg(long, env = "FRANK_TOKENS", default_value = "./tokens")]
-        tokens: PathBuf,
-    },
+    /// Organisations: add, list, set their status.
+    #[command(subcommand)]
+    Participant(ParticipantCmd),
+    /// Users of an organisation.
+    #[command(subcommand)]
+    User(UserCmd),
+    /// Users' bearer tokens.
+    #[command(subcommand)]
+    Token(TokenCmd),
     /// Load submissions (JSON files, each one or an array) with the server stopped.
-    Ingest { files: Vec<PathBuf> },
-    /// Rebuild `iocs.db` from the sightings, with the server stopped.
-    RebuildIocs,
+    Ingest {
+        files: Vec<PathBuf>,
+        /// The participant they are stored under.
+        #[arg(long = "as", value_name = "PARTICIPANT")]
+        participant: String,
+        /// Register the participant as a contributor if it is missing.
+        #[arg(long)]
+        create: bool,
+    },
+    /// Rebuild `iocs.db` and `registry.db` from the sightings, with the
+    /// server stopped.
+    #[command(alias = "rebuild-iocs")]
+    Rebuild,
+}
+
+#[derive(Subcommand)]
+enum ParticipantCmd {
+    /// Register an organisation.
+    Add {
+        name: String,
+        /// observer, contributor, partner or core.
+        #[arg(long)]
+        status: String,
+        /// cyber_partner or customer.
+        #[arg(long = "type", default_value = "cyber_partner")]
+        kind: String,
+        #[arg(long)]
+        sector: Option<String>,
+        #[arg(long)]
+        region: Option<String>,
+        /// Also add a user of the same name and print a token for it.
+        #[arg(long)]
+        with_token: bool,
+    },
+    /// List the organisations, their status and users.
+    List,
+    /// Change an organisation's status; its users have it on their next request.
+    SetStatus { name: String, status: String },
+}
+
+#[derive(Subcommand)]
+enum UserCmd {
+    /// Add a user to an organisation.
+    Add {
+        participant: String,
+        name: String,
+        /// A machine identity (an API client) rather than a person.
+        #[arg(long)]
+        machine: bool,
+    },
+}
+
+#[derive(Subcommand)]
+enum TokenCmd {
+    /// Create a token for a user; prints it once.
+    New { user: String },
+    /// List the tokens (hash prefixes, never the tokens).
+    List,
+    /// Revoke the token whose hash starts with PREFIX (see `list`).
+    Revoke { prefix: String },
+}
+
+fn status(s: &str) -> Result<Tier, String> {
+    Tier::parse(s).ok_or_else(|| "status: observer, contributor, partner or core".to_string())
 }
 
 fn now_ns() -> i64 {
@@ -71,24 +151,97 @@ fn main() -> Result<(), String> {
         )
         .init();
     let cli = Cli::parse();
+    for dir in [&cli.data, &cli.participants] {
+        std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
+    }
+    let db = cli.participants.join(PARTICIPANTS);
+    let old = cli.data.join(PARTICIPANTS);
+    if old.exists() && !db.exists() {
+        return Err(format!(
+            "{} moved out of the data directory: mv {}* {}/",
+            old.display(),
+            old.display(),
+            cli.participants.display()
+        ));
+    }
+    let audit = Audit::open(&cli.data)?;
+    let log = |action: &str, fields: serde_json::Value| {
+        audit.record(now_ns(), &audit::cli_user(), action, fields)
+    };
     match cli.command {
-        Command::Token {
-            tier,
-            label,
-            tokens,
-        } => {
-            let tier =
-                Tier::parse(&tier).ok_or("tier: public, observer, contributor, partner or core")?;
-            println!("{}", add_token(&tokens, tier, &label)?);
-            eprintln!("added a {tier} token for {label:?} to {}", tokens.display());
+        Command::Participant(cmd) => participant(&db, cmd, &log),
+        Command::User(UserCmd::Add {
+            participant,
+            name,
+            machine,
+        }) => {
+            let kind = if machine { "machine" } else { "human" };
+            parts::add_user(&db, &participant, &name, kind)?;
+            log(
+                "user_added",
+                json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind }),
+            )?;
+            eprintln!("added user {name:?} to {participant:?}; create a token with `frank token new {name}`");
             Ok(())
         }
-        Command::Ingest { files } => ingest(&cli.data, &files),
-        Command::RebuildIocs => {
+        Command::Token(TokenCmd::New { user }) => {
+            let token = parts::add_token(&db, &user)?;
+            log(
+                "token_issued",
+                json!({ "user": user, "token": &hash(&token)[..12] }),
+            )?;
+            println!("{token}");
+            eprintln!("added a token for {user:?}; it is shown once");
+            Ok(())
+        }
+        Command::Token(TokenCmd::List) => {
+            for t in parts::tokens(&db)? {
+                let state = if t.revoked { "revoked" } else { "active" };
+                println!("{}  {:<8} {}@{}", t.prefix, state, t.user, t.organisation);
+            }
+            Ok(())
+        }
+        Command::Token(TokenCmd::Revoke { prefix }) => {
+            parts::revoke(&db, &prefix)?;
+            log(
+                "token_revoked",
+                json!({ "token": prefix.to_ascii_lowercase() }),
+            )?;
+            eprintln!("revoked {prefix}…");
+            Ok(())
+        }
+        Command::Ingest {
+            files,
+            participant,
+            create,
+        } => {
+            let id = match parts::organisation_id(&db, &participant) {
+                Ok(id) => id,
+                Err(_) if create => {
+                    let id = parts::add_organisation(
+                        &db,
+                        &participant,
+                        Tier::Contributor,
+                        "cyber_partner",
+                        None,
+                        None,
+                    )?;
+                    log(
+                        "participant_added",
+                        json!({ "participant": id, "name": participant, "status": Tier::Contributor.as_str() }),
+                    )?;
+                    id
+                }
+                Err(e) => return Err(format!("{e} (register it, or pass --create)")),
+            };
+            ingest(&cli.data, &files, &id, &audit)
+        }
+        Command::Rebuild => {
             let (s, i) = open(&cli.data, None)?;
             let n = api::rebuild_iocs(&s, &i)?;
+            let r = Registry::open(&cli.data, &s)?.rebuild(&s)?;
             s.close().map_err(|e| e.to_string())?;
-            eprintln!("rebuilt iocs from {n} sighting rows");
+            eprintln!("rebuilt iocs from {n} sighting rows, the registry with {r} registrations");
             Ok(())
         }
         Command::Serve {
@@ -97,19 +250,35 @@ fn main() -> Result<(), String> {
             web,
             retention_days,
         } => {
-            let tokens = Tokens::load(&tokens)?;
-            if tokens.is_empty() {
+            let participants = Participants::open(&cli.participants)?;
+            if participants.active_tokens()? == 0 && tokens.exists() {
+                let created = parts::import_tokens_file(&db, &tokens)?;
+                log(
+                    "tokens_imported",
+                    json!({ "file": tokens.display().to_string(), "organisations": created }),
+                )?;
                 tracing::warn!(
-                    "no tokens: only public statistics are available (create one with `frank token`)"
+                    organisations = ?created,
+                    "imported {} as one organisation per token; merge the ones that are one \
+                     organisation, then delete the file",
+                    tokens.display()
+                );
+            }
+            if participants.active_tokens()? == 0 {
+                tracing::warn!(
+                    "no tokens: only public statistics are available \
+                     (`frank participant add NAME --status partner --with-token`)"
                 );
             }
             let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
-            let reporters = Reporters::open(&cli.data, now_ns)?;
+            let registry = Registry::open(&cli.data, &sightings)?;
             let app = Arc::new(App {
                 sightings,
                 iocs,
-                tokens,
-                reporters,
+                participants,
+                registry,
+                audit: audit.clone(),
+                submit_lock: std::sync::Mutex::new(()),
                 now: now_ns,
             });
             tokio::runtime::Runtime::new()
@@ -121,18 +290,99 @@ fn main() -> Result<(), String> {
 
 fn open(data: &Path, retention_days: Option<u32>) -> Result<(Sightings, Iocs), String> {
     std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
-    let sightings =
-        Sightings::open(data, retention_days, now_ns).map_err(|e| format!("sightings: {e}"))?;
+    let sightings = Sightings::open(data, retention_days, now_ns).map_err(|e| match e {
+        // 0.13 added `digest` and `received`; a table's schema is fixed
+        // until db-core #740.
+        IngestError::SchemaMismatch => format!(
+            "{}: written by FRANK 0.12 or older (no digest column, pseudonymous \
+             reporters): move it aside and reload the sightings",
+            data.join(frank::store::sightings::NAME).display()
+        ),
+        e => format!("sightings: {e}"),
+    })?;
     let iocs = Iocs::open(data).map_err(|e| format!("iocs: {e}"))?;
     Ok((sightings, iocs))
 }
 
-/// Loads files with the server stopped. Each file counts as one reporter,
-/// `ingest:<file name>`, so separate sources stay distinct (#148).
-fn ingest(data: &Path, files: &[PathBuf]) -> Result<(), String> {
+fn participant(
+    db: &Path,
+    cmd: ParticipantCmd,
+    log: &dyn Fn(&str, serde_json::Value) -> Result<(), String>,
+) -> Result<(), String> {
+    match cmd {
+        ParticipantCmd::Add {
+            name,
+            status: st,
+            kind,
+            sector,
+            region,
+            with_token,
+        } => {
+            let st = status(&st)?;
+            let id = parts::add_organisation(
+                db,
+                &name,
+                st,
+                &kind,
+                sector.as_deref(),
+                region.as_deref(),
+            )?;
+            log(
+                "participant_added",
+                json!({ "participant": id, "name": name, "status": st.as_str(), "type": kind }),
+            )?;
+            eprintln!("registered {name:?} ({st}) as {id}");
+            if with_token {
+                parts::add_user(db, &name, &name, "human")?;
+                log(
+                    "user_added",
+                    json!({ "participant": id, "user": name, "kind": "human" }),
+                )?;
+                let token = parts::add_token(db, &name)?;
+                log(
+                    "token_issued",
+                    json!({ "user": name, "token": &hash(&token)[..12] }),
+                )?;
+                println!("{token}");
+                eprintln!("added user {name:?} and a token for it; the token is shown once");
+            }
+            Ok(())
+        }
+        ParticipantCmd::List => {
+            for o in parts::organisations(db)? {
+                println!(
+                    "{:<24} {:<11} {:<13} {}  users: {}",
+                    o.name,
+                    o.status.as_str(),
+                    o.kind,
+                    o.id,
+                    o.users.join(", ")
+                );
+            }
+            Ok(())
+        }
+        ParticipantCmd::SetStatus { name, status: st } => {
+            let st = status(&st)?;
+            parts::set_status(db, &name, st)?;
+            log(
+                "status_set",
+                json!({ "participant": parts::organisation_id(db, &name)?, "status": st.as_str() }),
+            )?;
+            eprintln!("{name:?} is now {st}");
+            Ok(())
+        }
+    }
+}
+
+/// Loads files with the server stopped, stored under `reporter` (a
+/// participant id) and registered like a POST from user `ingest`: a
+/// sighting without an id gets one derived from its content, so loading a
+/// file twice adds nothing. A file with a conflicting sighting is refused
+/// whole.
+fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Result<(), String> {
     let (s, i) = open(data, None)?;
-    let reporters = Reporters::open(data, now_ns)?;
-    let mut total = 0;
+    let reg = Registry::open(data, &s)?;
+    let (mut created, mut duplicates) = (0, 0);
     for f in files {
         let text = std::fs::read_to_string(f).map_err(|e| format!("{}: {e}", f.display()))?;
         let v: serde_json::Value =
@@ -141,26 +391,62 @@ fn ingest(data: &Path, files: &[PathBuf]) -> Result<(), String> {
             serde_json::Value::Array(a) => a,
             v => vec![v],
         };
-        let name = f
-            .file_stem()
-            .map_or_else(String::new, |n| n.to_string_lossy().into_owned());
-        let reporter = reporters.key(&format!("ingest:{name}"))?;
-        let mut rows = Vec::new();
+        let mut subs = Vec::with_capacity(items.len());
         for item in &items {
             let sub = Submission::from_value(item, now_ns())
                 .map_err(|e| format!("{}: {e}", f.display()))?;
-            rows.extend(sub.rows(&api::new_sighting_id()?).into_iter().map(|mut r| {
-                r.reporter.clone_from(&reporter);
+            let digest = registry::digest(&sub);
+            let id = sub
+                .sighting_id
+                .clone()
+                .unwrap_or_else(|| registry::derived_id(&digest));
+            subs.push((id, digest, sub));
+        }
+        let known = reg.find(reporter, subs.iter().map(|(id, _, _)| id.clone()).collect())?;
+        if let Some((id, _, _)) = subs
+            .iter()
+            .find(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
+        {
+            return Err(format!(
+                "{}: {id} is registered with other content",
+                f.display()
+            ));
+        }
+        let mut rows = Vec::new();
+        let mut fresh: Vec<registry::Registration> = Vec::new();
+        let mut seen = Vec::new();
+        let now = now_ns();
+        for (id, digest, sub) in subs {
+            if known.contains_key(&id) || fresh.iter().any(|f| f.1 == id) {
+                duplicates += 1;
+                seen.push(json!({ "sighting_id": id, "digest": digest, "status": "duplicate" }));
+                continue;
+            }
+            seen.push(json!({ "sighting_id": id, "digest": digest, "status": "created" }));
+            rows.extend(sub.rows(&id).into_iter().map(|mut r| {
+                r.reporter = reporter.to_string();
+                r.digest.clone_from(&digest);
+                r.received_ns = now;
                 r
             }));
+            fresh.push((reporter.to_string(), id, digest, now));
         }
-        s.append(&rows).map_err(|e| e.to_string())?;
-        i.record(&rows)?;
-        total += items.len();
+        created += fresh.len();
+        if !fresh.is_empty() {
+            s.append(&rows).map_err(|e| e.to_string())?;
+            i.record(&rows)?;
+            reg.register(fresh)?;
+        }
+        audit.record(
+            now,
+            &audit::cli_user(),
+            "ingest",
+            json!({ "participant": reporter, "file": f.display().to_string(), "receipts": seen }),
+        )?;
     }
     s.flush().map_err(|e| e.to_string())?;
     s.close().map_err(|e| e.to_string())?;
-    eprintln!("ingested {total} submissions");
+    eprintln!("ingested {created} sightings ({duplicates} already registered)");
     Ok(())
 }
 
@@ -225,6 +511,8 @@ async fn maintain(app: api::Shared, retention_days: u32) {
                 let merged = app.sightings.compact().map_err(|e| e.to_string())?;
                 let keep_from = now_ns().div_euclid(DAY_NS) - i64::from(retention_days);
                 app.iocs.retain_from(keep_from)?;
+                app.registry.retain_from(keep_from)?;
+                app.audit.retain_from(keep_from)?;
                 tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
             }
             Ok(())

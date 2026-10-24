@@ -5,9 +5,11 @@ use std::sync::Arc;
 use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use frank::api::{rebuild_iocs, router, App};
-use frank::auth::{hash, Tokens};
-use frank::reporter::Reporters;
-use frank::store::{Iocs, Sightings};
+use frank::audit::Audit;
+use frank::auth::{hash, uuid4};
+use frank::store::participants::{self as parts, FILE};
+use frank::store::{Iocs, Participants, Registry, Sightings};
+use frank_core::Tier;
 use http_body_util::BodyExt;
 use serde_json::{json, Value};
 use tower::ServiceExt;
@@ -27,6 +29,9 @@ struct Harness {
     app: axum::Router,
     sightings: Sightings,
     iocs: Iocs,
+    registry: Registry,
+    /// `participants.db`, for changes made while the server runs.
+    db: std::path::PathBuf,
     _dir: TempDir,
 }
 
@@ -41,28 +46,37 @@ fn harness(name: &str) -> Harness {
     let dir = std::env::temp_dir().join(format!("frank-api-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    let tokens = Tokens::parse(&format!(
-        "{} observer obs\n{} contributor mdr\n{} contributor mdr2\n{} contributor mdr3\n{} partner lab\n",
-        hash("o"),
-        hash("c"),
-        hash("c2"),
-        hash("c3"),
-        hash("p")
-    ))
-    .unwrap();
+    // One organisation per test token, each with one user of its name.
+    let db = dir.join(FILE);
+    for (token, name, status) in [
+        ("o", "obs", Tier::Observer),
+        ("c", "mdr", Tier::Contributor),
+        ("c2", "mdr2", Tier::Contributor),
+        ("c3", "mdr3", Tier::Contributor),
+        ("p", "lab", Tier::Partner),
+    ] {
+        parts::add_organisation(&db, name, status, "cyber_partner", None, None).unwrap();
+        parts::add_user(&db, name, name, "human").unwrap();
+        parts::add_token_hash(&db, name, &hash(token)).unwrap();
+    }
     let sightings = Sightings::open(&dir, None, now).unwrap();
     let iocs = Iocs::open(&dir).unwrap();
+    let registry = Registry::open(&dir, &sightings).unwrap();
     let app = router(Arc::new(App {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
-        tokens,
-        reporters: Reporters::open(&dir, now).unwrap(),
+        participants: Participants::open(&dir).unwrap(),
+        registry: registry.clone(),
+        audit: Audit::open(&dir).unwrap(),
+        submit_lock: std::sync::Mutex::new(()),
         now,
     }));
     Harness {
         app,
         sightings,
         iocs,
+        registry,
+        db,
         _dir: TempDir(dir),
     }
 }
@@ -94,11 +108,12 @@ async fn call(
     )
 }
 
+/// A new sighting: each call has its own sender id.
 fn sighting(sector: &str, ip: &str, rule: &str) -> Value {
     json!({"submission": {
         "submitter": {"organisation_id": "identity-secret-org", "sector": "msp"},
         "hit_target": {"organisation_id": "identity-victim", "sector": sector},
-        "sighting": {"timestamp": "2026-10-22T10:00:00Z", "severity": "high",
+        "sighting": {"sighting_id": uuid4().unwrap(), "timestamp": "2026-10-22T10:00:00Z", "severity": "high",
             "sigma_detection": {"rule_id": rule},
             "observables": {"network": [{"type": "ipv4", "value": ip}, {"type": "domain", "value": "Evil.example"}]}}}})
 }
@@ -174,7 +189,8 @@ async fn submit_then_look_up() {
     .await;
     assert_eq!(st, StatusCode::CREATED, "{body}");
     assert_eq!(body["rows"], 4);
-    assert!(body["sighting_ids"][0]
+    assert_eq!(body["receipts"].as_array().unwrap().len(), 2);
+    assert!(body["receipts"][0]["sighting_id"]
         .as_str()
         .unwrap()
         .starts_with("sighting--"));
@@ -356,8 +372,8 @@ async fn lookups_count_reporters() {
 }
 
 #[tokio::test]
-async fn files_hold_pseudonyms_not_tokens() {
-    let h = harness("pseudonyms");
+async fn files_hold_participant_ids_not_names_or_tokens() {
+    let h = harness("participant-ids");
     call(
         &h.app,
         "POST",
@@ -391,7 +407,12 @@ async fn files_hold_pseudonyms_not_tokens() {
         .to_bytes()
         .to_vec();
     let text = String::from_utf8_lossy(&bytes);
-    for secret in [hash("c"), hash("c2"), "mdr2".to_string()] {
+    for secret in [
+        hash("c"),
+        hash("c2"),
+        "mdr2".to_string(),
+        "identity-secret-org".to_string(),
+    ] {
         assert!(
             !text.contains(&secret),
             "{secret} leaked into the Parquet file"
@@ -848,4 +869,264 @@ async fn iocs_rebuild_from_sightings() {
         before
     );
     assert_eq!(before[0].count, 2);
+}
+
+/// The epic's acceptance criteria (#159): the organisation is the
+/// reporter, its status is every user's tier, tokens revoke one by one.
+#[tokio::test]
+async fn participants_are_the_reporters() {
+    let h = harness("participants");
+    parts::add_user(&h.db, "mdr", "mdr-feed", "machine").unwrap();
+    let feed = parts::add_token(&h.db, "mdr-feed").unwrap();
+
+    // Two users of one organisation are one reporter.
+    for (token, ip) in [("c", "198.51.100.1"), (feed.as_str(), "198.51.100.2")] {
+        let (status, _) = call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some(token),
+            Some(sighting("energy", ip, "r9")),
+        )
+        .await;
+        assert_eq!(status, StatusCode::CREATED);
+    }
+    let r = h
+        .sightings
+        .query("SELECT count(DISTINCT reporter), min(reporter) FROM sightings")
+        .unwrap();
+    let id = parts::organisation_id(&h.db, "mdr").unwrap();
+    assert_eq!(
+        r.rows[0][0],
+        db_core::engine::Cell::Int(1),
+        "one organisation, one reporter"
+    );
+    assert_eq!(r.rows[0][1], db_core::engine::Cell::Text(id.clone()));
+
+    let (_, me) = call(&h.app, "GET", "/v1/whoami", Some(&feed), None).await;
+    assert_eq!(me["participant"]["id"], id.as_str());
+    assert_eq!(
+        (me["user"].as_str(), me["label"].as_str()),
+        (Some("mdr-feed"), Some("mdr-feed@mdr"))
+    );
+
+    // A status change reaches every user on the next request, without
+    // new tokens or a restart.
+    let s = sighting("water", "198.51.100.3", "r9");
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("o"), Some(s.clone()))
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    parts::set_status(&h.db, "obs", Tier::Contributor).unwrap();
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("o"), Some(s))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    parts::set_status(&h.db, "mdr", Tier::Observer).unwrap();
+    for t in ["c", feed.as_str()] {
+        let (_, me) = call(&h.app, "GET", "/v1/whoami", Some(t), None).await;
+        assert_eq!(me["tier"], "observer");
+    }
+
+    // Revoking one token leaves the organisation's other users working.
+    parts::revoke(&h.db, &hash(&feed)[..12]).unwrap();
+    assert_eq!(
+        call(&h.app, "GET", "/v1/whoami", Some(&feed), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(&h.app, "GET", "/v1/whoami", Some("c"), None).await.0,
+        StatusCode::OK
+    );
+}
+
+/// The sender's id is the registration (#159): a resend is answered with
+/// the original receipt, other content under the same id is a conflict.
+#[tokio::test]
+async fn a_resend_is_recognised() {
+    let h = harness("resend");
+    let s = sighting("energy", "198.51.100.20", "r1");
+    let (status, first) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s.clone())).await;
+    assert_eq!(status, StatusCode::CREATED);
+    let receipt = &first["receipts"][0];
+    assert_eq!(receipt["status"], "created");
+    assert!(receipt["sighting_id"]
+        .as_str()
+        .unwrap()
+        .starts_with("sighting--"));
+
+    // The same sighting again, keys reordered: same receipt, nothing new.
+    let reordered: Value =
+        serde_json::from_str(&s.to_string().replace("\"severity\":\"high\",", "")).unwrap();
+    let mut reordered = reordered;
+    reordered["submission"]["sighting"]["severity"] = json!("HIGH");
+    let (status, again) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(reordered)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(again["receipts"][0]["status"], "duplicate");
+    assert_eq!(again["receipts"][0]["digest"], receipt["digest"]);
+    assert_eq!(again["receipts"][0]["received"], receipt["received"]);
+    assert_eq!(again["rows"], 0);
+
+    // The registration is in the sightings: the index rebuilt from them
+    // gives the same receipt.
+    let r = h
+        .sightings
+        .query("SELECT DISTINCT digest, received FROM sightings")
+        .unwrap();
+    assert_eq!(r.rows.len(), 1);
+    assert_eq!(h.registry.rebuild(&h.sightings).unwrap(), 1);
+    let (status, rebuilt) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s.clone())).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(rebuilt["receipts"][0], again["receipts"][0]);
+
+    // Another organisation may use the same id: it is its own sighting.
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("c2"), Some(s.clone()))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+
+    // Other content under a registered id: 409, and nothing of the batch.
+    let mut changed = s.clone();
+    changed["submission"]["sighting"]["severity"] = json!("low");
+    let fresh = sighting("energy", "198.51.100.21", "r1");
+    let (status, err) = call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(json!([fresh, changed])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::CONFLICT, "{err}");
+    let n = h
+        .sightings
+        .query("SELECT count(*) FROM sightings WHERE ioc_value = '198.51.100.21'")
+        .unwrap();
+    assert_eq!(
+        n.rows[0][0],
+        db_core::engine::Cell::Int(0),
+        "the batch was refused whole"
+    );
+
+    // Each POST is one audit line naming the user, never in the Parquet.
+    let mut lines = Vec::new();
+    for f in std::fs::read_dir(h._dir.0.join("audit")).unwrap() {
+        let text = std::fs::read_to_string(f.unwrap().path()).unwrap();
+        lines.extend(
+            text.lines()
+                .map(|l| serde_json::from_str::<Value>(l).unwrap()),
+        );
+    }
+    let actions: Vec<(&str, &str)> = lines
+        .iter()
+        .map(|l| (l["action"].as_str().unwrap(), l["by"].as_str().unwrap()))
+        .collect();
+    assert_eq!(
+        actions,
+        [
+            ("submit", "mdr@mdr"),
+            ("submit", "mdr@mdr"),
+            ("submit", "mdr@mdr"),
+            ("submit", "mdr2@mdr2"),
+            ("submit_refused", "mdr@mdr"),
+        ]
+    );
+    assert_eq!(lines[1]["receipts"][0]["status"], "duplicate");
+    assert_eq!(lines[4]["conflicts"][0], receipt["sighting_id"]);
+    let users = h
+        .sightings
+        .query("SELECT count(*) FROM sightings WHERE reporter = 'mdr'")
+        .unwrap();
+    assert_eq!(users.rows[0][0], db_core::engine::Cell::Int(0));
+
+    // No id: refused, with the reason.
+    let mut bare = sighting("energy", "198.51.100.22", "r1");
+    bare["submission"]["sighting"]
+        .as_object_mut()
+        .unwrap()
+        .remove("sighting_id");
+    let (status, err) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(bare)).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(
+        err["error"]
+            .as_str()
+            .unwrap()
+            .contains("sighting_id is required"),
+        "{err}"
+    );
+}
+
+/// Who reported is shown by status (#159): never below partner, ids to a
+/// partner, names to core.
+#[tokio::test]
+async fn reporters_are_shown_by_status() {
+    let h = harness("identity");
+    parts::add_organisation(&h.db, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
+    parts::add_user(&h.db, "ops", "ops", "human").unwrap();
+    parts::add_token_hash(&h.db, "ops", &hash("k")).unwrap();
+    let mdr = parts::organisation_id(&h.db, "mdr").unwrap();
+    for t in ["c", "c2", "c3"] {
+        call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some(t),
+            Some(sighting("energy", "198.51.100.30", "r1")),
+        )
+        .await;
+    }
+    // Every aggregate a contributor or partner can ask for: no id, no name.
+    for token in ["o", "c", "p"] {
+        for uri in [
+            "/v1/statistics",
+            "/v1/explore?group=sector",
+            "/v1/explore?group=rule",
+            "/v1/rules/r1",
+            "/v1/iocs?type=ipv4&value=198.51.100.30",
+        ] {
+            let (_, body) = call(&h.app, "GET", uri, Some(token), None).await;
+            let text = body.to_string();
+            assert!(
+                !text.contains(&mdr),
+                "{uri} as {token} shows a reporter id: {text}"
+            );
+            assert!(
+                !text.contains("\"mdr2\""),
+                "{uri} as {token} shows a reporter name"
+            );
+        }
+    }
+    assert_eq!(
+        call(&h.app, "GET", "/v1/participants", Some("c"), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, partner) = call(&h.app, "GET", "/v1/participants", Some("p"), None).await;
+    let seen = partner["participants"].as_array().unwrap();
+    assert!(seen
+        .iter()
+        .any(|p| p["id"] == mdr.as_str() && p["status"] == "contributor"));
+    assert!(
+        seen.iter().all(|p| p.get("name").is_none()),
+        "a partner sees ids, not names"
+    );
+    let (_, core) = call(&h.app, "GET", "/v1/participants", Some("k"), None).await;
+    let mdr_entry = core["participants"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|p| p["id"] == mdr.as_str())
+        .unwrap()
+        .clone();
+    assert_eq!(
+        (mdr_entry["name"].as_str(), mdr_entry["users"][0].as_str()),
+        (Some("mdr"), Some("mdr"))
+    );
 }

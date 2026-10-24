@@ -160,6 +160,7 @@ const EXAMPLE = {
 
 $("example").addEventListener("click", () => {
   const ex = structuredClone(EXAMPLE);
+  ex.submission.sighting.sighting_id = crypto.randomUUID();
   ex.submission.sighting.timestamp = new Date().toISOString();
   $("submission").value = JSON.stringify(ex, null, 2);
 });
@@ -181,13 +182,32 @@ async function doPreview() {
 }
 $("do-preview").addEventListener("click", doPreview);
 
+/** Gives each sighting without a `sighting_id` a new one, in the form
+ * itself: the id is the sender's (#159), so sending the same form again
+ * is recognised as a resend. */
+function nameSightings() {
+  let doc;
+  try { doc = JSON.parse($("submission").value); } catch { return; }
+  let added = false;
+  for (const item of Array.isArray(doc) ? doc : [doc]) {
+    const s = (item?.submission ?? item)?.sighting;
+    if (s && typeof s === "object" && !s.sighting_id) { s.sighting_id = crypto.randomUUID(); added = true; }
+  }
+  if (added) $("submission").value = JSON.stringify(doc, null, 2);
+}
+
 $("do-submit").addEventListener("click", async () => {
   if (!(await doPreview())) return;
+  nameSightings();
   try {
     const r = await (await api("/v1/sightings", {
       method: "POST", headers: { "content-type": "application/json" }, body: $("submission").value,
     })).json();
-    $("submit-out").prepend(el("p", {}, `Stored ${r.rows} row(s): ${r.sighting_ids.join(", ")}`));
+    const created = r.receipts.filter((x) => x.status === "created").length;
+    const resent = r.receipts.length - created;
+    $("submit-out").prepend(el("p", {},
+      `Stored ${created} sighting(s), ${r.rows} row(s)` + (resent ? `; ${resent} already registered (resend)` : "") + ": ",
+      el("code", {}, r.receipts.map((x) => x.sighting_id).join(", "))));
     loadStats();
   } catch (e) {
     $("submit-out").prepend(errorNode(e));

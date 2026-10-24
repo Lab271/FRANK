@@ -271,6 +271,7 @@ AGENTS.md
 /target/
 /web/pkg/
 /data/
+/participants/
 /tokens
 /deploy/podman/data/
 /deploy/podman/tokens

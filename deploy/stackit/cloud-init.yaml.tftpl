@@ -1,10 +1,14 @@
 #cloud-config
 # FRANK VM: podman runs the FRANK image; data lives on the attached
-# volume at /srv/frank (plain files: sightings/, iocs.db, tokens).
+# volume at /srv/frank (plain files: data/ with sightings/, iocs.db and
+# registry.db; participants/participants.db). Nightly copies of
+# participants.db, the one database that cannot be rebuilt, go to
+# /srv/frank/backup.
 package_update: true
 packages:
   - podman
   - caddy
+  - sqlite3
 
 write_files:
   - path: /etc/frank/frank.env
@@ -28,6 +32,7 @@ write_files:
       ExecStart=/usr/bin/podman run --name frank --rm \
         -p 127.0.0.1:8080:8080 \
         -v /srv/frank/data:/data:Z \
+        -v /srv/frank/participants:/participants:Z \
         -v /srv/frank/tokens:/etc/frank/tokens:ro,Z \
         -e FRANK_RETENTION_DAYS=$${FRANK_RETENTION_DAYS} \
         $${FRANK_IMAGE}
@@ -37,6 +42,45 @@ write_files:
 
       [Install]
       WantedBy=multi-user.target
+  - path: /usr/local/bin/frank-backup
+    permissions: "0755"
+    content: |
+      #!/bin/sh
+      # A copy of participants.db (organisations, users, tokens; #159),
+      # which cannot be rebuilt from the sightings as iocs.db and
+      # registry.db can. sqlite3 .backup takes SQLite's locks, which
+      # db-core honours, so FRANK keeps running. Two weeks are kept.
+      set -eu
+      d=/srv/frank/backup/$(date -u +%F)
+      mkdir -p "$d"
+      if [ -f /srv/frank/participants/participants.db ]; then
+        sqlite3 /srv/frank/participants/participants.db ".backup '$d/participants.db'"
+      fi
+      chmod -R go-rwx /srv/frank/backup
+      find /srv/frank/backup -mindepth 1 -maxdepth 1 -type d -mtime +14 -exec rm -rf {} +
+  - path: /etc/systemd/system/frank-backup.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Back up FRANK's participants
+      Requires=srv-frank.mount
+      After=srv-frank.mount
+
+      [Service]
+      Type=oneshot
+      ExecStart=/usr/local/bin/frank-backup
+  - path: /etc/systemd/system/frank-backup.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Nightly backup of FRANK's participants
+
+      [Timer]
+      OnCalendar=*-*-* 03:15:00
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
   - path: /etc/caddy/Caddyfile
     permissions: "0644"
     content: |
@@ -54,8 +98,8 @@ runcmd:
     grep -q frank-data /etc/fstab || echo "LABEL=frank-data /srv/frank ext4 defaults,nofail 0 2" >> /etc/fstab
     systemctl daemon-reload
     mount -a
-    mkdir -p /srv/frank/data && touch /srv/frank/tokens
-    chown -R 65532:65532 /srv/frank/data /srv/frank/tokens
+    mkdir -p /srv/frank/data /srv/frank/participants && touch /srv/frank/tokens
+    chown -R 65532:65532 /srv/frank/data /srv/frank/participants /srv/frank/tokens
     chmod 600 /srv/frank/tokens
   - |
     umask 077
@@ -66,4 +110,5 @@ runcmd:
     fi
   - systemctl daemon-reload
   - systemctl enable --now frank.service
+  - systemctl enable --now frank-backup.timer
   - systemctl restart caddy

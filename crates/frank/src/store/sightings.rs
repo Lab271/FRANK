@@ -35,6 +35,9 @@ fn schema() -> Vec<ColumnSpec> {
         ColumnSpec::new("observations", ColumnType::Int64, false),
         ColumnSpec::new("tlp", ColumnType::Utf8, false),
         ColumnSpec::new("reporter", ColumnType::Utf8, false),
+        // The registration (#159); NULL in rows stored before 0.13.
+        text("digest"),
+        ColumnSpec::new("received", ColumnType::TimestampNanos, true),
     ]
 }
 
@@ -57,6 +60,16 @@ fn record(r: &SightingRow) -> Vec<RecordValue> {
         RecordValue::Int(i64::from(r.observations)),
         RecordValue::Str(r.tlp.as_str().into()),
         RecordValue::Str(r.reporter.clone()),
+        if r.digest.is_empty() {
+            RecordValue::Null
+        } else {
+            RecordValue::Str(r.digest.clone())
+        },
+        if r.received_ns == 0 {
+            RecordValue::Null
+        } else {
+            RecordValue::Int(r.received_ns)
+        },
     ]
 }
 

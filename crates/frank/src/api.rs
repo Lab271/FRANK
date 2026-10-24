@@ -11,6 +11,7 @@
 //! | `GET  /v1/iocs`           | contributor |
 //! | `GET  /v1/iocs/range`     | contributor |
 //! | `GET  /v1/files`, `/v1/files/{*path}` | partner |
+//! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
 
 use std::collections::BTreeMap;
 use std::net::IpAddr;
@@ -27,11 +28,12 @@ use frank_core::{sql_quote, Ioc, IocType, Submission, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
-use crate::auth::{hex, random, Caller, Tokens};
+use crate::audit::Audit;
+use crate::auth::Caller;
 use crate::explore::{self as ex, Dimension};
-use crate::reporter::Reporters;
+use crate::store::registry::{self, Receipt};
 use crate::store::sightings::scalar;
-use crate::store::{Iocs, Sightings};
+use crate::store::{Iocs, Participants, Registry, Sightings};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 /// Most submissions in one POST.
@@ -45,8 +47,11 @@ const TREND_DAYS: i64 = 30;
 pub struct App {
     pub sightings: Sightings,
     pub iocs: Iocs,
-    pub tokens: Tokens,
-    pub reporters: Reporters,
+    pub participants: Participants,
+    pub registry: Registry,
+    pub audit: Audit,
+    /// Makes "is it registered, store it, register it" one step.
+    pub submit_lock: std::sync::Mutex<()>,
     /// Wall clock in ns; tests set their own.
     pub now: fn() -> i64,
 }
@@ -77,8 +82,9 @@ fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Caller, ApiErro
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
     let caller = app
-        .tokens
+        .participants
         .caller(auth)
+        .map_err(internal)?
         .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown token".into()))?;
     if caller.tier < tier {
         return Err(ApiError(
@@ -107,6 +113,7 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/iocs/range", get(ioc_range))
         .route("/v1/explore", get(explore))
         .route("/v1/rules/{id}", get(rule_detail))
+        .route("/v1/participants", get(participants))
         .route("/v1/files", get(files))
         .route("/v1/files/{*path}", get(file))
         .layer(DefaultBodyLimit::max(MAX_BODY))
@@ -119,7 +126,15 @@ async fn health() -> Json<Value> {
 
 async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
     let c = require(&app, &headers, Tier::Public)?;
-    Ok(Json(json!({ "tier": c.tier, "label": c.label })))
+    if c.user.is_empty() {
+        return Ok(Json(json!({ "tier": c.tier, "label": c.label() })));
+    }
+    Ok(Json(json!({
+        "tier": c.tier,
+        "label": c.label(),
+        "user": c.user,
+        "participant": { "id": c.participant, "name": c.organisation, "status": c.tier },
+    })))
 }
 
 /// One submission or an array of them.
@@ -156,19 +171,11 @@ async fn preview(
     Ok(Json(json!({ "rows": rows })))
 }
 
-pub fn new_sighting_id() -> Result<String, String> {
-    let b = random::<16>()?;
-    let h = hex(&b);
-    Ok(format!(
-        "sighting--{}-{}-{}-{}-{}",
-        &h[..8],
-        &h[8..12],
-        &h[12..16],
-        &h[16..20],
-        &h[20..]
-    ))
-}
-
+/// Stores a batch of submissions from one sender. Each carries the
+/// sender's `sighting_id`; with the participant it is the registration
+/// (#159). A sighting sent again with the same content gets its original
+/// receipt; other content under a registered id is a conflict (409) and
+/// nothing of the batch is stored. 201 when anything was new, else 200.
 async fn submit(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -176,32 +183,99 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&body, (app.now)())?;
-    let reporter = app.reporters.key(&caller.id).map_err(internal)?;
-    let mut ids = Vec::with_capacity(subs.len());
-    let mut rows = Vec::new();
-    for s in &subs {
-        let id = new_sighting_id().map_err(internal)?;
-        rows.extend(s.rows(&id).into_iter().map(|mut r| {
-            r.reporter.clone_from(&reporter);
-            r
-        }));
-        ids.push(id);
+    let mut items: Vec<(String, String, Submission)> = Vec::with_capacity(subs.len());
+    for (i, s) in subs.into_iter().enumerate() {
+        let id = s.sighting_id.clone().ok_or_else(|| {
+            unprocessable(format!(
+                "[{i}] sighting.sighting_id is required: a UUID the sender chooses, so a resend is recognised"
+            ))
+        })?;
+        let digest = registry::digest(&s);
+        match items.iter().find(|(other, _, _)| *other == id) {
+            Some((_, d, _)) if *d == digest => {}
+            Some(_) => {
+                return Err(unprocessable(format!(
+                    "[{i}] {id} appears twice in the batch with different content"
+                )))
+            }
+            None => items.push((id, digest, s)),
+        }
     }
-    let n = rows.len();
     let app2 = app.clone();
-    blocking(move || {
-        app2.sightings.append(&rows).map_err(internal)?;
-        // The rows are durable; the IoC table can be rebuilt from them
-        // (`frank rebuild-iocs`) if this step fails.
-        app2.iocs.record(&rows).map_err(internal)
+    let caller2 = caller.clone();
+    let (receipts, rows) = blocking(move || {
+        let app = app2;
+        let _one_at_a_time = app.submit_lock.lock().map_err(internal)?;
+        let ids = items.iter().map(|(id, _, _)| id.clone()).collect();
+        let known = app.registry.find(&caller2.participant, ids).map_err(internal)?;
+        let conflicts: Vec<&str> = items
+            .iter()
+            .filter(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
+            .map(|(id, _, _)| id.as_str())
+            .collect();
+        if !conflicts.is_empty() {
+            app.audit
+                .record(
+                    (app.now)(),
+                    &caller2.label(),
+                    "submit_refused",
+                    json!({ "participant": caller2.participant, "conflicts": conflicts }),
+                )
+                .map_err(internal)?;
+            return Err(ApiError(
+                StatusCode::CONFLICT,
+                format!(
+                    "already registered with other content: {}; nothing was stored (corrections: #161)",
+                    conflicts.join(", ")
+                ),
+            ));
+        }
+        let now = (app.now)();
+        let mut rows = Vec::new();
+        let mut fresh = Vec::new();
+        let mut receipts = Vec::with_capacity(items.len());
+        for (id, digest, s) in items {
+            if let Some((_, received)) = known.get(&id) {
+                receipts.push(Receipt { sighting_id: id, digest, received: *received, status: "duplicate" });
+                continue;
+            }
+            // Sightings are stored under the organisation, never the user,
+            // and carry their registration.
+            rows.extend(s.rows(&id).into_iter().map(|mut r| {
+                r.reporter.clone_from(&caller2.participant);
+                r.digest.clone_from(&digest);
+                r.received_ns = now;
+                r
+            }));
+            fresh.push((caller2.participant.clone(), id.clone(), digest.clone(), now));
+            receipts.push(Receipt { sighting_id: id, digest, received: now, status: "created" });
+        }
+        if !fresh.is_empty() {
+            // Rows first: they hold the registration. Both indexes can be
+            // rebuilt from them (`frank rebuild`).
+            app.sightings.append(&rows).map_err(internal)?;
+            app.iocs.record(&rows).map_err(internal)?;
+            app.registry.register(fresh).map_err(internal)?;
+        }
+        app.audit
+            .record(
+                now,
+                &caller2.label(),
+                "submit",
+                json!({ "participant": caller2.participant, "receipts": receipts }),
+            )
+            .map_err(internal)?;
+        Ok((receipts, rows.len()))
     })
     .await?;
-    tracing::info!(caller = %caller.label, sightings = ids.len(), rows = n, "accepted");
-    Ok((
-        StatusCode::CREATED,
-        Json(json!({ "sighting_ids": ids, "rows": n })),
-    )
-        .into_response())
+    let created = receipts.iter().filter(|r| r.status == "created").count();
+    tracing::info!(caller = %caller.label(), created, duplicates = receipts.len() - created, rows, "accepted");
+    let status = if created > 0 {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(json!({ "receipts": receipts, "rows": rows }))).into_response())
 }
 
 #[derive(Deserialize)]
@@ -538,6 +612,31 @@ async fn ioc_range(
     .await
 }
 
+/// The participants (#159). A partner sees the ids that appear in the
+/// sighting files and each one's status; core also sees who they are.
+async fn participants(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Partner)?;
+    blocking(move || {
+        let orgs =
+            crate::store::participants::organisations(app.participants.path()).map_err(internal)?;
+        let list: Vec<Value> = orgs
+            .into_iter()
+            .map(|o| {
+                if caller.tier >= Tier::Core {
+                    json!(o)
+                } else {
+                    json!({ "id": o.id, "status": o.status })
+                }
+            })
+            .collect();
+        Ok(Json(json!({ "participants": list })))
+    })
+    .await
+}
+
 async fn files(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
     require(&app, &headers, Tier::Partner)?;
     blocking(move || {
@@ -641,6 +740,8 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             observations: u32::try_from(*n).unwrap_or(1),
             tlp,
             reporter: String::new(),
+            digest: String::new(),
+            received_ns: 0,
         });
     }
     iocs.clear()?;
