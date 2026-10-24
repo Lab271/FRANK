@@ -15,7 +15,7 @@ use std::collections::HashMap;
 use std::path::Path;
 
 use db_core::engine::row::RowEngine;
-use frank_core::{sql_quote, Submission};
+use frank_core::{sql_quote, Sighting};
 use serde::Serialize;
 use sha2::{Digest, Sha256};
 
@@ -183,18 +183,18 @@ fn insert(db: &mut RowEngine, entries: &[Registration]) -> Result<(), String> {
         })
 }
 
-/// SHA-256 of what a submission says, independent of how it was written:
-/// key order, spacing, IoC and technique order, and a timestamp the server
-/// filled in do not change it. The id is left out: it is the key.
+/// SHA-256 of what a sighting says, independent of how it was written:
+/// key order, spacing, evidence and technique order, and a timestamp the
+/// server filled in do not change it (the evidence is in canonical order
+/// already). The id is left out: it is the key.
 #[must_use]
-pub fn digest(sub: &Submission) -> String {
-    let mut s = sub.clone();
+pub fn digest(sighting: &Sighting) -> String {
+    let mut s = sighting.clone();
     s.sighting_id = None;
     if !s.ts_given {
         s.ts_ns = 0;
     }
-    s.iocs.sort_by_key(frank_core::Ioc::key);
-    s.techniques.sort();
+    s.sighting_of.techniques.sort();
     let json = serde_json::to_vec(&s).unwrap_or_default();
     hex(&Sha256::digest(&json))
 }
@@ -223,8 +223,8 @@ mod tests {
 
     const NOW: i64 = 1_792_670_400_000_000_000;
 
-    fn sub(json: &str) -> Submission {
-        Submission::parse(json, NOW).unwrap()
+    fn sub(json: &str) -> Sighting {
+        Sighting::parse(json, NOW).unwrap()
     }
 
     #[test]
@@ -245,7 +245,7 @@ mod tests {
         );
         let c = sub(r#"{"sighting": {"sigma_detection": {"rule_id": "r2"}}}"#);
         assert_ne!(digest(&a), digest(&c));
-        let later = Submission::parse(
+        let later = Sighting::parse(
             r#"{"sighting": {"sigma_detection": {"rule_id": "r2"}}}"#,
             NOW + 1,
         )
@@ -255,9 +255,24 @@ mod tests {
             digest(&later),
             "the server's clock is not content"
         );
+        let record = serde_json::to_value(&a).unwrap();
+        assert_ne!(
+            digest(&a),
+            digest(&Sighting::from_value(&record, NOW).unwrap()),
+            "a's time was filled in; its frank/1 form gives one"
+        );
+        let dated = sub(
+            r#"{"sighting": {"timestamp": "2026-10-20T08:00:00Z", "sigma_detection": {"rule_id": "r"}}}"#,
+        );
+        let record = serde_json::to_value(&dated).unwrap();
+        assert_eq!(
+            digest(&dated),
+            digest(&Sighting::from_value(&record, NOW).unwrap()),
+            "Phase 2's format and frank/1 are the same content"
+        );
         let id = derived_id(&digest(&a));
         assert_eq!(id.len(), "sighting--".len() + 36);
-        assert!(Submission::parse(
+        assert!(Sighting::parse(
             &format!(r#"{{"sighting": {{"sighting_id": "{id}", "sigma_detection": {{"rule_id": "r"}}}}}}"#),
             NOW
         )

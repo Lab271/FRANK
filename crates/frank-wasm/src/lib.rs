@@ -9,7 +9,7 @@ use std::collections::BTreeMap;
 
 use db_core::engine::column::BatchEngine;
 use db_core::engine::{Cell, Engine, FileStats};
-use frank_core::Submission;
+use frank_core::Sighting;
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
 
@@ -32,7 +32,7 @@ fn preview_rows(submission: &str, now_ms: f64) -> Result<String, String> {
     };
     let mut rows = Vec::new();
     for (i, item) in items.iter().enumerate() {
-        let s = Submission::from_value(item, now).map_err(|e| format!("[{i}] {e}"))?;
+        let s = Sighting::from_value(item, now).map_err(|e| format!("[{i}] {e}"))?;
         rows.extend(s.rows("sighting--preview"));
     }
     Ok(json!({ "rows": rows }).to_string())

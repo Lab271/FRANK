@@ -1,18 +1,20 @@
-//! FRANK's wire model (ADR-016): a submission comes in, anonymised
-//! sighting rows go out. Shared by the server and the browser (WASM), so
-//! a contributor sees exactly the rows that will be shared before sending.
+//! FRANK's wire model (ADR-016): a submission comes in as a normalised
+//! [`Sighting`] (`frank/1`, #160), shared sighting rows go out. Shared by
+//! the server and the browser (WASM), so a contributor sees exactly the
+//! rows that will be shared before sending.
 //!
-//! Anonymisation is by schema: [`SightingRow`] has no column for the
-//! submitter's or the target's identity, so nothing identifying can be
-//! stored, whatever a submission carries.
+//! The shared rows are anonymous by schema: [`SightingRow`] has no column
+//! for the submitter's or the target's identity. The [`Sighting`] keeps
+//! the target's id as the sender gave it, for Core only; the submitter is
+//! never part of it (the server knows the participant).
 
+pub mod model;
 pub mod observable;
-pub mod submission;
 pub mod tier;
 pub mod tlp;
 
+pub use model::{Error, Observable, Sighting, SightingBuilder, SightingRow};
 pub use observable::{Ioc, IocType};
-pub use submission::{Error, SightingRow, Submission};
 pub use tier::Tier;
 pub use tlp::Tlp;
 
