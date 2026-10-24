@@ -168,3 +168,4 @@ pre.curl { padding: 10px 14px; white-space: pre; }
 .endpoint-head code { font-size: 14px; overflow-wrap: anywhere; }
 .method { font-family: var(--lab-type-family-mono); font-size: 11px; letter-spacing: 0.08em; color: var(--c-tq-text); }
 .pill.locked { opacity: 0.5; }
+#pane-body > .lab-btn:first-child { margin-bottom: 8px; }

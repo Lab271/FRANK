@@ -3,16 +3,20 @@
 //! sighting stored on its sighting's `seq = 0` row (`detail`), so only
 //! sightings stored since 0.15 are listed.
 //!
-//! The list is ordered by `(ts, sighting_id)` and paged by a cursor that
-//! is the last item's pair: `{ts}.{sighting_id}`.
+//! The list is ordered by `(ts, sighting_id)`, oldest first unless
+//! `order=desc`, and paged by a cursor that is the last item's pair:
+//! `{ts}.{sighting_id}`. It is filtered by Explore's dimensions, so a
+//! list matches the Explore view it is opened from.
 
 use std::collections::BTreeMap;
 
 use db_core::engine::Cell;
-use frank_core::{sql_quote, Ioc, IocType};
+use frank_core::sql_quote;
 use serde_json::{json, Value};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
+
+use crate::explore::Dimension;
 
 /// Records per page when the request names no `limit`.
 pub const DEFAULT_LIMIT: usize = 100;
@@ -30,10 +34,13 @@ pub const COLUMNS: &str = "ts, sighting_id, reporter, received, detail";
 pub struct List {
     pub since: i64,
     pub until: Option<i64>,
-    pub rule: Option<String>,
-    pub ioc: Option<Ioc>,
+    /// Explore's filters: rule, ioc, campaign, technique, sector,
+    /// ioc_type, severity.
+    pub filters: Vec<(Dimension, String)>,
     /// Only the caller's own sightings.
     pub mine: bool,
+    /// Newest first.
+    pub desc: bool,
     /// The cursor: list after this `(ts, sighting_id)`.
     pub after: Option<(i64, String)>,
     pub limit: usize,
@@ -41,16 +48,18 @@ pub struct List {
 
 impl List {
     /// From query parameters: `since` and `until` (RFC 3339; the last 30
-    /// days by default), `rule`, `ioc` (`type:value`), `mine` (`true` or
-    /// `false`), `cursor` and `limit` (1-500, default 100). Anything else
-    /// is an error.
+    /// days by default), one value per Explore dimension (`rule`, `ioc` as
+    /// `type:value`, `campaign`, `technique`, `sector`, `ioc_type`,
+    /// `severity`), `mine` (`true` or `false`), `order` (`asc` or `desc`),
+    /// `cursor` and `limit` (1-500, default 100). Anything else is an
+    /// error.
     pub fn parse(params: &BTreeMap<String, String>, now: i64) -> Result<List, String> {
         let mut q = List {
             since: now - DEFAULT_DAYS * DAY_NS,
             until: None,
-            rule: None,
-            ioc: None,
+            filters: Vec::new(),
             mine: false,
+            desc: false,
             after: None,
             limit: DEFAULT_LIMIT,
         };
@@ -58,13 +67,12 @@ impl List {
             match k.as_str() {
                 "since" => q.since = time(k, v)?,
                 "until" => q.until = Some(time(k, v)?),
-                "rule" => q.rule = Some(v.trim().to_string()).filter(|r| !r.is_empty()),
-                "ioc" => {
-                    let (t, value) = v
-                        .split_once(':')
-                        .ok_or("ioc: expected type:value, such as ipv4:198.51.100.7")?;
-                    let t = IocType::parse(t).ok_or(format!("ioc: unknown type {t:?}"))?;
-                    q.ioc = Some(Ioc::new(t, value).map_err(|e| e.to_string())?);
+                "order" => {
+                    q.desc = match v.as_str() {
+                        "asc" => false,
+                        "desc" => true,
+                        _ => return Err("order: expected asc or desc".into()),
+                    };
                 }
                 "mine" => {
                     q.mine = match v.as_str() {
@@ -81,44 +89,52 @@ impl List {
                         .filter(|n| (1..=MAX_LIMIT).contains(n))
                         .ok_or(format!("limit must be 1-{MAX_LIMIT}"))?;
                 }
-                other => return Err(format!("unknown parameter {other:?}")),
+                other => {
+                    let d =
+                        Dimension::parse(other).ok_or(format!("unknown parameter {other:?}"))?;
+                    d.condition(v, false)?;
+                    q.filters.push((d, v.clone()));
+                }
             }
         }
         Ok(q)
     }
 
-    /// The conditions on `sightings` every listed row meets: one row per
-    /// sighting, the window, the visible TLP levels, the rule, the
-    /// reporter when given.
-    fn conditions(&self, visible: &str, reporter: Option<&str>) -> Vec<String> {
+    fn by_ioc(d: Dimension) -> bool {
+        matches!(d, Dimension::Ioc | Dimension::IocType)
+    }
+
+    /// The conditions on `sightings` every listed row meets: the window,
+    /// the visible TLP levels, the reporter when given, and the filters
+    /// (`with_iocs`: also those on IoCs, which hold on one row of a
+    /// sighting only).
+    fn conditions(&self, visible: &str, reporter: Option<&str>, with_iocs: bool) -> Vec<String> {
         let mut c = vec![format!("ts >= {}", self.since), visible.to_string()];
         if let Some(until) = self.until {
             c.push(format!("ts < {until}"));
         }
-        if let Some(rule) = &self.rule {
-            c.push(format!("rule_id = {}", sql_quote(rule)));
-        }
         if let Some(r) = reporter {
             c.push(format!("reporter = {}", sql_quote(r)));
+        }
+        for (d, v) in &self.filters {
+            if with_iocs || !Self::by_ioc(*d) {
+                // Values were checked when the request was parsed.
+                c.extend(d.condition(v, false).ok());
+            }
         }
         c
     }
 
-    /// With an `ioc` filter, the query for the ids of the sightings that
-    /// carry it: on any of their rows, not only the first.
+    /// With an `ioc` or `ioc_type` filter, the query for the ids of the
+    /// sightings that match: on any of their rows, not only the first.
     #[must_use]
     pub fn ioc_sql(&self, visible: &str, reporter: Option<&str>) -> Option<String> {
-        let ioc = self.ioc.as_ref()?;
-        let mut c = self.conditions(visible, reporter);
-        c.push(format!(
-            "ioc_type = {} AND ioc_value = {}",
-            sql_quote(ioc.ioc_type.as_str()),
-            sql_quote(&ioc.value)
-        ));
-        Some(format!(
-            "SELECT DISTINCT sighting_id FROM sightings WHERE {}",
-            c.join(" AND ")
-        ))
+        self.filters.iter().any(|(d, _)| Self::by_ioc(*d)).then(|| {
+            format!(
+                "SELECT DISTINCT sighting_id FROM sightings WHERE {}",
+                self.conditions(visible, reporter, true).join(" AND ")
+            )
+        })
     }
 
     /// The page query: [`COLUMNS`] of the records after the cursor, one
@@ -126,20 +142,21 @@ impl List {
     /// exists. `ids` are those [`List::ioc_sql`] found.
     #[must_use]
     pub fn sql(&self, visible: &str, reporter: Option<&str>, ids: Option<&[String]>) -> String {
-        let mut c = self.conditions(visible, reporter);
+        let mut c = self.conditions(visible, reporter, false);
         c.push("seq = 0".into());
         if let Some(ids) = ids {
             let ids: Vec<String> = ids.iter().map(|i| sql_quote(i)).collect();
             c.push(format!("sighting_id IN ({})", ids.join(", ")));
         }
+        let (past, dir) = if self.desc { ("<", " DESC") } else { (">", "") };
         if let Some((ts, id)) = &self.after {
             c.push(format!(
-                "(ts > {ts} OR (ts = {ts} AND sighting_id > {}))",
+                "(ts {past} {ts} OR (ts = {ts} AND sighting_id {past} {}))",
                 sql_quote(id)
             ));
         }
         format!(
-            "SELECT {COLUMNS} FROM sightings WHERE {} ORDER BY ts, sighting_id LIMIT {}",
+            "SELECT {COLUMNS} FROM sightings WHERE {} ORDER BY ts{dir}, sighting_id{dir} LIMIT {}",
             c.join(" AND "),
             self.limit + 1
         )
@@ -219,7 +236,10 @@ mod tests {
         )
         .unwrap();
         assert_eq!(q.since, 1_790_812_800_000_000_000);
-        assert_eq!(q.ioc.as_ref().unwrap().key(), "ipv4:198.51.100.7");
+        assert_eq!(
+            q.filters,
+            [(Dimension::Ioc, "IPv4:198.51.100.7".to_string())]
+        );
         assert!(q.mine);
         assert_eq!((q.limit, q.after), (10, Some((5, ID.to_string()))));
         let bad = |kv: &[(&str, &str)]| List::parse(&params(kv), NOW).is_err();
@@ -229,6 +249,37 @@ mod tests {
         assert!(bad(&[("cursor", "5.x' OR '1'='1")]));
         assert!(bad(&[("reporter", "x")]));
         assert!(bad(&[("mine", "yes")]));
+        assert!(bad(&[("order", "up")]));
+        assert!(bad(&[("ioc", "ipv4:1.2.3")]));
+    }
+
+    #[test]
+    fn filters_split_by_where_they_hold() {
+        let q = List::parse(
+            &params(&[
+                ("sector", "Energy"),
+                ("ioc_type", "ipv4"),
+                ("technique", "t1059"),
+                ("order", "desc"),
+            ]),
+            NOW,
+        )
+        .unwrap();
+        let ids = q.ioc_sql("x", None).unwrap();
+        assert!(
+            ids.contains("ioc_type = 'ipv4'") && ids.contains("target_sector = 'energy'"),
+            "{ids}"
+        );
+        let page = q.sql("x", None, Some(&["s".into()]));
+        assert!(!page.contains("ioc_type"), "IoCs are on any row: {page}");
+        assert!(
+            page.contains("target_sector = 'energy'") && page.contains("technique LIKE"),
+            "{page}"
+        );
+        assert!(
+            page.contains("ORDER BY ts DESC, sighting_id DESC"),
+            "{page}"
+        );
     }
 
     #[test]

@@ -372,7 +372,7 @@ async function loadExplore(params) {
       tr.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
       return tr;
     });
-    const head = el("tr", {}, ...[DIMENSION_LABEL[group], "rows", "reporters", "first seen", "last seen"].map((c) => el("th", {}, c)));
+    const head = el("tr", {}, ...[DIMENSION_LABEL[group], "sightings", "reporters", "first seen", "last seen"].map((c) => el("th", {}, c)));
     show($("ex-list"), rows.length
       ? el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows)))
       : el("p", { class: "note" }, "Nothing above the threshold for these filters."));
@@ -443,22 +443,25 @@ let paneSeq = 0;
 async function openPane(kind, key) {
   $("pane").classList.add("open");
   $("pane").setAttribute("aria-hidden", "false");
-  $("pane-kind").textContent = kind === "rule" ? "SIGMA rule" : "IoC";
+  $("pane-kind").textContent = { rule: "SIGMA rule", ioc: "IoC", sighting: "sighting" }[kind] || kind;
   show($("pane-body"), el("p", { class: "note" }, "loading…"));
   const seq = ++paneSeq;
   const filterOn = (dim) => (v) => { const p = current(); p.set(dim, v); p.delete("pane"); go(p); };
   const openOther = (k) => (v) => { const p = current(); p.set("pane", `${k}:${v}`); go(p); };
   try {
     let nodes;
-    if (kind === "rule") {
+    if (kind === "sighting") {
+      nodes = await sightingNodes(key, filterOn, openOther);
+    } else if (kind === "rule") {
       const days = current().get("days") || "30";
       const r = await (await api(`/v1/rules/${encodeURIComponent(key)}?days=${days}`)).json();
       nodes = !r.known
         ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen by enough reporters in this window to show.")]
         : [el("h2", {}, r.rule),
-          kpis([["rows", r.count], ["reporters", r.reporters]]),
+          kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+          ...sightingsList("rule", key),
           ...linkList("IoCs", r.iocs, openOther("ioc")),
           ...linkList("target sectors", r.sectors, filterOn("sector")),
           ...linkList("severity", r.severities, filterOn("severity")),
@@ -471,17 +474,118 @@ async function openPane(kind, key) {
       nodes = !r.known
         ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen in the retained days.")]
         : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
-          kpis([["rows", r.count], ["reporters", r.reporters]]),
+          kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+          ...sightingsList("ioc", key),
           ...linkList("SIGMA rules", r.rules.map((x) => ({ key: x.rule_id, count: x.count })), openOther("rule")),
           el("h3", {}, "days seen"),
-          table(["day", "rows", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
+          table(["day", "sightings", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
     }
     if (seq === paneSeq) show($("pane-body"), ...nodes);
   } catch (e) {
     if (seq === paneSeq) show($("pane-body"), errorNode(e));
   }
+}
+
+// --- sightings ----------------------------------------------------------------
+// From a rule or IoC pane down to single sightings (#160): the records that
+// match the pane and Explore's filters, newest first; one record as YAML.
+// Partners and core see everyone's, contributors their own.
+
+/** The pane's "sightings" section: filled in after the pane opens. */
+function sightingsList(kind, key) {
+  if (!atLeast("contributor")) return [];
+  const mine = !atLeast("partner");
+  const box = el("div", {}, el("p", { class: "note" }, "loading…"));
+  const p = current();
+  const days = Number(p.get("days") || "30");
+  const q = new URLSearchParams([...p].filter(([k]) => k in DIMENSION_TIER && k !== kind));
+  q.set(kind, key);
+  q.set("since", new Date(Date.now() - days * 86_400_000).toISOString());
+  q.set("order", "desc");
+  q.set("limit", "20");
+  if (mine) q.set("mine", "true");
+  const seq = paneSeq; // openPane has counted this pane
+  const rows = el("tbody");
+  const more = el("button", { class: "lab-btn lab-btn--secondary", type: "button" }, "more");
+  async function page(cursor) {
+    if (cursor) q.set("cursor", cursor);
+    try {
+      const r = await (await api(`/v1/sightings?${q}`)).json();
+      if (seq !== paneSeq) return;
+      for (const s of r.sightings) {
+        const rec = s.record;
+        const tr = el("tr", { class: "go", tabindex: "0" },
+          el("td", {}, rec.timestamp.replace(/:\d\d(\.\d+)?Z$/, "Z")), el("td", { class: "num" }, rec.count),
+          el("td", { class: "num" }, rec.confidence), el("td", {}, rec.tlp), el("td", {}, s.reporter.slice(10, 18)));
+        const open = () => { const h = current(); h.set("pane", `sighting:${s.sighting_id}`); go(h); };
+        tr.addEventListener("click", open);
+        tr.addEventListener("keydown", (e) => { if (e.key === "Enter") open(); });
+        rows.append(tr);
+      }
+      more.hidden = !r.next_cursor;
+      more.onclick = () => page(r.next_cursor);
+      show(box, rows.children.length
+        ? el("div", { class: "table-wrap" }, el("table", {},
+          el("thead", {}, el("tr", {}, ...["time", "count", "conf.", "TLP", "reporter"].map((c) => el("th", {}, c)))), rows))
+        : el("p", { class: "note" }, "No records in this window. Records exist for sightings stored since 0.15."), more);
+    } catch (e) {
+      if (seq === paneSeq) show(box, errorNode(e));
+    }
+  }
+  page();
+  return [el("h3", {}, mine ? "your sightings, newest first" : "sightings, newest first"), box];
+}
+
+/** A JSON value as YAML lines: block style, strings quoted when plain
+ * YAML would read them as something else. */
+function yamlLines(v, indent = "") {
+  const scalar = (x) => {
+    if (typeof x !== "string") return String(x);
+    const plain = /^[\w./@+-][\w ./@:+-]*$/.test(x) && !/: |:$| #/.test(x) && !/\s$/.test(x)
+      && !/^(true|false|null|~|[-+]?(\d[\d_]*)?\.?\d+([eE][-+]?\d+)?)$/i.test(x);
+    return plain ? x : JSON.stringify(x);
+  };
+  const out = [];
+  const nested = (x) => x && typeof x === "object" && Object.keys(x).length > 0;
+  if (Array.isArray(v)) {
+    for (const x of v) {
+      if (nested(x)) {
+        const inner = yamlLines(x, `${indent}  `);
+        out.push(`${indent}- ${inner[0].trimStart()}`, ...inner.slice(1));
+      } else {
+        out.push(`${indent}- ${scalar(x)}`);
+      }
+    }
+    return out;
+  }
+  for (const [k, x] of Object.entries(v)) {
+    if (nested(x)) out.push(`${indent}${k}:`, ...yamlLines(x, `${indent}  `));
+    else if (x && typeof x === "object") out.push(`${indent}${k}: ${Array.isArray(x) ? "[]" : "{}"}`);
+    else out.push(`${indent}${k}: ${scalar(x)}`);
+  }
+  return out;
+}
+
+async function sightingNodes(id, filterOn, openOther) {
+  const s = await (await api(`/v1/sightings/${encodeURIComponent(id)}`)).json();
+  const rec = s.record;
+  const rule = rec.sighting_of?.rule;
+  const iocs = [...new Map((rec.evidence || []).map((o) => [`${o.type}:${o.value}`, o])).keys()];
+  const back = el("button", { class: "lab-btn lab-btn--secondary", type: "button" }, "back");
+  back.addEventListener("click", () => history.back());
+  return [
+    back,
+    el("h2", {}, rule?.title || rule?.id || s.sighting_id),
+    kpis([["count", rec.count], ["confidence", rec.confidence]]),
+    el("p", { class: "note" }, `${rec.tlp.toUpperCase()} · seen ${rec.timestamp} · received ${s.received} · from ${s.reporter}`),
+    ...(rule?.id ? linkList("rule", [{ key: rule.id, count: rule.level || "" }], openOther("rule")) : []),
+    ...linkList("IoCs", iocs.map((k) => ({ key: k, count: "" })), openOther("ioc")),
+    ...linkList("techniques", (rec.sighting_of?.techniques || []).map((t) => ({ key: t, count: "" })), filterOn("technique")),
+    el("h3", {}, "record (frank/1)"),
+    el("pre", { class: "yaml" }, ...yamlLines(rec).map((line) => el("span", { class: "y-line" }, ...yamlLine(line)))),
+  ];
 }
 
 // --- about ------------------------------------------------------------------
@@ -543,7 +647,7 @@ function yamlLine(line) {
   out.push(indent);
   if (dash) out.push(el("span", { class: "y-dash" }, dash));
   if (key) out.push(el("span", { class: "y-key" }, key), ":");
-  const hash = rest.search(/\s#/);
+  const hash = /^\s*"/.test(rest) ? -1 : rest.search(/\s#/);
   const value = hash < 0 ? rest : rest.slice(0, hash);
   out.push(el("span", { class: "y-val" }, value));
   if (hash >= 0) out.push(el("span", { class: "y-com" }, rest.slice(hash)));

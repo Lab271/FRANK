@@ -1366,6 +1366,34 @@ async fn records_are_listed_by_status() {
     let (_, by_ip) = get("/v1/sightings?ioc=ipv4:203.0.113.9".into(), "p").await;
     assert_eq!(by_ip["sightings"].as_array().unwrap().len(), 1);
 
+    let n = |v: &Value| v["sightings"].as_array().map_or(0, Vec::len);
+    let (_, water) = get("/v1/sightings?sector=water".into(), "p").await;
+    assert_eq!(n(&water), 0, "Explore's filters: {water}");
+    let (_, energy) = get(
+        "/v1/sightings?sector=Energy&ioc_type=ipv4&rule=r1".into(),
+        "p",
+    )
+    .await;
+    assert_eq!(n(&energy), 4, "{energy}");
+    let (_, newest) = get("/v1/sightings?order=desc&limit=2".into(), "p").await;
+    let (_, oldest) = get("/v1/sightings?limit=4".into(), "p").await;
+    assert_eq!(
+        newest["sightings"][0], oldest["sightings"][3],
+        "newest first"
+    );
+    let cursor = newest["next_cursor"].as_str().unwrap().to_string();
+    let (_, older) = get(
+        format!("/v1/sightings?order=desc&limit=2&cursor={cursor}"),
+        "p",
+    )
+    .await;
+    assert_eq!(
+        older["sightings"][1], oldest["sightings"][0],
+        "and pages backwards"
+    );
+    let (code, _) = get("/v1/sightings?org=x".into(), "p").await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+
     let (code, _) = get("/v1/sightings".into(), "c").await;
     assert_eq!(code, StatusCode::FORBIDDEN, "a contributor lists its own");
     let (_, mine) = get("/v1/sightings?mine=true".into(), "c").await;
@@ -1375,7 +1403,10 @@ async fn records_are_listed_by_status() {
 
     let (code, own) = get(format!("/v1/sightings/{}", ids[0]), "c").await;
     assert_eq!(code, StatusCode::OK, "{own}");
-    assert_eq!(own["record"]["sighting_id"], format!("sighting--{}", ids[0]));
+    assert_eq!(
+        own["record"]["sighting_id"],
+        format!("sighting--{}", ids[0])
+    );
     let (code, _) = get(format!("/v1/sightings/{}", ids[3]), "c").await;
     assert_eq!(code, StatusCode::NOT_FOUND, "another's, below partner");
     let (code, _) = get(format!("/v1/sightings/{}", ids[3]), "p").await;

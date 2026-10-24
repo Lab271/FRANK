@@ -144,9 +144,10 @@ paths:
       tags: [records]
       summary: List sighting records
       description: |
-        The records of the visible sightings stored since 0.15, oldest first,
-        a page at a time. Partners and core list all; a contributor lists its
-        own with `mine=true`. Follow `next_cursor` until it is null.
+        The records of the visible sightings stored since 0.15, a page at a
+        time, filtered by the same dimensions as /v1/explore. Partners and
+        core list all; a contributor lists its own with `mine=true`. Follow
+        `next_cursor` until it is null.
       x-min-status: contributor
       parameters:
         - name: since
@@ -165,6 +166,15 @@ paths:
           in: query
           description: Only sightings carrying this IoC, as `type:value`.
           schema: { type: string, examples: ["ipv4:198.51.100.7"] }
+        - { name: ioc_type, in: query, description: Only sightings with an IoC of this type., schema: { type: string } }
+        - { name: campaign, in: query, schema: { type: string } }
+        - { name: technique, in: query, description: "An ATT&CK technique id; not a prefix of others.", schema: { type: string } }
+        - { name: sector, in: query, description: The target's sector., schema: { type: string } }
+        - { name: severity, in: query, schema: { type: string } }
+        - name: order
+          in: query
+          description: Oldest first (`asc`) or newest first (`desc`).
+          schema: { enum: [asc, desc], default: asc }
         - name: mine
           in: query
           description: Only the caller's participant's sightings. Required below partner.
