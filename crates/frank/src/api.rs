@@ -24,7 +24,7 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use db_core::engine::Cell;
-use frank_core::{sql_quote, Ioc, IocType, Sighting, Tier, Tlp, MIN_CELL};
+use frank_core::{sql_quote, Format, Ioc, IocType, Sighting, Tier, Tlp, MIN_CELL};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -137,20 +137,27 @@ async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Va
     })))
 }
 
-/// One submission or an array of them.
-fn submissions(body: &Value, now: i64) -> Result<Vec<Sighting>, ApiError> {
-    let items: Vec<&Value> = match body {
-        Value::Array(a) if a.len() > MAX_BATCH => {
-            return Err(unprocessable(format!("more than {MAX_BATCH} submissions")))
-        }
-        Value::Array(a) => a.iter().collect(),
-        v => vec![v],
+/// The sightings of a request body (#160): one, a list or a STIX bundle,
+/// in the format its `Content-Type` names; JSON when it names none.
+fn submissions(headers: &HeaderMap, body: &str, now: i64) -> Result<Vec<Sighting>, ApiError> {
+    let format = match headers.get(header::CONTENT_TYPE) {
+        None => Format::Json,
+        Some(ct) => ct
+            .to_str()
+            .ok()
+            .and_then(Format::from_content_type)
+            .ok_or_else(|| {
+                ApiError(
+                    StatusCode::UNSUPPORTED_MEDIA_TYPE,
+                    "send application/json, application/yaml or application/stix+json".into(),
+                )
+            })?,
     };
-    items
-        .into_iter()
-        .enumerate()
-        .map(|(i, v)| Sighting::from_value(v, now).map_err(|e| unprocessable(format!("[{i}] {e}"))))
-        .collect()
+    let subs = frank_core::formats::parse(body, format, now).map_err(unprocessable)?;
+    if subs.len() > MAX_BATCH {
+        return Err(unprocessable(format!("more than {MAX_BATCH} submissions")));
+    }
+    Ok(subs)
 }
 
 /// The rows a submission would add, without storing anything: what leaves
@@ -158,10 +165,10 @@ fn submissions(body: &Value, now: i64) -> Result<Vec<Sighting>, ApiError> {
 async fn preview(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Json(body): Json<Value>,
+    body: String,
 ) -> Result<Json<Value>, ApiError> {
     require(&app, &headers, Tier::Public)?;
-    let subs = submissions(&body, (app.now)())?;
+    let subs = submissions(&headers, &body, (app.now)())?;
     let rows: Vec<_> = subs
         .iter()
         .flat_map(|s| s.rows("sighting--preview"))
@@ -177,10 +184,10 @@ async fn preview(
 async fn submit(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Json(body): Json<Value>,
+    body: String,
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
-    let subs = submissions(&body, (app.now)())?;
+    let subs = submissions(&headers, &body, (app.now)())?;
     let mut items: Vec<(String, String, Sighting)> = Vec::with_capacity(subs.len());
     for (i, s) in subs.into_iter().enumerate() {
         let id = s.sighting_id.clone().ok_or_else(|| {

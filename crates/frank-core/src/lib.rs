@@ -8,11 +8,15 @@
 //! the target's id as the sender gave it, for Core only; the submitter is
 //! never part of it (the server knows the participant).
 
+pub mod formats;
 pub mod model;
 pub mod observable;
+pub mod stix;
 pub mod tier;
 pub mod tlp;
+pub mod yaml;
 
+pub use formats::Format;
 pub use model::{Error, Observable, Sighting, SightingBuilder, SightingRow};
 pub use observable::{Ioc, IocType};
 pub use tier::Tier;

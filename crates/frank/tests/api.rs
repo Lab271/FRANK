@@ -1215,3 +1215,54 @@ fn keys_of(v: &Value) -> Vec<String> {
         .map(|r| r["key"].as_str().unwrap().to_string())
         .collect()
 }
+
+/// POSTs `body` as `content_type`.
+async fn post_as(app: &axum::Router, content_type: &str, body: &str) -> (StatusCode, Value) {
+    let req = Request::builder()
+        .method("POST")
+        .uri("/v1/sightings")
+        .header("authorization", "Bearer c")
+        .header("content-type", content_type)
+        .body(Body::from(body.to_string()))
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    let status = resp.status();
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    (
+        status,
+        serde_json::from_slice(&bytes).unwrap_or(Value::Null),
+    )
+}
+
+/// #160: the Content-Type picks the format; one sighting in three formats
+/// is one registration.
+#[tokio::test]
+async fn json_yaml_and_stix_are_one_sighting() {
+    let h = harness("formats");
+    let formats = [
+        (
+            "application/json",
+            include_str!("../../../examples/formats/sighting.json"),
+        ),
+        (
+            "application/yaml",
+            include_str!("../../../examples/formats/sighting.yaml"),
+        ),
+        (
+            "application/stix+json;version=2.1",
+            include_str!("../../../examples/formats/sighting.stix.json"),
+        ),
+    ];
+    let mut statuses = Vec::new();
+    for (ct, body) in formats {
+        let (code, r) = post_as(&h.app, ct, body).await;
+        assert!(code.is_success(), "{ct}: {r}");
+        statuses.push(r["receipts"][0]["status"].as_str().unwrap().to_string());
+    }
+    assert_eq!(statuses, ["created", "duplicate", "duplicate"]);
+    let (code, _) = post_as(&h.app, "text/plain", formats[0].1).await;
+    assert_eq!(code, StatusCode::UNSUPPORTED_MEDIA_TYPE);
+    let (code, r) = post_as(&h.app, "application/yaml", "a: *nope\n").await;
+    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY, "{r}");
+    assert!(h.sightings.query("SELECT count(*) FROM sightings").is_ok());
+}

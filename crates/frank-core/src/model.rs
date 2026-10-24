@@ -846,7 +846,8 @@ fn text_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
     v.get(key)?.as_str()
 }
 
-fn time_field(v: &Value, key: &str) -> Result<Option<i64>, Error> {
+/// An RFC 3339 time field, as ns since the epoch.
+pub(crate) fn time_field(v: &Value, key: &str) -> Result<Option<i64>, Error> {
     match v.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => OffsetDateTime::parse(s, &Rfc3339)
