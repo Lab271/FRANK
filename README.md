@@ -125,6 +125,16 @@ make test        # cargo test --workspace
 make lint        # fmt, clippy (native and wasm32)
 ```
 
+**Streaming test** (#177): `scripts/stream_sightings.py` sends synthetic sightings through `POST /v1/sightings` at a steady rate, stamped now, so they pass through every stage of the striped table: the open hour, an hour file in `live/` once the hour closes, a merged day in `archive/` after midnight UTC. With a partner or core token it polls `/v1/statistics` and `/v1/files` and checks that the stored count is the starting count plus what was created at every poll; a share of the sightings is resent and must get its original receipt. Exit code 1 on any mismatch. Run nothing else against the server meanwhile.
+
+```bash
+export FRANK_TOKENS=frank_…,frank_…   # senders (contributor or higher), one reporter each
+export FRANK_WATCH_TOKEN=frank_…      # partner or core, sees every TLP level
+make stream RATE=60 DURATION=90m      # cross the top of an hour to see an hour file written
+```
+
+A batch that fails to arrive is sent again, so `make down && make up` in the middle of a run checks that the WAL keeps every accepted sighting.
+
 | Crate | Role |
 |---|---|
 | `crates/frank-core` | wire model, normalisation, anonymised rows (shared by server and browser) |
