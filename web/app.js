@@ -50,6 +50,9 @@ const isoDay = (ns) => iso(ns).slice(0, 10);
 const TIERS = ["public", "observer", "contributor", "partner", "core"];
 let tier = "public";
 const atLeast = (t) => TIERS.indexOf(tier) >= TIERS.indexOf(t);
+// A user's role (#175), apart from its status: null, "admin" or "superadmin".
+let role = null;
+const hasRole = (r) => role !== null && (role === r || role === "superadmin");
 
 function showTab(name) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === name);
@@ -65,7 +68,8 @@ for (const b of document.querySelectorAll("nav button")) {
 
 function route() {
   const [name, qs] = location.hash.slice(1).split("?");
-  const tab = document.getElementById(name || "stats") ? (name || "stats") : "stats";
+  let tab = document.getElementById(name || "stats") ? (name || "stats") : "stats";
+  if (tab === "admin" && !role) tab = "stats";
   showTab(tab);
   if (tab === "explore") {
     lastExplore = location.hash.slice(1);
@@ -75,6 +79,7 @@ function route() {
   }
   if (tab === "about") loadAbout();
   if (tab === "api") loadApi();
+  if (tab === "admin") loadAdmin();
 }
 window.addEventListener("hashchange", route);
 
@@ -82,11 +87,16 @@ async function whoami() {
   try {
     const me = await (await api("/v1/whoami")).json();
     tier = me.tier;
-    $("tier").textContent = me.label ? `${me.tier} · ${me.label}` : me.tier;
+    role = me.role || null;
+    $("tier").textContent = (me.label ? `${me.tier} · ${me.label}` : me.tier) + (role ? ` · ${role}` : "");
   } catch (e) {
     tier = "public";
+    role = null;
     $("tier").textContent = `rejected: ${e.message}`;
   }
+  document.querySelector('nav [data-tab="admin"]').hidden = !role;
+  adminOrg = "";
+  apiDone = false;
   for (const o of $("ex-group").options) o.disabled = !atLeast(DIMENSION_TIER[o.value]);
   loadStats();
   route();
@@ -782,24 +792,152 @@ async function loadApi() {
       el("h3", { class: "api-tag" }, `${t.name} \\ ${t.description || ""}`),
       ...ops.map(([path, method, op]) => {
         const min = op["x-min-status"] || "public";
+        const needs = op["x-role"];
+        const example = op.requestBody?.content?.["application/json"]?.example;
         const secured = !(Array.isArray(op.security) && op.security.length === 0);
         const params = (op.parameters || []).map(resolve);
+        const open = atLeast(min) && (!needs || hasRole(needs));
         return el("div", { class: "card endpoint" },
           el("div", { class: "endpoint-head" },
             el("span", { class: "method" }, method.toUpperCase()), el("code", {}, path),
-            el("span", { class: `lab-label pill${atLeast(min) ? "" : " locked"}` }, `${min}+`)),
+            el("span", { class: `lab-label pill${open ? "" : " locked"}` }, needs ? `${min}+ · ${needs}` : `${min}+`)),
           el("p", {}, op.summary || ""),
           ...(op.description ? [el("p", { class: "note" }, op.description)] : []),
           ...(params.length ? [table(["parameter", "in", "", "description"], params.map((p) =>
             [p.name, p.in, p.required ? "required" : "", p.description || ""]))] : []),
-          el("pre", { class: "curl" }, method === "post"
-            ? curl(method, path, secured, ['-H "Content-Type: application/json"', "--data-binary @sighting.json"])
-            : curl(method, path, secured)));
+          el("pre", { class: "curl" }, example
+            ? curl(method, path, secured, ['-H "Content-Type: application/json"', `-d '${JSON.stringify(example)}'`])
+            : method === "post"
+              ? curl(method, path, secured, ['-H "Content-Type: application/json"', "--data-binary @sighting.json"])
+              : curl(method, path, secured)));
       }),
     ]));
   } catch (e) {
     show($("api-out"), errorNode(e));
   }
 }
+
+// --- admin (#175) -------------------------------------------------------------
+// For users with a role. An admin manages its own organisation; a superadmin
+// picks one. A new token is shown once, in the message area, and not kept.
+
+let adminOrg = "";
+
+const sendJson = (path, method, body) => api(path, {
+  method, headers: { "content-type": "application/json" }, body: JSON.stringify(body),
+});
+
+function adminMessage(node) {
+  show($("adm-msg"), ...(node ? [node] : []));
+}
+
+// Runs a change, then reloads the tab. A node the change returns (a new
+// token) or an error stays in the message area.
+async function adminAct(change) {
+  adminMessage(null);
+  try {
+    const node = await change();
+    await loadAdmin(false);
+    if (node instanceof Node) adminMessage(node);
+  } catch (e) {
+    adminMessage(errorNode(e));
+  }
+}
+
+function tokenCard(t) {
+  const copy = el("button", { class: "lab-btn lab-btn--secondary" }, "copy");
+  copy.addEventListener("click", () => navigator.clipboard?.writeText(t.token));
+  return el("div", { class: "card" },
+    el("h3", {}, `new token for ${t.user} \\ shown once`),
+    el("pre", { class: "curl" }, t.token), copy);
+}
+
+function roleSelect(u) {
+  const choices = ["", "admin", ...(hasRole("superadmin") ? ["superadmin"] : [])];
+  const s = el("select", { class: "lab-input", "aria-label": `Role of ${u.name}` },
+    ...choices.map((r) => el("option", { value: r }, r || "no role")));
+  if (u.role === "superadmin" && !hasRole("superadmin")) s.append(el("option", { value: "superadmin" }, "superadmin"));
+  s.value = u.role || "";
+  s.disabled = u.kind !== "human" || (u.role === "superadmin" && !hasRole("superadmin"));
+  s.addEventListener("change", () => adminAct(() =>
+    sendJson(`/v1/admin/users/${encodeURIComponent(u.name)}`, "PATCH", { role: s.value || null })));
+  return s;
+}
+
+function tokenRow(t) {
+  if (t.revoked) return [`${t.prefix}…`, t.user, "revoked", ""];
+  const revoke = el("button", { class: "lab-btn lab-btn--secondary" }, "revoke");
+  revoke.addEventListener("click", () => {
+    if (!confirm(`Revoke ${t.prefix}… of ${t.user}? Clients using it stop working.`)) return;
+    adminAct(() => api(`/v1/admin/tokens/${t.prefix}`, { method: "DELETE" }));
+  });
+  return [`${t.prefix}…`, t.user, "active", revoke];
+}
+
+async function loadAdmin(clearMessage = true) {
+  if (!role) return;
+  if (clearMessage) adminMessage(null);
+  const superadmin = hasRole("superadmin");
+  $("adm-status-ctl").hidden = !superadmin;
+  $("adm-orgs-new").hidden = !superadmin;
+  $("adm-user-super").hidden = !superadmin;
+  $("adm-user-super").disabled = !superadmin;
+  try {
+    const { organisations } = await (await api("/v1/admin/organisations")).json();
+    if (!organisations.some((o) => o.id === adminOrg)) adminOrg = organisations[0]?.id || "";
+    show($("adm-org"), ...organisations.map((o) => el("option", { value: o.id }, o.name)));
+    $("adm-org").value = adminOrg;
+    $("adm-org").disabled = organisations.length < 2;
+    const org = organisations.find((o) => o.id === adminOrg);
+    $("adm-org-status").textContent = org?.status || "";
+    $("adm-status").value = org?.status || "contributor";
+    const q = `?participant=${encodeURIComponent(adminOrg)}`;
+    const [{ users }, { tokens }, { lines }] = await Promise.all([
+      api(`/v1/admin/users${q}`).then((r) => r.json()),
+      api(`/v1/admin/tokens${q}`).then((r) => r.json()),
+      api(`/v1/admin/audit?days=${$("adm-days").value}`).then((r) => r.json()),
+    ]);
+    show($("adm-users"), table(["user", "kind", "role", ""], users.map((u) => {
+      const issue = el("button", { class: "lab-btn lab-btn--secondary" }, "new token");
+      issue.addEventListener("click", () => adminAct(async () =>
+        tokenCard(await (await sendJson("/v1/admin/tokens", "POST", { user: u.name })).json())));
+      return [u.name, u.kind, roleSelect(u), issue];
+    })));
+    show($("adm-tokens"), table(["token", "user", "state", ""], tokens.map(tokenRow)));
+    show($("adm-audit"), lines.length
+      ? table(["at", "by", "action", "details"], lines.map(({ at, by, action, ...rest }) =>
+        [at, by, action, JSON.stringify(rest)]))
+      : el("p", { class: "note" }, "nothing in this window"));
+  } catch (e) {
+    adminMessage(errorNode(e));
+  }
+}
+
+$("adm-org").addEventListener("change", () => { adminOrg = $("adm-org").value; loadAdmin(); });
+$("adm-days").addEventListener("change", () => loadAdmin(false));
+$("adm-status-set").addEventListener("click", () => adminAct(() =>
+  sendJson(`/v1/admin/organisations/${encodeURIComponent(adminOrg)}`, "PATCH", { status: $("adm-status").value })));
+$("adm-user-add").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  adminAct(async () => {
+    await sendJson("/v1/admin/users", "POST", {
+      participant: adminOrg, name: $("adm-user-name").value.trim(),
+      kind: $("adm-user-kind").value, role: $("adm-user-role").value || null,
+    });
+    $("adm-user-name").value = "";
+  });
+});
+$("adm-org-add").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  adminAct(async () => {
+    const o = await (await sendJson("/v1/admin/organisations", "POST", {
+      name: $("adm-org-name").value.trim(), status: $("adm-org-new-status").value,
+      type: $("adm-org-type").value, sector: $("adm-org-sector").value.trim() || null,
+    })).json();
+    adminOrg = o.id;
+    $("adm-org-name").value = "";
+    $("adm-org-sector").value = "";
+  });
+});
 
 whoami();

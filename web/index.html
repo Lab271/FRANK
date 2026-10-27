@@ -42,6 +42,7 @@
   <button role="tab" class="lab-nav-link" data-tab="analyse">analyse locally</button>
   <button role="tab" class="lab-nav-link" data-tab="about">about</button>
   <button role="tab" class="lab-nav-link" data-tab="api">api</button>
+  <button role="tab" class="lab-nav-link" data-tab="admin" hidden>admin</button>
 </nav>
 
 <main>
@@ -138,6 +139,53 @@
       level allows). Identities of the sender and the target are never stored.</p>
     <div id="about-legend" class="row chips-static"></div>
     <pre id="about-yaml" class="yaml"></pre>
+  </section>
+
+  <section id="admin" role="tabpanel" hidden>
+    <p class="note">Users with a role manage identities: an admin its own organisation's users and tokens, a
+      superadmin every organisation. What a user may see still follows its organisation's status.</p>
+    <div class="row">
+      <label>organisation <select id="adm-org" class="lab-input"></select></label>
+      <span id="adm-org-status" class="lab-label pill"></span>
+      <span id="adm-status-ctl" hidden>
+        <select id="adm-status" class="lab-input" aria-label="New status">
+          <option>observer</option><option>contributor</option><option>partner</option><option>core</option>
+        </select>
+        <button id="adm-status-set" class="lab-btn lab-btn--secondary">set status</button>
+      </span>
+    </div>
+    <div id="adm-msg"></div>
+    <h2>users</h2>
+    <div id="adm-users"></div>
+    <form id="adm-user-add" class="row" autocomplete="off">
+      <input id="adm-user-name" class="lab-input" placeholder="new user name" aria-label="New user name" required>
+      <select id="adm-user-kind" class="lab-input" aria-label="Kind"><option>human</option><option>machine</option></select>
+      <select id="adm-user-role" class="lab-input" aria-label="Role">
+        <option value="">no role</option><option>admin</option><option id="adm-user-super">superadmin</option>
+      </select>
+      <button type="submit" class="lab-btn lab-btn--secondary">add user</button>
+    </form>
+    <h2>tokens</h2>
+    <div id="adm-tokens"></div>
+    <div id="adm-orgs-new" hidden>
+      <h2>new organisation</h2>
+      <form id="adm-org-add" class="row" autocomplete="off">
+        <input id="adm-org-name" class="lab-input" placeholder="name" aria-label="Organisation name" required>
+        <select id="adm-org-new-status" class="lab-input" aria-label="Status">
+          <option>observer</option><option selected>contributor</option><option>partner</option><option>core</option>
+        </select>
+        <select id="adm-org-type" class="lab-input" aria-label="Type"><option>cyber_partner</option><option>customer</option></select>
+        <input id="adm-org-sector" class="lab-input" placeholder="sector (optional)" aria-label="Sector">
+        <button type="submit" class="lab-btn lab-btn--secondary">add organisation</button>
+      </form>
+    </div>
+    <h2>audit</h2>
+    <div class="row">
+      <label>window <select id="adm-days" class="lab-input">
+        <option value="1">1 day</option><option value="7" selected>7 days</option><option value="31">31 days</option>
+      </select></label>
+    </div>
+    <div id="adm-audit"></div>
   </section>
 
   <section id="api" role="tabpanel" hidden>
