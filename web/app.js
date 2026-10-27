@@ -751,7 +751,7 @@ function loadAbout() {
 }
 
 // --- api --------------------------------------------------------------------
-// Rendered from /v1/openapi.json (api/openapi.yaml).
+// Rendered from /v1/openapi.json (docs/openapi.yaml).
 
 const FORMATS = [
   ["application/json", "sighting.json", "Phase 2's submission format or frank/1; one sighting or a list."],

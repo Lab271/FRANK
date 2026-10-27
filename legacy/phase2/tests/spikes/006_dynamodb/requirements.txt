@@ -1,9 +1,0 @@
-# ===================================
-# requirements.txt
-# Minimal dependencies for DynamoDB + FastAPI
-# ===================================
-
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-boto3==1.34.0
-pydantic==2.5.0

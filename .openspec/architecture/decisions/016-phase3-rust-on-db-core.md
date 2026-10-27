@@ -8,7 +8,7 @@
 
 ## Context
 
-Phase 2 delivered a Python/FastAPI service over SQLite, DynamoDB, PostgreSQL and a planned OpenSearch/ScyllaDB stack, and a demo for RVO (May 2026). Its final state is tagged `phase2-final`; the demo branch is tagged `phase2-demo-may13`. The code moved to `legacy/phase2/`.
+Phase 2 delivered a Python/FastAPI service over SQLite, DynamoDB, PostgreSQL and a planned OpenSearch/ScyllaDB stack, and a demo for RVO (May 2026). Its final state is tagged `phase2-final`; the demo branch is tagged `phase2-demo-may13`. The code moved to `legacy/phase2/`, and left the tree on 2026-10-27; the tags keep it.
 
 Phase 3 is the production build. Three things in the Phase 2 outcome drive the redesign:
 

@@ -736,9 +736,9 @@ async fn file(
     .await
 }
 
-/// The API description (`api/openapi.yaml`), as JSON.
+/// The API description (`docs/openapi.yaml`), as JSON.
 async fn openapi() -> Result<Json<Value>, ApiError> {
-    frank_core::yaml::to_json(include_str!("../../../api/openapi.yaml"))
+    frank_core::yaml::to_json(include_str!("../../../docs/openapi.yaml"))
         .map(Json)
         .map_err(internal)
 }

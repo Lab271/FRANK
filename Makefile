@@ -1,4 +1,4 @@
-# FRANK Phase 3 (ADR-016). Phase 2 (Python) lives in legacy/phase2.
+# FRANK Phase 3 (ADR-016). Phase 2 (Python) is at the tag phase2-final.
 SHELL := /bin/bash
 CARGO ?= rustup run stable cargo
 DATA ?= ./data

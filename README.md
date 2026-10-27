@@ -4,7 +4,7 @@ Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutr
 
 ## Version: 0.17.0
 
-Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is in [`legacy/phase2/`](legacy/phase2/), and its final state is tagged `phase2-final`.
+Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
 
