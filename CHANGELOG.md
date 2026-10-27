@@ -4,6 +4,13 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.18.0] - 2026-10-27
+
+### Added
+
+- `scripts/stream_sightings.py` and `make stream` (#177): stream synthetic sightings through the API and check the striped table at every stage (open hour, hour file, merged day): stored = sent, resends keep their receipt, a restart mid-run loses nothing.
+- `make stream-setup` and `frank token add <user> --hash`: register the checked-in test tokens (`scripts/stream_tokens.json`, local only) so the stream test runs without setup of its own.
+
 ## [0.17.0] - 2026-10-27
 
 ### Added

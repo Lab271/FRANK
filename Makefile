@@ -10,8 +10,10 @@ WASM_BINDGEN_VERSION := 0.2.129
 FRANK := target/release/frank
 COMPOSE := podman compose -f deploy/podman/compose.yaml
 N ?= 60
+RATE ?= 60
+DURATION ?= 1h
 
-.PHONY: help check build server wasm test lint fmt run participant participants user role token demo image up down clean
+.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream image up down clean
 
 ##@ General
 
@@ -93,6 +95,12 @@ demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data
 	@for f in target/demo/mdr-*.json; do \
 	  FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) ingest --as "$$(basename $$f .json)" --create $$f || exit 1; \
 	done
+
+stream-setup: server ## Register the checked-in test tokens (scripts/stream_tokens.json) in ./participants; local only
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) python3 scripts/stream_sightings.py --setup --frank $(FRANK)
+
+stream: ## Stream sightings through the API and watch the table: make stream RATE=60 DURATION=1h [FRANK_URL=…]
+	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION)
 
 ##@ Container (podman)
 

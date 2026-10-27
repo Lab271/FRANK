@@ -142,6 +142,13 @@ enum UserCmd {
 enum TokenCmd {
     /// Create a token for a user; prints it once.
     New { user: String },
+    /// Register a token made elsewhere by its SHA-256 (64 hex digits);
+    /// FRANK never sees the token itself.
+    Add {
+        user: String,
+        #[arg(long)]
+        hash: String,
+    },
     /// List the tokens (hash prefixes, never the tokens).
     List,
     /// Revoke the token whose hash starts with PREFIX (see `list`).
@@ -261,6 +268,13 @@ fn main() -> Result<(), String> {
             )?;
             println!("{token}");
             eprintln!("added a token for {user:?}; it is shown once");
+            Ok(())
+        }
+        Command::Token(TokenCmd::Add { user, hash: h }) => {
+            parts::add_token_hash(&db, &user, &h)?;
+            let prefix = h.to_ascii_lowercase()[..12].to_string();
+            log("token_issued", json!({ "user": user, "token": prefix }))?;
+            eprintln!("registered token {prefix}… for {user:?}");
             Ok(())
         }
         Command::Token(TokenCmd::List) => {
