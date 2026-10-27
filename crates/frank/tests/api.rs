@@ -56,7 +56,7 @@ fn harness(name: &str) -> Harness {
         ("p", "lab", Tier::Partner),
     ] {
         parts::add_organisation(&db, name, status, "cyber_partner", None, None).unwrap();
-        parts::add_user(&db, name, name, "human").unwrap();
+        parts::add_user(&db, name, name, "human", None).unwrap();
         parts::add_token_hash(&db, name, &hash(token)).unwrap();
     }
     let sightings = Sightings::open(&dir, None, now).unwrap();
@@ -877,7 +877,7 @@ async fn iocs_rebuild_from_sightings() {
 #[tokio::test]
 async fn participants_are_the_reporters() {
     let h = harness("participants");
-    parts::add_user(&h.db, "mdr", "mdr-feed", "machine").unwrap();
+    parts::add_user(&h.db, "mdr", "mdr-feed", "machine", None).unwrap();
     let feed = parts::add_token(&h.db, "mdr-feed").unwrap();
 
     // Two users of one organisation are one reporter.
@@ -1069,7 +1069,7 @@ async fn a_resend_is_recognised() {
 async fn reporters_are_shown_by_status() {
     let h = harness("identity");
     parts::add_organisation(&h.db, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
-    parts::add_user(&h.db, "ops", "ops", "human").unwrap();
+    parts::add_user(&h.db, "ops", "ops", "human", None).unwrap();
     parts::add_token_hash(&h.db, "ops", &hash("k")).unwrap();
     let mdr = parts::organisation_id(&h.db, "mdr").unwrap();
     for t in ["c", "c2", "c3"] {

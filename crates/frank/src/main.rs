@@ -180,7 +180,7 @@ fn main() -> Result<(), String> {
             machine,
         }) => {
             let kind = if machine { "machine" } else { "human" };
-            parts::add_user(&db, &participant, &name, kind)?;
+            parts::add_user(&db, &participant, &name, kind, None)?;
             log(
                 "user_added",
                 json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind }),
@@ -337,7 +337,7 @@ fn participant(
             )?;
             eprintln!("registered {name:?} ({st}) as {id}");
             if with_token {
-                parts::add_user(db, &name, &name, "human")?;
+                parts::add_user(db, &name, &name, "human", None)?;
                 log(
                     "user_added",
                     json!({ "participant": id, "user": name, "kind": "human" }),
