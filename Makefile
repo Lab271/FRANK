@@ -13,7 +13,7 @@ N ?= 60
 RATE ?= 60
 DURATION ?= 1h
 
-.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream image up down clean
+.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream image up down clean
 
 ##@ General
 
@@ -96,8 +96,10 @@ demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data
 	  FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) ingest --as "$$(basename $$f .json)" --create $$f || exit 1; \
 	done
 
-stream: ## Stream sightings through the API and watch the table: make stream RATE=60 DURATION=1h (FRANK_TOKENS, FRANK_WATCH_TOKEN)
-	@[ -n "$$FRANK_TOKENS" ] || { echo "set FRANK_TOKENS (contributor tokens, comma-separated) and FRANK_WATCH_TOKEN (partner or core)" >&2; exit 2; }
+stream-setup: server ## Register the checked-in test tokens (scripts/stream_tokens.json) in ./participants; local only
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) python3 scripts/stream_sightings.py --setup --frank $(FRANK)
+
+stream: ## Stream sightings through the API and watch the table: make stream RATE=60 DURATION=1h [FRANK_URL=…]
 	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION)
 
 ##@ Container (podman)

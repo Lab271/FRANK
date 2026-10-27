@@ -1,8 +1,13 @@
 #!/usr/bin/env python3
 """Stream synthetic sightings into a running FRANK and watch the striped table (#177).
 
-    FRANK_TOKENS=frank_a,frank_b FRANK_WATCH_TOKEN=frank_p \\
-        scripts/stream_sightings.py --rate 60 --duration 90m
+    make stream-setup                 # once: register the test tokens locally
+    scripts/stream_sightings.py --rate 60 --duration 90m
+
+Without FRANK_TOKENS / FRANK_WATCH_TOKEN it uses the test tokens checked in
+as `scripts/stream_tokens.json`: three senders (contributor, three
+reporters) and a watcher (partner). `--setup` registers them with the
+`frank` CLI; anyone with the repo has them, so only on a local FRANK.
 
 Sends through the API only (`POST /v1/sightings`), as a participant would:
 each token in FRANK_TOKENS (contributor or higher) is one reporter. Every
@@ -25,10 +30,12 @@ Only documentation addresses (RFC 5737) and `.example` domains.
 """
 import argparse
 import datetime as dt
+import hashlib
 import json
 import os
 import random
 import re
+import subprocess
 import sys
 import time
 import urllib.error
@@ -38,6 +45,42 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from demo_sightings import submission  # noqa: E402
+
+TOKENS_FILE = Path(__file__).resolve().parent / "stream_tokens.json"
+# A partner watcher sees these; AMBER+STRICT may become core-only (#164).
+TLP_MIX = (["clear", "green", "amber"], [3, 5, 2])
+
+
+def test_tokens() -> dict:
+    return json.loads(TOKENS_FILE.read_text())
+
+
+def setup(frank: str) -> int:
+    """Registers the test participants, users and token hashes with the
+    `frank` CLI (FRANK_DATA, FRANK_PARTICIPANTS); skips what exists."""
+    t = test_tokens()
+
+    def run(*args: str) -> str:
+        return subprocess.run([frank, *args], check=True, capture_output=True, text=True).stdout
+
+    def first_column(*args: str) -> set:
+        return {line.split()[0] for line in run(*args).splitlines() if line.strip()}
+
+    orgs, users, prefixes = first_column("participant", "list"), first_column("user", "list"), first_column("token", "list")
+    wanted = [(n, tok, "contributor") for n, tok in t["senders"].items()]
+    wanted += [(n, tok, "partner") for n, tok in t["watcher"].items()]
+    for name, token, status in wanted:
+        if name in orgs:
+            run("participant", "set-status", name, status)
+        else:
+            run("participant", "add", name, "--status", status)
+        if name not in users:
+            run("user", "add", name, name, "--machine")
+        h = hashlib.sha256(token.encode()).hexdigest()
+        if h[:12] not in prefixes:
+            run("token", "add", name, "--hash", h)
+        print(f"{name}: {status}, token {h[:12]}…")
+    return 0
 
 
 def duration(s: str) -> float:
@@ -140,11 +183,19 @@ def main() -> int:
     p.add_argument("--resend", type=float, default=0.05, help="share of sightings sent again (0.05)")
     p.add_argument("--poll", type=duration, default=30, help="seconds between watch polls (30)")
     p.add_argument("--seed", type=int, default=None, help="for a repeatable mix of content")
+    p.add_argument("--setup", action="store_true",
+                   help="register the test tokens of stream_tokens.json with the frank CLI, then stop")
+    p.add_argument("--frank", default="target/release/frank", help="the frank binary for --setup")
     a = p.parse_args()
 
+    if a.setup:
+        return setup(a.frank)
     tokens = a.token or [t.strip() for t in os.environ.get("FRANK_TOKENS", "").split(",") if t.strip()]
     if not tokens:
-        p.error("no sender token: --token or FRANK_TOKENS")
+        tokens = list(test_tokens()["senders"].values())
+        log(f"senders: the test tokens of {TOKENS_FILE.name} (make stream-setup registers them)")
+    if not a.watch_token and not os.environ.get("FRANK_TOKENS"):
+        a.watch_token = next(iter(test_tokens()["watcher"].values()))
     if not 1 <= a.batch <= 100 or a.rate <= 0:
         p.error("--batch 1-100 and --rate > 0")
 
@@ -183,6 +234,7 @@ def main() -> int:
                     for _ in range(a.batch):
                         s = submission(rng, now_utc())
                         s["submission"]["sighting"]["timestamp"] = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
+                        s["submission"]["tlp_level"] = rng.choices(*TLP_MIX)[0]
                         batch.append(s)
                     # Some already-sent sightings again, unchanged.
                     sent_before = [r["body"] for r in receipts.values()]
