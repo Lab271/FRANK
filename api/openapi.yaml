@@ -14,7 +14,7 @@ info:
     user of a participant, and the participant's status (observer,
     contributor, partner, core) decides what it may see. Each status also
     sees the TLP levels allowed to it; TLP:RED is never accepted.
-  version: "0.15"
+  version: "0.17"
   license:
     name: Apache-2.0
     identifier: Apache-2.0

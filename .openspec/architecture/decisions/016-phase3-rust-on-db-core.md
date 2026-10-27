@@ -4,7 +4,7 @@
 - **Date:** 2026-10-22
 - **Decision Makers:** Ilja Heitlager
 - **Supersedes:** [ADR-003](003-four-stage-infrastructure-evolution.md) (stages), [ADR-004](004-repository-pattern-database-abstraction.md) (storage backends), [ADR-006](006-cognito-authentication.md) (Cognito), [ADR-010](010-postgresql-management-api.md) (PostgreSQL for organisations)
-- **Related:** [ADR-002](002-tiered-access-control.md), [ADR-008](008-forgiving-input-strong-output.md)
+- **Related:** [ADR-002](002-tiered-access-control.md), [ADR-008](008-forgiving-input-strong-output.md), [ADR-017](017-user-roles-for-identity-administration.md) (user roles: who may manage identities; users still see by their organisation's status)
 
 ## Context
 
