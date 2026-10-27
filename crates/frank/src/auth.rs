@@ -5,7 +5,46 @@
 //! itself, only its SHA-256. No token means the public tier.
 
 use frank_core::Tier;
+use serde::Serialize;
 use sha2::{Digest, Sha256};
+
+/// What a user may manage (#175, ADR-017), apart from what its
+/// organisation's status lets it see. Only people hold a role.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Role {
+    /// Manages the users and tokens of its own organisation
+    /// (contributor, partner or core).
+    Admin,
+    /// Manages every organisation (core only).
+    Superadmin,
+}
+
+impl Role {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Role::Admin => "admin",
+            Role::Superadmin => "superadmin",
+        }
+    }
+
+    /// `admin` or `superadmin`; `None` for anything else.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Role> {
+        match s.trim().to_ascii_lowercase().as_str() {
+            "admin" => Some(Role::Admin),
+            "superadmin" => Some(Role::Superadmin),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for Role {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(self.as_str())
+    }
+}
 
 /// Who a request is.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -19,6 +58,8 @@ pub struct Caller {
     pub organisation: String,
     /// The user the token belongs to.
     pub user: String,
+    /// The user's role, if any.
+    pub role: Option<Role>,
 }
 
 impl Caller {
@@ -29,6 +70,7 @@ impl Caller {
             participant: String::new(),
             organisation: String::new(),
             user: String::new(),
+            role: None,
         }
     }
 
@@ -102,6 +144,7 @@ mod tests {
             participant: "identity--x".into(),
             organisation: "lab".into(),
             user: "bob".into(),
+            role: None,
         };
         assert_eq!(c.label(), "bob@lab");
     }

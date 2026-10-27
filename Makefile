@@ -11,7 +11,7 @@ FRANK := target/release/frank
 COMPOSE := podman compose -f deploy/podman/compose.yaml
 N ?= 60
 
-.PHONY: help check build server wasm test lint fmt run participant participants user token demo image up down clean
+.PHONY: help check build server wasm test lint fmt run participant participants user role token demo image up down clean
 
 ##@ General
 
@@ -67,14 +67,19 @@ participant: server ## Register an organisation with a token: make participant N
 	@[ -n "$(NAME)" ] && [ -n "$(STATUS)" ] || { echo "usage: make participant NAME=<organisation> STATUS=observer|contributor|partner|core" >&2; exit 2; }
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) participant add "$(NAME)" --status $(STATUS) --with-token
 
-participants: server ## List organisations and tokens
+participants: server ## List organisations, users and tokens
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) participant list
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) user list
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token list
 
-user: server ## Add a user with a token: make user PARTICIPANT=me NAME=alice [MACHINE=1]
-	@[ -n "$(PARTICIPANT)" ] && [ -n "$(NAME)" ] || { echo "usage: make user PARTICIPANT=<organisation> NAME=<user> [MACHINE=1]" >&2; exit 2; }
-	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) user add "$(PARTICIPANT)" "$(NAME)" $(if $(MACHINE),--machine)
+user: server ## Add a user with a token: make user PARTICIPANT=me NAME=alice [MACHINE=1] [ROLE=admin]
+	@[ -n "$(PARTICIPANT)" ] && [ -n "$(NAME)" ] || { echo "usage: make user PARTICIPANT=<organisation> NAME=<user> [MACHINE=1] [ROLE=admin|superadmin]" >&2; exit 2; }
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) user add "$(PARTICIPANT)" "$(NAME)" $(if $(MACHINE),--machine) $(if $(ROLE),--role $(ROLE))
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token new "$(NAME)"
+
+role: server ## Set a user's role: make role NAME=alice ROLE=admin|superadmin|none
+	@[ -n "$(NAME)" ] && [ -n "$(ROLE)" ] || { echo "usage: make role NAME=<user> ROLE=admin|superadmin|none" >&2; exit 2; }
+	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) user set-role "$(NAME)" $(ROLE)
 
 token: server ## Another token for a user: make token NAME=alice
 	@[ -n "$(NAME)" ] || { echo "usage: make token NAME=<user>" >&2; exit 2; }

@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.16.0
+## Version: 0.17.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is in [`legacy/phase2/`](legacy/phase2/), and its final state is tagged `phase2-final`.
 
@@ -29,6 +29,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
 ```
 
 - **Known participants** (#159): a participant is an organisation with one status; its users (people and API clients) inherit that status, and sightings are stored under the organisation's opaque id (`identity--{uuid}`), never under a user.
+- **Admins** (#175, [ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)): a role on a person, apart from the status. An admin manages its own organisation's users and tokens, a superadmin (core only) every organisation, in the web UI's admin tab or under `/v1/admin`.
 - **Statuses** (ADR-002): public sees totals; observer sees breakdowns with cells of fewer than 3 distinct reporters suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files and sees reporter ids; core operates and sees who they are.
 - **The sender's id is the registration:** each sighting carries a `sighting_id` (UUID) chosen by the sender. Sending it again returns the original receipt; other content under the same id is refused (409).
 - **Open data format:** every table is plain Parquet, so DuckDB reads it as well.
@@ -62,7 +63,19 @@ make token NAME=acme-feed                           # another token for a user
 make participants                                   # organisations, users, token prefixes
 target/release/frank participant set-status acme-mdr partner   # all its users, next request
 target/release/frank token revoke 1a2b3c4d          # by hash prefix, from `make participants`
+target/release/frank user disable acme-feed         # its tokens stop working; `enable` brings them back
+target/release/frank user remove acme-feed          # a disabled user only, with its role and tokens
 ```
+
+**Admins** ([ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)). A role belongs to a person, never to an API client, and decides what the user may manage; the organisation's status still decides what it sees. An **admin** (in a contributor, partner or core organisation) manages its own organisation's users and tokens and reads its audit lines; a **superadmin** (in a core organisation) manages every organisation, its status included. Make the first superadmin on the command line, then manage the rest from the web UI's admin tab:
+
+```bash
+make participant NAME=lab271 STATUS=core            # the operator's organisation
+make role NAME=lab271 ROLE=superadmin               # its first user becomes superadmin
+make user PARTICIPANT=acme-mdr NAME=alice ROLE=admin   # an admin of one organisation, with a token
+```
+
+Users are disabled before they are removed. The API refuses to take the last working admin of an organisation or the last working superadmin (by a role change or by disabling), to disable yourself, and to revoke your own last token; the command line can always recover.
 
 An old `./tokens` file is imported once when the server starts on an empty `participants.db`: one organisation per line. Merge the ones that belong together, then delete the file.
 
@@ -70,7 +83,7 @@ An old `./tokens` file is imported once when the server starts on an empty `part
 
 Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`.
 
-**Audit log.** `data/audit/YYYY-MM-DD.jsonl` (UTC) has one line per action: every submission and ingest (participant, user, sighting ids, digests, created/duplicate/refused) and every change to participants, users and tokens, with who did it (`user@organisation`, or `cli:<os user>`). A token appears only as the first 12 hex digits of its hash, as `frank token list` shows it. Days are dropped with the sightings' retention.
+**Audit log.** `data/audit/YYYY-MM-DD.jsonl` (UTC) has one line per action: every submission and ingest (participant, user, sighting ids, digests, created/duplicate/refused) and every change to participants, users, roles and tokens, from the admin tab or the command line, with who did it (`user@organisation`, or `cli:<os user>`). A token appears only as the first 12 hex digits of its hash, as `frank token list` shows it. Days are dropped with the sightings' retention.
 
 **Backups.** `iocs.db` and `registry.db` are indexes rebuilt from the sightings (`frank rebuild`, server stopped); `participants.db` cannot be rebuilt. On STACKIT a nightly timer copies it with `sqlite3 .backup` (safe while FRANK runs) to `/srv/frank/backup/<date>/` and keeps two weeks. That copy sits on the same volume: take volume snapshots or copy `/srv/frank/backup` off the VM for a backup that survives losing the volume. Elsewhere: `sqlite3 participants/participants.db ".backup /somewhere/participants.db"`.
 
@@ -86,7 +99,7 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | Route | Tier | What |
 |---|---|---|
 | `GET /health` | none | liveness |
-| `GET /v1/whoami` | any | status, user and participant (id, name) |
+| `GET /v1/whoami` | any | status, user, role and participant (id, name) |
 | `POST /v1/preview` | any | the rows a submission would share, nothing stored |
 | `GET /v1/statistics?days=30` | any | totals; breakdowns from observer up |
 | `POST /v1/sightings` | contributor | one submission or an array (max 100), Phase 2 JSON format; each sighting needs a `sighting_id`; answers with receipts (201 new, 200 resend, 409 other content under a registered id) |
@@ -96,6 +109,10 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `GET /v1/rules/{id}?days=30` | contributor | one rule's prevalence: trend, sectors, severities, techniques, campaigns, IoCs |
 | `GET /v1/files`, `GET /v1/files/{path}` | partner | the table's Parquet files |
 | `GET /v1/participants` | partner | ids and status; core: names, type, sector, users |
+| `GET, POST /v1/admin/organisations`, `PATCH …/{id}` | admin (own organisation); adding and status: superadmin | organisations |
+| `GET, POST /v1/admin/users`, `PATCH, DELETE …/{name}`, `POST …/{name}/disable`, `…/enable` | admin | users, roles; remove a disabled user |
+| `GET, POST /v1/admin/tokens`, `DELETE …/{prefix}` | admin | token prefixes; a new token is in its one response |
+| `GET /v1/admin/audit?days=7` | admin | audit lines about the organisation; superadmin: all |
 
 Send tokens as `Authorization: Bearer <token>`.
 

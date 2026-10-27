@@ -1,7 +1,8 @@
 # FRANK's HTTP API, written by hand (#160). Served as JSON at
 # /v1/openapi.json; a test fails when a route of the router is missing
 # here. `x-min-status` is the lowest participant status an operation
-# needs (public: no token).
+# needs (public: no token); `x-role` the role an admin route needs on top
+# (#175): a role is held by a user, not by its organisation.
 openapi: 3.1.0
 info:
   title: FRANK
@@ -13,7 +14,7 @@ info:
     user of a participant, and the participant's status (observer,
     contributor, partner, core) decides what it may see. Each status also
     sees the TLP levels allowed to it; TLP:RED is never accepted.
-  version: "0.15"
+  version: "0.17"
   license:
     name: Apache-2.0
     identifier: Apache-2.0
@@ -34,6 +35,8 @@ tags:
     description: The sighting Parquet files, for local analysis.
   - name: platform
     description: Health, identity, participants and this document.
+  - name: admin
+    description: Organisations, users and tokens, for users with a role. An admin manages its own organisation, a superadmin every one; to an admin, another organisation's objects are 404.
 
 paths:
   /health:
@@ -368,6 +371,269 @@ paths:
               schema: { type: object }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /v1/admin/organisations:
+    get:
+      tags: [admin]
+      summary: The organisations the caller manages
+      description: An admin's own; every one for a superadmin. Each with its id, name, type, status, sector, region and user names.
+      x-min-status: contributor
+      x-role: admin
+      responses:
+        "200":
+          description: The organisations.
+          content:
+            application/json:
+              schema: { type: object, properties: { organisations: { type: array, items: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Register an organisation
+      x-min-status: core
+      x-role: superadmin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, status]
+              properties:
+                name: { type: string, description: "1-64 of [A-Za-z0-9._@-]" }
+                status: { $ref: "#/components/schemas/Status" }
+                type: { enum: [cyber_partner, customer], default: cyber_partner }
+                sector: { type: string }
+                region: { type: string }
+            example: { name: acme-mdr, status: contributor, sector: energy }
+      responses:
+        "201":
+          description: Its id (`identity--{uuid}`), name and status.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/admin/organisations/{id}:
+    patch:
+      tags: [admin]
+      summary: Change an organisation's status
+      description: Its users have the new status from their next request. Refused while one of its users holds a role the status does not allow.
+      x-min-status: core
+      x-role: superadmin
+      parameters:
+        - { name: id, in: path, required: true, description: "The organisation's id.", schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [status], properties: { status: { $ref: "#/components/schemas/Status" } } }
+            example: { status: partner }
+      responses:
+        "200":
+          description: The id and the new status.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users:
+    get:
+      tags: [admin]
+      summary: The users the caller manages
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/Participant"
+      responses:
+        "200":
+          description: The users.
+          content:
+            application/json:
+              schema: { type: object, properties: { users: { type: array, items: { $ref: "#/components/schemas/User" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Add a user
+      description: To the caller's own organisation unless `participant` names another a superadmin manages. Only people hold a role; only a superadmin makes a superadmin.
+      x-min-status: contributor
+      x-role: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                participant: { type: string, description: "The organisation's id; the caller's own when missing." }
+                name: { type: string, description: "1-64 of [A-Za-z0-9._@-], unique on the platform" }
+                kind: { enum: [human, machine], default: human }
+                role: { $ref: "#/components/schemas/Role" }
+            example: { name: alice, role: admin }
+      responses:
+        "201":
+          description: The user.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/User" }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
+  /v1/admin/users/{name}:
+    patch:
+      tags: [admin]
+      summary: Give a user a role, or take it
+      description: Only a superadmin grants or takes superadmin. An organisation's last working admin and the platform's last working superadmin keep their role.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, properties: { role: { $ref: "#/components/schemas/Role" } } }
+            example: { role: admin }
+      responses:
+        "200":
+          description: The user's name and new role.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [admin]
+      summary: Remove a disabled user
+      description: With its role and tokens; a user is disabled first. Its sightings stay, stored under the organisation. The name can be used again.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      responses:
+        "200":
+          description: The name removed and the prefixes of its tokens.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users/{name}/disable:
+    post:
+      tags: [admin]
+      summary: Disable a user
+      description: Its tokens stop working until it is enabled; none are revoked. Not the caller itself, nor an organisation's last working admin or the last working superadmin.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      responses:
+        "200":
+          description: The user's name, disabled.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users/{name}/enable:
+    post:
+      tags: [admin]
+      summary: Enable a disabled user
+      description: Its tokens work again.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      responses:
+        "200":
+          description: The user's name, enabled.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/tokens:
+    get:
+      tags: [admin]
+      summary: The tokens of the users the caller manages
+      description: Each as the first 12 hex digits of its hash, never the token.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/Participant"
+      responses:
+        "200":
+          description: The tokens.
+          content:
+            application/json:
+              schema: { type: object, properties: { tokens: { type: array, items: { $ref: "#/components/schemas/Token" } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+    post:
+      tags: [admin]
+      summary: Issue a token for a user
+      description: "The token is in this response only (`Cache-Control: no-store`); FRANK keeps its hash."
+      x-min-status: contributor
+      x-role: admin
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [user], properties: { user: { type: string } } }
+            example: { user: alice }
+      responses:
+        "201":
+          description: The token, its prefix and the user.
+          content:
+            application/json:
+              schema: { type: object, properties: { token: { type: string }, prefix: { type: string }, user: { type: string } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+
+  /v1/admin/tokens/{prefix}:
+    delete:
+      tags: [admin]
+      summary: Revoke a token
+      description: By at least 8 hex digits of its hash. The caller's own last token is kept.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - { name: prefix, in: path, required: true, schema: { type: string, pattern: "^[0-9a-f]{8,64}$" } }
+      responses:
+        "200":
+          description: The revoked prefix and its user.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/audit:
+    get:
+      tags: [admin]
+      summary: The audit log, newest first
+      description: An admin sees the lines about its own organisation (its id, users and tokens, or done by its users); a superadmin all. At most 1000 lines.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - { name: days, in: query, description: "The window in days, up to 31.", schema: { type: integer, minimum: 1, maximum: 31, default: 7 } }
+      responses:
+        "200":
+          description: The lines.
+          content:
+            application/json:
+              schema: { type: object, properties: { days: { type: integer }, lines: { type: array, items: { type: object } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+
   /v1/files:
     get:
       tags: [files]
@@ -410,6 +676,17 @@ components:
       description: The window, in days back from now.
       schema: { type: integer, minimum: 1, maximum: 3650, default: 30 }
 
+    UserName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string }
+    Participant:
+      name: participant
+      in: query
+      description: Only this organisation (its id).
+      schema: { type: string }
+
   requestBodies:
     Sightings:
       required: true
@@ -446,7 +723,17 @@ components:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
     Forbidden:
-      description: The caller's status is too low.
+      description: The caller's status or role is too low.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    NotFound:
+      description: No such object, or one the caller does not manage.
+      content:
+        application/json:
+          schema: { $ref: "#/components/schemas/Error" }
+    Conflict:
+      description: The change would leave no admin, or strand a role; `error` says what to do first.
       content:
         application/json:
           schema: { $ref: "#/components/schemas/Error" }
@@ -464,6 +751,26 @@ components:
   schemas:
     Status:
       enum: [public, observer, contributor, partner, core]
+    Role:
+      description: A user's role; `null` or `none` is none.
+      enum: [admin, superadmin, none, null]
+    User:
+      type: object
+      properties:
+        name: { type: string }
+        kind: { enum: [human, machine] }
+        role: { enum: [admin, superadmin, null] }
+        disabled: { type: boolean, description: Its tokens do not work while it is disabled. }
+        participant: { type: string, description: "The organisation's id." }
+        organisation: { type: string }
+    Token:
+      type: object
+      properties:
+        prefix: { type: string, description: The first 12 hex digits of the token's SHA-256. }
+        user: { type: string }
+        participant: { type: string }
+        organisation: { type: string }
+        revoked: { type: boolean }
     Error:
       type: object
       properties:

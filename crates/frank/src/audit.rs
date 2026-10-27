@@ -55,33 +55,48 @@ impl Audit {
             .map_err(|e| format!("{}: {e}", path.display()))
     }
 
+    /// The lines of the days from `from_day` (days since the epoch) on,
+    /// oldest first. A line that is not JSON is skipped.
+    pub fn read_from(&self, from_day: i64) -> Result<Vec<Value>, String> {
+        let mut days: Vec<(i64, PathBuf)> = std::fs::read_dir(&self.dir)
+            .map_err(|e| e.to_string())?
+            .flatten()
+            .filter_map(|e| Some((day_of(&e.file_name())?, e.path())))
+            .filter(|(d, _)| *d >= from_day)
+            .collect();
+        days.sort();
+        let mut out = Vec::new();
+        for (_, path) in days {
+            let text =
+                std::fs::read_to_string(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+            out.extend(text.lines().filter_map(|l| serde_json::from_str(l).ok()));
+        }
+        Ok(out)
+    }
+
     /// Drops the days before `keep_from_day` (days since the epoch).
     pub fn retain_from(&self, keep_from_day: i64) -> Result<(), String> {
         let entries = std::fs::read_dir(&self.dir).map_err(|e| e.to_string())?;
         for entry in entries.flatten() {
-            let name = entry.file_name();
-            let Some(day) = name
-                .to_str()
-                .and_then(|n| n.strip_suffix(".jsonl"))
-                .and_then(|d| {
-                    time::Date::parse(d, time::macros::format_description!("[year]-[month]-[day]"))
-                        .ok()
-                })
-            else {
-                continue;
-            };
-            if day
-                .midnight()
-                .assume_utc()
-                .unix_timestamp()
-                .div_euclid(86_400)
-                < keep_from_day
-            {
+            if day_of(&entry.file_name()).is_some_and(|d| d < keep_from_day) {
                 std::fs::remove_file(entry.path()).map_err(|e| e.to_string())?;
             }
         }
         Ok(())
     }
+}
+
+/// The day (since the epoch) a `YYYY-MM-DD.jsonl` file holds.
+fn day_of(name: &std::ffi::OsStr) -> Option<i64> {
+    let day = name.to_str()?.strip_suffix(".jsonl").and_then(|d| {
+        time::Date::parse(d, time::macros::format_description!("[year]-[month]-[day]")).ok()
+    })?;
+    Some(
+        day.midnight()
+            .assume_utc()
+            .unix_timestamp()
+            .div_euclid(86_400),
+    )
 }
 
 /// `cli:<os user>`, who runs a command.
@@ -127,6 +142,8 @@ mod tests {
         assert_eq!(lines[0]["at"], "2026-10-22T12:00:00Z");
         assert_eq!(lines[0]["by"], "bob@lab");
         assert_eq!(lines[1]["action"], "user_added");
+        assert_eq!(a.read_from(t / DAY).unwrap().len(), 3);
+        assert_eq!(a.read_from(t / DAY + 1).unwrap()[0]["user"], "mal");
         a.retain_from(t / DAY + 1).unwrap();
         assert!(!dir.join(DIR).join("2026-10-22.jsonl").exists());
         assert!(dir.join(DIR).join("2026-10-23.jsonl").exists());

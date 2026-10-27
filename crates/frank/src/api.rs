@@ -12,6 +12,7 @@
 //! | `GET  /v1/iocs/range`     | contributor |
 //! | `GET  /v1/files`, `/v1/files/{*path}` | partner |
 //! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
+//! | `/v1/admin/…`             | a user with a role ([`crate::admin`]) |
 
 use std::collections::BTreeMap;
 use std::net::IpAddr;
@@ -60,7 +61,7 @@ pub struct App {
 pub type Shared = Arc<App>;
 
 #[derive(Debug)]
-pub struct ApiError(StatusCode, String);
+pub struct ApiError(pub(crate) StatusCode, pub(crate) String);
 
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
@@ -68,17 +69,17 @@ impl IntoResponse for ApiError {
     }
 }
 
-fn internal(e: impl std::fmt::Display) -> ApiError {
+pub(crate) fn internal(e: impl std::fmt::Display) -> ApiError {
     tracing::error!("{e}");
     ApiError(StatusCode::INTERNAL_SERVER_ERROR, "internal error".into())
 }
 
-fn unprocessable(e: impl std::fmt::Display) -> ApiError {
+pub(crate) fn unprocessable(e: impl std::fmt::Display) -> ApiError {
     ApiError(StatusCode::UNPROCESSABLE_ENTITY, e.to_string())
 }
 
 /// The caller the request's bearer token names, at least `tier`.
-fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Caller, ApiError> {
+pub(crate) fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Caller, ApiError> {
     let auth = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
@@ -97,7 +98,7 @@ fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Caller, ApiErro
 }
 
 /// Runs blocking store work off the async runtime.
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     f: impl FnOnce() -> Result<T, ApiError> + Send + 'static,
 ) -> Result<T, ApiError> {
     tokio::task::spawn_blocking(f).await.map_err(internal)?
@@ -120,6 +121,7 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/participants", get(participants))
         .route("/v1/files", get(files))
         .route("/v1/files/{*path}", get(file))
+        .merge(crate::admin::routes())
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .with_state(app)
 }
@@ -137,6 +139,7 @@ async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Va
         "tier": c.tier,
         "label": c.label(),
         "user": c.user,
+        "role": c.role,
         "participant": { "id": c.participant, "name": c.organisation, "status": c.tier },
     })))
 }

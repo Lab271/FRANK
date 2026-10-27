@@ -11,9 +11,11 @@
 //!
 //! The schema keeps to what the row engine enforces today (db-core
 //! #694-#696): rowid tables, single-column keys with explicit UNIQUE
-//! indexes.
+//! indexes. The row engine cannot add a column to a table yet, so the
+//! users' roles (#175) are a table of their own, created in files that
+//! lack it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -24,7 +26,7 @@ use frank_core::{sql_quote, Tier};
 use serde::Serialize;
 
 use super::rowdb::{exec, int, open_engine, query, text, transaction};
-use crate::auth::{hash, hex, random, uuid4, Caller};
+use crate::auth::{hash, hex, random, uuid4, Caller, Role};
 
 pub const FILE: &str = "participants.db";
 
@@ -40,6 +42,23 @@ const SCHEMA: [&str; 7] = [
      revoked INTEGER)",
     "CREATE UNIQUE INDEX tokens_hash ON tokens (hash)",
 ];
+
+/// Users' roles (#175): one row per user that has one. Files written
+/// before 0.17 get this table when they are next opened.
+const ROLES: [&str; 2] = [
+    "CREATE TABLE roles (user TEXT NOT NULL, role TEXT NOT NULL)",
+    "CREATE UNIQUE INDEX roles_user ON roles (user)",
+];
+
+/// Disabled users (#175): their tokens stop working until they are
+/// enabled again; only a disabled user can be removed.
+const DISABLED: [&str; 2] = [
+    "CREATE TABLE disabled (user TEXT NOT NULL, at INTEGER NOT NULL)",
+    "CREATE UNIQUE INDEX disabled_user ON disabled (user)",
+];
+
+/// The tables added after 0.16, each with the table to probe for.
+const ADDED: [(&str, &[&str]); 2] = [("roles", &ROLES), ("disabled", &DISABLED)];
 
 /// Organisation types (ADR-010).
 pub const KINDS: [&str; 2] = ["cyber_partner", "customer"];
@@ -58,12 +77,28 @@ pub struct Organisation {
     pub users: Vec<String>,
 }
 
+/// One user, as admins see it.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct UserInfo {
+    pub name: String,
+    /// `human` or `machine`.
+    pub kind: String,
+    pub role: Option<Role>,
+    /// Its tokens do not work while it is disabled.
+    pub disabled: bool,
+    /// The organisation's id and name.
+    pub participant: String,
+    pub organisation: String,
+}
+
 /// One token, without the token itself.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct TokenInfo {
     /// The first 12 hex digits of the token's SHA-256.
     pub prefix: String,
     pub user: String,
+    /// The organisation's id and name.
+    pub participant: String,
     pub organisation: String,
     pub revoked: bool,
 }
@@ -177,8 +212,21 @@ fn with_db<T>(
     let (mut db, fresh) = open_engine(path)?;
     if fresh {
         transaction(&mut db, |db| {
-            SCHEMA.iter().try_for_each(|ddl| exec(db, ddl))
+            SCHEMA
+                .iter()
+                .chain(ADDED.iter().flat_map(|(_, ddl)| ddl.iter()))
+                .try_for_each(|ddl| exec(db, ddl))
         })?;
+    } else {
+        for (table, ddl) in ADDED {
+            // db-core cannot read sqlite_master, so probe the table itself.
+            if let Err(e) = query(&mut db, &format!("SELECT user FROM {table} LIMIT 1")) {
+                if !e.contains("no such table") {
+                    return Err(e);
+                }
+                transaction(&mut db, |db| ddl.iter().try_for_each(|d| exec(db, d)))?;
+            }
+        }
     }
     f(&mut db)
 }
@@ -196,9 +244,15 @@ fn load_callers(db: &mut RowEngine) -> Result<HashMap<String, Caller>, String> {
             .iter()
             .map(|r| (text(&r[0]), (text(&r[1]), text(&r[2]))))
             .collect();
+    let roles = roles(db)?;
+    let disabled = disabled(db)?;
     let mut by_hash = HashMap::new();
     for r in query(db, "SELECT hash, user FROM tokens WHERE revoked IS NULL")?.rows {
-        let Some((org, user)) = users.get(&text(&r[1])) else {
+        let user_id = text(&r[1]);
+        if disabled.contains(&user_id) {
+            continue;
+        }
+        let Some((org, user)) = users.get(&user_id) else {
             continue;
         };
         let Some((name, status)) = orgs.get(org) else {
@@ -211,10 +265,48 @@ fn load_callers(db: &mut RowEngine) -> Result<HashMap<String, Caller>, String> {
                 participant: org.clone(),
                 organisation: name.clone(),
                 user: user.clone(),
+                role: roles.get(&user_id).copied(),
             },
         );
     }
     Ok(by_hash)
+}
+
+/// User id → role.
+fn roles(db: &mut RowEngine) -> Result<HashMap<String, Role>, String> {
+    Ok(query(db, "SELECT user, role FROM roles")?
+        .rows
+        .iter()
+        .filter_map(|r| Some((text(&r[0]), Role::parse(&text(&r[1]))?)))
+        .collect())
+}
+
+/// The ids of the disabled users.
+fn disabled(db: &mut RowEngine) -> Result<HashSet<String>, String> {
+    Ok(query(db, "SELECT user FROM disabled")?
+        .rows
+        .iter()
+        .map(|r| text(&r[0]))
+        .collect())
+}
+
+/// Whether `user`, a `kind` user of an organisation with `status`, may
+/// hold `role`: only people do; an admin's organisation is contributor
+/// or higher, a superadmin's is core.
+fn check_role(user: &str, kind: &str, status: Tier, role: Role) -> Result<(), String> {
+    if kind != "human" {
+        return Err(format!("{user} is a machine user: only people hold a role"));
+    }
+    let least = match role {
+        Role::Admin => Tier::Contributor,
+        Role::Superadmin => Tier::Core,
+    };
+    if status < least {
+        return Err(format!(
+            "{role} needs a {least} organisation or higher; {user}'s is {status}"
+        ));
+    }
+    Ok(())
 }
 
 // --- administration: one call opens, changes and closes the file ---------
@@ -288,6 +380,36 @@ fn find_user(db: &mut RowEngine, name: &str) -> Result<String, String> {
         .ok_or_else(|| format!("no user {name:?}"))
 }
 
+/// The user called `name`: `(id, organisation id, kind)`.
+fn find_user_row(db: &mut RowEngine, name: &str) -> Result<(String, String, String), String> {
+    let r = query(
+        db,
+        &format!(
+            "SELECT id, organisation, kind FROM users WHERE name = {}",
+            sql_quote(name)
+        ),
+    )?;
+    r.rows
+        .first()
+        .map(|row| (text(&row[0]), text(&row[1]), text(&row[2])))
+        .ok_or_else(|| format!("no user {name:?}"))
+}
+
+/// The status of the organisation with id `id`.
+fn org_status(db: &mut RowEngine, id: &str) -> Result<Tier, String> {
+    let r = query(
+        db,
+        &format!(
+            "SELECT status FROM organisations WHERE id = {}",
+            sql_quote(id)
+        ),
+    )?;
+    r.rows
+        .first()
+        .and_then(|row| Tier::parse(&text(&row[0])))
+        .ok_or_else(|| format!("no participant {id:?}"))
+}
+
 /// Registers an organisation; returns its id (`identity--{uuid4}`).
 pub fn add_organisation(
     path: &Path,
@@ -332,10 +454,26 @@ pub fn organisation_id(path: &Path, name_or_id: &str) -> Result<String, String> 
 }
 
 /// Sets an organisation's status; all its users have it from their next
-/// request.
+/// request. Refused while one of its users holds a role the new status
+/// does not allow (a superadmin outside core, an admin in an observer).
 pub fn set_status(path: &Path, name_or_id: &str, status: Tier) -> Result<(), String> {
     with_db(path, |db| {
         let (id, _) = find_org(db, name_or_id)?;
+        let roles = roles(db)?;
+        let users = query(
+            db,
+            &format!(
+                "SELECT id, name, kind FROM users WHERE organisation = {}",
+                sql_quote(&id)
+            ),
+        )?;
+        for r in &users.rows {
+            if let Some(role) = roles.get(&text(&r[0])) {
+                let name = text(&r[1]);
+                check_role(&name, &text(&r[2]), status, *role)
+                    .map_err(|e| format!("{e}: change {name}'s role first"))?;
+            }
+        }
         exec(
             db,
             &format!(
@@ -381,8 +519,15 @@ pub fn organisations(path: &Path) -> Result<Vec<Organisation>, String> {
     })
 }
 
-/// Adds a user (`human` or `machine`) to an organisation.
-pub fn add_user(path: &Path, organisation: &str, name: &str, kind: &str) -> Result<(), String> {
+/// Adds a user (`human` or `machine`) to an organisation, with a role
+/// or none.
+pub fn add_user(
+    path: &Path,
+    organisation: &str,
+    name: &str,
+    kind: &str,
+    role: Option<Role>,
+) -> Result<(), String> {
     check_name("user", name)?;
     if !USER_KINDS.contains(&kind) {
         return Err(format!("user kind {kind:?}: human or machine"));
@@ -392,17 +537,132 @@ pub fn add_user(path: &Path, organisation: &str, name: &str, kind: &str) -> Resu
         if find_user(db, name).is_ok() {
             return Err(format!("user {name:?} exists"));
         }
-        exec(
-            db,
-            &format!(
-                "INSERT INTO users (id, organisation, name, kind, created) VALUES ({}, {}, {}, {}, {})",
-                sql_quote(&uuid4()?),
-                sql_quote(&org),
-                sql_quote(name),
-                sql_quote(kind),
-                now_s()
-            ),
-        )
+        if let Some(role) = role {
+            check_role(name, kind, org_status(db, &org)?, role)?;
+        }
+        let id = uuid4()?;
+        transaction(db, |db| {
+            exec(
+                db,
+                &format!(
+                    "INSERT INTO users (id, organisation, name, kind, created) VALUES ({}, {}, {}, {}, {})",
+                    sql_quote(&id),
+                    sql_quote(&org),
+                    sql_quote(name),
+                    sql_quote(kind),
+                    now_s()
+                ),
+            )?;
+            match role {
+                Some(role) => insert_role(db, &id, role),
+                None => Ok(()),
+            }
+        })
+    })
+}
+
+fn insert_role(db: &mut RowEngine, user_id: &str, role: Role) -> Result<(), String> {
+    exec(
+        db,
+        &format!(
+            "INSERT INTO roles (user, role) VALUES ({}, {})",
+            sql_quote(user_id),
+            sql_quote(role.as_str())
+        ),
+    )
+}
+
+/// Gives `user` a role, or takes it away with `None`.
+pub fn set_role(path: &Path, user: &str, role: Option<Role>) -> Result<(), String> {
+    with_db(path, |db| {
+        let (id, org, kind) = find_user_row(db, user)?;
+        if let Some(role) = role {
+            check_role(user, &kind, org_status(db, &org)?, role)?;
+        }
+        transaction(db, |db| {
+            exec(
+                db,
+                &format!("DELETE FROM roles WHERE user = {}", sql_quote(&id)),
+            )?;
+            match role {
+                Some(role) => insert_role(db, &id, role),
+                None => Ok(()),
+            }
+        })
+    })
+}
+
+/// Every user, by organisation and name.
+pub fn users(path: &Path) -> Result<Vec<UserInfo>, String> {
+    with_db(path, |db| {
+        let orgs: HashMap<String, String> = query(db, "SELECT id, name FROM organisations")?
+            .rows
+            .iter()
+            .map(|r| (text(&r[0]), text(&r[1])))
+            .collect();
+        let roles = roles(db)?;
+        let disabled = disabled(db)?;
+        let mut out: Vec<UserInfo> = query(db, "SELECT id, organisation, name, kind FROM users")?
+            .rows
+            .iter()
+            .map(|r| {
+                let participant = text(&r[1]);
+                UserInfo {
+                    name: text(&r[2]),
+                    kind: text(&r[3]),
+                    role: roles.get(&text(&r[0])).copied(),
+                    disabled: disabled.contains(&text(&r[0])),
+                    organisation: orgs.get(&participant).cloned().unwrap_or_default(),
+                    participant,
+                }
+            })
+            .collect();
+        out.sort_by(|a, b| (&a.organisation, &a.name).cmp(&(&b.organisation, &b.name)));
+        Ok(out)
+    })
+}
+
+/// Disables `user` (its tokens stop working, none are revoked) or
+/// enables it again.
+pub fn set_disabled(path: &Path, user: &str, disable: bool) -> Result<(), String> {
+    with_db(path, |db| {
+        let id = find_user(db, user)?;
+        let q = sql_quote(&id);
+        transaction(db, |db| {
+            exec(db, &format!("DELETE FROM disabled WHERE user = {q}"))?;
+            if disable {
+                exec(
+                    db,
+                    &format!("INSERT INTO disabled (user, at) VALUES ({q}, {})", now_s()),
+                )?;
+            }
+            Ok(())
+        })
+    })
+}
+
+/// Removes a disabled user with its role and tokens; returns the
+/// prefixes of the tokens removed. Its sightings stay: they are stored
+/// under the organisation, never under a user.
+pub fn remove_user(path: &Path, user: &str) -> Result<Vec<String>, String> {
+    with_db(path, |db| {
+        let id = find_user(db, user)?;
+        if !disabled(db)?.contains(&id) {
+            return Err(format!("{user} is not disabled: disable it first"));
+        }
+        let q = sql_quote(&id);
+        let prefixes = query(db, &format!("SELECT hash FROM tokens WHERE user = {q}"))?
+            .rows
+            .iter()
+            .map(|r| text(&r[0])[..12].to_string())
+            .collect();
+        transaction(db, |db| {
+            for table in ["tokens", "roles", "disabled"] {
+                exec(db, &format!("DELETE FROM {table} WHERE user = {q}"))?;
+            }
+            exec(db, &format!("DELETE FROM users WHERE id = {q}"))
+        })?;
+        Ok(prefixes)
     })
 }
 
@@ -420,7 +680,11 @@ pub fn add_token_hash(path: &Path, user: &str, token_hash: &str) -> Result<(), S
         return Err("not a SHA-256 hex digest".into());
     }
     with_db(path, |db| {
+        let name = user;
         let user = find_user(db, user)?;
+        if disabled(db)?.contains(&user) {
+            return Err(format!("{name} is disabled: enable it first"));
+        }
         exec(
             db,
             &format!(
@@ -456,6 +720,7 @@ pub fn tokens(path: &Path) -> Result<Vec<TokenInfo>, String> {
                     prefix: text(&r[0])[..12].to_string(),
                     user,
                     organisation: orgs.get(&org).cloned().unwrap_or_default(),
+                    participant: org,
                     revoked: int(&r[2]) != 0,
                 }
             })
@@ -546,7 +811,7 @@ pub fn import_tokens_file(path: &Path, file: &Path) -> Result<Vec<String>, Strin
             i += 1;
         }
         add_organisation(path, &name, tier, "cyber_partner", None, None)?;
-        add_user(path, &name, &name, "human")?;
+        add_user(path, &name, &name, "human", None)?;
         add_token_hash(path, &name, h)?;
         created.push(name);
     }
@@ -580,8 +845,8 @@ mod tests {
         )
         .unwrap();
         assert!(id.starts_with("identity--") && id.len() == 46, "{id}");
-        add_user(&path, "acme-mdr", "alice", "human").unwrap();
-        add_user(&path, "acme-mdr", "acme-feed", "machine").unwrap();
+        add_user(&path, "acme-mdr", "alice", "human", None).unwrap();
+        add_user(&path, "acme-mdr", "acme-feed", "machine", None).unwrap();
         let a = add_token(&path, "alice").unwrap();
         let b = add_token(&path, "acme-feed").unwrap();
 
@@ -619,7 +884,7 @@ mod tests {
         let path = dir.join(FILE);
         let server = Participants::open(&dir).unwrap();
         add_organisation(&path, "lab", Tier::Partner, "cyber_partner", None, None).unwrap();
-        add_user(&path, "lab", "bob", "human").unwrap();
+        add_user(&path, "lab", "bob", "human", None).unwrap();
         let a = add_token(&path, "bob").unwrap();
         let b = add_token(&path, "bob").unwrap();
         assert!(
@@ -659,16 +924,129 @@ mod tests {
         )
         .is_err());
         assert!(add_organisation(&path, "y", Tier::Observer, "bank", None, None).is_err());
-        add_user(&path, "lab", "u1", "human").unwrap();
+        add_user(&path, "lab", "u1", "human", None).unwrap();
         assert!(
-            add_user(&path, "lab", "u1", "human").is_err(),
+            add_user(&path, "lab", "u1", "human", None).is_err(),
             "user names are unique"
         );
-        assert!(add_user(&path, "nope", "u2", "human").is_err());
-        assert!(add_user(&path, "lab", "u3", "robot").is_err());
+        assert!(add_user(&path, "nope", "u2", "human", None).is_err());
+        assert!(add_user(&path, "lab", "u3", "robot", None).is_err());
         let orgs = organisations(&path).unwrap();
         assert_eq!(orgs.len(), 1);
         assert_eq!(orgs[0].users, ["u1"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn disable_then_remove() {
+        let dir = temp("disable");
+        let path = dir.join(FILE);
+        let server = Participants::open(&dir).unwrap();
+        add_organisation(&path, "mdr", Tier::Contributor, "cyber_partner", None, None).unwrap();
+        add_user(&path, "mdr", "amy", "human", Some(Role::Admin)).unwrap();
+        let t = add_token(&path, "amy").unwrap();
+        let bearer = format!("Bearer {t}");
+
+        assert!(remove_user(&path, "amy").is_err(), "disable first");
+        set_disabled(&path, "amy", true).unwrap();
+        assert_eq!(server.caller(Some(&bearer)).unwrap(), None, "tokens stop");
+        assert!(add_token(&path, "amy").is_err(), "no tokens while disabled");
+        assert!(users(&path).unwrap()[0].disabled);
+        set_disabled(&path, "amy", false).unwrap();
+        assert!(
+            server.caller(Some(&bearer)).unwrap().is_some(),
+            "and work again"
+        );
+
+        set_disabled(&path, "amy", true).unwrap();
+        let removed = remove_user(&path, "amy").unwrap();
+        assert_eq!(removed, [hash(&t)[..12].to_string()]);
+        assert!(users(&path).unwrap().is_empty());
+        assert!(tokens(&path).unwrap().is_empty());
+        // The name is free again, without the old role.
+        add_user(&path, "mdr", "amy", "human", None).unwrap();
+        assert_eq!(users(&path).unwrap()[0].role, None);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn roles_follow_the_rules() {
+        let dir = temp("roles");
+        let path = dir.join(FILE);
+        let server = Participants::open(&dir).unwrap();
+        add_organisation(&path, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
+        add_organisation(&path, "mdr", Tier::Contributor, "cyber_partner", None, None).unwrap();
+        add_organisation(&path, "obs", Tier::Observer, "customer", None, None).unwrap();
+        add_user(&path, "ops", "root", "human", Some(Role::Superadmin)).unwrap();
+        add_user(&path, "mdr", "amy", "human", Some(Role::Admin)).unwrap();
+        add_user(&path, "mdr", "feed", "machine", None).unwrap();
+        add_user(&path, "obs", "olga", "human", None).unwrap();
+
+        // Only people; admin from contributor up; superadmin in core only.
+        assert!(set_role(&path, "feed", Some(Role::Admin)).is_err());
+        assert!(add_user(&path, "mdr", "bot", "machine", Some(Role::Admin)).is_err());
+        assert!(organisations(&path).unwrap()[0]
+            .users
+            .iter()
+            .all(|u| u != "bot"));
+        assert!(set_role(&path, "olga", Some(Role::Admin)).is_err());
+        assert!(set_role(&path, "amy", Some(Role::Superadmin)).is_err());
+
+        // The running server sees roles on the next request.
+        let t = add_token(&path, "amy").unwrap();
+        let bearer = format!("Bearer {t}");
+        assert_eq!(
+            server.caller(Some(&bearer)).unwrap().unwrap().role,
+            Some(Role::Admin)
+        );
+        set_role(&path, "amy", None).unwrap();
+        assert_eq!(server.caller(Some(&bearer)).unwrap().unwrap().role, None);
+        set_role(&path, "amy", Some(Role::Admin)).unwrap();
+        set_role(&path, "amy", Some(Role::Admin)).unwrap();
+
+        // A status change may not strand a role.
+        assert!(set_status(&path, "mdr", Tier::Observer).is_err());
+        assert!(set_status(&path, "ops", Tier::Partner).is_err());
+        set_status(&path, "mdr", Tier::Partner).unwrap();
+
+        let users = users(&path).unwrap();
+        let roles: Vec<(&str, Option<Role>)> =
+            users.iter().map(|u| (u.name.as_str(), u.role)).collect();
+        assert_eq!(
+            roles,
+            [
+                ("amy", Some(Role::Admin)),
+                ("feed", None),
+                ("olga", None),
+                ("root", Some(Role::Superadmin))
+            ]
+        );
+        assert_eq!(users[0].organisation, "mdr");
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn a_file_without_roles_gets_the_table() {
+        let dir = temp("upgrade");
+        let path = dir.join(FILE);
+        {
+            // As 0.13-0.16 wrote it.
+            let (mut db, _) = open_engine(&path).unwrap();
+            transaction(&mut db, |db| {
+                SCHEMA.iter().try_for_each(|ddl| exec(db, ddl))
+            })
+            .unwrap();
+        }
+        add_organisation(&path, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
+        add_user(&path, "ops", "root", "human", None).unwrap();
+        let t = add_token(&path, "root").unwrap();
+        set_role(&path, "root", Some(Role::Superadmin)).unwrap();
+        let server = Participants::open(&dir).unwrap();
+        let c = server
+            .caller(Some(&format!("Bearer {t}")))
+            .unwrap()
+            .unwrap();
+        assert_eq!(c.role, Some(Role::Superadmin));
         std::fs::remove_dir_all(&dir).ok();
     }
 

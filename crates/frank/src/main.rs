@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use db_core::storage::ingest::IngestError;
 use frank::api::{self, App};
 use frank::audit::{self, Audit};
-use frank::auth::hash;
+use frank::auth::{hash, Role};
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
 use frank::store::registry::{self, Registry};
 use frank::store::{Iocs, Participants, Sightings};
@@ -121,7 +121,21 @@ enum UserCmd {
         /// A machine identity (an API client) rather than a person.
         #[arg(long)]
         machine: bool,
+        /// admin (its own organisation's users and tokens) or superadmin
+        /// (every organisation; core only). People only.
+        #[arg(long)]
+        role: Option<String>,
     },
+    /// List the users, their kind and role.
+    List,
+    /// Give a user a role: admin, superadmin, or none to take it away.
+    SetRole { name: String, role: String },
+    /// Disable a user: its tokens stop working until it is enabled.
+    Disable { name: String },
+    /// Enable a disabled user again.
+    Enable { name: String },
+    /// Remove a disabled user with its role and tokens.
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -136,6 +150,16 @@ enum TokenCmd {
 
 fn status(s: &str) -> Result<Tier, String> {
     Tier::parse(s).ok_or_else(|| "status: observer, contributor, partner or core".to_string())
+}
+
+/// `none` is no role.
+fn role(s: &str) -> Result<Option<Role>, String> {
+    if s.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    Role::parse(s)
+        .map(Some)
+        .ok_or_else(|| "role: admin, superadmin or none".to_string())
 }
 
 fn now_ns() -> i64 {
@@ -178,14 +202,55 @@ fn main() -> Result<(), String> {
             participant,
             name,
             machine,
+            role: r,
         }) => {
             let kind = if machine { "machine" } else { "human" };
-            parts::add_user(&db, &participant, &name, kind)?;
+            let r = r.as_deref().map(role).transpose()?.flatten();
+            parts::add_user(&db, &participant, &name, kind, r)?;
             log(
                 "user_added",
-                json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind }),
+                json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind, "role": r }),
             )?;
             eprintln!("added user {name:?} to {participant:?}; create a token with `frank token new {name}`");
+            Ok(())
+        }
+        Command::User(UserCmd::List) => {
+            for u in parts::users(&db)? {
+                let r = u.role.map_or("", Role::as_str);
+                let state = if u.disabled { "disabled" } else { "" };
+                println!(
+                    "{:<24} {:<8} {:<11} {:<9} {}",
+                    u.name, u.kind, r, state, u.organisation
+                );
+            }
+            Ok(())
+        }
+        Command::User(UserCmd::Disable { name }) => {
+            parts::set_disabled(&db, &name, true)?;
+            log("user_disabled", json!({ "user": name }))?;
+            eprintln!("disabled {name:?}; its tokens stop working on the next request");
+            Ok(())
+        }
+        Command::User(UserCmd::Enable { name }) => {
+            parts::set_disabled(&db, &name, false)?;
+            log("user_enabled", json!({ "user": name }))?;
+            eprintln!("enabled {name:?}");
+            Ok(())
+        }
+        Command::User(UserCmd::Remove { name }) => {
+            let tokens = parts::remove_user(&db, &name)?;
+            log("user_removed", json!({ "user": name, "tokens": tokens }))?;
+            eprintln!("removed {name:?} and {} token(s)", tokens.len());
+            Ok(())
+        }
+        Command::User(UserCmd::SetRole { name, role: r }) => {
+            let r = role(&r)?;
+            parts::set_role(&db, &name, r)?;
+            log("role_set", json!({ "user": name, "role": r }))?;
+            eprintln!(
+                "{name:?} is {}; from the next request",
+                r.map_or("no admin", Role::as_str)
+            );
             Ok(())
         }
         Command::Token(TokenCmd::New { user }) => {
@@ -337,7 +402,7 @@ fn participant(
             )?;
             eprintln!("registered {name:?} ({st}) as {id}");
             if with_token {
-                parts::add_user(db, &name, &name, "human")?;
+                parts::add_user(db, &name, &name, "human", None)?;
                 log(
                     "user_added",
                     json!({ "participant": id, "user": name, "kind": "human" }),

@@ -4,6 +4,23 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.17.0] - 2026-10-27
+
+### Added
+
+- **Admins** (#175, ADR-017): a role on a user, apart from its organisation's status. An **admin** (in a contributor, partner or core organisation) manages its own organisation's users and tokens; a **superadmin** (core only) manages every organisation, its status included. Only people hold a role, never an API client. Roles are a `roles` table in `participants.db`, created in older files when they are opened (db-core cannot add a column to a table yet).
+- `/v1/admin/…`: organisations (list; add and set status: superadmin), users (list, add, set role, disable, enable, remove), tokens (list prefixes, issue, revoke) and the audit log (`?days=`, up to 31). To an admin another organisation's objects are 404. A new token is in its one response only (`Cache-Control: no-store`). Every change writes an audit line naming `user@organisation`.
+- **Users are disabled before they are removed.** A disabled user's tokens stop working without being revoked, and enabling it brings them back; no token can be issued to it. Removing a disabled user deletes it with its role and tokens; its sightings stay under the organisation, and its name can be used again.
+- Guards in the API: an organisation's last working admin and the platform's last working superadmin keep their role and cannot be disabled; you cannot disable yourself or revoke your own last token; only a superadmin changes a superadmin. A status change that would leave a user with a role the status does not allow is refused, from the CLI as well.
+- Web UI **admin tab**, shown to users with a role: users with role, state and actions (new token, disable, enable, remove), tokens with revoke, and the audit window; superadmins also pick the organisation, set its status and add organisations. The status pill shows the role.
+- CLI: `frank user add … --role admin|superadmin`, `frank user set-role`, `frank user list`, `frank user disable|enable|remove`; `make role NAME=… ROLE=…`, `make user … ROLE=…`. `make participants` lists the users too.
+- `GET /v1/whoami` returns the user's `role`.
+
+### Changed
+
+- The API tab marks admin routes with the role they need (`x-role` in `api/openapi.yaml`) and shows `curl` examples with the request body.
+- The server writes `participants.db` as well as reading it; the CLI keeps working beside it.
+
 ## [0.16.0] - 2026-10-24
 
 ### Added
