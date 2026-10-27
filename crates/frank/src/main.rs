@@ -10,7 +10,7 @@ use clap::{Parser, Subcommand};
 use db_core::storage::ingest::IngestError;
 use frank::api::{self, App};
 use frank::audit::{self, Audit};
-use frank::auth::hash;
+use frank::auth::{hash, Role};
 use frank::store::participants::{self as parts, FILE as PARTICIPANTS};
 use frank::store::registry::{self, Registry};
 use frank::store::{Iocs, Participants, Sightings};
@@ -121,7 +121,15 @@ enum UserCmd {
         /// A machine identity (an API client) rather than a person.
         #[arg(long)]
         machine: bool,
+        /// admin (its own organisation's users and tokens) or superadmin
+        /// (every organisation; core only). People only.
+        #[arg(long)]
+        role: Option<String>,
     },
+    /// List the users, their kind and role.
+    List,
+    /// Give a user a role: admin, superadmin, or none to take it away.
+    SetRole { name: String, role: String },
 }
 
 #[derive(Subcommand)]
@@ -136,6 +144,16 @@ enum TokenCmd {
 
 fn status(s: &str) -> Result<Tier, String> {
     Tier::parse(s).ok_or_else(|| "status: observer, contributor, partner or core".to_string())
+}
+
+/// `none` is no role.
+fn role(s: &str) -> Result<Option<Role>, String> {
+    if s.eq_ignore_ascii_case("none") {
+        return Ok(None);
+    }
+    Role::parse(s)
+        .map(Some)
+        .ok_or_else(|| "role: admin, superadmin or none".to_string())
 }
 
 fn now_ns() -> i64 {
@@ -178,14 +196,33 @@ fn main() -> Result<(), String> {
             participant,
             name,
             machine,
+            role: r,
         }) => {
             let kind = if machine { "machine" } else { "human" };
-            parts::add_user(&db, &participant, &name, kind, None)?;
+            let r = r.as_deref().map(role).transpose()?.flatten();
+            parts::add_user(&db, &participant, &name, kind, r)?;
             log(
                 "user_added",
-                json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind }),
+                json!({ "participant": parts::organisation_id(&db, &participant)?, "user": name, "kind": kind, "role": r }),
             )?;
             eprintln!("added user {name:?} to {participant:?}; create a token with `frank token new {name}`");
+            Ok(())
+        }
+        Command::User(UserCmd::List) => {
+            for u in parts::users(&db)? {
+                let r = u.role.map_or("", Role::as_str);
+                println!("{:<24} {:<8} {:<11} {}", u.name, u.kind, r, u.organisation);
+            }
+            Ok(())
+        }
+        Command::User(UserCmd::SetRole { name, role: r }) => {
+            let r = role(&r)?;
+            parts::set_role(&db, &name, r)?;
+            log("role_set", json!({ "user": name, "role": r }))?;
+            eprintln!(
+                "{name:?} is {}; from the next request",
+                r.map_or("no admin", Role::as_str)
+            );
             Ok(())
         }
         Command::Token(TokenCmd::New { user }) => {
