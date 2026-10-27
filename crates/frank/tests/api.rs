@@ -1311,7 +1311,7 @@ async fn every_route_is_in_the_openapi_document() {
         }
     }
     assert!(
-        routes >= 26,
+        routes >= 29,
         "found {routes} routes: has the router's layout changed?"
     );
 }
@@ -1829,5 +1829,186 @@ async fn superadmins_and_the_guards() {
             .await
             .0,
         StatusCode::FORBIDDEN
+    );
+}
+
+/// #175: a user is disabled first and removed after; a disabled user's
+/// tokens stop working, and the guards count working admins only.
+#[tokio::test]
+async fn users_are_disabled_then_removed() {
+    let h = harness("admin-remove");
+    admins(&h);
+    let app = &h.app;
+    let post = |uri: String| async move { call(app, "POST", &uri, Some("a"), None).await.0 };
+
+    // amy (admin of mdr) and the plain user mdr.
+    assert_eq!(
+        call(app, "DELETE", "/v1/admin/users/mdr", Some("a"), None)
+            .await
+            .0,
+        StatusCode::CONFLICT,
+        "disable first"
+    );
+    assert_eq!(
+        post("/v1/admin/users/amy/disable".into()).await,
+        StatusCode::CONFLICT,
+        "not yourself"
+    );
+    assert_eq!(
+        post("/v1/admin/users/ben/disable".into()).await,
+        StatusCode::NOT_FOUND,
+        "not mdr2's"
+    );
+    assert_eq!(
+        call(app, "POST", "/v1/admin/users/root/disable", Some("a"), None)
+            .await
+            .0,
+        StatusCode::NOT_FOUND,
+        "not core's"
+    );
+
+    assert_eq!(
+        post("/v1/admin/users/mdr/disable".into()).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(app, "GET", "/v1/whoami", Some("c"), None).await.0,
+        StatusCode::UNAUTHORIZED,
+        "its token stops"
+    );
+    let (st, _) = call(
+        app,
+        "POST",
+        "/v1/admin/tokens",
+        Some("a"),
+        Some(json!({"user": "mdr"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "no new tokens while disabled");
+    let (_, users) = call(app, "GET", "/v1/admin/users", Some("a"), None).await;
+    let mdr = users["users"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|u| u["name"] == "mdr")
+        .unwrap()
+        .clone();
+    assert_eq!(mdr["disabled"], true);
+    assert_eq!(
+        post("/v1/admin/users/mdr/enable".into()).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(app, "GET", "/v1/whoami", Some("c"), None).await.0,
+        StatusCode::OK,
+        "and works again"
+    );
+
+    // A disabled admin does not count: with mdr an admin but disabled, amy
+    // is still mdr's last working admin.
+    let role = |r: Value| Some(json!({ "role": r }));
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/mdr",
+            Some("a"),
+            role(json!("admin"))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        post("/v1/admin/users/mdr/disable".into()).await,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/amy",
+            Some("s"),
+            role(Value::Null)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(app, "POST", "/v1/admin/users/amy/disable", Some("s"), None)
+            .await
+            .0,
+        StatusCode::CONFLICT,
+        "amy is mdr's last working admin"
+    );
+
+    // Removed: gone with its tokens; its name is free again.
+    let (st, gone) = call(app, "DELETE", "/v1/admin/users/mdr", Some("a"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(gone["tokens"], json!([hash("c")[..12].to_string()]));
+    let (_, users) = call(app, "GET", "/v1/admin/users", Some("a"), None).await;
+    assert_eq!(names(&users, "users"), ["amy"]);
+    let (_, log) = call(app, "GET", "/v1/admin/audit", Some("a"), None).await;
+    let actions: Vec<&str> = log["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| l["action"].as_str().unwrap())
+        .collect();
+    assert_eq!(
+        actions,
+        [
+            "user_removed",
+            "user_disabled",
+            "role_set",
+            "user_enabled",
+            "user_disabled"
+        ]
+    );
+    let (st, _) = call(
+        app,
+        "POST",
+        "/v1/admin/users",
+        Some("a"),
+        Some(json!({"name": "mdr"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED);
+
+    // The last superadmin: only a superadmin may disable one, and not the last.
+    parts::add_user(&h.db, "ops", "root2", "human", Some(Role::Superadmin)).unwrap();
+    parts::add_token_hash(&h.db, "root2", &hash("s2")).unwrap();
+    assert_eq!(
+        call(
+            app,
+            "POST",
+            "/v1/admin/users/root2/disable",
+            Some("s"),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(app, "POST", "/v1/admin/users/root/disable", Some("s"), None)
+            .await
+            .0,
+        StatusCode::CONFLICT,
+        "yourself"
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/root",
+            Some("s"),
+            role(json!("admin"))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT,
+        "the last working superadmin"
     );
 }

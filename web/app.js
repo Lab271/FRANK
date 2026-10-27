@@ -864,6 +864,31 @@ function roleSelect(u) {
   return s;
 }
 
+// An active user: new token, disable. A disabled one: enable, remove.
+function userActions(u, activeTokens) {
+  const button = (text, onClick) => {
+    const b = el("button", { class: "lab-btn lab-btn--secondary" }, text);
+    b.addEventListener("click", onClick);
+    return b;
+  };
+  const path = `/v1/admin/users/${encodeURIComponent(u.name)}`;
+  if (u.disabled) {
+    return el("span", { class: "row" },
+      button("enable", () => adminAct(() => api(`${path}/enable`, { method: "POST" }))),
+      button("remove", () => {
+        if (!confirm(`Remove ${u.name} with its role and ${activeTokens} token(s)? This cannot be undone.`)) return;
+        adminAct(() => api(path, { method: "DELETE" }));
+      }));
+  }
+  return el("span", { class: "row" },
+    button("new token", () => adminAct(async () =>
+      tokenCard(await (await sendJson("/v1/admin/tokens", "POST", { user: u.name })).json()))),
+    button("disable", () => {
+      if (!confirm(`Disable ${u.name}? Its ${activeTokens} active token(s) stop working until it is enabled.`)) return;
+      adminAct(() => api(`${path}/disable`, { method: "POST" }));
+    }));
+}
+
 function tokenRow(t) {
   if (t.revoked) return [`${t.prefix}…`, t.user, "revoked", ""];
   const revoke = el("button", { class: "lab-btn lab-btn--secondary" }, "revoke");
@@ -897,12 +922,9 @@ async function loadAdmin(clearMessage = true) {
       api(`/v1/admin/tokens${q}`).then((r) => r.json()),
       api(`/v1/admin/audit?days=${$("adm-days").value}`).then((r) => r.json()),
     ]);
-    show($("adm-users"), table(["user", "kind", "role", ""], users.map((u) => {
-      const issue = el("button", { class: "lab-btn lab-btn--secondary" }, "new token");
-      issue.addEventListener("click", () => adminAct(async () =>
-        tokenCard(await (await sendJson("/v1/admin/tokens", "POST", { user: u.name })).json())));
-      return [u.name, u.kind, roleSelect(u), issue];
-    })));
+    const active = (name) => tokens.filter((t) => t.user === name && !t.revoked).length;
+    show($("adm-users"), table(["user", "kind", "role", "state", ""], users.map((u) =>
+      [u.name, u.kind, roleSelect(u), u.disabled ? "disabled" : "active", userActions(u, active(u.name))])));
     show($("adm-tokens"), table(["token", "user", "state", ""], tokens.map(tokenRow)));
     show($("adm-audit"), lines.length
       ? table(["at", "by", "action", "details"], lines.map(({ at, by, action, ...rest }) =>

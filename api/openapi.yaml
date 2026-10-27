@@ -486,11 +486,11 @@ paths:
     patch:
       tags: [admin]
       summary: Give a user a role, or take it
-      description: Only a superadmin grants or takes superadmin. An organisation's last admin and the platform's last superadmin keep their role.
+      description: Only a superadmin grants or takes superadmin. An organisation's last working admin and the platform's last working superadmin keep their role.
       x-min-status: contributor
       x-role: admin
       parameters:
-        - { name: name, in: path, required: true, schema: { type: string } }
+        - $ref: "#/components/parameters/UserName"
       requestBody:
         required: true
         content:
@@ -506,6 +506,60 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [admin]
+      summary: Remove a disabled user
+      description: With its role and tokens; a user is disabled first. Its sightings stay, stored under the organisation. The name can be used again.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      responses:
+        "200":
+          description: The name removed and the prefixes of its tokens.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users/{name}/disable:
+    post:
+      tags: [admin]
+      summary: Disable a user
+      description: Its tokens stop working until it is enabled; none are revoked. Not the caller itself, nor an organisation's last working admin or the last working superadmin.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      responses:
+        "200":
+          description: The user's name, disabled.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
+
+  /v1/admin/users/{name}/enable:
+    post:
+      tags: [admin]
+      summary: Enable a disabled user
+      description: Its tokens work again.
+      x-min-status: contributor
+      x-role: admin
+      parameters:
+        - $ref: "#/components/parameters/UserName"
+      responses:
+        "200":
+          description: The user's name, enabled.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
 
   /v1/admin/tokens:
     get:
@@ -622,6 +676,11 @@ components:
       description: The window, in days back from now.
       schema: { type: integer, minimum: 1, maximum: 3650, default: 30 }
 
+    UserName:
+      name: name
+      in: path
+      required: true
+      schema: { type: string }
     Participant:
       name: participant
       in: query
@@ -701,6 +760,7 @@ components:
         name: { type: string }
         kind: { enum: [human, machine] }
         role: { enum: [admin, superadmin, null] }
+        disabled: { type: boolean, description: Its tokens do not work while it is disabled. }
         participant: { type: string, description: "The organisation's id." }
         organisation: { type: string }
     Token:

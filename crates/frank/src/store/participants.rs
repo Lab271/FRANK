@@ -15,7 +15,7 @@
 //! users' roles (#175) are a table of their own, created in files that
 //! lack it.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::sync::RwLock;
@@ -50,6 +50,16 @@ const ROLES: [&str; 2] = [
     "CREATE UNIQUE INDEX roles_user ON roles (user)",
 ];
 
+/// Disabled users (#175): their tokens stop working until they are
+/// enabled again; only a disabled user can be removed.
+const DISABLED: [&str; 2] = [
+    "CREATE TABLE disabled (user TEXT NOT NULL, at INTEGER NOT NULL)",
+    "CREATE UNIQUE INDEX disabled_user ON disabled (user)",
+];
+
+/// The tables added after 0.16, each with the table to probe for.
+const ADDED: [(&str, &[&str]); 2] = [("roles", &ROLES), ("disabled", &DISABLED)];
+
 /// Organisation types (ADR-010).
 pub const KINDS: [&str; 2] = ["cyber_partner", "customer"];
 /// User kinds.
@@ -74,6 +84,8 @@ pub struct UserInfo {
     /// `human` or `machine`.
     pub kind: String,
     pub role: Option<Role>,
+    /// Its tokens do not work while it is disabled.
+    pub disabled: bool,
     /// The organisation's id and name.
     pub participant: String,
     pub organisation: String,
@@ -202,15 +214,19 @@ fn with_db<T>(
         transaction(&mut db, |db| {
             SCHEMA
                 .iter()
-                .chain(&ROLES)
+                .chain(ADDED.iter().flat_map(|(_, ddl)| ddl.iter()))
                 .try_for_each(|ddl| exec(db, ddl))
         })?;
-    } else if let Err(e) = query(&mut db, "SELECT user FROM roles LIMIT 1") {
-        // db-core cannot read sqlite_master, so probe the table itself.
-        if !e.contains("no such table") {
-            return Err(e);
+    } else {
+        for (table, ddl) in ADDED {
+            // db-core cannot read sqlite_master, so probe the table itself.
+            if let Err(e) = query(&mut db, &format!("SELECT user FROM {table} LIMIT 1")) {
+                if !e.contains("no such table") {
+                    return Err(e);
+                }
+                transaction(&mut db, |db| ddl.iter().try_for_each(|d| exec(db, d)))?;
+            }
         }
-        transaction(&mut db, |db| ROLES.iter().try_for_each(|ddl| exec(db, ddl)))?;
     }
     f(&mut db)
 }
@@ -229,9 +245,13 @@ fn load_callers(db: &mut RowEngine) -> Result<HashMap<String, Caller>, String> {
             .map(|r| (text(&r[0]), (text(&r[1]), text(&r[2]))))
             .collect();
     let roles = roles(db)?;
+    let disabled = disabled(db)?;
     let mut by_hash = HashMap::new();
     for r in query(db, "SELECT hash, user FROM tokens WHERE revoked IS NULL")?.rows {
         let user_id = text(&r[1]);
+        if disabled.contains(&user_id) {
+            continue;
+        }
         let Some((org, user)) = users.get(&user_id) else {
             continue;
         };
@@ -258,6 +278,15 @@ fn roles(db: &mut RowEngine) -> Result<HashMap<String, Role>, String> {
         .rows
         .iter()
         .filter_map(|r| Some((text(&r[0]), Role::parse(&text(&r[1]))?)))
+        .collect())
+}
+
+/// The ids of the disabled users.
+fn disabled(db: &mut RowEngine) -> Result<HashSet<String>, String> {
+    Ok(query(db, "SELECT user FROM disabled")?
+        .rows
+        .iter()
+        .map(|r| text(&r[0]))
         .collect())
 }
 
@@ -572,6 +601,7 @@ pub fn users(path: &Path) -> Result<Vec<UserInfo>, String> {
             .map(|r| (text(&r[0]), text(&r[1])))
             .collect();
         let roles = roles(db)?;
+        let disabled = disabled(db)?;
         let mut out: Vec<UserInfo> = query(db, "SELECT id, organisation, name, kind FROM users")?
             .rows
             .iter()
@@ -581,6 +611,7 @@ pub fn users(path: &Path) -> Result<Vec<UserInfo>, String> {
                     name: text(&r[2]),
                     kind: text(&r[3]),
                     role: roles.get(&text(&r[0])).copied(),
+                    disabled: disabled.contains(&text(&r[0])),
                     organisation: orgs.get(&participant).cloned().unwrap_or_default(),
                     participant,
                 }
@@ -588,6 +619,50 @@ pub fn users(path: &Path) -> Result<Vec<UserInfo>, String> {
             .collect();
         out.sort_by(|a, b| (&a.organisation, &a.name).cmp(&(&b.organisation, &b.name)));
         Ok(out)
+    })
+}
+
+/// Disables `user` (its tokens stop working, none are revoked) or
+/// enables it again.
+pub fn set_disabled(path: &Path, user: &str, disable: bool) -> Result<(), String> {
+    with_db(path, |db| {
+        let id = find_user(db, user)?;
+        let q = sql_quote(&id);
+        transaction(db, |db| {
+            exec(db, &format!("DELETE FROM disabled WHERE user = {q}"))?;
+            if disable {
+                exec(
+                    db,
+                    &format!("INSERT INTO disabled (user, at) VALUES ({q}, {})", now_s()),
+                )?;
+            }
+            Ok(())
+        })
+    })
+}
+
+/// Removes a disabled user with its role and tokens; returns the
+/// prefixes of the tokens removed. Its sightings stay: they are stored
+/// under the organisation, never under a user.
+pub fn remove_user(path: &Path, user: &str) -> Result<Vec<String>, String> {
+    with_db(path, |db| {
+        let id = find_user(db, user)?;
+        if !disabled(db)?.contains(&id) {
+            return Err(format!("{user} is not disabled: disable it first"));
+        }
+        let q = sql_quote(&id);
+        let prefixes = query(db, &format!("SELECT hash FROM tokens WHERE user = {q}"))?
+            .rows
+            .iter()
+            .map(|r| text(&r[0])[..12].to_string())
+            .collect();
+        transaction(db, |db| {
+            for table in ["tokens", "roles", "disabled"] {
+                exec(db, &format!("DELETE FROM {table} WHERE user = {q}"))?;
+            }
+            exec(db, &format!("DELETE FROM users WHERE id = {q}"))
+        })?;
+        Ok(prefixes)
     })
 }
 
@@ -605,7 +680,11 @@ pub fn add_token_hash(path: &Path, user: &str, token_hash: &str) -> Result<(), S
         return Err("not a SHA-256 hex digest".into());
     }
     with_db(path, |db| {
+        let name = user;
         let user = find_user(db, user)?;
+        if disabled(db)?.contains(&user) {
+            return Err(format!("{name} is disabled: enable it first"));
+        }
         exec(
             db,
             &format!(
@@ -855,6 +934,38 @@ mod tests {
         let orgs = organisations(&path).unwrap();
         assert_eq!(orgs.len(), 1);
         assert_eq!(orgs[0].users, ["u1"]);
+        std::fs::remove_dir_all(&dir).ok();
+    }
+
+    #[test]
+    fn disable_then_remove() {
+        let dir = temp("disable");
+        let path = dir.join(FILE);
+        let server = Participants::open(&dir).unwrap();
+        add_organisation(&path, "mdr", Tier::Contributor, "cyber_partner", None, None).unwrap();
+        add_user(&path, "mdr", "amy", "human", Some(Role::Admin)).unwrap();
+        let t = add_token(&path, "amy").unwrap();
+        let bearer = format!("Bearer {t}");
+
+        assert!(remove_user(&path, "amy").is_err(), "disable first");
+        set_disabled(&path, "amy", true).unwrap();
+        assert_eq!(server.caller(Some(&bearer)).unwrap(), None, "tokens stop");
+        assert!(add_token(&path, "amy").is_err(), "no tokens while disabled");
+        assert!(users(&path).unwrap()[0].disabled);
+        set_disabled(&path, "amy", false).unwrap();
+        assert!(
+            server.caller(Some(&bearer)).unwrap().is_some(),
+            "and work again"
+        );
+
+        set_disabled(&path, "amy", true).unwrap();
+        let removed = remove_user(&path, "amy").unwrap();
+        assert_eq!(removed, [hash(&t)[..12].to_string()]);
+        assert!(users(&path).unwrap().is_empty());
+        assert!(tokens(&path).unwrap().is_empty());
+        // The name is free again, without the old role.
+        add_user(&path, "mdr", "amy", "human", None).unwrap();
+        assert_eq!(users(&path).unwrap()[0].role, None);
         std::fs::remove_dir_all(&dir).ok();
     }
 

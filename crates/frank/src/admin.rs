@@ -12,22 +12,26 @@
 //! | `GET    /v1/admin/users`              | admin      |
 //! | `POST   /v1/admin/users`              | admin      |
 //! | `PATCH  /v1/admin/users/{name}`       | admin (superadmin to grant or take superadmin) |
+//! | `POST   /v1/admin/users/{name}/disable`, `/enable` | admin |
+//! | `DELETE /v1/admin/users/{name}`       | admin (a disabled user only) |
 //! | `GET    /v1/admin/tokens`             | admin      |
 //! | `POST   /v1/admin/tokens`             | admin      |
 //! | `DELETE /v1/admin/tokens/{prefix}`    | admin      |
 //! | `GET    /v1/admin/audit`              | admin      |
 //!
-//! Every change writes an audit line naming `user@organisation`; a token
-//! appears there only as its hash prefix. Three changes are refused:
-//! taking the role of an organisation's last admin, demoting the last
-//! superadmin, and revoking the caller's own last token.
+//! Only a superadmin changes a superadmin. Every change writes an audit
+//! line naming `user@organisation`; a token appears there only as its
+//! hash prefix. Refused: taking the role of an organisation's last working
+//! admin or the platform's last working superadmin (by a role change or
+//! by disabling), disabling oneself, removing a user that is not
+//! disabled, and revoking the caller's own last token.
 
 use std::sync::Mutex;
 
 use axum::extract::{Path as UrlPath, Query, State};
 use axum::http::{header, HeaderMap, HeaderValue, StatusCode};
 use axum::response::{IntoResponse, Response};
-use axum::routing::{delete, get, patch};
+use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
 use frank_core::Tier;
 use serde::Deserialize;
@@ -54,7 +58,12 @@ pub fn routes() -> Router<Shared> {
         )
         .route("/v1/admin/organisations/{id}", patch(set_status))
         .route("/v1/admin/users", get(users).post(add_user))
-        .route("/v1/admin/users/{name}", patch(set_role))
+        .route(
+            "/v1/admin/users/{name}",
+            patch(set_role).delete(remove_user),
+        )
+        .route("/v1/admin/users/{name}/disable", post(disable))
+        .route("/v1/admin/users/{name}/enable", post(enable))
         .route("/v1/admin/tokens", get(tokens).post(add_token))
         .route("/v1/admin/tokens/{prefix}", delete(revoke))
         .route("/v1/admin/audit", get(audit))
@@ -336,31 +345,138 @@ async fn set_role(
         if (new == superadmin || user.role == superadmin) && c.role != superadmin {
             return Err(forbidden("only a superadmin grants or takes superadmin"));
         }
-        let all = parts::users(app.participants.path()).map_err(internal)?;
-        if user.role.is_some()
-            && new.is_none()
-            && all
-                .iter()
-                .filter(|u| u.participant == user.participant && u.role.is_some())
-                .count()
-                == 1
-        {
-            return Err(conflict(format!(
-                "{name} is {}'s last admin: make another one first",
-                user.organisation
-            )));
-        }
-        if user.role == superadmin
-            && new != superadmin
-            && all.iter().filter(|u| u.role == superadmin).count() == 1
-        {
-            return Err(conflict(format!(
-                "{name} is the last superadmin: make another one first"
-            )));
-        }
+        keeps_admins(
+            &app,
+            &user,
+            user.role.is_some() && new.is_none(),
+            user.role == superadmin && new != superadmin,
+        )?;
         parts::set_role(app.participants.path(), &name, new).map_err(unprocessable)?;
         record(&app, &c, "role_set", json!({ "user": name, "role": new }))?;
         Ok(Json(json!({ "name": name, "role": new })))
+    })
+    .await
+}
+
+/// Refuses a change that takes the last working admin from `user`'s
+/// organisation (`loses_admin`) or the last working superadmin from the
+/// platform (`loses_superadmin`). Disabled users do not count.
+fn keeps_admins(
+    app: &App,
+    user: &UserInfo,
+    loses_admin: bool,
+    loses_superadmin: bool,
+) -> Result<(), ApiError> {
+    let all = parts::users(app.participants.path()).map_err(internal)?;
+    let working = |u: &&UserInfo| !u.disabled && u.name != user.name;
+    if loses_admin
+        && !all
+            .iter()
+            .filter(working)
+            .any(|u| u.participant == user.participant && u.role.is_some())
+    {
+        return Err(conflict(format!(
+            "{} is {}'s last admin: make another one first",
+            user.name, user.organisation
+        )));
+    }
+    if loses_superadmin
+        && !all
+            .iter()
+            .filter(working)
+            .any(|u| u.role == Some(Role::Superadmin))
+    {
+        return Err(conflict(format!(
+            "{} is the last superadmin: make another one first",
+            user.name
+        )));
+    }
+    Ok(())
+}
+
+/// The user `name` as `c` may change it: managed by `c`, and a
+/// superadmin only by a superadmin.
+fn changeable_user(app: &App, c: &Caller, name: &str) -> Result<UserInfo, ApiError> {
+    let user = managed_user(app, c, name)?;
+    if user.role == Some(Role::Superadmin) && c.role != Some(Role::Superadmin) {
+        return Err(forbidden("only a superadmin changes a superadmin"));
+    }
+    Ok(user)
+}
+
+/// Disables a user: its tokens stop working until it is enabled. Not the
+/// caller itself, nor the last working admin or superadmin.
+async fn disable(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    UrlPath(name): UrlPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let c = admin(&app, &headers)?;
+    blocking(move || {
+        let _w = WRITE.lock().map_err(internal)?;
+        let user = changeable_user(&app, &c, &name)?;
+        if user.name == c.user {
+            return Err(conflict(
+                "you cannot disable yourself: ask another admin".into(),
+            ));
+        }
+        if !user.disabled {
+            keeps_admins(
+                &app,
+                &user,
+                user.role.is_some(),
+                user.role == Some(Role::Superadmin),
+            )?;
+            parts::set_disabled(app.participants.path(), &name, true).map_err(internal)?;
+            record(&app, &c, "user_disabled", json!({ "user": name }))?;
+        }
+        Ok(Json(json!({ "name": name, "disabled": true })))
+    })
+    .await
+}
+
+async fn enable(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    UrlPath(name): UrlPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let c = admin(&app, &headers)?;
+    blocking(move || {
+        let _w = WRITE.lock().map_err(internal)?;
+        let user = changeable_user(&app, &c, &name)?;
+        if user.disabled {
+            parts::set_disabled(app.participants.path(), &name, false).map_err(internal)?;
+            record(&app, &c, "user_enabled", json!({ "user": name }))?;
+        }
+        Ok(Json(json!({ "name": name, "disabled": false })))
+    })
+    .await
+}
+
+/// Removes a disabled user with its role and tokens. Its sightings stay
+/// under the organisation.
+async fn remove_user(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    UrlPath(name): UrlPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let c = admin(&app, &headers)?;
+    blocking(move || {
+        let _w = WRITE.lock().map_err(internal)?;
+        let user = changeable_user(&app, &c, &name)?;
+        if !user.disabled {
+            return Err(conflict(format!(
+                "{name} is not disabled: disable it first"
+            )));
+        }
+        let tokens = parts::remove_user(app.participants.path(), &name).map_err(internal)?;
+        record(
+            &app,
+            &c,
+            "user_removed",
+            json!({ "participant": user.participant, "user": name, "tokens": tokens }),
+        )?;
+        Ok(Json(json!({ "removed": name, "tokens": tokens })))
     })
     .await
 }
@@ -399,6 +515,12 @@ async fn add_token(
     blocking(move || {
         let _w = WRITE.lock().map_err(internal)?;
         let user = managed_user(&app, &c, &t.user)?;
+        if user.disabled {
+            return Err(conflict(format!(
+                "{} is disabled: enable it first",
+                user.name
+            )));
+        }
         let token = parts::add_token(app.participants.path(), &user.name).map_err(internal)?;
         let prefix = hash(&token)[..12].to_string();
         record(

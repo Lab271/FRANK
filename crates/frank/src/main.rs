@@ -130,6 +130,12 @@ enum UserCmd {
     List,
     /// Give a user a role: admin, superadmin, or none to take it away.
     SetRole { name: String, role: String },
+    /// Disable a user: its tokens stop working until it is enabled.
+    Disable { name: String },
+    /// Enable a disabled user again.
+    Enable { name: String },
+    /// Remove a disabled user with its role and tokens.
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -211,8 +217,30 @@ fn main() -> Result<(), String> {
         Command::User(UserCmd::List) => {
             for u in parts::users(&db)? {
                 let r = u.role.map_or("", Role::as_str);
-                println!("{:<24} {:<8} {:<11} {}", u.name, u.kind, r, u.organisation);
+                let state = if u.disabled { "disabled" } else { "" };
+                println!(
+                    "{:<24} {:<8} {:<11} {:<9} {}",
+                    u.name, u.kind, r, state, u.organisation
+                );
             }
+            Ok(())
+        }
+        Command::User(UserCmd::Disable { name }) => {
+            parts::set_disabled(&db, &name, true)?;
+            log("user_disabled", json!({ "user": name }))?;
+            eprintln!("disabled {name:?}; its tokens stop working on the next request");
+            Ok(())
+        }
+        Command::User(UserCmd::Enable { name }) => {
+            parts::set_disabled(&db, &name, false)?;
+            log("user_enabled", json!({ "user": name }))?;
+            eprintln!("enabled {name:?}");
+            Ok(())
+        }
+        Command::User(UserCmd::Remove { name }) => {
+            let tokens = parts::remove_user(&db, &name)?;
+            log("user_removed", json!({ "user": name, "tokens": tokens }))?;
+            eprintln!("removed {name:?} and {} token(s)", tokens.len());
             Ok(())
         }
         Command::User(UserCmd::SetRole { name, role: r }) => {
