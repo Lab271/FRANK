@@ -1,0 +1,11 @@
+{
+  "_comment": "Test tokens for scripts/stream_sightings.py (#177), checked in on purpose. Anyone with the repo has them: register them only on a local FRANK (make stream-setup), never on a shared or public one.",
+  "senders": {
+    "stream-test-mdr-1": "frank_test_71d326bdba0f6620a92c045d7a14c5251843badbfcf22f46",
+    "stream-test-mdr-2": "frank_test_b188949f68573e559ee3eab876538ed93de4a0ed24e3bc93",
+    "stream-test-mdr-3": "frank_test_741121234b726a28915fa9311fa217cbe0974b8da7fa7ff0"
+  },
+  "watcher": {
+    "stream-test-watch": "frank_test_37de85589112eec3a320645c1127d709d20b37a762b85092"
+  }
+}
