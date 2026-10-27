@@ -1303,7 +1303,10 @@ async fn every_route_is_in_the_openapi_document() {
             }
             routes += 1;
             let op = &doc["paths"][&path][method];
-            assert!(op.is_object(), "{method} {path} is not in api/openapi.yaml");
+            assert!(
+                op.is_object(),
+                "{method} {path} is not in docs/openapi.yaml"
+            );
             assert!(
                 op["x-min-status"].is_string(),
                 "{method} {path}: x-min-status"

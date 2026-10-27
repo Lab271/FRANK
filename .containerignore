@@ -2,7 +2,6 @@ target
 data
 participants
 tokens
-legacy
 deploy
 .git
 web/pkg
