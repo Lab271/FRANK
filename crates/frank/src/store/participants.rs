@@ -85,6 +85,8 @@ pub struct TokenInfo {
     /// The first 12 hex digits of the token's SHA-256.
     pub prefix: String,
     pub user: String,
+    /// The organisation's id and name.
+    pub participant: String,
     pub organisation: String,
     pub revoked: bool,
 }
@@ -639,6 +641,7 @@ pub fn tokens(path: &Path) -> Result<Vec<TokenInfo>, String> {
                     prefix: text(&r[0])[..12].to_string(),
                     user,
                     organisation: orgs.get(&org).cloned().unwrap_or_default(),
+                    participant: org,
                     revoked: int(&r[2]) != 0,
                 }
             })

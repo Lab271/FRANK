@@ -6,7 +6,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode};
 use frank::api::{rebuild_iocs, router, App};
 use frank::audit::Audit;
-use frank::auth::{hash, uuid4};
+use frank::auth::{hash, uuid4, Role};
 use frank::store::participants::{self as parts, FILE};
 use frank::store::{Iocs, Participants, Registry, Sightings};
 use frank_core::Tier;
@@ -1274,9 +1274,22 @@ async fn every_route_is_in_the_openapi_document() {
     let h = harness("openapi");
     let (code, doc) = call(&h.app, "GET", "/v1/openapi.json", None, None).await;
     assert_eq!(code, StatusCode::OK);
-    let source = include_str!("../src/api.rs");
+    let source = [
+        include_str!("../src/api.rs"),
+        include_str!("../src/admin.rs"),
+    ]
+    .concat();
     let mut routes = 0;
-    for line in source.lines().map(str::trim) {
+    let lines: Vec<&str> = source.lines().map(str::trim).collect();
+    for (i, line) in lines.iter().enumerate() {
+        // rustfmt splits a long `.route(` over lines.
+        let joined;
+        let line = if *line == ".route(" {
+            joined = format!(".route({} {}", lines[i + 1], lines[i + 2]);
+            joined.as_str()
+        } else {
+            line
+        };
         let Some(rest) = line.strip_prefix(".route(\"") else {
             continue;
         };
@@ -1298,7 +1311,7 @@ async fn every_route_is_in_the_openapi_document() {
         }
     }
     assert!(
-        routes >= 16,
+        routes >= 26,
         "found {routes} routes: has the router's layout changed?"
     );
 }
@@ -1423,4 +1436,398 @@ async fn records_are_listed_by_status() {
     );
     assert_eq!(sum["network"]["sightings"], 4);
     assert!(sum["last_received"].is_string());
+}
+
+/// #175: `ops` (core) with superadmin `root` (token `s`); admins `amy` of
+/// `mdr` (token `a`) and `ben` of `mdr2` (token `b`).
+fn admins(h: &Harness) {
+    parts::add_organisation(&h.db, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
+    for (org, user, role, token) in [
+        ("ops", "root", Role::Superadmin, "s"),
+        ("mdr", "amy", Role::Admin, "a"),
+        ("mdr2", "ben", Role::Admin, "b"),
+    ] {
+        parts::add_user(&h.db, org, user, "human", Some(role)).unwrap();
+        parts::add_token_hash(&h.db, user, &hash(token)).unwrap();
+    }
+}
+
+fn names(v: &Value, key: &str) -> Vec<String> {
+    let mut n: Vec<String> = v[key]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| {
+            x["name"]
+                .as_str()
+                .or(x["user"].as_str())
+                .unwrap()
+                .to_string()
+        })
+        .collect();
+    n.sort();
+    n
+}
+
+/// #175: an admin sees and changes its own organisation only; every
+/// other organisation's object answers 404.
+#[tokio::test]
+async fn admins_manage_their_own_organisation_only() {
+    let h = harness("admin-scope");
+    admins(&h);
+    let mdr = parts::organisation_id(&h.db, "mdr").unwrap();
+    let mdr2 = parts::organisation_id(&h.db, "mdr2").unwrap();
+    let app = &h.app;
+
+    let (_, me) = call(app, "GET", "/v1/whoami", Some("a"), None).await;
+    assert_eq!(me["role"], "admin");
+    let (_, me) = call(app, "GET", "/v1/whoami", Some("c"), None).await;
+    assert_eq!(me["role"], Value::Null);
+    for uri in [
+        "/v1/admin/users",
+        "/v1/admin/tokens",
+        "/v1/admin/organisations",
+        "/v1/admin/audit",
+    ] {
+        assert_eq!(
+            call(app, "GET", uri, Some("c"), None).await.0,
+            StatusCode::FORBIDDEN,
+            "{uri}"
+        );
+        assert_eq!(
+            call(app, "GET", uri, None, None).await.0,
+            StatusCode::FORBIDDEN,
+            "{uri}"
+        );
+    }
+
+    // Something about mdr2, done by its own admin.
+    let (st, _) = call(
+        app,
+        "POST",
+        "/v1/admin/users",
+        Some("b"),
+        Some(json!({"name": "bea"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED);
+
+    let (_, orgs) = call(app, "GET", "/v1/admin/organisations", Some("a"), None).await;
+    assert_eq!(names(&orgs, "organisations"), ["mdr"]);
+    let (_, users) = call(app, "GET", "/v1/admin/users", Some("a"), None).await;
+    assert_eq!(names(&users, "users"), ["amy", "mdr"]);
+    let (_, users) = call(
+        app,
+        "GET",
+        &format!("/v1/admin/users?participant={mdr2}"),
+        Some("a"),
+        None,
+    )
+    .await;
+    assert_eq!(users["users"], json!([]));
+    let (_, tokens) = call(app, "GET", "/v1/admin/tokens", Some("a"), None).await;
+    assert_eq!(names(&tokens, "tokens"), ["amy", "mdr"]);
+
+    let ben = &hash("b")[..12];
+    for (method, uri, body) in [
+        (
+            "POST",
+            "/v1/admin/users".to_string(),
+            Some(json!({"participant": mdr2, "name": "x"})),
+        ),
+        (
+            "PATCH",
+            "/v1/admin/users/ben".to_string(),
+            Some(json!({"role": null})),
+        ),
+        (
+            "PATCH",
+            "/v1/admin/users/bea".to_string(),
+            Some(json!({"role": "admin"})),
+        ),
+        (
+            "POST",
+            "/v1/admin/tokens".to_string(),
+            Some(json!({"user": "mdr2"})),
+        ),
+        ("DELETE", format!("/v1/admin/tokens/{ben}"), None),
+    ] {
+        let (st, _) = call(app, method, &uri, Some("a"), body).await;
+        assert_eq!(st, StatusCode::NOT_FOUND, "{method} {uri}");
+    }
+    assert_eq!(
+        call(
+            app,
+            "POST",
+            "/v1/admin/organisations",
+            Some("a"),
+            Some(json!({"name": "x", "status": "core"}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            &format!("/v1/admin/organisations/{mdr}"),
+            Some("a"),
+            Some(json!({"status": "core"}))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+
+    // Within its own organisation.
+    let bad = [
+        (
+            json!({"name": "feed", "kind": "machine", "role": "admin"}),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ),
+        (
+            json!({"name": "carl", "role": "superadmin"}),
+            StatusCode::FORBIDDEN,
+        ),
+    ];
+    for (body, want) in bad {
+        assert_eq!(
+            call(app, "POST", "/v1/admin/users", Some("a"), Some(body))
+                .await
+                .0,
+            want
+        );
+    }
+    let (st, carl) = call(
+        app,
+        "POST",
+        "/v1/admin/users",
+        Some("a"),
+        Some(json!({"name": "carl"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED);
+    assert_eq!(carl["participant"], mdr);
+    let (st, t) = call(
+        app,
+        "POST",
+        "/v1/admin/tokens",
+        Some("a"),
+        Some(json!({"user": "carl"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED);
+    let token = t["token"].as_str().unwrap().to_string();
+    let (_, who) = call(app, "GET", "/v1/whoami", Some(&token), None).await;
+    assert_eq!(
+        (who["user"].as_str(), who["tier"].as_str()),
+        (Some("carl"), Some("contributor"))
+    );
+
+    // The audit: amy's own organisation only; a token never in plain.
+    let (_, log) = call(app, "GET", "/v1/admin/audit", Some("a"), None).await;
+    let actions: Vec<(&str, &str)> = log["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|l| {
+            (
+                l["action"].as_str().unwrap(),
+                l["user"].as_str().unwrap_or(""),
+            )
+        })
+        .collect();
+    assert_eq!(actions, [("token_issued", "carl"), ("user_added", "carl")]);
+    let (_, all) = call(app, "GET", "/v1/admin/audit", Some("s"), None).await;
+    assert_eq!(
+        all["lines"].as_array().unwrap().len(),
+        3,
+        "the superadmin sees bea too"
+    );
+    let dir = h.db.parent().unwrap().join("audit");
+    for f in std::fs::read_dir(dir).unwrap() {
+        let text = std::fs::read_to_string(f.unwrap().path()).unwrap();
+        assert!(!text.contains(&token), "a token in the audit log");
+    }
+}
+
+/// #175: superadmins manage every organisation; the guards keep an
+/// organisation, and the platform, from losing its last admin.
+#[tokio::test]
+async fn superadmins_and_the_guards() {
+    let h = harness("admin-guards");
+    admins(&h);
+    let ops = parts::organisation_id(&h.db, "ops").unwrap();
+    let app = &h.app;
+
+    let (_, orgs) = call(app, "GET", "/v1/admin/organisations", Some("s"), None).await;
+    assert_eq!(orgs["organisations"].as_array().unwrap().len(), 6);
+    let (st, new) = call(
+        app,
+        "POST",
+        "/v1/admin/organisations",
+        Some("s"),
+        Some(json!({"name": "newco", "status": "contributor", "sector": "energy"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED);
+    let newco = new["id"].as_str().unwrap();
+    let (st, _) = call(
+        app,
+        "POST",
+        "/v1/admin/users",
+        Some("s"),
+        Some(json!({"participant": newco, "name": "nina", "role": "admin"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CREATED);
+    let (st, _) = call(
+        app,
+        "PATCH",
+        &format!("/v1/admin/organisations/{newco}"),
+        Some("s"),
+        Some(json!({"status": "observer"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "an observer has no admins");
+    let (st, _) = call(
+        app,
+        "PATCH",
+        &format!("/v1/admin/organisations/{newco}"),
+        Some("s"),
+        Some(json!({"status": "partner"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    let (st, _) = call(
+        app,
+        "PATCH",
+        &format!("/v1/admin/organisations/{ops}"),
+        Some("s"),
+        Some(json!({"status": "partner"})),
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "a superadmin stays in core");
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/organisations/identity--nope",
+            Some("s"),
+            Some(json!({"status": "core"}))
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
+    );
+
+    // Last admin, last superadmin, own last token.
+    let role = |r: Value| Some(json!({ "role": r }));
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/amy",
+            Some("s"),
+            role(Value::Null)
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/amy",
+            Some("a"),
+            role(json!("superadmin"))
+        )
+        .await
+        .0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/root",
+            Some("s"),
+            role(json!("admin"))
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+    let amy = &hash("a")[..12];
+    assert_eq!(
+        call(
+            app,
+            "DELETE",
+            &format!("/v1/admin/tokens/{amy}"),
+            Some("a"),
+            None
+        )
+        .await
+        .0,
+        StatusCode::CONFLICT
+    );
+
+    // With a second token and a second admin, both go through.
+    let (_, t) = call(
+        app,
+        "POST",
+        "/v1/admin/tokens",
+        Some("s"),
+        Some(json!({"user": "amy"})),
+    )
+    .await;
+    let second = t["token"].as_str().unwrap().to_string();
+    assert_eq!(
+        call(
+            app,
+            "DELETE",
+            &format!("/v1/admin/tokens/{amy}"),
+            Some("a"),
+            None
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(app, "GET", "/v1/whoami", Some("a"), None).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/mdr",
+            Some(&second),
+            role(json!("admin"))
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(
+            app,
+            "PATCH",
+            "/v1/admin/users/amy",
+            Some(&second),
+            role(Value::Null)
+        )
+        .await
+        .0,
+        StatusCode::OK
+    );
+    assert_eq!(
+        call(app, "GET", "/v1/admin/users", Some(&second), None)
+            .await
+            .0,
+        StatusCode::FORBIDDEN
+    );
 }
