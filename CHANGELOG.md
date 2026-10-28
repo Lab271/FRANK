@@ -4,6 +4,15 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.19.0] - 2026-10-28
+
+### Changed
+- **Techniques are counted on `sightings`** (#180) with `UNNEST(string_split(technique, ','))`, db-core v0.198.0 (from v0.173.0). Statistics, Explore and rule pages give the same counts as before.
+- Explore `group=technique` takes an `ioc` or `ioc_type` filter (was 422).
+
+### Removed
+- `data/sighting_techniques/` is no longer written or read. A directory from 0.15–0.18 is reported at startup and can be deleted.
+
 ## [0.18.0] - 2026-10-27
 
 ### Added
