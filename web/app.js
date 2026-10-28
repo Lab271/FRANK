@@ -231,53 +231,26 @@ $("do-submit").addEventListener("click", async () => {
 
 // --- lookup ---------------------------------------------------------------
 
-/** The lookup's panels (#182): rules open the rule pane, the rest open
- *  Explore filtered on this IoC and the picked value. */
-function iocPanels(p, key) {
-  if (!p) return [];
-  const to = (dim) => (v) => { location.hash = `explore?${new URLSearchParams({ group: "rule", ioc: key, [dim]: v })}`; };
-  const nodes = [
-    ...linkList("SIGMA rules", p.rules, (v) => openPane("rule", v)),
-    ...linkList("target sectors", p.sectors, to("sector")),
-    ...linkList("severity", p.severities, to("severity")),
-    ...linkList("techniques", p.techniques, to("technique")),
-    ...linkList("campaigns", p.campaigns, to("campaign")),
-  ];
-  return nodes.length ? [el("div", { class: "panels" }, ...nodes)]
-    : [el("p", { class: "note" }, "Not seen by enough reporters to show a breakdown.")];
-}
-
+/** The lookup result stays compact; its rows open the side pane (#182):
+ *  the IoC, one day of it, or a rule. */
 async function lookup(type, value) {
   const out = $("lookup-out");
   try {
     const r = await (await api(`/v1/iocs?${new URLSearchParams({ type, value })}`)).json();
     if (!r.known) {
       show(out, el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`));
+      closePane();
       return;
     }
     const key = `${r.ioc.type}:${r.ioc.value}`;
-    const dayBox = el("div", { class: "day-detail" });
-    const openDay = async (day) => {
-      show(dayBox, el("p", { class: "note" }, "loading…"));
-      try {
-        const q = new URLSearchParams({ type: r.ioc.type, value: r.ioc.value, day });
-        const d = await (await api(`/v1/iocs?${q}`)).json();
-        show(dayBox, el("h3", {}, `on ${day}`), ...iocPanels(d.panels, key));
-      } catch (e) {
-        show(dayBox, errorNode(e));
-      }
-    };
     show(out,
-      el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
-      kpis([["sightings", r.count], ["reporters", r.reporters]]),
-      el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
-      el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
-      ...iocPanels(r.panels, key),
-      el("h3", {}, "days seen"),
-      el("p", { class: "note" }, "Pick a day for its breakdown."),
-      table(["day", "sightings", "first", "last"],
-        r.days.map((d) => [linkTo(d.day, () => openDay(d.day), "label"), d.count, iso(d.first_ts), iso(d.last_ts)])),
-      dayBox);
+      el("p", {}, linkTo(`${r.ioc.type} ${r.ioc.value}`, () => openPane("ioc", key), "label"),
+        `: seen ${r.count}× by ${r.reporters} reporter(s), first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
+      table(["day", "count", "first", "last"],
+        r.days.map((d) => [linkTo(d.day, () => openPane("ioc", key, d.day), "label"), d.count, iso(d.first_ts), iso(d.last_ts)])),
+      table(["SIGMA rule", "rows"],
+        r.rules.map((x) => [linkTo(x.rule_id, () => openPane("rule", x.rule_id), "label"), x.count])));
+    openPane("ioc", key);
   } catch (e) {
     show(out, errorNode(e));
   }
@@ -498,14 +471,22 @@ function linkList(title, cells, onPick) {
 }
 
 let paneSeq = 0;
-async function openPane(kind, key) {
+async function openPane(kind, key, day) {
   $("pane").classList.add("open");
   $("pane").setAttribute("aria-hidden", "false");
-  $("pane-kind").textContent = { rule: "SIGMA rule", ioc: "IoC", sighting: "sighting" }[kind] || kind;
+  $("pane-kind").textContent = ({ rule: "SIGMA rule", ioc: "IoC", sighting: "sighting" }[kind] || kind) + (day ? ` · ${day}` : "");
   show($("pane-body"), el("p", { class: "note" }, "loading…"));
   const seq = ++paneSeq;
-  const filterOn = (dim) => (v) => { const p = current(); p.set(dim, v); p.delete("pane"); go(p); };
-  const openOther = (k) => (v) => { const p = current(); p.set("pane", `${k}:${v}`); go(p); };
+  // From Explore the pane follows the URL; from lookup it stays on the tab
+  // and narrows Explore on what the pane shows.
+  const inExplore = location.hash.startsWith("#explore");
+  const base = () => inExplore ? current()
+    : new URLSearchParams({ group: "rule", [kind === "ioc" ? "ioc" : "rule"]: key });
+  const filterOn = (dim) => (v) => { const p = base(); p.set(dim, v); p.delete("pane"); go(p); };
+  const openOther = (k) => (v) => {
+    if (!inExplore) return openPane(k, v);
+    const p = current(); p.set("pane", `${k}:${v}`); go(p);
+  };
   try {
     let nodes;
     if (kind === "sighting") {
@@ -528,21 +509,32 @@ async function openPane(kind, key) {
     } else {
       const sep = key.indexOf(":");
       const q = new URLSearchParams({ type: key.slice(0, sep), value: key.slice(sep + 1) });
+      if (day) q.set("day", day);
       const r = await (await api(`/v1/iocs?${q}`)).json();
+      const panels = [
+        ...linkList("SIGMA rules", r.panels?.rules, openOther("rule")),
+        ...linkList("target sectors", r.panels?.sectors, filterOn("sector")),
+        ...linkList("severity", r.panels?.severities, filterOn("severity")),
+        ...linkList("techniques", r.panels?.techniques, filterOn("technique")),
+        ...linkList("campaigns", r.panels?.campaigns, filterOn("campaign"))];
+      const thin = el("p", { class: "note" }, "Not seen by enough reporters to show a breakdown.");
+      const d = day && r.days.find((x) => x.day === day);
       nodes = !r.known
         ? [el("h2", {}, key), el("p", { class: "note" }, "Not seen in the retained days.")]
+        : day
+        ? [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
+          el("p", { class: "note" }, d ? `${day}: ${d.count} sighting(s), first ${iso(d.first_ts)} · last ${iso(d.last_ts)}` : `not seen on ${day}`),
+          ...(panels.length ? panels : [thin]),
+          linkTo("all days", () => openPane("ioc", key), "label")]
         : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
           kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
           ...sightingsList("ioc", key),
-          ...linkList("SIGMA rules", r.panels?.rules, openOther("rule")),
-          ...linkList("target sectors", r.panels?.sectors, filterOn("sector")),
-          ...linkList("severity", r.panels?.severities, filterOn("severity")),
-          ...linkList("techniques", r.panels?.techniques, filterOn("technique")),
-          ...linkList("campaigns", r.panels?.campaigns, filterOn("campaign")),
+          ...panels,
           el("h3", {}, "days seen"),
-          table(["day", "sightings", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
+          table(["day", "sightings", "first", "last"],
+            r.days.map((x) => [linkTo(x.day, () => openPane("ioc", key, x.day), "label"), x.count, iso(x.first_ts), iso(x.last_ts)]))];
     }
     if (seq === paneSeq) show($("pane-body"), ...nodes);
   } catch (e) {
