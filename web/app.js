@@ -231,30 +231,75 @@ $("do-submit").addEventListener("click", async () => {
 
 // --- lookup ---------------------------------------------------------------
 
-$("ioc-form").addEventListener("submit", async (ev) => {
-  ev.preventDefault();
-  const q = new URLSearchParams({ type: $("ioc-type").value, value: $("ioc-value").value });
+/** The lookup's panels (#182): rules open the rule pane, the rest open
+ *  Explore filtered on this IoC and the picked value. */
+function iocPanels(p, key) {
+  if (!p) return [];
+  const to = (dim) => (v) => { location.hash = `explore?${new URLSearchParams({ group: "rule", ioc: key, [dim]: v })}`; };
+  const nodes = [
+    ...linkList("SIGMA rules", p.rules, (v) => openPane("rule", v)),
+    ...linkList("target sectors", p.sectors, to("sector")),
+    ...linkList("severity", p.severities, to("severity")),
+    ...linkList("techniques", p.techniques, to("technique")),
+    ...linkList("campaigns", p.campaigns, to("campaign")),
+  ];
+  return nodes.length ? [el("div", { class: "panels" }, ...nodes)]
+    : [el("p", { class: "note" }, "Not seen by enough reporters to show a breakdown.")];
+}
+
+async function lookup(type, value) {
+  const out = $("lookup-out");
   try {
-    const r = await (await api(`/v1/iocs?${q}`)).json();
+    const r = await (await api(`/v1/iocs?${new URLSearchParams({ type, value })}`)).json();
     if (!r.known) {
-      show($("lookup-out"), el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`));
+      show(out, el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`));
       return;
     }
-    show($("lookup-out"),
-      el("p", {}, `${r.ioc.type} ${r.ioc.value}: seen ${r.count}×, first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
-      table(["day", "count", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)])),
-      table(["SIGMA rule", "rows"], r.rules.map((x) => [x.rule_id, x.count])));
+    const key = `${r.ioc.type}:${r.ioc.value}`;
+    const dayBox = el("div", { class: "day-detail" });
+    const openDay = async (day) => {
+      show(dayBox, el("p", { class: "note" }, "loading…"));
+      try {
+        const q = new URLSearchParams({ type: r.ioc.type, value: r.ioc.value, day });
+        const d = await (await api(`/v1/iocs?${q}`)).json();
+        show(dayBox, el("h3", {}, `on ${day}`), ...iocPanels(d.panels, key));
+      } catch (e) {
+        show(dayBox, errorNode(e));
+      }
+    };
+    show(out,
+      el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
+      kpis([["sightings", r.count], ["reporters", r.reporters]]),
+      el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
+      el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
+      ...iocPanels(r.panels, key),
+      el("h3", {}, "days seen"),
+      el("p", { class: "note" }, "Pick a day for its breakdown."),
+      table(["day", "sightings", "first", "last"],
+        r.days.map((d) => [linkTo(d.day, () => openDay(d.day), "label"), d.count, iso(d.first_ts), iso(d.last_ts)])),
+      dayBox);
   } catch (e) {
-    show($("lookup-out"), errorNode(e));
+    show(out, errorNode(e));
   }
+}
+
+$("ioc-form").addEventListener("submit", (ev) => {
+  ev.preventDefault();
+  lookup($("ioc-type").value, $("ioc-value").value);
 });
 
 $("cidr-form").addEventListener("submit", async (ev) => {
   ev.preventDefault();
   try {
     const r = await (await api(`/v1/iocs/range?${new URLSearchParams({ cidr: $("cidr").value })}`)).json();
+    const pick = (a) => () => {
+      const type = a.includes(":") ? "ipv6" : "ipv4";
+      $("ioc-type").value = type;
+      $("ioc-value").value = a;
+      lookup(type, a);
+    };
     show($("lookup-out"), el("p", {}, `${r.addresses.length} address(es) in ${r.cidr}`),
-      table(["address", "count"], r.addresses.map((a) => [a.value, a.count])));
+      table(["address", "count"], r.addresses.map((a) => [linkTo(a.value, pick(a.value), "label"), a.count])));
   } catch (e) {
     show($("lookup-out"), errorNode(e));
   }
@@ -409,7 +454,10 @@ function closePane() {
   $("pane").setAttribute("aria-hidden", "true");
 }
 
-$("pane-close").addEventListener("click", () => { const p = current(); p.delete("pane"); go(p); });
+$("pane-close").addEventListener("click", () => {
+  if (!location.hash.startsWith("#explore")) return closePane(); // opened from lookup
+  const p = current(); p.delete("pane"); go(p);
+});
 document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && $("pane").classList.contains("open")) $("pane-close").click();
 });
@@ -488,7 +536,11 @@ async function openPane(kind, key) {
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
           ...sightingsList("ioc", key),
-          ...linkList("SIGMA rules", r.rules.map((x) => ({ key: x.rule_id, count: x.count })), openOther("rule")),
+          ...linkList("SIGMA rules", r.panels?.rules, openOther("rule")),
+          ...linkList("target sectors", r.panels?.sectors, filterOn("sector")),
+          ...linkList("severity", r.panels?.severities, filterOn("severity")),
+          ...linkList("techniques", r.panels?.techniques, filterOn("technique")),
+          ...linkList("campaigns", r.panels?.campaigns, filterOn("campaign")),
           el("h3", {}, "days seen"),
           table(["day", "sightings", "first", "last"], r.days.map((d) => [d.day, d.count, iso(d.first_ts), iso(d.last_ts)]))];
     }
