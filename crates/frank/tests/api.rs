@@ -1190,8 +1190,30 @@ async fn counts_follow_the_sighting_grain() {
     );
     let (_, r) = ex("/v1/explore?group=rule&ioc=ipv4:198.51.100.2").await;
     assert_eq!(r["rows"][0]["count"], 1, "an IoC past seq 0: {r}");
-    let (code, _) = ex("/v1/explore?group=technique&ioc=ipv4:198.51.100.2").await;
-    assert_eq!(code, StatusCode::UNPROCESSABLE_ENTITY);
+    // #180: techniques filtered by an IoC (a 422 until 0.18). The sighting
+    // has two IPv4s, so by IoC type it has two matching rows: still once.
+    for uri in [
+        "/v1/explore?group=technique&ioc=ipv4:198.51.100.2",
+        "/v1/explore?group=technique&ioc_type=ipv4",
+    ] {
+        let (code, t) = ex(uri).await;
+        assert_eq!(code, StatusCode::OK, "{uri}: {t}");
+        assert_eq!(keys(&t), ["T1059", "T1071.001"], "{uri}: {t}");
+        assert!(
+            t["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["count"] == 1),
+            "{uri}: {t}"
+        );
+    }
+    let (_, t) = ex("/v1/explore?group=technique&ioc_type=url").await;
+    assert_eq!(
+        keys(&t),
+        Vec::<String>::new(),
+        "no URL in the sighting: {t}"
+    );
 
     let r = h
         .sightings

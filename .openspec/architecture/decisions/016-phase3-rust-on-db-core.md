@@ -19,7 +19,7 @@ Phase 3 is the production build. Three things in the Phase 2 outcome drive the r
 ## Decision
 
 1. **One Rust binary, `frank`,** replaces the Python service. It is the single writer of two stores under one data directory:
-   - `sightings/`: a striped (tiered) db-core table. Each closed hour is flushed to `live/` as one Parquet file sorted by `(rule_id, ioc_value)`; closed days merge into `archive/`; retention drops whole days. The files are plain Parquet with hive partitions, so DuckDB and pyarrow read them too.
+   - `sightings/`: a striped (tiered) db-core table. Each closed hour is flushed to `live/` as one Parquet file sorted by `(rule_id, ioc_value)`; closed days merge into `archive/`; retention drops whole days. The files are plain Parquet with hive partitions, so DuckDB and pyarrow read them too. One row per sighting × IoC; a sighting's techniques are one comma-separated column, ranked with `UNNEST(string_split(technique, ','))` (#180; from 0.15 to 0.18 a second table, `sighting_techniques/`, held them pre-split).
    - `iocs.db`: a db-core row table (SQLite format), one row per IoC per day with B-tree indexes on the key, the day and the IP address (as 32 hex digits). "Is this IoC known", "when" and "which addresses in this CIDR block" are index seeks, not scans.
 2. **Participants are known organisations** (#159; restores the organisation model of [ADR-002](002-tiered-access-control.md) and [ADR-010](010-postgresql-management-api.md)).
    - A participant is an organisation with an opaque id `identity--{uuid4}` and **one status**: observer, contributor, partner or core. Core is the trusted operator circle; there is no other status.

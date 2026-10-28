@@ -31,10 +31,10 @@ use serde_json::{json, Value};
 
 use crate::audit::Audit;
 use crate::auth::Caller;
-use crate::explore::{self as ex, Dimension, FIRST_ROW};
+use crate::explore::{self as ex, Dimension, BY_TECHNIQUE, FIRST_ROW, TECH, TECH_SET};
 use crate::records;
 use crate::store::registry::{self, Receipt};
-use crate::store::sightings::{scalar, NAME as SIGHTINGS, TECHNIQUES};
+use crate::store::sightings::{scalar, NAME as SIGHTINGS};
 use crate::store::{Iocs, Participants, Registry, Sightings};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -306,7 +306,7 @@ fn tlp_visible(tier: Tier) -> String {
 
 /// `(key, sightings, reporters)` per value of `column` over the rows
 /// `visible` selects, counted as [`ex::Query::sql`] does: `seq = 0` rows,
-/// all rows for the IoC type, `sighting_techniques` for techniques. Unless
+/// all rows for the IoC type, techniques unnested (#180). Unless
 /// `exact`, a cell with fewer than [`MIN_CELL`] distinct reporters is
 /// dropped: k-anonymity counts reporters, not rows (#148).
 fn breakdown(
@@ -317,20 +317,19 @@ fn breakdown(
     limit: usize,
     exact: bool,
 ) -> Result<Vec<Value>, ApiError> {
-    let (table, rows) = match column {
-        "technique" => (TECHNIQUES, String::new()),
-        "ioc_type" => (SIGHTINGS, String::new()),
-        _ => (SIGHTINGS, format!(" AND {FIRST_ROW}")),
+    let (column, from, rows) = match column {
+        "technique" => (
+            TECH,
+            BY_TECHNIQUE,
+            format!(" AND {FIRST_ROW} AND {TECH_SET}"),
+        ),
+        "ioc_type" => (column, SIGHTINGS, String::new()),
+        _ => (column, SIGHTINGS, format!(" AND {FIRST_ROW}")),
     };
     let sql = format!(
-        "SELECT {column}, count(*) AS n, count(DISTINCT reporter) AS r FROM {table} WHERE ts >= {since} AND {visible}{rows} GROUP BY {column} ORDER BY n DESC"
+        "SELECT {column}, count(*) AS n, count(DISTINCT reporter) AS r FROM {from} WHERE ts >= {since} AND {visible}{rows} GROUP BY {column} ORDER BY n DESC"
     );
-    let r = if column == "technique" {
-        s.query_techniques(&sql)
-    } else {
-        s.query(&sql)
-    }
-    .map_err(internal)?;
+    let r = s.query(&sql).map_err(internal)?;
     Ok(r.rows
         .iter()
         .filter_map(|row| match (&row[0], &row[1], &row[2]) {
@@ -479,12 +478,7 @@ fn grouped(
     limit: usize,
 ) -> Result<Vec<Value>, ApiError> {
     let sql = q.sql(since, visible).map_err(unprocessable)?;
-    let r = if q.on_techniques() {
-        s.query_techniques(&sql)
-    } else {
-        s.query(&sql)
-    }
-    .map_err(internal)?;
+    let r = s.query(&sql).map_err(internal)?;
     let k = q.group.columns().len();
     Ok(r.rows
         .iter()

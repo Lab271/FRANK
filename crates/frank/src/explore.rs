@@ -10,6 +10,14 @@ use frank_core::{sql_quote, Tier};
 /// before `seq` existed are all counted, as they were then.
 pub const FIRST_ROW: &str = "(seq = 0 OR seq IS NULL)";
 
+/// A sighting's techniques one row each (#180): `technique` holds them
+/// comma-separated, each once (frank-core drops repeats).
+pub const BY_TECHNIQUE: &str = "sightings, UNNEST(string_split(technique, ',')) AS t(tech)";
+/// The unnested technique.
+pub const TECH: &str = "tech";
+/// Skips the empty string `string_split` gives for an empty `technique`.
+pub const TECH_SET: &str = "tech <> ''";
+
 /// What a list can be grouped and filtered by.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord)]
 pub enum Dimension {
@@ -77,15 +85,15 @@ impl Dimension {
         }
     }
 
-    /// The SQL condition for one filter value, on `sightings` or (`on_techniques`)
-    /// `sighting_techniques`. An IoC filter is `type:value`; categories
-    /// are lower case, techniques upper case. On `sightings` a technique
-    /// is one item of the comma-separated list.
+    /// The SQL condition for one filter value. An IoC filter is
+    /// `type:value`; categories are lower case, techniques upper case. A
+    /// technique is one item of the comma-separated list, or (`unnested`,
+    /// in [`BY_TECHNIQUE`]) the unnested value.
     ///
     /// # Errors
     ///
     /// A value that is not usable for the dimension.
-    pub fn condition(self, value: &str, on_techniques: bool) -> Result<String, String> {
+    pub fn condition(self, value: &str, unnested: bool) -> Result<String, String> {
         let v = value.trim();
         if v.is_empty() || v.len() > 2048 || v.chars().any(char::is_control) {
             return Err(format!("{}: not a usable filter value", self.name()));
@@ -103,8 +111,8 @@ impl Dimension {
                     sql_quote(&ioc.value)
                 )
             }
-            Dimension::Technique if on_techniques => {
-                format!("technique = {}", sql_quote(&v.to_ascii_uppercase()))
+            Dimension::Technique if unnested => {
+                format!("{TECH} = {}", sql_quote(&v.to_ascii_uppercase()))
             }
             Dimension::Technique => {
                 let t = v.to_ascii_uppercase();
@@ -164,17 +172,6 @@ impl Query {
             }
         }
         let group = group.ok_or("group is required")?;
-        if group == Dimension::Technique {
-            if let Some((d, _)) = filters
-                .iter()
-                .find(|(d, _)| matches!(d, Dimension::Ioc | Dimension::IocType))
-            {
-                return Err(format!(
-                    "group=technique cannot be filtered by {}: techniques are counted apart from IoCs",
-                    d.name()
-                ));
-            }
-        }
         Ok(Query {
             group,
             days,
@@ -182,9 +179,9 @@ impl Query {
         })
     }
 
-    /// The table the query reads: techniques are counted in their own.
+    /// Whether the query groups by technique, reading [`BY_TECHNIQUE`].
     #[must_use]
-    pub fn on_techniques(&self) -> bool {
+    pub fn by_technique(&self) -> bool {
         self.group == Dimension::Technique
     }
 
@@ -213,9 +210,12 @@ impl Query {
     pub fn where_clause(&self, since: i64, visible: &str) -> Result<String, String> {
         let mut parts = vec![format!("ts >= {since}"), visible.to_string()];
         for (d, v) in &self.filters {
-            parts.push(d.condition(v, self.on_techniques())?);
+            parts.push(d.condition(v, self.by_technique())?);
         }
-        if !self.on_techniques() && !self.by_ioc() {
+        if self.by_technique() {
+            parts.push(TECH_SET.to_string());
+        }
+        if !self.by_ioc() {
             parts.push(FIRST_ROW.to_string());
         }
         Ok(parts.join(" AND "))
@@ -223,20 +223,25 @@ impl Query {
 
     /// The grouped query: the group's columns, then sightings, distinct
     /// reporters, first and last time. A sighting is one row of the
-    /// selection (db-core takes one `count(DISTINCT ...)` a query, which
-    /// the reporters need): its `seq = 0` row, its row for an IoC, or its
-    /// row for a technique. Grouped by IoC type, a sighting counts once
-    /// per IoC of the type.
+    /// selection, counted with `count(*)` (faster than a second distinct,
+    /// db-core #815): its `seq = 0` row or its row for an IoC. Grouped by
+    /// IoC type, a sighting counts once per IoC of the type. Grouped by
+    /// technique with an IoC filter, a sighting can have several matching
+    /// rows, so it is counted distinct.
     pub fn sql(&self, since: i64, visible: &str) -> Result<String, String> {
-        let cols = self.group.columns().join(", ");
-        let table = if self.on_techniques() {
-            "sighting_techniques"
+        let (cols, from) = if self.by_technique() {
+            (TECH.to_string(), BY_TECHNIQUE)
         } else {
-            "sightings"
+            (self.group.columns().join(", "), "sightings")
+        };
+        let n = if self.by_technique() && self.by_ioc() {
+            "count(DISTINCT sighting_id)"
+        } else {
+            "count(*)"
         };
         Ok(format!(
-            "SELECT {cols}, count(*) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
-             FROM {table} WHERE {} GROUP BY {cols} ORDER BY n DESC",
+            "SELECT {cols}, {n} AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
+             FROM {from} WHERE {} GROUP BY {cols} ORDER BY n DESC",
             self.where_clause(since, visible)?
         ))
     }
@@ -288,17 +293,18 @@ mod tests {
         assert!(Query::parse(&params(&[("group", "rule"), ("reporter", "x")])).is_err());
         assert!(Query::parse(&params(&[("group", "rule"), ("days", "0")])).is_err());
         assert!(Query::parse(&params(&[("group", "rule"), ("ioc", "nope")])).is_err());
-        assert!(
-            Query::parse(&params(&[("group", "technique"), ("ioc_type", "ipv4")])).is_err(),
-            "no join"
-        );
     }
 
     #[test]
-    fn techniques_are_their_own_table() {
+    fn techniques_are_unnested() {
         let q = Query::parse(&params(&[("group", "technique"), ("rule", "r1")])).unwrap();
         let sql = q.sql(0, "tlp = 'green'").unwrap();
-        assert!(sql.contains("FROM sighting_techniques"), "{sql}");
+        assert!(sql.contains(&format!("FROM {BY_TECHNIQUE} WHERE")), "{sql}");
+        assert!(
+            sql.contains("GROUP BY tech ") && sql.contains("count(*) AS n"),
+            "{sql}"
+        );
+        assert!(sql.contains(TECH_SET) && sql.contains(FIRST_ROW), "{sql}");
         let q = Query::parse(&params(&[("group", "rule"), ("technique", "t1059")])).unwrap();
         let w = q.where_clause(0, "tlp = 'green'").unwrap();
         assert!(w.contains("technique LIKE '%,T1059,%'"), "{w}");
@@ -310,10 +316,13 @@ mod tests {
             "an IoC is on any row"
         );
         let q = Query::parse(&params(&[("group", "technique"), ("technique", "t1059")])).unwrap();
-        assert!(q
-            .where_clause(0, "x")
-            .unwrap()
-            .contains("technique = 'T1059'"));
+        assert!(q.where_clause(0, "x").unwrap().contains("tech = 'T1059'"));
+        // Grouped by technique and filtered by IoC type (#180): every
+        // matching row, a sighting counted once.
+        let q = Query::parse(&params(&[("group", "technique"), ("ioc_type", "ipv4")])).unwrap();
+        let sql = q.sql(0, "x").unwrap();
+        assert!(sql.contains("count(DISTINCT sighting_id) AS n"), "{sql}");
+        assert!(!sql.contains("seq"), "{sql}");
     }
 
     #[test]

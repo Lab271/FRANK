@@ -3,10 +3,10 @@
 //! `rule_id` go to `live/`, closed days merge into `archive/`, whole days
 //! drop out after the retention period.
 //!
-//! Beside it, `sighting_techniques`: one row per sighting × ATT&CK
-//! technique, for ranking techniques (db-core has no UNNEST, #160). It
-//! carries the columns a technique list is filtered by, since a table
-//! query cannot join. It is the server's own: partners get `sightings`.
+//! Techniques are ranked on this table too, with
+//! `UNNEST(string_split(technique, ','))` (#180). Until 0.18 a second
+//! table, `sighting_techniques/`, held one row per sighting × technique;
+//! it is no longer written or read.
 
 use std::path::Path;
 
@@ -21,8 +21,8 @@ use frank_core::SightingRow;
 
 /// The table's directory name, which is also its name in SQL.
 pub const NAME: &str = "sightings";
-/// The technique table's directory name and SQL name.
-pub const TECHNIQUES: &str = "sighting_techniques";
+/// The directory of the technique table FRANK wrote until 0.18 (#180).
+const OLD_TECHNIQUES: &str = "sighting_techniques";
 
 fn schema() -> Vec<ColumnSpec> {
     let text = |name| ColumnSpec::new(name, ColumnType::Utf8, true);
@@ -49,43 +49,6 @@ fn schema() -> Vec<ColumnSpec> {
         ColumnSpec::new("seq", ColumnType::Int64, true),
         text("detail"),
     ]
-}
-
-fn technique_schema() -> Vec<ColumnSpec> {
-    let text = |name| ColumnSpec::new(name, ColumnType::Utf8, true);
-    vec![
-        ColumnSpec::new("ts", ColumnType::TimestampNanos, false),
-        ColumnSpec::new("sighting_id", ColumnType::Utf8, false),
-        ColumnSpec::new("technique", ColumnType::Utf8, false),
-        text("rule_id"),
-        text("campaign"),
-        text("target_sector"),
-        text("severity"),
-        ColumnSpec::new("reporter", ColumnType::Utf8, false),
-        ColumnSpec::new("tlp", ColumnType::Utf8, false),
-    ]
-}
-
-/// The `sighting_techniques` records of `r`, a `seq = 0` row.
-fn technique_records(r: &SightingRow) -> Vec<Vec<RecordValue>> {
-    let opt = |v: &Option<String>| v.clone().map_or(RecordValue::Null, RecordValue::Str);
-    r.technique
-        .iter()
-        .flat_map(|t| t.split(','))
-        .map(|t| {
-            vec![
-                RecordValue::Int(r.ts_ns),
-                RecordValue::Str(r.sighting_id.clone()),
-                RecordValue::Str(t.to_string()),
-                opt(&r.rule_id),
-                opt(&r.campaign),
-                opt(&r.target_sector),
-                opt(&r.severity),
-                RecordValue::Str(r.reporter.clone()),
-                RecordValue::Str(r.tlp.as_str().into()),
-            ]
-        })
-        .collect()
 }
 
 fn record(r: &SightingRow) -> Vec<RecordValue> {
@@ -149,7 +112,6 @@ fn options(
 #[derive(Clone)]
 pub struct Sightings {
     table: Table,
-    techniques: Table,
 }
 
 impl Sightings {
@@ -170,25 +132,20 @@ impl Sightings {
         if stored.is_some_and(|s| !s.iter().any(|c| c.name == "digest")) {
             return Err(IngestError::SchemaMismatch);
         }
+        if data.join(OLD_TECHNIQUES).exists() {
+            tracing::info!(
+                "{} is no longer used (#180) and can be deleted",
+                data.join(OLD_TECHNIQUES).display()
+            );
+        }
         let sightings = options(schema(), &["rule_id", "ioc_value"], retention_days, clock);
-        let techniques = options(technique_schema(), &["technique"], retention_days, clock);
         Ok(Sightings {
             table: Table::open(data.join(NAME), sightings)?,
-            techniques: Table::open(data.join(TECHNIQUES), techniques)?,
         })
     }
 
-    /// Appends `rows` and returns once they are on disk (WAL fsync). The
-    /// technique rows go first: a crash in between leaves technique rows
-    /// that a resend writes again, which `count(DISTINCT sighting_id)`
-    /// does not see, rather than a sighting without its techniques.
+    /// Appends `rows` and returns once they are on disk (WAL fsync).
     pub fn append(&self, rows: &[SightingRow]) -> Result<(), IngestError> {
-        let techniques: Vec<Vec<RecordValue>> = rows
-            .iter()
-            .filter(|r| r.seq == 0)
-            .flat_map(technique_records)
-            .collect();
-        append(&self.techniques, techniques)?;
         append(&self.table, rows.iter().map(record).collect())
     }
 
@@ -198,19 +155,14 @@ impl Sightings {
         self.table.query(sql).map_err(|e| e.to_string())
     }
 
-    /// As [`Sightings::query`], over `sighting_techniques`.
-    pub fn query_techniques(&self, sql: &str) -> Result<QueryResult, String> {
-        self.techniques.query(sql).map_err(|e| e.to_string())
-    }
-
     /// Writes closed hours to `live/`.
     pub fn flush(&self) -> Result<usize, IngestError> {
-        Ok(self.table.flush()?.len() + self.techniques.flush()?.len())
+        Ok(self.table.flush()?.len())
     }
 
     /// Merges closed days into `archive/` and applies retention.
     pub fn compact(&self) -> Result<usize, IngestError> {
-        Ok(self.table.compact()?.len() + self.techniques.compact()?.len())
+        Ok(self.table.compact()?.len())
     }
 
     /// The Parquet files the table lists now: path relative to the table
@@ -265,7 +217,6 @@ impl Sightings {
     }
 
     pub fn close(&self) -> Result<(), IngestError> {
-        self.techniques.close()?;
         self.table.close()
     }
 }
