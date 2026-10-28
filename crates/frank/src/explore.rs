@@ -10,12 +10,12 @@ use frank_core::{sql_quote, Tier};
 /// before `seq` existed are all counted, as they were then.
 pub const FIRST_ROW: &str = "(seq = 0 OR seq IS NULL)";
 
-/// A sighting's techniques one row each (#180): `technique` holds them
-/// comma-separated, each once (frank-core drops repeats).
-pub const BY_TECHNIQUE: &str = "sightings, UNNEST(string_split(technique, ',')) AS t(tech)";
+/// A sighting's techniques one row each (#180), from the `techniques`
+/// list (0.21), each once (frank-core drops repeats).
+pub const BY_TECHNIQUE: &str = "sightings, UNNEST(techniques) AS t(tech)";
 /// The unnested technique.
 pub const TECH: &str = "tech";
-/// Skips the empty string `string_split` gives for an empty `technique`.
+/// Skips empty techniques; the list holds none, this guards the count.
 pub const TECH_SET: &str = "tech <> ''";
 
 /// What a list can be grouped and filtered by.
