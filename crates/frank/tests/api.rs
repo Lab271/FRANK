@@ -696,6 +696,66 @@ fn keys(v: &Value) -> Vec<String> {
         .collect()
 }
 
+/// The lookup's panels (#182): grouped like the rule page, under the
+/// reporter threshold, and limited to one day on request.
+#[tokio::test]
+async fn lookup_panels_follow_explore_rules() {
+    let h = harness("lookup-panels");
+    explore_fixture(&h).await;
+    let get = |tok: &'static str, extra: &'static str| {
+        let app = h.app.clone();
+        async move {
+            let url = format!("/v1/iocs?type=domain&value=evil.example{extra}");
+            call(&app, "GET", &url, Some(tok), None).await
+        }
+    };
+    let panel_keys = |v: &Value, panel: &str| -> Vec<(String, i64)> {
+        v["panels"][panel]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c["key"].as_str().unwrap().to_string(),
+                    c["count"].as_i64().unwrap(),
+                )
+            })
+            .collect()
+    };
+
+    let (st, c) = get("c", "").await;
+    assert_eq!(st, StatusCode::OK, "{c}");
+    assert_eq!(
+        panel_keys(&c, "rules"),
+        [("r1".into(), 3)],
+        "r2 has one reporter"
+    );
+    assert_eq!(panel_keys(&c, "sectors"), [("energy".into(), 3)]);
+    assert_eq!(
+        panel_keys(&c, "severities"),
+        [("high".into(), 6)],
+        "r2 rows lift it, three reporters"
+    );
+
+    let (_, p) = get("p", "").await;
+    let mut rules = panel_keys(&p, "rules");
+    rules.sort();
+    assert_eq!(
+        rules,
+        [("r1".into(), 3), ("r2".into(), 3)],
+        "partners see exact cells"
+    );
+
+    let (_, day) = get("p", "&day=2026-10-22").await;
+    assert_eq!(panel_keys(&day, "sectors").len(), 2);
+    let (_, other) = get("p", "&day=2026-10-23").await;
+    assert!(panel_keys(&other, "rules").is_empty(), "{other}");
+    assert_eq!(
+        get("p", "&day=22-10-2026").await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
 #[tokio::test]
 async fn explore_groups_filters_and_suppresses() {
     let h = harness("explore");

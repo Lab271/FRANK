@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.20.0] - 2026-10-28
+
+### Added
+- IoC lookup details in the side pane: per-day and per-rule views, with sectors, severities, techniques and campaigns (#182).
+- `GET /v1/iocs` returns `panels` (same reporter threshold and TLP rules as Explore) and takes `day=YYYY-MM-DD` (#182).
+
 ## [0.19.0] - 2026-10-28
 
 ### Changed

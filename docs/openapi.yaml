@@ -332,9 +332,10 @@ paths:
       parameters:
         - { name: type, in: query, required: true, schema: { type: string, examples: [ipv4] } }
         - { name: value, in: query, required: true, schema: { type: string } }
+        - { name: day, in: query, required: false, description: "Limit `panels` to one day, YYYY-MM-DD.", schema: { type: string, format: date } }
       responses:
         "200":
-          description: Whether it is known, when, by how many reporters, under which rules.
+          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`."
           content:
             application/json:
               schema: { type: object }

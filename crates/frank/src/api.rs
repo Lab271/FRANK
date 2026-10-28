@@ -387,6 +387,53 @@ struct IocQuery {
     #[serde(rename = "type")]
     ioc_type: String,
     value: String,
+    /// Limit the panels to one day, `YYYY-MM-DD` (#182).
+    day: Option<String>,
+}
+
+/// `YYYY-MM-DD` as `[start, end)` in nanoseconds.
+fn day_bounds(day: &str) -> Option<(i64, i64)> {
+    let d = time::Date::parse(
+        day,
+        time::macros::format_description!("[year]-[month]-[day]"),
+    )
+    .ok()?;
+    let start = d.midnight().assume_utc().unix_timestamp() * 1_000_000_000;
+    Some((start, start + DAY_NS))
+}
+
+/// The lookup's panels (#182): the IoC's sightings since `since` (and before
+/// `until`), grouped the way the rule page groups them, under the same
+/// reporter threshold and TLP rules as Explore.
+fn ioc_panels(
+    s: &Sightings,
+    ioc: &Ioc,
+    since: i64,
+    until: Option<i64>,
+    tier: Tier,
+) -> Result<Value, ApiError> {
+    let visible = match until {
+        Some(u) => format!("{} AND ts < {u}", tlp_visible(tier)),
+        None => tlp_visible(tier),
+    };
+    let exact = tier >= Tier::Partner;
+    let list = |group, n| {
+        let q = ex::Query {
+            group,
+            days: 0,
+            filters: vec![(Dimension::Ioc, ioc.key())],
+        };
+        grouped(s, &q, since, &visible, exact, n)
+    };
+    Ok(json!({
+        "since": since,
+        "until": until,
+        "rules": list(Dimension::Rule, 15)?,
+        "sectors": list(Dimension::Sector, 20)?,
+        "severities": list(Dimension::Severity, 10)?,
+        "techniques": list(Dimension::Technique, 15)?,
+        "campaigns": list(Dimension::Campaign, 10)?,
+    }))
 }
 
 async fn ioc_lookup(
@@ -398,6 +445,13 @@ async fn ioc_lookup(
     let t = IocType::parse(&q.ioc_type)
         .ok_or_else(|| unprocessable(format!("unknown IoC type {:?}", q.ioc_type)))?;
     let ioc = Ioc::new(t, &q.value).map_err(unprocessable)?;
+    let window = match q.day.as_deref() {
+        Some(d) => Some(
+            day_bounds(d)
+                .ok_or_else(|| unprocessable(format!("day: expected YYYY-MM-DD, got {d:?}")))?,
+        ),
+        None => None,
+    };
     blocking(move || {
         let days = app
             .iocs
@@ -437,6 +491,11 @@ async fn ioc_lookup(
             let ts = times(&app.sightings, &filter)?;
             (rules, reporters, ex::trend(&ts, now, TREND_DAYS))
         };
+        let panels = match (window, days.first()) {
+            (Some((from, to)), _) => ioc_panels(&app.sightings, &ioc, from, Some(to), caller.tier)?,
+            (None, Some(d)) => ioc_panels(&app.sightings, &ioc, d.first_ts, None, caller.tier)?,
+            (None, None) => Value::Null,
+        };
         Ok(Json(json!({
             "ioc": ioc,
             "known": !days.is_empty(),
@@ -447,6 +506,7 @@ async fn ioc_lookup(
             "days": days,
             "rules": rules,
             "trend": trend,
+            "panels": panels,
         })))
     })
     .await
