@@ -2,7 +2,6 @@
 //!
 //! ```text
 //! <data>/sightings/                 striped Parquet table (db-core ingest)
-//! <data>/sighting_techniques/       striped Parquet table: sighting × technique, server only (#160)
 //! <data>/iocs.db                    row table, one row per IoC per day
 //! <data>/registry.db                row table: resend index (participant, sighting id → digest)
 //! <data>/audit/                     JSON lines: who did what ([`crate::audit`])

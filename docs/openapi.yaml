@@ -283,8 +283,8 @@ paths:
       description: |
         `group` and every filter name a dimension: rule, ioc, campaign,
         technique, sector, ioc_type, severity. Sectors, IoC types and
-        severities need observer; the others contributor. Grouping by
-        technique cannot be filtered by ioc or ioc_type.
+        severities need observer; the others contributor. Any filter goes
+        with any group, technique by ioc or ioc_type included.
       x-min-status: observer
       parameters:
         - name: group

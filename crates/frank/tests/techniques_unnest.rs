@@ -1,11 +1,13 @@
-//! #180 spike: techniques counted on `sightings` with
-//! `UNNEST(string_split(technique, ','))` (db-core 0.192) give what the
-//! `sighting_techniques` table gives, wherever the rows are: in the WAL, in
-//! a flushed hour file, in a merged day, after reopening.
+//! #180: techniques counted on `sightings` with
+//! `UNNEST(string_split(technique, ','))` (db-core 0.192), wherever the
+//! rows are: in the WAL, in a flushed hour file, in a merged day, after
+//! reopening. Until 0.18 a `sighting_techniques` table gave these counts;
+//! the expected values are what it gave on the same rows.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use db_core::engine::{Cell, QueryResult};
+use frank::explore::{BY_TECHNIQUE, FIRST_ROW, TECH_SET};
 use frank::store::Sightings;
 use frank_core::{IocType, SightingRow, Tlp};
 
@@ -75,14 +77,18 @@ fn rows(r: &QueryResult) -> Vec<String> {
         .collect()
 }
 
-/// Today's query on `sighting_techniques` (one row per sighting × technique).
-const OLD: &str =
-    "SELECT technique, count(*) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
-     FROM sighting_techniques WHERE ts >= 0 AND tlp IN ('clear', 'green', 'amber') \
-     GROUP BY technique ORDER BY technique";
+/// The form the server uses without an IoC filter: the first row of each
+/// sighting, `count(*)` (exact because a sighting holds a technique once).
+fn first_row() -> String {
+    format!(
+        "SELECT tech, count(*) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
+         FROM {BY_TECHNIQUE} WHERE ts >= 0 AND tlp IN ('clear', 'green', 'amber') \
+         AND {FIRST_ROW} AND {TECH_SET} GROUP BY tech ORDER BY tech"
+    )
+}
 
-/// The same on `sightings`: every row of a sighting carries its techniques,
-/// so sightings are counted distinct.
+/// Over every row of a sighting (the form with an IoC filter), sightings
+/// counted distinct.
 const NEW: &str = "SELECT tech, count(DISTINCT sighting_id) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
      FROM sightings, UNNEST(string_split(technique, ',')) AS t(tech) \
      WHERE ts >= 0 AND tlp IN ('clear', 'green', 'amber') AND tech <> '' \
@@ -99,14 +105,17 @@ const ONE_TECHNIQUE: &str = "SELECT count(DISTINCT sighting_id), count(DISTINCT 
      FROM sightings, UNNEST(string_split(technique, ',')) AS t(tech) WHERE tech = 'T1105'";
 
 fn check(s: &Sightings, stage: &str, expected: &[&str]) {
-    let old = rows(&s.query_techniques(OLD).unwrap());
-    let new = rows(&s.query(NEW).unwrap_or_else(|e| panic!("{stage}: {e}")));
-    assert_eq!(new, expected, "{stage}: UNNEST on sightings");
-    assert_eq!(old, new, "{stage}: sighting_techniques and UNNEST disagree");
+    let first = rows(
+        &s.query(&first_row())
+            .unwrap_or_else(|e| panic!("{stage}: {e}")),
+    );
+    let all = rows(&s.query(NEW).unwrap_or_else(|e| panic!("{stage}: {e}")));
+    assert_eq!(first, expected, "{stage}: first row, count(*)");
+    assert_eq!(all, expected, "{stage}: all rows, count(DISTINCT)");
 }
 
 #[test]
-fn unnest_counts_techniques_like_the_techniques_table() {
+fn techniques_are_counted_with_unnest_in_every_state() {
     let dir = std::env::temp_dir().join(format!("frank-unnest-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();

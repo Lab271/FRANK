@@ -168,8 +168,8 @@ pub struct SightingRow {
     pub ts_ns: i64,
     pub sighting_id: String,
     pub rule_id: Option<String>,
-    /// All ATT&CK techniques, comma-separated, for display and filtering;
-    /// ranking reads the `sighting_techniques` table.
+    /// All ATT&CK techniques, comma-separated, each once; ranked with
+    /// `UNNEST(string_split(technique, ','))` (#180).
     pub technique: Option<String>,
     pub campaign: Option<String>,
     pub ioc_type: Option<IocType>,
