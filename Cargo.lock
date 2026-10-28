@@ -225,8 +225,8 @@ dependencies = [
 
 [[package]]
 name = "db-core"
-version = "0.197.0"
-source = "git+https://github.com/t-rust-db/db-core?tag=v0.197.0#982d88cdbe2c398d3bf4c66595b3658a870964e4"
+version = "0.198.0"
+source = "git+https://github.com/t-rust-db/db-core?tag=v0.198.0#5c1a786212f918938808a09e7a2dfede6c8c2d4d"
 dependencies = [
  "memmap2",
  "ruzstd",
