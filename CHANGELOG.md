@@ -4,6 +4,14 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.21.0] - 2026-10-29
+
+### Changed
+
+- **Techniques are a `LIST<UTF8>` column, `techniques`** (db-core 0.201): ranked with `UNNEST(techniques)` and filtered with `list_contains(techniques, …)` instead of `LIKE` on a joined string.
+- **Breaking for readers of the Parquet files:** the comma-separated `technique` column is gone; read `techniques` (`VARCHAR[]` in DuckDB, `list<string>` in pyarrow).
+- At startup, a table that still has `technique` is rewritten once to the new schema. Every row keeps the hour and day it arrived in, and the old table is kept as `data/sightings.pre-list/` (delete it once checked). The rewrite refuses to start while that directory exists.
+
 ## [0.20.0] - 2026-10-28
 
 ### Added
