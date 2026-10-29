@@ -87,8 +87,8 @@ impl Dimension {
 
     /// The SQL condition for one filter value. An IoC filter is
     /// `type:value`; categories are lower case, techniques upper case. A
-    /// technique is one item of the comma-separated list, or (`unnested`,
-    /// in [`BY_TECHNIQUE`]) the unnested value.
+    /// technique is an item of the `techniques` list, or (`unnested`, in
+    /// [`BY_TECHNIQUE`]) the unnested value.
     ///
     /// # Errors
     ///
@@ -114,17 +114,10 @@ impl Dimension {
             Dimension::Technique if unnested => {
                 format!("{TECH} = {}", sql_quote(&v.to_ascii_uppercase()))
             }
-            Dimension::Technique => {
-                let t = v.to_ascii_uppercase();
-                let like = |p: String| format!("technique LIKE {}", sql_quote(&p));
-                format!(
-                    "(technique = {} OR {} OR {} OR {})",
-                    sql_quote(&t),
-                    like(format!("{t},%")),
-                    like(format!("%,{t}")),
-                    like(format!("%,{t},%"))
-                )
-            }
+            Dimension::Technique => format!(
+                "list_contains(techniques, {})",
+                sql_quote(&v.to_ascii_uppercase())
+            ),
             Dimension::Sector | Dimension::IocType | Dimension::Severity => {
                 format!(
                     "{} = {}",
@@ -307,7 +300,7 @@ mod tests {
         assert!(sql.contains(TECH_SET) && sql.contains(FIRST_ROW), "{sql}");
         let q = Query::parse(&params(&[("group", "rule"), ("technique", "t1059")])).unwrap();
         let w = q.where_clause(0, "tlp = 'green'").unwrap();
-        assert!(w.contains("technique LIKE '%,T1059,%'"), "{w}");
+        assert!(w.contains("list_contains(techniques, 'T1059')"), "{w}");
         assert!(q.sql(0, "x").unwrap().contains("FROM sightings "));
         assert!(w.ends_with(FIRST_ROW), "{w}");
         let q = Query::parse(&params(&[("group", "rule"), ("ioc", "ipv4:198.51.100.7")])).unwrap();

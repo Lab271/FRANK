@@ -6,8 +6,8 @@
 //! Techniques are ranked on this table too, with `UNNEST(techniques)`, a
 //! `LIST<UTF8>` column (0.21). Until 0.18 a second table,
 //! `sighting_techniques/`, held one row per sighting × technique; from
-//! 0.19 to 0.20 they were split from the `technique` string at query time
-//! (#180). `technique` is still written; a later release drops it.
+//! 0.19 to 0.20 they were split at query time from a comma-separated
+//! `technique` string (#180), which the list replaces.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -25,9 +25,10 @@ use frank_core::SightingRow;
 pub const NAME: &str = "sightings";
 /// The directory of the technique table FRANK wrote until 0.18 (#180).
 const OLD_TECHNIQUES: &str = "sighting_techniques";
-/// The list column added in 0.21.
+/// The list column, in place of the `technique` string since 0.21.
 const TECHNIQUES: &str = "techniques";
-/// Where a table stored without [`TECHNIQUES`] is kept after its rewrite.
+/// Where a table stored with the `technique` string is kept after its
+/// rewrite.
 const PRE_LIST: &str = "sightings.pre-list";
 const SORT_KEY: &[&str] = &["rule_id", "ioc_value"];
 
@@ -37,7 +38,8 @@ fn schema() -> Vec<ColumnSpec> {
         ColumnSpec::new("ts", ColumnType::TimestampNanos, false),
         ColumnSpec::new("sighting_id", ColumnType::Utf8, false),
         text("rule_id"),
-        text("technique"),
+        // A list since 0.21; `open` rewrites a table with the string.
+        ColumnSpec::new(TECHNIQUES, ColumnType::ListUtf8, true),
         text("campaign"),
         text("ioc_type"),
         text("ioc_value"),
@@ -55,8 +57,6 @@ fn schema() -> Vec<ColumnSpec> {
         // The grain (#160); NULL in rows stored before 0.15.
         ColumnSpec::new("seq", ColumnType::Int64, true),
         text("detail"),
-        // The techniques as a list (0.21); `open` fills it for older rows.
-        ColumnSpec::new(TECHNIQUES, ColumnType::ListUtf8, true),
     ]
 }
 
@@ -78,7 +78,11 @@ fn record(r: &SightingRow) -> Vec<RecordValue> {
         RecordValue::Int(r.ts_ns),
         RecordValue::Str(r.sighting_id.clone()),
         opt(&r.rule_id),
-        opt(&r.technique),
+        if r.techniques.is_empty() {
+            RecordValue::Null
+        } else {
+            RecordValue::List(r.techniques.iter().cloned().map(Some).collect())
+        },
         opt(&r.campaign),
         r.ioc_type
             .map_or(RecordValue::Null, |t| RecordValue::Str(t.as_str().into())),
@@ -103,7 +107,6 @@ fn record(r: &SightingRow) -> Vec<RecordValue> {
         },
         RecordValue::Int(i64::from(r.seq)),
         opt(&r.detail),
-        techniques(r.technique.as_deref()),
     ]
 }
 
@@ -113,10 +116,10 @@ fn replay_clock() -> i64 {
     REPLAY.load(Ordering::SeqCst)
 }
 
-/// Rewrites the table under `data`, stored with `stored` (no
-/// [`TECHNIQUES`]), into the current schema, the list filled from the
-/// `technique` string. db-core can add a column but not fill it for rows
-/// already written, so the rows are copied. Each is appended at its
+/// Rewrites the table under `data`, stored with `stored` (the `technique`
+/// string), into the current schema, the list filled from the string.
+/// db-core can neither drop a column nor fill a new one for rows already
+/// written, so the rows are copied. Each is appended at its
 /// `received` time (`ts` before 0.13), so it stays in the hour and day it
 /// arrived in. The new table is built next to the old one and swapped in
 /// only when every row is there; the old one is kept as [`PRE_LIST`].
@@ -273,7 +276,7 @@ impl Sightings {
         if stored.as_ref().is_some_and(|s| !has(s, "digest")) {
             return Err(IngestError::SchemaMismatch);
         }
-        if let Some(s) = stored.as_ref().filter(|s| !has(s, TECHNIQUES)) {
+        if let Some(s) = stored.as_ref().filter(|s| has(s, "technique")) {
             rewrite(data, s, retention_days, clock)?;
         }
         if data.join(OLD_TECHNIQUES).exists() {
@@ -402,12 +405,12 @@ mod tests {
         CLOCK.load(Ordering::SeqCst)
     }
 
-    fn row(id: &str, arrived: i64, technique: Option<&str>, seq: u32) -> SightingRow {
+    fn row(id: &str, arrived: i64, techniques: &[&str], seq: u32) -> SightingRow {
         SightingRow {
             ts_ns: arrived - HOUR,
             sighting_id: id.into(),
             rule_id: Some("r1".into()),
-            technique: technique.map(Into::into),
+            techniques: techniques.iter().map(|t| (*t).to_string()).collect(),
             campaign: None,
             ioc_type: None,
             ioc_value: Some(format!("{id}-{seq}")),
@@ -457,27 +460,27 @@ mod tests {
     }
 
     #[test]
-    fn a_table_without_the_list_is_rewritten_in_its_partitions() {
+    fn a_table_with_the_string_is_rewritten_in_its_partitions() {
         let data = std::env::temp_dir().join(format!("frank-list-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&data);
         std::fs::create_dir_all(&data).unwrap();
 
-        // A 0.20 table: today's schema without `techniques`, rows over two
-        // days and three hours, flushed and compacted.
+        // A 0.20 table: the `technique` string in place of the list, rows
+        // over two days and three hours, flushed and compacted.
         let mut old = schema();
-        old.pop();
+        old[3] = ColumnSpec::new("technique", ColumnType::Utf8, true);
         let t = Table::open(data.join(NAME), options(old, SORT_KEY, None, now)).unwrap();
         let rows = [
-            row("s1", T0, Some("T1059,T1071.001"), 0),
-            row("s1", T0, Some("T1059,T1071.001"), 1),
-            row("s2", T0 + 2 * HOUR, Some("T1059"), 0),
-            row("s3", T0 + DAY, None, 0),
-            row("s4", T0 + DAY + HOUR, Some(""), 0),
+            (row("s1", T0, &[], 0), Some("T1059,T1071.001")),
+            (row("s1", T0, &[], 1), Some("T1059,T1071.001")),
+            (row("s2", T0 + 2 * HOUR, &[], 0), Some("T1059")),
+            (row("s3", T0 + DAY, &[], 0), None),
+            (row("s4", T0 + DAY + HOUR, &[], 0), Some("")),
         ];
-        for r in &rows {
+        for (r, technique) in &rows {
             CLOCK.store(r.received_ns, Ordering::SeqCst);
             let mut v = record(r);
-            v.pop();
+            v[3] = technique.map_or(RecordValue::Null, |t| RecordValue::Str(t.into()));
             t.append_row(v, Ack::Durable).unwrap();
         }
         CLOCK.store(T0 + DAY + 3 * HOUR, Ordering::SeqCst);
@@ -501,12 +504,13 @@ mod tests {
             counts(&s, "sightings, UNNEST(techniques) AS t(tech)"),
             expected
         );
-        assert_eq!(
-            counts(
-                &s,
-                "sightings, UNNEST(string_split(technique, ',')) AS t(tech)"
-            ),
-            expected
+        let has = s
+            .query("SELECT count(*) FROM sightings WHERE list_contains(techniques, 'T1071.001')")
+            .unwrap();
+        assert_eq!(scalar(&has), 2, "both rows of s1");
+        assert!(
+            s.query("SELECT technique FROM sightings").is_err(),
+            "the string is gone"
         );
         assert_eq!(
             partitions(&s.table),
@@ -516,7 +520,7 @@ mod tests {
 
         // New rows carry the list; a second open does not rewrite again.
         CLOCK.store(T0 + DAY + 4 * HOUR, Ordering::SeqCst);
-        s.append(&[row("s5", now(), Some("T1059"), 0)]).unwrap();
+        s.append(&[row("s5", now(), &["T1059"], 0)]).unwrap();
         s.close().unwrap();
         let s = Sightings::open(&data, None, now).unwrap();
         assert_eq!(
