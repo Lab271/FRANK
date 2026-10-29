@@ -639,6 +639,15 @@ paths:
     get:
       tags: [files]
       summary: The sighting Parquet files
+      description: |
+        One row per sighting × IoC: a sighting with three IoCs is three rows,
+        `seq` 0, 1 and 2, each with one `ioc_type` and `ioc_value` and the
+        sighting's other fields repeated. A sighting without IoCs is one row.
+        The full record (`detail`, `frank/1` JSON) is on the `seq = 0` row only.
+        To count sightings, or to sum `observations`, keep one row per
+        sighting: `WHERE seq = 0 OR seq IS NULL` (NULL in rows stored before
+        0.15). Without it a sighting counts once per IoC. `count(*)` over all
+        rows counts sighting × IoC pairs.
       x-min-status: partner
       responses:
         "200":

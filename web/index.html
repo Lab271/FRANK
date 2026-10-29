@@ -111,11 +111,14 @@
     <p class="note">Partners download the <code>sightings</code> Parquet files and query them here, in the browser,
       on db-core's column engine compiled to WebAssembly. Nothing is sent back. Counts, sums, minimums and
       maximums merge across files; other results are shown per file.</p>
+    <p class="note">A sighting is one row per IoC (<code>seq</code> 0, 1, …), its other fields repeated. Count
+      sightings or sum <code>observations</code> over <code>WHERE seq = 0 OR seq IS NULL</code>, or a sighting
+      counts once per IoC; its record (<code>detail</code>) is on that row only.</p>
     <div class="row">
       <button id="load-files" class="lab-btn lab-btn--secondary">download files</button>
       <span id="files-status" class="note"></span>
     </div>
-    <textarea id="sql" class="lab-input" spellcheck="false" rows="4">SELECT ioc_type, count(*), sum(observations) FROM sightings GROUP BY ioc_type</textarea>
+    <textarea id="sql" class="lab-input" spellcheck="false" rows="4">SELECT rule_id, count(*) AS sightings, sum(observations) FROM sightings WHERE seq = 0 OR seq IS NULL GROUP BY rule_id</textarea>
     <div class="row">
       <button id="run-sql" class="lab-btn">run</button>
       <span id="sql-status" class="note"></span>
