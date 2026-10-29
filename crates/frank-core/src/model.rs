@@ -1,4 +1,4 @@
-//! The normalised sighting (`frank/1`, #160) and the rows of the shared
+//! The no.all(|r| r.techniques == ["T1059", "T1071.001"]));malised sighting (`frank/1`, #160) and the rows of the shared
 //! `sightings` table derived from it.
 //!
 //! A FRANK sighting packs three STIX concepts: what fired (a SIGMA rule, a
@@ -168,9 +168,9 @@ pub struct SightingRow {
     pub ts_ns: i64,
     pub sighting_id: String,
     pub rule_id: Option<String>,
-    /// All ATT&CK techniques, comma-separated, each once; ranked with
-    /// `UNNEST(string_split(technique, ','))` (#180).
-    pub technique: Option<String>,
+    /// All ATT&CK techniques, each once, stored as the `techniques` list
+    /// (0.21) and ranked with `UNNEST(techniques)`.
+    pub techniques: Vec<String>,
     pub campaign: Option<String>,
     pub ioc_type: Option<IocType>,
     pub ioc_value: Option<String>,
@@ -267,12 +267,11 @@ impl Sighting {
     #[must_use]
     pub fn rows(&self, sighting_id: &str) -> Vec<SightingRow> {
         let of = &self.sighting_of;
-        let techniques = (!of.techniques.is_empty()).then(|| of.techniques.join(","));
         let row = |seq: usize, ioc: Option<&Ioc>| SightingRow {
             ts_ns: self.ts_ns,
             sighting_id: sighting_id.to_string(),
             rule_id: of.rule.as_ref().and_then(|r| r.id.clone()),
-            technique: techniques.clone(),
+            techniques: of.techniques.clone(),
             campaign: of.campaign.clone(),
             ioc_type: ioc.map(|i| i.ioc_type),
             ioc_value: ioc.map(|i| i.value.clone()),
@@ -1144,9 +1143,7 @@ mod tests {
         let id = "sighting--0f8fad5b-d9cb-469f-a165-70867728950e";
         let rows = s.rows(id);
         assert_eq!(rows.iter().map(|r| r.seq).collect::<Vec<_>>(), [0, 1, 2]);
-        assert!(rows
-            .iter()
-            .all(|r| r.technique.as_deref() == Some("T1059,T1071.001")));
+        assert!(rows.iter().all(|r| r.techniques == ["T1059", "T1071.001"]));
         assert!(rows[1..].iter().all(|r| r.detail.is_none()));
         let detail: Value = serde_json::from_str(rows[0].detail.as_ref().unwrap()).unwrap();
         assert_eq!(detail["sighting_id"], id);

@@ -1,13 +1,13 @@
-//! #180: techniques counted on `sightings` with
-//! `UNNEST(string_split(technique, ','))` (db-core 0.192), wherever the
-//! rows are: in the WAL, in a flushed hour file, in a merged day, after
-//! reopening. Until 0.18 a `sighting_techniques` table gave these counts;
-//! the expected values are what it gave on the same rows.
+//! #180: techniques counted on `sightings` with `UNNEST(techniques)`, a
+//! `LIST<UTF8>` column since 0.21, and filtered with `list_contains`,
+//! wherever the rows are: in the WAL, in a flushed hour file, in a merged
+//! day, after reopening. Until 0.18 a `sighting_techniques` table gave
+//! these counts; the expected values are what it gave on the same rows.
 
 use std::sync::atomic::{AtomicI64, Ordering};
 
 use db_core::engine::{Cell, QueryResult};
-use frank::explore::{BY_TECHNIQUE, FIRST_ROW, TECH_SET};
+use frank::explore::{Dimension, BY_TECHNIQUE, FIRST_ROW, TECH_SET};
 use frank::store::Sightings;
 use frank_core::{IocType, SightingRow, Tlp};
 
@@ -25,7 +25,7 @@ fn now() -> i64 {
 fn sighting(
     id: &str,
     ts: i64,
-    techniques: Option<&str>,
+    techniques: &[&str],
     iocs: &[(IocType, &str)],
     reporter: &str,
     tlp: Tlp,
@@ -34,7 +34,7 @@ fn sighting(
         ts_ns: ts,
         sighting_id: id.into(),
         rule_id: Some("sigma-rule-x".into()),
-        technique: techniques.map(Into::into),
+        techniques: techniques.iter().map(|t| (*t).to_string()).collect(),
         campaign: Some("c1".into()),
         ioc_type: ioc.map(|(t, _)| *t),
         ioc_value: ioc.map(|(_, v)| (*v).into()),
@@ -89,27 +89,39 @@ fn first_row() -> String {
 
 /// Over every row of a sighting (the form with an IoC filter), sightings
 /// counted distinct.
-const NEW: &str = "SELECT tech, count(DISTINCT sighting_id) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
-     FROM sightings, UNNEST(string_split(technique, ',')) AS t(tech) \
-     WHERE ts >= 0 AND tlp IN ('clear', 'green', 'amber') AND tech <> '' \
-     GROUP BY tech ORDER BY tech";
+fn all_rows() -> String {
+    format!(
+        "SELECT tech, count(DISTINCT sighting_id) AS n, count(DISTINCT reporter) AS r, min(ts), max(ts) \
+         FROM {BY_TECHNIQUE} WHERE ts >= 0 AND tlp IN ('clear', 'green', 'amber') AND {TECH_SET} \
+         GROUP BY tech ORDER BY tech"
+    )
+}
 
 /// What the old table cannot answer (#180): techniques of the sightings
 /// that carry an IPv4.
-const BY_IOC_TYPE: &str = "SELECT tech, count(DISTINCT sighting_id) AS n \
-     FROM sightings, UNNEST(string_split(technique, ',')) AS t(tech) \
-     WHERE ioc_type = 'ipv4' AND tech <> '' GROUP BY tech ORDER BY tech";
+fn by_ioc_type() -> String {
+    format!(
+        "SELECT tech, count(DISTINCT sighting_id) AS n \
+         FROM {BY_TECHNIQUE} WHERE ioc_type = 'ipv4' AND {TECH_SET} GROUP BY tech ORDER BY tech"
+    )
+}
 
-/// A filter on the unnested value (Explore's technique filter).
-const ONE_TECHNIQUE: &str = "SELECT count(DISTINCT sighting_id), count(DISTINCT reporter) \
-     FROM sightings, UNNEST(string_split(technique, ',')) AS t(tech) WHERE tech = 'T1105'";
+/// Explore's technique filter, on the unnested value and on the list.
+fn one_technique(unnested: bool) -> String {
+    let from = if unnested { BY_TECHNIQUE } else { "sightings" };
+    let cond = Dimension::Technique.condition("t1105", unnested).unwrap();
+    format!("SELECT count(DISTINCT sighting_id), count(DISTINCT reporter) FROM {from} WHERE {cond}")
+}
 
 fn check(s: &Sightings, stage: &str, expected: &[&str]) {
     let first = rows(
         &s.query(&first_row())
             .unwrap_or_else(|e| panic!("{stage}: {e}")),
     );
-    let all = rows(&s.query(NEW).unwrap_or_else(|e| panic!("{stage}: {e}")));
+    let all = rows(
+        &s.query(&all_rows())
+            .unwrap_or_else(|e| panic!("{stage}: {e}")),
+    );
     assert_eq!(first, expected, "{stage}: first row, count(*)");
     assert_eq!(all, expected, "{stage}: all rows, count(DISTINCT)");
 }
@@ -130,7 +142,7 @@ fn techniques_are_counted_with_unnest_in_every_state() {
     batch.extend(sighting(
         "s1",
         T0,
-        Some("T1059.001,T1105"),
+        &["T1059.001", "T1105"],
         &[ip("198.51.100.1"), dom("evil.example")],
         "r1",
         Tlp::Green,
@@ -138,7 +150,7 @@ fn techniques_are_counted_with_unnest_in_every_state() {
     batch.extend(sighting(
         "s2",
         T0 + 1,
-        Some("T1105"),
+        &["T1105"],
         &[dom("evil.example")],
         "r2",
         Tlp::Clear,
@@ -146,7 +158,7 @@ fn techniques_are_counted_with_unnest_in_every_state() {
     batch.extend(sighting(
         "s3",
         T0 + 2,
-        None,
+        &[],
         &[ip("198.51.100.2")],
         "r1",
         Tlp::Green,
@@ -154,7 +166,7 @@ fn techniques_are_counted_with_unnest_in_every_state() {
     batch.extend(sighting(
         "s4",
         T0 + 3,
-        Some("T1059.001"),
+        &["T1059.001"],
         &[],
         "r3",
         Tlp::AmberStrict,
@@ -173,7 +185,7 @@ fn techniques_are_counted_with_unnest_in_every_state() {
     s.append(&sighting(
         "s5",
         T0 + 2 * HOUR,
-        Some("T1105,T1566.002"),
+        &["T1105", "T1566.002"],
         &[ip("203.0.113.9")],
         "r3",
         Tlp::Amber,
@@ -193,10 +205,16 @@ fn techniques_are_counted_with_unnest_in_every_state() {
     check(&s, "merged day", &hour2);
 
     assert_eq!(
-        rows(&s.query(BY_IOC_TYPE).unwrap()),
+        rows(&s.query(&by_ioc_type()).unwrap()),
         ["T1059.001 1", "T1105 2", "T1566.002 1"]
     );
-    assert_eq!(rows(&s.query(ONE_TECHNIQUE).unwrap()), ["3 3"]);
+    for unnested in [true, false] {
+        assert_eq!(
+            rows(&s.query(&one_technique(unnested)).unwrap()),
+            ["3 3"],
+            "unnested: {unnested}"
+        );
+    }
     s.close().unwrap();
 
     // Reopened: everything read back from files.

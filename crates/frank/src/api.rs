@@ -980,7 +980,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             ts_ns: *ts,
             sighting_id: String::new(),
             rule_id: None,
-            technique: None,
+            techniques: Vec::new(),
             campaign: None,
             ioc_type: Some(t),
             ioc_value: Some(v.clone()),

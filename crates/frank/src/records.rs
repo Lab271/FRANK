@@ -273,7 +273,7 @@ mod tests {
         let page = q.sql("x", None, Some(&["s".into()]));
         assert!(!page.contains("ioc_type"), "IoCs are on any row: {page}");
         assert!(
-            page.contains("target_sector = 'energy'") && page.contains("technique LIKE"),
+            page.contains("target_sector = 'energy'") && page.contains("list_contains(techniques"),
             "{page}"
         );
         assert!(
