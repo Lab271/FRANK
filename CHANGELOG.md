@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.27.0] - 2026-10-30
+
+### Added
+
+- **`http://frank.local` redirects to HTTPS**: Caddy in the podman deployment now also listens on port 80 (`FRANK_HTTP_ADDR`) and sends every request with a 307 to `https://frank.local:8443`, keeping the path and query. The API address `http://127.0.0.1:8080` stays as it is.
+
 ## [0.26.0] - 2026-10-30
 
 ### Added

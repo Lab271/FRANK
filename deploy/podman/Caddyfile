@@ -3,8 +3,10 @@
 # own local CA (`tls internal`), kept in the caddy-data volume; `make
 # trust` adds that CA's root to the macOS keychain once, so browsers
 # accept it. On STACKIT the same Caddy gets a public certificate instead.
+# http://frank.local (FRANK_HTTP_ADDR, port 80) only redirects there.
 {
-	# Only 443 is published: no HTTP listener to redirect from.
+	# The redirect below is ours: Caddy's own would point at port 443 of
+	# the container, not at the host port (FRANK_HTTPS_PORT).
 	auto_https disable_redirects
 	# The root goes into the host's keychain (`make trust`), not the
 	# container's trust store.
@@ -19,4 +21,10 @@
 	tls internal
 	encode zstd gzip
 	reverse_proxy frank:8080
+}
+
+http://{$FRANK_HOST:frank.local}, http://localhost {
+	# 307: temporary, so a browser does not keep it when the port changes,
+	# and a POST stays a POST.
+	redir https://{host}:{$FRANK_HTTPS_PORT:8443}{uri} 307
 }

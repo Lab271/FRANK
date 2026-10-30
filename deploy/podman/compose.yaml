@@ -17,6 +17,9 @@
 # trust` once makes the browser accept its certificate. macOS lets a user
 # bind port 443 only on every interface: FRANK_TLS_ADDR=443 gives
 # https://frank.local, reachable from the local network too.
+# FRANK_HTTP_ADDR (default 80, every interface: the same macOS rule) only
+# redirects http://frank.local to the HTTPS address; FRANK_HTTPS_PORT is
+# that address's port.
 services:
   frank:
     image: ghcr.io/lab271/frank:latest
@@ -41,6 +44,7 @@ services:
     depends_on: [frank]
     ports:
       - "${FRANK_TLS_ADDR:-127.0.0.1:8443}:443"
+      - "${FRANK_HTTP_ADDR:-80}:80"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro,Z
       # The local CA and its certificates: keep them, or `make trust` again.
@@ -48,6 +52,7 @@ services:
       - caddy-config:/config
     environment:
       FRANK_HOST: "${FRANK_HOST:-frank.local}"
+      FRANK_HTTPS_PORT: "${FRANK_HTTPS_PORT:-8443}"
     restart: unless-stopped
 
 volumes:
