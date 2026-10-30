@@ -193,11 +193,20 @@ fn rewrite(
         let values = schema()
             .iter()
             .map(|c| {
-                if c.name == TECHNIQUES {
+                if c.name == TECHNIQUES && technique.is_some() {
                     return Ok(techniques(match technique.map(|i| &row[i]) {
                         Some(Cell::Text(t)) => Some(t.as_str()),
                         _ => None,
                     }));
+                }
+                // A stored list (0.21 on) reads back as JSON text.
+                if c.column_type == ColumnType::ListUtf8 {
+                    return match at(&c.name).map(|i| &row[i]) {
+                        Some(Cell::Text(t)) => serde_json::from_str::<Vec<Option<String>>>(t)
+                            .map(RecordValue::List)
+                            .map_err(|e| corrupt(format!("{}: {e}: {t}", c.name))),
+                        _ => Ok(RecordValue::Null),
+                    };
                 }
                 let cell = at(&c.name).map(|i| &row[i]);
                 if c.name == "digest" && !first(row) {
@@ -645,6 +654,11 @@ mod tests {
             .unwrap();
         assert_eq!(scalar(&one), 2);
         assert_eq!(partitions(&s.table), before, "rows stay in their hours");
+        assert_eq!(
+            counts(&s, "sightings, UNNEST(techniques) AS t(tech)"),
+            ["T1059 1"],
+            "the list is kept"
+        );
 
         // New rows go in as bytes; a second open does not rewrite again.
         BIN_CLOCK.store(T0 + 4 * HOUR, Ordering::SeqCst);
