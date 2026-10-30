@@ -12,9 +12,9 @@ COMPOSE := podman compose -f deploy/podman/compose.yaml
 N ?= 60
 RATE ?= 60
 DURATION ?= 1h
-# The MaxMind GeoLite2 licence key, read from 1Password when `make geoip` runs (#191).
-GEOIP_KEY_REF ?= op://Private/MaxMind GeoLite2/license key
-GEOIP_DIR := $(DATA)/geoip/geolite2
+# DB-IP's free country and ASN databases, CC BY 4.0, no account needed (#191).
+GEOIP_DIR := $(DATA)/geoip/dbip-lite
+DBIP_URL := https://download.db-ip.com/free
 
 .PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down clean
 
@@ -105,16 +105,18 @@ stream-setup: server ## Register the checked-in test tokens (scripts/stream_toke
 stream: ## Stream sightings through the API and watch the table: make stream RATE=60 DURATION=1h [FRANK_URL=…]
 	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION)
 
-geoip: ## Download GeoLite2 Country + ASN into data/geoip/geolite2 (licence key from 1Password, GEOIP_KEY_REF)
-	@command -v op >/dev/null || { echo "needs the 1Password CLI (op)" >&2; exit 1; }
+geoip: ## Download DB-IP Lite Country + ASN into data/geoip/dbip-lite (this month's, else last month's)
 	@install -d -m 700 $(DATA)/geoip $(GEOIP_DIR)
-	@set -euo pipefail; KEY=$$(op read "$(GEOIP_KEY_REF)"); \
+	@set -euo pipefail; \
 	tmp=$$(mktemp -d $(DATA)/geoip/.download.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
-	for ed in GeoLite2-Country GeoLite2-ASN; do \
-	  printf 'url = "https://download.maxmind.com/app/geoip_download?edition_id=%s&license_key=%s&suffix=tar.gz"\n' "$$ed" "$$KEY" \
-	    | curl -fsSL --config - | tar -xz -C "$$tmp"; \
+	months="$$(date -u +%Y-%m) $$(date -u -v-1m +%Y-%m 2>/dev/null || date -u -d '1 month ago' +%Y-%m)"; \
+	for db in country asn; do \
+	  for m in $$months; do \
+	    curl -fsSL "$(DBIP_URL)/dbip-$$db-lite-$$m.mmdb.gz" -o "$$tmp/$$db.gz" && break; \
+	  done; \
+	  gunzip -c "$$tmp/$$db.gz" > "$$tmp/dbip-$$db-lite.mmdb"; \
 	done; \
-	chmod 600 "$$tmp"/*/*; mv -f "$$tmp"/*/*.mmdb "$$tmp"/*/*.txt $(GEOIP_DIR)/
+	chmod 600 "$$tmp"/*.mmdb; mv -f "$$tmp"/*.mmdb $(GEOIP_DIR)/
 	@ls -l $(GEOIP_DIR)
 
 MISP_LISTS := https://raw.githubusercontent.com/MISP/misp-warninglists/main/lists

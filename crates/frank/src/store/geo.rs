@@ -1,5 +1,5 @@
 //! The `ip_geo` row table (#191): the country and network (ASN) of each
-//! IP address FRANK has seen, looked up in the GeoLite2 databases. It is
+//! IP address FRANK has seen, looked up in the DB-IP databases. It is
 //! a lookup table next to `sightings`, which stays as it is: an address
 //! without a row was not looked up yet, a row with country `ZZ` and ASN 0
 //! was looked up and found nothing.
@@ -25,7 +25,7 @@ const SCHEMA: [&str; 3] = [
     "CREATE INDEX ip_geo_hex ON ip_geo (ip_hex)",
 ];
 
-/// What GeoLite2 says about one address.
+/// What the databases say about one address.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
 pub struct IpGeo {
     pub ip: String,
@@ -38,7 +38,7 @@ pub struct IpGeo {
     pub as_org: Option<String>,
     #[serde(skip)]
     pub looked_up: i64,
-    /// The GeoLite2 build it came from, seconds since the epoch.
+    /// The database build it came from, seconds since the epoch.
     #[serde(skip)]
     pub db_build: i64,
 }

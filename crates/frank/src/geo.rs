@@ -1,5 +1,6 @@
-//! Country and network (ASN) of IP addresses (#191), from MaxMind's
-//! GeoLite2 databases in `data/geoip/geolite2/` (`make geoip`).
+//! Country and network (ASN) of IP addresses (#191), from DB-IP's free
+//! Lite databases in `data/geoip/dbip-lite/` (`make geoip`), MaxMind DB
+//! files with GeoLite2's fields.
 //!
 //! The databases are assumed to be there, and FRANK keeps working when
 //! they are not: missing, unreadable or corrupt files are warned about
@@ -25,14 +26,14 @@ use crate::store::geo::{GeoDb, IpGeo};
 use crate::store::Sightings;
 
 /// Where the databases are, under the data directory.
-pub const DIR: &str = "geoip/geolite2";
-pub const COUNTRY: &str = "GeoLite2-Country.mmdb";
-pub const ASN: &str = "GeoLite2-ASN.mmdb";
+pub const DIR: &str = "geoip/dbip-lite";
+pub const COUNTRY: &str = "dbip-country-lite.mmdb";
+pub const ASN: &str = "dbip-asn-lite.mmdb";
 /// ISO 3166's code for an unknown country.
 pub const UNKNOWN: &str = "ZZ";
-/// The attribution GeoLite2's licence asks for.
+/// The attribution DB-IP's licence (CC BY 4.0) asks for.
 pub const ATTRIBUTION: &str =
-    "This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com";
+    "IP Geolocation by DB-IP (https://db-ip.com), licensed under CC BY 4.0";
 const CHECK_NS: i64 = 60 * 1_000_000_000;
 /// Addresses per backfill step.
 const STEP: usize = 1000;
@@ -47,7 +48,7 @@ struct Loaded {
     backfilled: Option<i64>,
 }
 
-/// The GeoLite2 readers and the `ip_geo` table.
+/// The database readers and the `ip_geo` table.
 pub struct Geo {
     dir: PathBuf,
     db: GeoDb,
@@ -104,9 +105,9 @@ impl Geo {
         l.country = self.read(COUNTRY);
         l.asn = self.read(ASN);
         match build(&l) {
-            Some(b) => tracing::info!(build = %day(b), "GeoLite2 databases loaded from {}", self.dir.display()),
+            Some(b) => tracing::info!(build = %day(b), "DB-IP databases loaded from {}", self.dir.display()),
             None => tracing::warn!(
-                "no GeoLite2 databases in {}: run `make geoip`; IP addresses are not looked up meanwhile",
+                "no DB-IP databases in {}: run `make geoip`; IP addresses are not looked up meanwhile",
                 self.dir.display()
             ),
         }

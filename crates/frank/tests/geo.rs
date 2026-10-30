@@ -1,4 +1,4 @@
-//! #191: country and ASN of IP addresses from GeoLite2, and FRANK working
+//! #191: country and ASN of IP addresses from DB-IP Lite, and FRANK working
 //! on without them.
 
 mod support;
@@ -10,7 +10,7 @@ use support::mmdb;
 
 const NOW: i64 = 1_792_670_400_000_000_000;
 const MINUTE: i64 = 60 * 1_000_000_000;
-/// 2026-10-20, as GeoLite2 gives it: seconds.
+/// 2026-10-20, as the databases give it: seconds.
 const BUILD: u64 = 1_792_454_400;
 
 fn now() -> i64 {
@@ -67,7 +67,7 @@ fn without_databases_nothing_is_looked_up_and_nothing_fails() {
 #[test]
 fn addresses_get_country_and_asn_unknown_ones_zz_and_zero() {
     let d = dir("lookup");
-    mmdb::geolite2(&d.0, BUILD);
+    mmdb::dbip(&d.0, BUILD);
     let g = Geo::open(&d.0, NOW).unwrap();
     assert_eq!(
         g.status(),
@@ -105,11 +105,11 @@ fn addresses_get_country_and_asn_unknown_ones_zz_and_zero() {
 #[test]
 fn a_corrupt_database_counts_as_missing() {
     let d = dir("corrupt");
-    mmdb::geolite2(&d.0, BUILD);
-    let f = d.0.join("geoip/geolite2/GeoLite2-Country.mmdb");
+    mmdb::dbip(&d.0, BUILD);
+    let f = d.0.join("geoip/dbip-lite/dbip-country-lite.mmdb");
     let bytes = std::fs::read(&f).unwrap();
     std::fs::write(&f, &bytes[..bytes.len() / 3]).unwrap();
-    std::fs::remove_file(d.0.join("geoip/geolite2/GeoLite2-ASN.mmdb")).unwrap();
+    std::fs::remove_file(d.0.join("geoip/dbip-lite/dbip-asn-lite.mmdb")).unwrap();
     let g = Geo::open(&d.0, NOW).unwrap();
     assert_eq!(g.status()["status"], "missing");
     assert!(g.lookup("192.0.2.1".parse().unwrap(), NOW).is_none());
@@ -119,7 +119,7 @@ fn a_corrupt_database_counts_as_missing() {
 fn databases_that_appear_later_are_picked_up_within_a_minute() {
     let d = dir("later");
     let g = Geo::open(&d.0, NOW).unwrap();
-    mmdb::geolite2(&d.0, BUILD);
+    mmdb::dbip(&d.0, BUILD);
     g.refresh(NOW + MINUTE / 2);
     assert_eq!(
         g.status()["status"],
@@ -147,7 +147,7 @@ fn backfill_looks_up_every_address_once_per_build() {
         "no databases: nothing to do"
     );
 
-    mmdb::geolite2(&d.0, BUILD);
+    mmdb::dbip(&d.0, BUILD);
     g.refresh(NOW + MINUTE);
     assert_eq!(g.backfill(&s, NOW).unwrap(), 2);
     assert_eq!(g.backfill(&s, NOW).unwrap(), 0, "once per build");
@@ -162,7 +162,7 @@ fn backfill_looks_up_every_address_once_per_build() {
 
     // A new build: every address again.
     std::thread::sleep(std::time::Duration::from_millis(1100));
-    mmdb::geolite2(&d.0, BUILD + 86_400);
+    mmdb::dbip(&d.0, BUILD + 86_400);
     g.refresh(NOW + 2 * MINUTE);
     assert_eq!(g.backfill(&s, NOW).unwrap(), 2);
     s.close().unwrap();

@@ -47,7 +47,7 @@ paths:
       x-min-status: public
       responses:
         "200":
-          description: "The server is up. `geoip` says whether the GeoLite2 databases are loaded (`ok` with their build day) or `missing`, and `lists` the entries per imported warning and reference list; FRANK is healthy either way (#191, #192)."
+          description: "The server is up. `geoip` says whether the DB-IP geo databases are loaded (`ok` with their build day) or `missing`, and `lists` the entries per imported warning and reference list; FRANK is healthy either way (#191, #192)."
           content:
             application/json:
               schema:
@@ -362,7 +362,7 @@ paths:
         - { name: day, in: query, required: false, description: "Limit `panels` to one day, YYYY-MM-DD.", schema: { type: string, format: date } }
       responses:
         "200":
-          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from GeoLite2, or null when not looked up (#191). `listed` is what warning lists (common infrastructure) and reference lists (outside sources such as abuse.ch) say about it, each with its list, source and, for references, tags and when it was first listed (#192, #193)."
+          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from DB-IP Lite, or null when not looked up (#191). `listed` is what warning lists (common infrastructure) and reference lists (outside sources such as abuse.ch) say about it, each with its list, source and, for references, tags and when it was first listed (#192, #193)."
           content:
             application/json:
               schema: { type: object }
@@ -679,7 +679,7 @@ paths:
         `ip_geo`, when present, names one more file: the country and ASN of
         every IP address FRANK has seen (`ip`, `country`, `asn`, `as_org`,
         `looked_up`), to join on `sightings.ioc_value = ip_geo.ip`. It
-        carries the attribution GeoLite2's licence asks for (#191).
+        carries the attribution DB-IP's licence (CC BY 4.0) asks for (#191).
       x-min-status: partner
       responses:
         "200":

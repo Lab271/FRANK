@@ -43,7 +43,7 @@ function table(columns, rows) {
 
 const iso = (ns) => new Date(ns / 1e6).toISOString().replace(".000", "");
 const isoDay = (ns) => iso(ns).slice(0, 10);
-/** An IP address's country and network from GeoLite2 (#191), or "". */
+/** An IP address's country and network from DB-IP (#191), or "". */
 const where = (g) => !g ? "" : [g.country === "ZZ" ? "unknown country" : g.country,
   g.asn ? `AS${g.asn}${g.as_org ? ` ${g.as_org}` : ""}` : "unknown network"].join(" · ");
 /** What warning and reference lists say about an IoC (#192, #193), one line each. */

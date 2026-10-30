@@ -587,7 +587,7 @@ async fn maintain(app: api::Shared, retention_days: u32) {
         n += 1;
         let app = app.clone();
         let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
-            // GeoLite2 picked up when it appears or changes (#191); its
+            // DB-IP databases picked up when it appears or changes (#191); its
             // errors never stop the rest of the maintenance.
             app.geo.refresh(now_ns());
             app.lists.refresh(now_ns());

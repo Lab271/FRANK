@@ -1,5 +1,5 @@
 //! A reader for MaxMind DB files, format 2.0 (#191), enough for FRANK's
-//! GeoLite2 lookups: the search tree (24, 28 or 32-bit records, IPv4 under
+//! country and ASN lookups: the search tree (24, 28 or 32-bit records, IPv4 under
 //! `::/96` in an IPv6 tree) and the data section's types. Every read is
 //! bounds-checked, so a truncated or corrupt file is an error, not a panic.
 //! <https://maxmind.github.io/MaxMind-DB/>

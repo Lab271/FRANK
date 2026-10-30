@@ -135,7 +135,7 @@ pub fn router(app: Shared) -> Router {
         .with_state(app)
 }
 
-/// Up and its version. GeoLite2's state is information only: FRANK is
+/// Up and its version. The geo databases' state is information only: FRANK is
 /// healthy without it (#191).
 async fn health(State(app): State<Shared>) -> Json<Value> {
     Json(json!({
@@ -1016,7 +1016,7 @@ async fn file(
     .await
 }
 
-/// `ip_geo` as one Parquet file, MaxMind's attribution in its metadata.
+/// `ip_geo` as one Parquet file, DB-IP's attribution in its metadata.
 fn geo_parquet(rows: &[crate::store::geo::IpGeo]) -> Result<Vec<u8>, String> {
     use db_core::storage::parquet::schema::ColumnValues as V;
     use db_core::storage::parquet::writer::{

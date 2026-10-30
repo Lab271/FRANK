@@ -48,12 +48,12 @@ fn harness(name: &str) -> Harness {
     harness_with(name, false)
 }
 
-/// With `geoip`, GeoLite2 test databases are in place before the server
+/// With `geoip`, DB-IP test databases are in place before the server
 /// starts (#191).
 fn harness_with(name: &str, geoip: bool) -> Harness {
     harness_setup(name, |dir| {
         if geoip {
-            support::mmdb::geolite2(dir, 1_792_454_400);
+            support::mmdb::dbip(dir, 1_792_454_400);
         }
     })
 }
@@ -2241,7 +2241,7 @@ async fn live_shows_recent_iocs_new_and_converging() {
 }
 
 /// #191: IP addresses get their country and ASN, for lookups, the live
-/// view and partners' download; without GeoLite2 everything else works.
+/// view and partners' download; without the databases everything else works.
 #[tokio::test]
 async fn ip_addresses_carry_country_and_asn() {
     let h = harness_with("geo", true);
@@ -2296,7 +2296,7 @@ async fn ip_addresses_carry_country_and_asn() {
     assert!(files["ip_geo"]["attribution"]
         .as_str()
         .unwrap()
-        .contains("MaxMind"));
+        .contains("DB-IP"));
     let req = Request::builder()
         .uri("/v1/files/geo/ip_geo.parquet")
         .header("authorization", "Bearer p")
@@ -2307,13 +2307,13 @@ async fn ip_addresses_carry_country_and_asn() {
     let bytes = resp.into_body().collect().await.unwrap().to_bytes();
     assert_eq!(&bytes[..4], b"PAR1");
     assert!(
-        bytes.windows(7).any(|w| w == b"MaxMind"),
+        bytes.windows(5).any(|w| w == b"DB-IP"),
         "attribution in the file's metadata"
     );
     for path in [
         "../geo.db",
-        "../geoip/geolite2/GeoLite2-ASN.mmdb",
-        "geoip/geolite2/GeoLite2-ASN.mmdb",
+        "../geoip/dbip-lite/dbip-asn-lite.mmdb",
+        "geoip/dbip-lite/dbip-asn-lite.mmdb",
     ] {
         assert_eq!(
             call(&h.app, "GET", &format!("/v1/files/{path}"), Some("p"), None)
@@ -2324,7 +2324,7 @@ async fn ip_addresses_carry_country_and_asn() {
         );
     }
 
-    // Without GeoLite2: health stays ok, nothing is looked up or listed.
+    // Without the databases: health stays ok, nothing is looked up or listed.
     let h = harness("nogeo");
     let (st, health) = call(&h.app, "GET", "/health", None, None).await;
     assert_eq!(

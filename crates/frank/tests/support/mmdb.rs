@@ -15,7 +15,7 @@ pub enum Val {
     Array(Vec<Val>),
 }
 
-/// The value of a GeoLite2-Country record.
+/// The value of a country record.
 pub fn country(iso: &'static str) -> Val {
     Val::Map(vec![(
         "country",
@@ -23,7 +23,7 @@ pub fn country(iso: &'static str) -> Val {
     )])
 }
 
-/// The value of a GeoLite2-ASN record.
+/// The value of an ASN record.
 pub fn asn(n: u32, org: &'static str) -> Val {
     Val::Map(vec![
         ("autonomous_system_number", Val::U32(n)),
@@ -92,7 +92,7 @@ enum Rec {
 }
 
 /// Writes a database of `networks` (`"192.0.2.0/24"`, `"2001:db8::/32"`)
-/// to `path`, with 24-bit records as GeoLite2 Country and ASN have.
+/// to `path`, with 24-bit records.
 pub fn write(
     path: &Path,
     database_type: &'static str,
@@ -191,13 +191,14 @@ pub fn write_with(
     std::fs::write(path, out).unwrap();
 }
 
-/// Country and ASN databases under `data/geoip/geolite2/`:
-/// 192.0.2.0/24 is NL in AS64496, 2001:db8::/32 is DE in AS64497.
-pub fn geolite2(data: &Path, build_epoch: u64) {
-    let dir = data.join("geoip/geolite2");
+/// Country and ASN databases under `data/geoip/dbip-lite/`, named as
+/// DB-IP names them: 192.0.2.0/24 is NL in AS64496, 2001:db8::/32 is DE
+/// in AS64497.
+pub fn dbip(data: &Path, build_epoch: u64) {
+    let dir = data.join("geoip/dbip-lite");
     write(
-        &dir.join("GeoLite2-Country.mmdb"),
-        "GeoLite2-Country",
+        &dir.join("dbip-country-lite.mmdb"),
+        "DBIP-Country-Lite",
         vec![
             ("192.0.2.0/24", country("NL")),
             ("2001:db8::/32", country("DE")),
@@ -205,8 +206,8 @@ pub fn geolite2(data: &Path, build_epoch: u64) {
         build_epoch,
     );
     write(
-        &dir.join("GeoLite2-ASN.mmdb"),
-        "GeoLite2-ASN",
+        &dir.join("dbip-asn-lite.mmdb"),
+        "DBIP-ASN-Lite (compat=GeoLite2-ASN)",
         vec![
             ("192.0.2.0/24", asn(64496, "Example Net")),
             ("2001:db8::/32", asn(64497, "Example Six")),
