@@ -4,6 +4,14 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.23.0] - 2026-10-30
+
+### Added
+
+- **Country and network of IP addresses** (#191): DB-IP Lite country and ASN in the lookup, the IoC pane and the live feed, and for partners as `geo/ip_geo.parquet` next to the sightings files. `make geoip` downloads the databases (no account needed); without them FRANK works as before, and `/health` shows `geoip: missing`.
+- **Common infrastructure is marked** (#192): IoCs on a warning list (MISP's public DNS resolvers via `make lists`, or your own files in `data/lists/warning/`) are greyed out and left out of the converging list and Explore's IoC ranking unless `common=include` / "show common infrastructure". Counts are unchanged.
+- **Reference lists** (#193): what abuse.ch URLhaus, ThreatFox and Feodo Tracker list about an IoC is shown as context ("listed by … since …"), also in lookups of IoCs FRANK has not seen. Explore by IoC filters on `listed=any|none|<list>`, so "listed nowhere" finds what participants see that no list has yet.
+
 ## [0.22.0] - 2026-10-30
 
 ### Added
