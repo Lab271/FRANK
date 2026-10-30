@@ -9,6 +9,12 @@ VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 WASM_BINDGEN_VERSION := 0.2.129
 FRANK := target/release/frank
 COMPOSE := podman compose -f deploy/podman/compose.yaml
+# The name and address of the podman deployment's HTTPS (Caddy, `tls
+# internal`); FRANK_TLS_ADDR=443 for https://frank.local, on every interface.
+FRANK_HOST ?= frank.local
+FRANK_TLS_ADDR ?= 127.0.0.1:8443
+FRANK_URL_TLS = https://$(FRANK_HOST)$(if $(filter 443 %:443,$(FRANK_TLS_ADDR)),,:$(lastword $(subst :, ,$(FRANK_TLS_ADDR))))
+CA_CERT := target/frank-local-ca.crt
 N ?= 60
 RATE ?= 60
 DURATION ?= 1h
@@ -20,7 +26,7 @@ DBIP_URL := https://download.db-ip.com/free
 ABUSE_KEY_REF ?= op://Private/ghrds67j2aclbtl2v2dbsodqiu/auth key
 OP_ACCOUNT ?= my.1password.eu
 
-.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down clean
+.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down trust untrust clean
 
 ##@ General
 
@@ -158,9 +164,26 @@ lists: ## Download the warning (MISP, CC0) and reference (abuse.ch, CC0; Auth-Ke
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-up: image ## Run in podman (the same ./data and ./participants as run; FRANK_PORT, default 8080)
+up: image ## Run in podman (the same ./data and ./participants as run): http://127.0.0.1:8080 and https://frank.local:8443
 	mkdir -p data participants && touch $(TOKENS)
-	$(COMPOSE) up -d --force-recreate
+	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) $(COMPOSE) up -d --force-recreate
+	@echo "FRANK: http://127.0.0.1:$${FRANK_PORT:-8080} and $(FRANK_URL_TLS) (once: make trust)"
 
 down: ## Stop the podman deployment
 	$(COMPOSE) down
+
+trust: ## Once, after make up: trust its HTTPS (Caddy's local CA) in the macOS keychain and map FRANK_HOST to this machine; asks for sudo
+	@[ "$$(uname)" = Darwin ] || { echo "trust: macOS only; elsewhere add Caddy's root (caddy-data volume, caddy/pki/authorities/local/root.crt) to the system's trust store" >&2; exit 1; }
+	@mkdir -p target
+	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(CA_CERT) 2>/dev/null && [ -s $(CA_CERT) ] \
+	  || { rm -f $(CA_CERT); echo "trust: start the podman deployment first (make up)" >&2; exit 1; }
+	sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(CA_CERT)
+	@grep -qE '^[^#]*[[:space:]]$(FRANK_HOST)([[:space:]]|$$)' /etc/hosts || { \
+	  echo "adding $(FRANK_HOST) to /etc/hosts (127.0.0.1 and ::1)"; \
+	  printf '127.0.0.1 %s\n::1 %s\n' $(FRANK_HOST) $(FRANK_HOST) | sudo tee -a /etc/hosts >/dev/null; }
+	@echo "$(FRANK_URL_TLS) is trusted; restart the browser if it was open"
+
+untrust: ## Remove the CA that make trust added from the macOS keychain (the /etc/hosts lines stay)
+	@[ -s $(CA_CERT) ] || { echo "untrust: no $(CA_CERT); nothing was trusted from here" >&2; exit 1; }
+	sudo security delete-certificate -Z "$$(openssl x509 -in $(CA_CERT) -noout -fingerprint -sha1 | cut -d= -f2 | tr -d :)" /Library/Keychains/System.keychain
+	rm -f $(CA_CERT)

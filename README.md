@@ -50,9 +50,12 @@ make run                                  # http://127.0.0.1:8080, data in ./dat
 **In podman** (the same `./data` and `./participants` as `make run`, so participants, tokens and sightings are shared; run one of the two at a time):
 
 ```bash
-make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT to change)
+make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT) and https://frank.local:8443
+make trust                         # once: trust its local CA in the macOS keychain, add frank.local to /etc/hosts (sudo)
 make down
 ```
+
+HTTPS comes from Caddy in front of FRANK, as on STACKIT, with a certificate from Caddy's own local CA (`tls internal`). The CA lives in the `caddy-data` volume, so `make trust` holds across `make down` and `make up`; `make untrust` removes it from the keychain again. `FRANK_HOST` changes the name. macOS lets a user bind port 443 only on every interface, so the default is `127.0.0.1:8443`; `FRANK_TLS_ADDR=443` gives `https://frank.local`, reachable from the local network too. Firefox keeps its own certificate store: set `security.enterprise_roots.enabled` to `true` in `about:config` to use the keychain.
 
 **Participants, users and tokens** live in `participants/participants.db`, apart from the data: wiping `data/` keeps them. Changes apply on the next request, with the server running:
 
