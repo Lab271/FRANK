@@ -47,7 +47,7 @@ paths:
       x-min-status: public
       responses:
         "200":
-          description: "The server is up. `geoip` says whether the GeoLite2 databases are loaded (`ok` with their build day) or `missing`; FRANK is healthy either way (#191)."
+          description: "The server is up. `geoip` says whether the GeoLite2 databases are loaded (`ok` with their build day) or `missing`, and `lists` the entries per imported warning and reference list; FRANK is healthy either way (#191, #192)."
           content:
             application/json:
               schema:
@@ -299,9 +299,10 @@ paths:
         - { name: sector, in: query, schema: { type: string } }
         - { name: ioc_type, in: query, schema: { type: string } }
         - { name: severity, in: query, schema: { type: string } }
+        - $ref: "#/components/parameters/Common"
       responses:
         "200":
-          description: Up to 100 groups, most sightings first.
+          description: "Up to 100 groups, most sightings first. Grouped by IoC, each row also has `common` and `listed`, as `/v1/iocs` gives them."
           content:
             application/json:
               schema: { type: object }
@@ -323,6 +324,7 @@ paths:
       x-min-status: contributor
       parameters:
         - { name: window, in: query, schema: { enum: ["1h", "6h", "24h"], default: "1h" } }
+        - $ref: "#/components/parameters/Common"
       responses:
         "200":
           description: The counters, `buckets`, `feed` and `converging`.
@@ -359,7 +361,7 @@ paths:
         - { name: day, in: query, required: false, description: "Limit `panels` to one day, YYYY-MM-DD.", schema: { type: string, format: date } }
       responses:
         "200":
-          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from GeoLite2, or null when not looked up (#191)."
+          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from GeoLite2, or null when not looked up (#191). `listed` is what warning lists (common infrastructure) and reference lists (outside sources such as abuse.ch) say about it, each with its list, source and, for references, tags and when it was first listed (#192, #193)."
           content:
             application/json:
               schema: { type: object }
@@ -709,6 +711,11 @@ components:
       scheme: bearer
 
   parameters:
+    Common:
+      name: common
+      in: query
+      description: "Whether IoCs a warning list marks as common infrastructure (public DNS resolvers, ...) stay in the converging list and Explore's IoC ranking (#192). They are marked, never dropped, elsewhere, and every count includes them."
+      schema: { enum: [exclude, include], default: exclude }
     Days:
       name: days
       in: query

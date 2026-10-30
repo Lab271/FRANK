@@ -7,6 +7,7 @@ pub mod audit;
 pub mod auth;
 pub mod explore;
 pub mod geo;
+pub mod lists;
 pub mod live;
 pub mod mmdb;
 pub mod records;

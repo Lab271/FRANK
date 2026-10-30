@@ -51,12 +51,19 @@ fn harness(name: &str) -> Harness {
 /// With `geoip`, GeoLite2 test databases are in place before the server
 /// starts (#191).
 fn harness_with(name: &str, geoip: bool) -> Harness {
+    harness_setup(name, |dir| {
+        if geoip {
+            support::mmdb::geolite2(dir, 1_792_454_400);
+        }
+    })
+}
+
+/// `setup` prepares the data directory before the server opens it.
+fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
     let dir = std::env::temp_dir().join(format!("frank-api-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
-    if geoip {
-        support::mmdb::geolite2(&dir, 1_792_454_400);
-    }
+    setup(&dir);
     // One organisation per test token, each with one user of its name.
     let db = dir.join(FILE);
     for (token, name, status) in [
@@ -77,6 +84,7 @@ fn harness_with(name: &str, geoip: bool) -> Harness {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
         geo: frank::geo::Geo::open(&dir, now()).unwrap(),
+        lists: frank::lists::Lists::open(&dir, now()).unwrap(),
         participants: Participants::open(&dir).unwrap(),
         registry: registry.clone(),
         audit: Audit::open(&dir).unwrap(),
@@ -2353,4 +2361,144 @@ async fn ip_addresses_carry_country_and_asn() {
         .0,
         StatusCode::NOT_FOUND
     );
+}
+
+/// #192: IoCs a warning list marks as common infrastructure are shown,
+/// marked, and kept out of the converging list and Explore's IoC ranking
+/// unless asked for. Counts never change.
+#[tokio::test]
+async fn common_infrastructure_is_marked_not_dropped() {
+    let h = harness_setup("warn", |dir| {
+        let w = dir.join("lists/warning");
+        std::fs::create_dir_all(&w).unwrap();
+        std::fs::write(
+            w.join("public-dns-v4.json"),
+            r#"{"name": "List of known IPv4 public DNS resolvers", "type": "cidr", "list": ["8.8.8.8/32", "9.9.9.0/24"]}"#,
+        )
+        .unwrap();
+        std::fs::write(w.join("local.txt"), "# ours\nexample.net\n").unwrap();
+    });
+    for tok in ["c", "c2", "c3"] {
+        for ip in ["8.8.8.8", "192.0.2.50"] {
+            let s = sighting("energy", ip, "r1");
+            assert_eq!(
+                call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s))
+                    .await
+                    .0,
+                StatusCode::CREATED
+            );
+        }
+    }
+    let values = |v: &Value, list: &str| -> Vec<String> {
+        let mut out: Vec<String> = v[list]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["value"].as_str().unwrap().to_string())
+            .collect();
+        out.sort();
+        out
+    };
+    let (_, live) = call(&h.app, "GET", "/v1/live?window=24h", Some("p"), None).await;
+    assert_eq!(
+        values(&live, "converging"),
+        ["192.0.2.50", "evil.example"],
+        "{live}"
+    );
+    assert_eq!(
+        values(&live, "feed"),
+        ["192.0.2.50", "8.8.8.8", "evil.example"],
+        "still shown"
+    );
+    let dns = live["feed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["value"] == "8.8.8.8")
+        .unwrap();
+    assert_eq!(
+        (
+            &dns["common"],
+            &dns["listed"][0]["list"],
+            &dns["listed"][0]["kind"]
+        ),
+        (&json!(true), &json!("public-dns-v4"), &json!("warning")),
+        "{dns}"
+    );
+    assert_eq!(live["sightings"], json!(6), "counts unchanged");
+    let (_, all) = call(
+        &h.app,
+        "GET",
+        "/v1/live?window=24h&common=include",
+        Some("p"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        values(&all, "converging"),
+        ["192.0.2.50", "8.8.8.8", "evil.example"]
+    );
+
+    let keys = |v: &Value| -> Vec<String> {
+        let mut k: Vec<String> = v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["key"].as_str().unwrap().to_string())
+            .collect();
+        k.sort();
+        k
+    };
+    let (_, ex) = call(&h.app, "GET", "/v1/explore?group=ioc", Some("p"), None).await;
+    assert_eq!(
+        keys(&ex),
+        ["domain:evil.example", "ipv4:192.0.2.50"],
+        "{ex}"
+    );
+    let (_, ex) = call(
+        &h.app,
+        "GET",
+        "/v1/explore?group=ioc&common=include",
+        Some("p"),
+        None,
+    )
+    .await;
+    assert_eq!(keys(&ex).len(), 3);
+    assert_eq!(
+        call(
+            &h.app,
+            "GET",
+            "/v1/explore?group=ioc&common=maybe",
+            Some("p"),
+            None
+        )
+        .await
+        .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+
+    let (_, ip) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=ipv4&value=8.8.8.8",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        ip["listed"][0]["source"], "MISP warninglists: List of known IPv4 public DNS resolvers",
+        "{ip}"
+    );
+    let (_, sub) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=domain&value=evil.example",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(sub["listed"], json!([]), "{sub}");
+    let (_, health) = call(&h.app, "GET", "/health", None, None).await;
+    let lists = health["lists"].as_array().unwrap();
+    assert_eq!(lists.len(), 2, "{health}");
 }

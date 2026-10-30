@@ -83,6 +83,11 @@ pub struct LiveIoc {
     pub seen_since: Option<i64>,
     /// Country and ASN of an IP address, when looked up (#191).
     pub geo: Option<crate::store::geo::IpGeo>,
+    /// What the warning and reference lists say about it (#192, #193).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub listed: Vec<crate::store::lists::Listed>,
+    /// Marked as common infrastructure: shown, never converging (#192).
+    pub common: bool,
 }
 
 /// The window's IoCs: per IoC, the latest arrival, the sightings and
@@ -146,6 +151,8 @@ pub fn iocs(rows: &[Vec<Cell>]) -> Vec<LiveIoc> {
                     reporters: *r,
                     seen_since: None,
                     geo: None,
+                    listed: Vec::new(),
+                    common: false,
                 })
             }
             _ => None,
@@ -212,7 +219,11 @@ pub fn lists(iocs: &[LiveIoc], limit: usize) -> (Vec<LiveIoc>, Vec<LiveIoc>) {
             .then_with(|| a.value.cmp(&b.value))
     });
     feed.truncate(limit);
-    let mut converging: Vec<LiveIoc> = iocs.iter().filter(|i| i.reporters >= 2).cloned().collect();
+    let mut converging: Vec<LiveIoc> = iocs
+        .iter()
+        .filter(|i| i.reporters >= 2 && !i.common)
+        .cloned()
+        .collect();
     converging.sort_by(|a, b| {
         b.reporters
             .cmp(&a.reporters)
@@ -239,6 +250,8 @@ mod tests {
             reporters: r,
             seen_since: None,
             geo: None,
+            listed: Vec::new(),
+            common: false,
         }
     }
 

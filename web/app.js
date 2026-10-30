@@ -46,6 +46,10 @@ const isoDay = (ns) => iso(ns).slice(0, 10);
 /** An IP address's country and network from GeoLite2 (#191), or "". */
 const where = (g) => !g ? "" : [g.country === "ZZ" ? "unknown country" : g.country,
   g.asn ? `AS${g.asn}${g.as_org ? ` ${g.as_org}` : ""}` : "unknown network"].join(" · ");
+/** What warning and reference lists say about an IoC (#192, #193), one line each. */
+const listedLines = (listed) => (listed || []).map((l) => el("p", { class: `note listed listed-${l.kind}` },
+  l.kind === "warning" ? `common infrastructure: ${l.source}`
+    : `listed by ${l.source}${l.tags ? ` (${l.tags})` : ""}${l.first_listed ? ` since ${isoDay(l.first_listed)}` : ""}`));
 
 // --- tabs, routing and token ----------------------------------------------
 // The URL hash is the state: "#stats", "#explore?group=rule&sector=energy&pane=rule:r1".
@@ -251,6 +255,7 @@ async function lookup(type, value) {
       el("p", {}, linkTo(`${r.ioc.type} ${r.ioc.value}`, () => openPane("ioc", key), "label"),
         `: seen ${r.count}× by ${r.reporters} reporter(s), first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
       ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
+      ...listedLines(r.listed),
       table(["day", "count", "first", "last"],
         r.days.map((d) => [linkTo(d.day, () => openPane("ioc", key, d.day), "label"), d.count, iso(d.first_ts), iso(d.last_ts)])),
       table(["SIGMA rule", "rows"],
@@ -533,6 +538,7 @@ async function openPane(kind, key, day) {
           linkTo("all days", () => openPane("ioc", key), "label")]
         : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
           ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
+          ...listedLines(r.listed),
           kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
@@ -1042,7 +1048,8 @@ function liveFeed(items, prev) {
   const head = el("tr", {}, ...["arrived (UTC)", "type", "value", "where", "rule", "sightings", "reporters", "seen before"]
     .map((c) => el("th", {}, c)));
   const rows = items.map((i) =>
-    el("tr", prev && i.last_received > prev ? { class: "fresh" } : {},
+    el("tr", { class: [prev && i.last_received > prev ? "fresh" : "", i.common ? "common" : ""].join(" ").trim(),
+      title: i.common ? "common infrastructure: shown, not converging" : "" },
       el("td", { class: "mono" }, clock(i.last_received)),
       el("td", {}, i.ioc_type),
       el("td", {}, iocLink(i)),
@@ -1083,7 +1090,8 @@ async function loadLive() {
     return;
   }
   try {
-    const r = await (await api(`/v1/live?window=${$("live-window").value}`)).json();
+    const common = $("live-common").checked ? "&common=include" : "";
+    const r = await (await api(`/v1/live?window=${$("live-window").value}${common}`)).json();
     if (!onLive()) return;
     show($("live-out"), ...liveNodes(r, livePrev));
     livePrev = r.now;
@@ -1095,6 +1103,7 @@ async function loadLive() {
 }
 
 $("live-window").addEventListener("change", () => { livePrev = 0; loadLive(); });
+$("live-common").addEventListener("change", () => loadLive());
 $("live-pause").addEventListener("click", () => {
   livePaused = !livePaused;
   $("live-pause").textContent = livePaused ? "resume" : "pause";

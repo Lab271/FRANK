@@ -16,7 +16,7 @@ DURATION ?= 1h
 GEOIP_KEY_REF ?= op://Private/MaxMind GeoLite2/license key
 GEOIP_DIR := $(DATA)/geoip/geolite2
 
-.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip image up down clean
+.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down clean
 
 ##@ General
 
@@ -116,6 +116,23 @@ geoip: ## Download GeoLite2 Country + ASN into data/geoip/geolite2 (licence key 
 	done; \
 	chmod 600 "$$tmp"/*/*; mv -f "$$tmp"/*/*.mmdb "$$tmp"/*/*.txt $(GEOIP_DIR)/
 	@ls -l $(GEOIP_DIR)
+
+MISP_LISTS := https://raw.githubusercontent.com/MISP/misp-warninglists/main/lists
+ABUSE_CH := urlhaus=https://urlhaus.abuse.ch/downloads/csv_online/ \
+	threatfox_recent=https://threatfox.abuse.ch/export/csv/recent/ \
+	feodo_ipblocklist=https://feodotracker.abuse.ch/downloads/ipblocklist.csv
+
+lists: ## Download the warning (MISP public DNS, CC0) and reference (abuse.ch, CC0) lists into data/lists; the server imports them within a minute
+	@install -d $(DATA)/lists/warning $(DATA)/lists/reference
+	@set -euo pipefail; for l in public-dns-v4 public-dns-v6 public-dns-hostname; do \
+	  curl -fsSL -o $(DATA)/lists/warning/.$$l.json "$(MISP_LISTS)/$$l/list.json" \
+	    && mv -f $(DATA)/lists/warning/.$$l.json $(DATA)/lists/warning/$$l.json; \
+	done
+	@set -euo pipefail; for kv in $(ABUSE_CH); do n=$${kv%%=*}; u=$${kv#*=}; \
+	  curl -fsSL -o $(DATA)/lists/reference/.$$n.csv "$$u" \
+	    && mv -f $(DATA)/lists/reference/.$$n.csv $(DATA)/lists/reference/$$n.csv; \
+	done
+	@ls -l $(DATA)/lists/warning $(DATA)/lists/reference
 
 ##@ Container (podman)
 

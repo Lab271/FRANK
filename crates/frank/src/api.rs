@@ -55,6 +55,8 @@ pub struct App {
     pub iocs: Iocs,
     /// Country and ASN of IP addresses (#191).
     pub geo: crate::geo::Geo,
+    /// Warning and reference IoC lists (#192, #193).
+    pub lists: crate::lists::Lists,
     pub participants: Participants,
     pub registry: Registry,
     pub audit: Audit,
@@ -136,7 +138,12 @@ pub fn router(app: Shared) -> Router {
 /// Up and its version. GeoLite2's state is information only: FRANK is
 /// healthy without it (#191).
 async fn health(State(app): State<Shared>) -> Json<Value> {
-    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION"), "geoip": app.geo.status() }))
+    Json(json!({
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION"),
+        "geoip": app.geo.status(),
+        "lists": app.lists.status(),
+    }))
 }
 
 async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
@@ -395,6 +402,18 @@ async fn statistics(
 #[derive(Deserialize)]
 struct LiveQuery {
     window: Option<String>,
+    common: Option<String>,
+}
+
+/// `common=include|exclude` (#192): whether IoCs a warning list marks as
+/// common infrastructure stay in the converging list and Explore's IoC
+/// ranking. Excluded by default; they are marked, never dropped, elsewhere.
+fn include_common(v: Option<&str>) -> Result<bool, ApiError> {
+    match v {
+        None | Some("exclude") => Ok(false),
+        Some("include") => Ok(true),
+        Some(_) => Err(unprocessable("common: expected include or exclude")),
+    }
 }
 
 /// IoCs per list in the live view.
@@ -412,6 +431,7 @@ async fn live_view(
     let caller = require(&app, &headers, Tier::Contributor)?;
     let window = Window::parse(q.window.as_deref().unwrap_or("1h"))
         .ok_or_else(|| unprocessable("window: expected 1h, 6h or 24h"))?;
+    let common = include_common(q.common.as_deref())?;
     let now = (app.now)();
     let since = now - window.ns();
     let visible = tlp_visible(caller.tier);
@@ -442,7 +462,39 @@ async fn live_view(
         if !exact {
             iocs.retain(|i| i.reporters >= MIN_CELL);
         }
+        if !common {
+            // Converging candidates marked as common infrastructure stay in
+            // the feed, marked, but do not converge.
+            let candidates: Vec<(String, String)> = iocs
+                .iter()
+                .filter(|i| i.reporters >= 2)
+                .map(|i| (i.ioc_type.clone(), i.value.clone()))
+                .collect();
+            let warned: std::collections::BTreeSet<(String, String)> = candidates
+                .iter()
+                .zip(app.lists.annotate(&candidates))
+                .filter(|(_, l)| crate::lists::warned(l))
+                .map(|(k, _)| k.clone())
+                .collect();
+            for i in &mut iocs {
+                if warned.contains(&(i.ioc_type.clone(), i.value.clone())) {
+                    i.common = true;
+                }
+            }
+        }
         let (mut feed, mut converging) = live::lists(&iocs, LIVE_LIMIT);
+        let shown: Vec<(String, String)> = feed
+            .iter()
+            .chain(&converging)
+            .map(|i| (i.ioc_type.clone(), i.value.clone()))
+            .collect();
+        for (i, l) in feed
+            .iter_mut()
+            .chain(converging.iter_mut())
+            .zip(app.lists.annotate(&shown))
+        {
+            i.listed = l;
+        }
         let ips: Vec<String> = feed
             .iter()
             .chain(&converging)
@@ -591,9 +643,15 @@ async fn ioc_lookup(
         let geo = ioc
             .ip_hex()
             .and_then(|_| app.geo.answers(vec![ioc.value.clone()]).remove(&ioc.value));
+        let listed = app
+            .lists
+            .annotate(&[(ioc.ioc_type.as_str().to_string(), ioc.value.clone())])
+            .pop()
+            .unwrap_or_default();
         Ok(Json(json!({
             "ioc": ioc,
             "geo": geo,
+            "listed": listed,
             "known": !days.is_empty(),
             "count": days.iter().map(|d| d.count).sum::<i64>(),
             "reporters": reporters,
@@ -669,15 +727,40 @@ fn grouped(
 async fn explore(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Query(params): Query<BTreeMap<String, String>>,
+    Query(mut params): Query<BTreeMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
+    let common = include_common(params.remove("common").as_deref())?;
     let q = ex::Query::parse(&params).map_err(unprocessable)?;
     let caller = require(&app, &headers, q.min_tier())?;
     let since = (app.now)() - q.days * DAY_NS;
     let visible = tlp_visible(caller.tier);
     let exact = caller.tier >= Tier::Partner;
     blocking(move || {
-        let rows = grouped(&app.sightings, &q, since, &visible, exact, 100)?;
+        let by_ioc = q.group == Dimension::Ioc;
+        let mut rows = grouped(
+            &app.sightings,
+            &q,
+            since,
+            &visible,
+            exact,
+            if by_ioc { 200 } else { 100 },
+        )?;
+        if by_ioc {
+            // What the lists say about each IoC (#192, #193); common
+            // infrastructure is left out unless asked for.
+            let keys: Vec<(String, String)> = rows
+                .iter()
+                .filter_map(|r| r["key"].as_str()?.split_once(':'))
+                .map(|(t, v)| (t.to_string(), v.to_string()))
+                .collect();
+            let listed = app.lists.annotate(&keys);
+            for (r, l) in rows.iter_mut().zip(listed) {
+                r["common"] = json!(crate::lists::warned(&l));
+                r["listed"] = json!(l);
+            }
+            rows.retain(|r| common || r["common"] != true);
+            rows.truncate(100);
+        }
         Ok(Json(json!({
             "group": q.group.name(),
             "days": q.days,
@@ -751,7 +834,7 @@ struct RangeQuery {
 }
 
 /// The first and last address of a CIDR block, as 32 hex digits.
-fn cidr_bounds(cidr: &str) -> Option<(String, String)> {
+pub(crate) fn cidr_bounds(cidr: &str) -> Option<(String, String)> {
     let (addr, len) = cidr.trim().split_once('/')?;
     let ip: IpAddr = addr.parse().ok()?;
     let len: u32 = len.parse().ok()?;

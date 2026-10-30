@@ -359,10 +359,12 @@ fn main() -> Result<(), String> {
             let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
             let registry = Registry::open(&cli.data, &sightings)?;
             let geo = frank::geo::Geo::open(&cli.data, now_ns())?;
+            let lists = frank::lists::Lists::open(&cli.data, now_ns())?;
             let app = Arc::new(App {
                 sightings,
                 iocs,
                 geo,
+                lists,
                 participants,
                 registry,
                 audit: audit.clone(),
@@ -588,6 +590,7 @@ async fn maintain(app: api::Shared, retention_days: u32) {
             // GeoLite2 picked up when it appears or changes (#191); its
             // errors never stop the rest of the maintenance.
             app.geo.refresh(now_ns());
+            app.lists.refresh(now_ns());
             if let Err(e) = app.geo.backfill(&app.sightings, now_ns()) {
                 tracing::warn!("ip_geo backfill: {e}");
             }

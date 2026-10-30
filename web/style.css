@@ -183,3 +183,8 @@ tr.fresh td { background: color-mix(in srgb, var(--c-tq) 14%, transparent); }
   tr.fresh td { animation: fresh 15s ease-out forwards; }
   @keyframes fresh { from { background: color-mix(in srgb, var(--c-tq) 30%, transparent); } }
 }
+
+/* #192: common infrastructure is shown, greyed; #193: what lists say */
+tr.common td { color: var(--c-muted); }
+tr.common td .label { color: var(--c-muted); }
+p.listed-reference { color: var(--c-text); }
