@@ -2615,3 +2615,95 @@ async fn reference_lists_are_context_and_a_filter() {
         "references are never sightings"
     );
 }
+
+/// #195: the live view ranks the countries and networks of the window's
+/// addresses, under the reporter threshold, without warning-listed ones.
+#[tokio::test]
+async fn live_ranks_countries_and_networks() {
+    let h = harness_setup("places", |dir| {
+        support::mmdb::dbip(dir, 1_792_454_400);
+        let w = dir.join("lists/warning");
+        std::fs::create_dir_all(&w).unwrap();
+        std::fs::write(w.join("ours.txt"), "192.0.2.99\n").unwrap();
+    });
+    // In the test databases 192.0.2.0/24 is NL (AS64496), 2001:db8::/32 DE
+    // (AS64497); 203.0.113.0/24 is in neither.
+    let send = |tok: &'static str, t: &'static str, ip: &'static str| {
+        let app = h.app.clone();
+        async move {
+            let s = json!({"submission": {
+                "submitter": {"organisation_id": "identity-secret-org", "sector": "msp"},
+                "hit_target": {"organisation_id": "identity-victim", "sector": "energy"},
+                "sighting": {"sighting_id": uuid4().unwrap(), "timestamp": "2026-10-22T10:00:00Z",
+                    "severity": "high", "sigma_detection": {"rule_id": "r1"},
+                    "observables": {"network": [{"type": t, "value": ip}]}}}});
+            let (st, _) = call(&app, "POST", "/v1/sightings", Some(tok), Some(s)).await;
+            assert_eq!(st, StatusCode::CREATED, "{ip}");
+        }
+    };
+    for tok in ["c", "c2", "c3"] {
+        send(tok, "ipv4", "192.0.2.10").await;
+        send(tok, "ipv4", "203.0.113.5").await;
+        send(tok, "ipv4", "192.0.2.99").await;
+    }
+    for tok in ["c", "c2"] {
+        send(tok, "ipv6", "2001:db8::5").await;
+    }
+    let places = |v: &Value| v["places"].clone();
+    let tops = |v: &Value, k: &str, key: &str| -> Vec<(Value, i64, i64)> {
+        v["places"][k]["top"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| {
+                (
+                    c[key].clone(),
+                    c["iocs"].as_i64().unwrap(),
+                    c["reporters"].as_i64().unwrap(),
+                )
+            })
+            .collect()
+    };
+
+    let (_, live) = call(&h.app, "GET", "/v1/live?window=24h", Some("p"), None).await;
+    assert_eq!(live["geoip"], "ok");
+    assert_eq!(
+        tops(&live, "countries", "country"),
+        [(json!("NL"), 1, 3), (json!("DE"), 1, 2)],
+        "partner: every country; the warning-listed address left out"
+    );
+    assert_eq!(
+        tops(&live, "networks", "asn"),
+        [(json!(64496), 1, 3), (json!(64497), 1, 2)]
+    );
+    assert_eq!(places(&live)["networks"]["top"][0]["as_org"], "Example Net");
+    assert_eq!(places(&live)["unknown"], json!({"iocs": 1, "reporters": 3}));
+
+    let (_, all) = call(
+        &h.app,
+        "GET",
+        "/v1/live?window=24h&common=include",
+        Some("p"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        tops(&all, "countries", "country")[0],
+        (json!("NL"), 2, 3),
+        "common=include: the warning-listed address counts"
+    );
+
+    let (_, below) = call(&h.app, "GET", "/v1/live?window=24h", Some("c"), None).await;
+    assert_eq!(
+        tops(&below, "countries", "country"),
+        [(json!("NL"), 1, 3)],
+        "below partner: DE has two reporters"
+    );
+    assert!(places(&below)["countries"]["other"].is_null(), "{below}");
+
+    // Without DB-IP: said so, nothing ranked.
+    let h = harness("noplaces");
+    let (_, live) = call(&h.app, "GET", "/v1/live?window=24h", Some("p"), None).await;
+    assert_eq!(live["geoip"], "missing");
+    assert_eq!(places(&live)["countries"]["top"], json!([]));
+}

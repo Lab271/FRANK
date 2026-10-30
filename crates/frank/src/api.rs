@@ -418,11 +418,16 @@ fn include_common(v: Option<&str>) -> Result<bool, ApiError> {
 
 /// IoCs per list in the live view.
 const LIVE_LIMIT: usize = 50;
+/// Countries and networks in the live view's top lists (#195).
+const PLACES_LIMIT: usize = 10;
 
 /// What arrived in the window (#186): counters, arrivals per bar, and the
 /// window's IoCs as a feed (newest first) and as the converging list (two
 /// or more reporters). Below partner an IoC with fewer than [`MIN_CELL`]
 /// reporters is left out of both lists, as Explore leaves out small cells.
+/// `places` ranks the countries and networks of the window's IP addresses
+/// (#195) under the same threshold; warning-listed addresses (public DNS,
+/// reserved ranges) are left out of it unless `common=include`.
 async fn live_view(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -482,6 +487,7 @@ async fn live_view(
                 }
             }
         }
+        let places = live_places(&app, &rows(&live::addresses_sql(since, v))?, common, exact);
         let (mut feed, mut converging) = live::lists(&iocs, LIVE_LIMIT);
         let shown: Vec<(String, String)> = feed
             .iter()
@@ -521,9 +527,38 @@ async fn live_view(
                 .collect::<Vec<_>>(),
             "feed": feed,
             "converging": converging,
+            "geoip": app.geo.status()["status"],
+            "places": places,
         })))
     })
     .await
+}
+
+/// The countries and networks of the window's addresses (#195), from the
+/// rows of [`live::addresses_sql`].
+fn live_places(app: &App, rows: &[Vec<Cell>], common: bool, exact: bool) -> live::Places {
+    let mut pairs = live::addresses(rows);
+    let mut ips: Vec<String> = pairs.iter().map(|(ip, _)| ip.clone()).collect();
+    ips.sort_unstable();
+    ips.dedup();
+    if !common {
+        let keys: Vec<(String, String)> = ips
+            .iter()
+            .map(|ip| {
+                let t = if ip.contains(':') { "ipv6" } else { "ipv4" };
+                (t.to_string(), ip.clone())
+            })
+            .collect();
+        let warned: std::collections::BTreeSet<&str> = ips
+            .iter()
+            .zip(app.lists.annotate(&keys))
+            .filter(|(_, l)| crate::lists::warned(l))
+            .map(|(ip, _)| ip.as_str())
+            .collect();
+        pairs.retain(|(ip, _)| !warned.contains(ip.as_str()));
+    }
+    let min = if exact { 1 } else { MIN_CELL };
+    live::places(&pairs, &app.geo.answers(ips), min, PLACES_LIMIT)
 }
 
 #[derive(Deserialize)]
