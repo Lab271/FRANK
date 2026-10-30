@@ -13,6 +13,9 @@ COMPOSE := podman compose -f deploy/podman/compose.yaml
 # internal`); FRANK_TLS_ADDR=443 for https://frank.local, on every interface.
 FRANK_HOST ?= frank.local
 FRANK_TLS_ADDR ?= 127.0.0.1:8443
+# http://frank.local redirects to it; port 80 binds on every interface.
+FRANK_HTTP_ADDR ?= 80
+FRANK_HTTPS_PORT = $(lastword $(subst :, ,$(FRANK_TLS_ADDR)))
 FRANK_URL_TLS = https://$(FRANK_HOST)$(if $(filter 443 %:443,$(FRANK_TLS_ADDR)),,:$(lastword $(subst :, ,$(FRANK_TLS_ADDR))))
 CA_CERT := target/frank-local-ca.crt
 N ?= 60
@@ -166,8 +169,9 @@ image: ## Build the container image with podman
 
 up: image ## Run in podman (the same ./data and ./participants as run): http://127.0.0.1:8080 and https://frank.local:8443
 	mkdir -p data participants && touch $(TOKENS)
-	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) $(COMPOSE) up -d --force-recreate
-	@echo "FRANK: http://127.0.0.1:$${FRANK_PORT:-8080} and $(FRANK_URL_TLS) (once: make trust)"
+	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
+	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE) up -d --force-recreate
+	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 
 down: ## Stop the podman deployment
 	$(COMPOSE) down
