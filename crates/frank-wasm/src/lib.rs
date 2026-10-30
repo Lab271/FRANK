@@ -9,6 +9,8 @@ use std::collections::BTreeMap;
 
 use db_core::engine::column::BatchEngine;
 use db_core::engine::{Cell, Engine, FileStats};
+use db_core::parser;
+use db_core::parser::ast::{Expr, ExprKind, FunctionArgs, ResultColumn};
 use frank_core::{formats, Format};
 use serde_json::{json, Value};
 use wasm_bindgen::prelude::*;
@@ -109,8 +111,61 @@ fn merge_kind(label: &str) -> Option<Merge> {
     }
 }
 
+/// How each result column combines. An aggregate is known by its
+/// expression in the select list, so `count(*) AS sightings` still sums;
+/// by its label when the list doesn't parse or has a `*`.
+fn merge_kinds(sql: &str, columns: &[String]) -> Option<Vec<Merge>> {
+    let items = parser::column::parse(sql)
+        .ok()
+        .map(|s| s.columns)
+        .filter(|c| {
+            c.len() == columns.len() && c.iter().all(|r| matches!(r, ResultColumn::Expr { .. }))
+        });
+    columns
+        .iter()
+        .enumerate()
+        .map(|(i, label)| match items.as_ref().and_then(|c| c.get(i)) {
+            Some(ResultColumn::Expr {
+                expr:
+                    Expr {
+                        kind:
+                            ExprKind::FunctionCall {
+                                name,
+                                distinct,
+                                args,
+                                tail,
+                            },
+                        ..
+                    },
+                ..
+            }) => {
+                let window = tail.as_ref().is_some_and(|t| t.over.is_some());
+                call_kind(name, *distinct || window, args)
+            }
+            _ => merge_kind(label),
+        })
+        .collect()
+}
+
+/// A call's merge: SQLite's aggregates (`min`/`max` with one argument)
+/// combine exactly or not at all; any other function is a key.
+fn call_kind(name: &str, inexact: bool, args: &FunctionArgs) -> Option<Merge> {
+    let one = match args {
+        FunctionArgs::Star => true,
+        FunctionArgs::List(a) => a.len() == 1,
+    };
+    match name.to_ascii_lowercase().as_str() {
+        "count" | "sum" | "min" | "max" if inexact => None,
+        "count" | "sum" => Some(Merge::Sum),
+        "min" if one => Some(Merge::Min),
+        "max" if one => Some(Merge::Max),
+        "avg" | "total" | "group_concat" | "string_agg" => None,
+        _ => Some(Merge::Key),
+    }
+}
+
 /// Runs `sql` on each file. When every aggregate in the result combines
-/// exactly across files (`count`, `sum`, `min`, `max`, unaliased), the
+/// exactly across files (`count`, `sum`, `min`, `max`), the
 /// per-file answers are merged by the other columns into one answer;
 /// otherwise the rows are returned per file with a `file` column.
 fn run(files: &mut [(String, BatchEngine)], sql: &str) -> Result<Value, String> {
@@ -121,7 +176,7 @@ fn run(files: &mut [(String, BatchEngine)], sql: &str) -> Result<Value, String> 
         columns = r.columns;
         per_file.push((name.clone(), r.rows));
     }
-    let kinds: Option<Vec<Merge>> = columns.iter().map(|c| merge_kind(c)).collect();
+    let kinds = merge_kinds(sql, &columns);
     let mergeable = kinds
         .as_ref()
         .is_some_and(|k| k.iter().any(|m| *m != Merge::Key));
@@ -210,7 +265,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_kinds() {
+    fn merge_kinds_by_label() {
         assert_eq!(merge_kind("COUNT(*)"), Some(Merge::Sum));
         assert_eq!(merge_kind("SUM(observations)"), Some(Merge::Sum));
         assert_eq!(merge_kind("ioc_type"), Some(Merge::Key));
@@ -294,6 +349,38 @@ mod tests {
         assert_eq!(
             r["rows"],
             json!([["domain", 1, 2, 2], ["ipv4", 3, 6, 2], ["url", 1, 2, 2]])
+        );
+    }
+
+    #[test]
+    fn aliased_aggregates_merge_by_their_expression() {
+        let mut a = Analyst::new();
+        a.add_file("a", file(&["ipv4", "ipv4", "domain"])).unwrap();
+        a.add_file("b", file(&["ipv4", "url"])).unwrap();
+        // The analyse tab's default query.
+        let r = run(
+            &mut a.files,
+            "SELECT ioc_type, count(*) AS sightings, sum(observations) AS obs FROM sightings GROUP BY ioc_type",
+        )
+        .unwrap();
+        assert_eq!(r["merged"], true);
+        assert_eq!(
+            r["rows"],
+            json!([["domain", 1, 2], ["ipv4", 3, 6], ["url", 1, 2]])
+        );
+        for sql in [
+            "SELECT avg(observations) AS mean FROM sightings",
+            "SELECT count(DISTINCT ioc_type) AS types FROM sightings",
+        ] {
+            assert_eq!(run(&mut a.files, sql).unwrap()["merged"], false, "{sql}");
+        }
+        assert_eq!(
+            merge_kinds(
+                "SELECT max(ts, ts) AS m, lower(ioc_type) AS t FROM sightings",
+                &["m".into(), "t".into()]
+            ),
+            Some(vec![Merge::Key, Merge::Key]),
+            "scalar max(a, b) and other functions are keys"
         );
     }
 
