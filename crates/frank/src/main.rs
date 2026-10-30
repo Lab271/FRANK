@@ -482,11 +482,10 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Resu
             let digest = registry::digest(&sub);
             let id = sub
                 .sighting_id
-                .clone()
                 .unwrap_or_else(|| registry::derived_id(&digest));
             subs.push((id, digest, sub));
         }
-        let known = reg.find(reporter, subs.iter().map(|(id, _, _)| id.clone()).collect())?;
+        let known = reg.find(reporter, subs.iter().map(|(id, _, _)| *id).collect())?;
         if let Some((id, _, _)) = subs
             .iter()
             .find(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
@@ -507,9 +506,9 @@ fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Resu
                 continue;
             }
             seen.push(json!({ "sighting_id": id, "digest": digest, "status": "created" }));
-            rows.extend(sub.rows(&id).into_iter().map(|mut r| {
+            rows.extend(sub.rows(id).into_iter().map(|mut r| {
                 r.reporter = reporter.to_string();
-                r.digest.clone_from(&digest);
+                r.digest = (r.seq == 0).then_some(digest);
                 r.received_ns = now;
                 r
             }));

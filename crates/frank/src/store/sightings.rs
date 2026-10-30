@@ -8,6 +8,11 @@
 //! `sighting_techniques/`, held one row per sighting × technique; from
 //! 0.19 to 0.20 they were split at query time from a comma-separated
 //! `technique` string (#180), which the list replaces.
+//!
+//! `sighting_id` and `digest` are raw bytes since 0.28 (#200), 16 and 32,
+//! where they were text; `digest` is on the `seq = 0` row only. A table
+//! stored with text ids is rewritten when it is opened, as the technique
+//! string was.
 
 use std::path::Path;
 use std::sync::atomic::{AtomicI64, Ordering};
@@ -19,7 +24,7 @@ use db_core::storage::ingest::{
 use db_core::storage::parquet::writer::{
     ColumnSpec, ColumnType, Compression, ParquetWriter, WriterOptions,
 };
-use frank_core::SightingRow;
+use frank_core::{Digest, SightingId, SightingRow};
 
 /// The table's directory name, which is also its name in SQL.
 pub const NAME: &str = "sightings";
@@ -30,13 +35,16 @@ const TECHNIQUES: &str = "techniques";
 /// Where a table stored with the `technique` string is kept after its
 /// rewrite.
 const PRE_LIST: &str = "sightings.pre-list";
+/// Where a table stored with text ids is kept after its rewrite (#200).
+const PRE_BINARY: &str = "sightings.pre-binary";
 const SORT_KEY: &[&str] = &["rule_id", "ioc_value"];
 
 fn schema() -> Vec<ColumnSpec> {
     let text = |name| ColumnSpec::new(name, ColumnType::Utf8, true);
     vec![
         ColumnSpec::new("ts", ColumnType::TimestampNanos, false),
-        ColumnSpec::new("sighting_id", ColumnType::Utf8, false),
+        // Bytes since 0.28 (#200); `open` rewrites a table with text.
+        ColumnSpec::new("sighting_id", ColumnType::Binary, false),
         text("rule_id"),
         // A list since 0.21; `open` rewrites a table with the string.
         ColumnSpec::new(TECHNIQUES, ColumnType::ListUtf8, true),
@@ -51,8 +59,9 @@ fn schema() -> Vec<ColumnSpec> {
         ColumnSpec::new("observations", ColumnType::Int64, false),
         ColumnSpec::new("tlp", ColumnType::Utf8, false),
         ColumnSpec::new("reporter", ColumnType::Utf8, false),
-        // The registration (#159); NULL in rows stored before 0.13.
-        text("digest"),
+        // The registration (#159), on the `seq = 0` row; NULL in rows
+        // stored before 0.13.
+        ColumnSpec::new("digest", ColumnType::Binary, true),
         ColumnSpec::new("received", ColumnType::TimestampNanos, true),
         // The grain (#160); NULL in rows stored before 0.15.
         ColumnSpec::new("seq", ColumnType::Int64, true),
@@ -76,7 +85,7 @@ fn record(r: &SightingRow) -> Vec<RecordValue> {
     let opt = |v: &Option<String>| v.clone().map_or(RecordValue::Null, RecordValue::Str);
     vec![
         RecordValue::Int(r.ts_ns),
-        RecordValue::Str(r.sighting_id.clone()),
+        RecordValue::Bytes(r.sighting_id.0.to_vec()),
         opt(&r.rule_id),
         if r.techniques.is_empty() {
             RecordValue::Null
@@ -95,11 +104,8 @@ fn record(r: &SightingRow) -> Vec<RecordValue> {
         RecordValue::Int(i64::from(r.observations)),
         RecordValue::Str(r.tlp.as_str().into()),
         RecordValue::Str(r.reporter.clone()),
-        if r.digest.is_empty() {
-            RecordValue::Null
-        } else {
-            RecordValue::Str(r.digest.clone())
-        },
+        r.digest
+            .map_or(RecordValue::Null, |d| RecordValue::Bytes(d.0.to_vec())),
         if r.received_ns == 0 {
             RecordValue::Null
         } else {
@@ -116,13 +122,33 @@ fn replay_clock() -> i64 {
     REPLAY.load(Ordering::SeqCst)
 }
 
-/// Rewrites the table under `data`, stored with `stored` (the `technique`
-/// string), into the current schema, the list filled from the string.
-/// db-core can neither drop a column nor fill a new one for rows already
+/// Whether a table stored with `stored` needs [`rewrite`]: it has the
+/// `technique` string (0.20 and before) or text ids (0.27 and before).
+fn outdated(stored: &[ColumnSpec]) -> bool {
+    stored.iter().any(|c| {
+        c.name == "technique" || (c.name == "sighting_id" && c.column_type == ColumnType::Utf8)
+    })
+}
+
+/// A stored id or digest as bytes: text (0.27 and before, #200) or bytes.
+fn id_bytes(cell: &Cell, digest: bool) -> Option<Vec<u8>> {
+    match cell {
+        Cell::Blob(b) => Some(b.clone()),
+        Cell::Text(t) if digest => Digest::parse(t).map(|d| d.0.to_vec()),
+        Cell::Text(t) => SightingId::parse(t).ok().map(|id| id.0.to_vec()),
+        _ => None,
+    }
+}
+
+/// Rewrites the table under `data`, stored with `stored`, into the current
+/// schema: the list filled from the `technique` string, ids and digests
+/// from text to bytes, the digest on the `seq = 0` row only. db-core can
+/// neither drop or retype a column nor fill a new one for rows already
 /// written, so the rows are copied. Each is appended at its
 /// `received` time (`ts` before 0.13), so it stays in the hour and day it
 /// arrived in. The new table is built next to the old one and swapped in
-/// only when every row is there; the old one is kept as [`PRE_LIST`].
+/// only when every row is there; the old one is kept as [`PRE_LIST`] or
+/// [`PRE_BINARY`].
 fn rewrite(
     data: &Path,
     stored: &[ColumnSpec],
@@ -131,7 +157,8 @@ fn rewrite(
 ) -> Result<(), IngestError> {
     let corrupt = |why: String| IngestError::Corrupt(why);
     let dir = data.join(NAME);
-    let backup = data.join(PRE_LIST);
+    let had_string = stored.iter().any(|c| c.name == "technique");
+    let backup = data.join(if had_string { PRE_LIST } else { PRE_BINARY });
     // Named so the table is still `sightings` in SQL.
     let work = data.join(format!("{NAME}.rewrite"));
     if backup.exists() {
@@ -160,18 +187,39 @@ fn rewrite(
         _ => None,
     };
     let (technique, received, ts) = (at("technique"), at("received"), at("ts"));
+    let first = |row: &[Cell]| int(row, at("seq")).unwrap_or(0) == 0;
     let mut rows: Vec<(i64, Vec<RecordValue>)> = Vec::with_capacity(all.rows.len());
     for row in &all.rows {
         let values = schema()
             .iter()
             .map(|c| {
-                if c.name == TECHNIQUES {
+                if c.name == TECHNIQUES && technique.is_some() {
                     return Ok(techniques(match technique.map(|i| &row[i]) {
                         Some(Cell::Text(t)) => Some(t.as_str()),
                         _ => None,
                     }));
                 }
-                Ok(match at(&c.name).map(|i| &row[i]) {
+                // A stored list (0.21 on) reads back as JSON text.
+                if c.column_type == ColumnType::ListUtf8 {
+                    return match at(&c.name).map(|i| &row[i]) {
+                        Some(Cell::Text(t)) => serde_json::from_str::<Vec<Option<String>>>(t)
+                            .map(RecordValue::List)
+                            .map_err(|e| corrupt(format!("{}: {e}: {t}", c.name))),
+                        _ => Ok(RecordValue::Null),
+                    };
+                }
+                let cell = at(&c.name).map(|i| &row[i]);
+                if c.name == "digest" && !first(row) {
+                    return Ok(RecordValue::Null);
+                }
+                if let Some(v @ (Cell::Text(_) | Cell::Blob(_))) =
+                    cell.filter(|_| c.column_type == ColumnType::Binary)
+                {
+                    return id_bytes(v, c.name == "digest")
+                        .map(RecordValue::Bytes)
+                        .ok_or_else(|| corrupt(format!("{}: not an id or digest: {v:?}", c.name)));
+                }
+                Ok(match cell {
                     None | Some(Cell::Null) => RecordValue::Null,
                     Some(Cell::Int(n)) => RecordValue::Int(*n),
                     Some(Cell::Text(t)) => RecordValue::Str(t.clone()),
@@ -221,7 +269,7 @@ fn rewrite(
     std::fs::rename(work.join(NAME), &dir)?;
     std::fs::remove_dir(&work)?;
     tracing::info!(
-        "{} rewritten with a {TECHNIQUES} list ({n} rows); the old table is in {} and can be deleted once checked",
+        "{} rewritten to the 0.28 schema ({n} rows); the old table is in {} and can be deleted once checked",
         dir.display(),
         backup.display()
     );
@@ -276,7 +324,7 @@ impl Sightings {
         if stored.as_ref().is_some_and(|s| !has(s, "digest")) {
             return Err(IngestError::SchemaMismatch);
         }
-        if let Some(s) = stored.as_ref().filter(|s| has(s, "technique")) {
+        if let Some(s) = stored.as_ref().filter(|s| outdated(s)) {
             rewrite(data, s, retention_days, clock)?;
         }
         if data.join(OLD_TECHNIQUES).exists() {
@@ -405,15 +453,15 @@ mod tests {
         CLOCK.load(Ordering::SeqCst)
     }
 
-    fn row(id: &str, arrived: i64, techniques: &[&str], seq: u32) -> SightingRow {
+    fn row(n: u8, arrived: i64, techniques: &[&str], seq: u32) -> SightingRow {
         SightingRow {
             ts_ns: arrived - HOUR,
-            sighting_id: id.into(),
+            sighting_id: SightingId([n; 16]),
             rule_id: Some("r1".into()),
             techniques: techniques.iter().map(|t| (*t).to_string()).collect(),
             campaign: None,
             ioc_type: None,
-            ioc_value: Some(format!("{id}-{seq}")),
+            ioc_value: Some(format!("s{n}-{seq}")),
             reporter_sector: None,
             target_sector: None,
             target_size: None,
@@ -422,11 +470,28 @@ mod tests {
             observations: 1,
             tlp: Tlp::Green,
             reporter: "identity--a".into(),
-            digest: format!("d-{id}"),
+            digest: (seq == 0).then_some(Digest([n; 32])),
             received_ns: arrived,
             seq,
             detail: None,
         }
+    }
+
+    /// The schema as 0.27 stored it: ids and digests as text (#200).
+    fn text_schema() -> Vec<ColumnSpec> {
+        let mut s = schema();
+        s[1] = ColumnSpec::new("sighting_id", ColumnType::Utf8, false);
+        s[15] = ColumnSpec::new("digest", ColumnType::Utf8, true);
+        s
+    }
+
+    /// `r` as 0.27 stored it: ids and digests as text, the digest on
+    /// every row of a sighting.
+    fn text_record(r: &SightingRow) -> Vec<RecordValue> {
+        let mut v = record(r);
+        v[1] = RecordValue::Str(r.sighting_id.to_string());
+        v[15] = RecordValue::Str(Digest([r.sighting_id.0[0]; 32]).to_string());
+        v
     }
 
     /// The partition directories of the listed files, sorted.
@@ -467,19 +532,19 @@ mod tests {
 
         // A 0.20 table: the `technique` string in place of the list, rows
         // over two days and three hours, flushed and compacted.
-        let mut old = schema();
+        let mut old = text_schema();
         old[3] = ColumnSpec::new("technique", ColumnType::Utf8, true);
         let t = Table::open(data.join(NAME), options(old, SORT_KEY, None, now)).unwrap();
         let rows = [
-            (row("s1", T0, &[], 0), Some("T1059,T1071.001")),
-            (row("s1", T0, &[], 1), Some("T1059,T1071.001")),
-            (row("s2", T0 + 2 * HOUR, &[], 0), Some("T1059")),
-            (row("s3", T0 + DAY, &[], 0), None),
-            (row("s4", T0 + DAY + HOUR, &[], 0), Some("")),
+            (row(1, T0, &[], 0), Some("T1059,T1071.001")),
+            (row(1, T0, &[], 1), Some("T1059,T1071.001")),
+            (row(2, T0 + 2 * HOUR, &[], 0), Some("T1059")),
+            (row(3, T0 + DAY, &[], 0), None),
+            (row(4, T0 + DAY + HOUR, &[], 0), Some("")),
         ];
         for (r, technique) in &rows {
             CLOCK.store(r.received_ns, Ordering::SeqCst);
-            let mut v = record(r);
+            let mut v = text_record(r);
             v[3] = technique.map_or(RecordValue::Null, |t| RecordValue::Str(t.into()));
             t.append_row(v, Ack::Durable).unwrap();
         }
@@ -520,7 +585,7 @@ mod tests {
 
         // New rows carry the list; a second open does not rewrite again.
         CLOCK.store(T0 + DAY + 4 * HOUR, Ordering::SeqCst);
-        s.append(&[row("s5", now(), &["T1059"], 0)]).unwrap();
+        s.append(&[row(5, now(), &["T1059"], 0)]).unwrap();
         s.close().unwrap();
         let s = Sightings::open(&data, None, now).unwrap();
         assert_eq!(
@@ -528,6 +593,105 @@ mod tests {
             ["T1059 3", "T1071.001 1"]
         );
         s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// Its own clock: tests run in parallel.
+    static BIN_CLOCK: AtomicI64 = AtomicI64::new(T0);
+    fn bin_now() -> i64 {
+        BIN_CLOCK.load(Ordering::SeqCst)
+    }
+
+    #[test]
+    fn a_table_with_text_ids_is_rewritten_to_bytes() {
+        let data = std::env::temp_dir().join(format!("frank-binary-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+
+        // A 0.27 table: ids and digests as text, the digest on every row,
+        // over two hours.
+        let t = Table::open(
+            data.join(NAME),
+            options(text_schema(), SORT_KEY, None, bin_now),
+        )
+        .unwrap();
+        let rows = [
+            row(1, T0, &["T1059"], 0),
+            row(1, T0, &["T1059"], 1),
+            row(2, T0 + HOUR, &[], 0),
+        ];
+        for r in &rows {
+            BIN_CLOCK.store(r.received_ns, Ordering::SeqCst);
+            t.append_row(text_record(r), Ack::Durable).unwrap();
+        }
+        BIN_CLOCK.store(T0 + 3 * HOUR, Ordering::SeqCst);
+        t.flush().unwrap();
+        t.compact().unwrap();
+        let before = partitions(&t);
+        t.close().unwrap();
+
+        let s = Sightings::open(&data, None, bin_now).unwrap();
+        assert!(data.join(PRE_BINARY).exists());
+        assert!(!data.join(PRE_LIST).exists());
+        let got = s
+            .query("SELECT sighting_id, digest, seq FROM sightings ORDER BY ioc_value")
+            .unwrap();
+        let blob = |n: u8, len: usize| Cell::Blob(vec![n; len]);
+        assert_eq!(
+            got.rows,
+            [
+                vec![blob(1, 16), blob(1, 32), Cell::Int(0)],
+                vec![blob(1, 16), Cell::Null, Cell::Int(1)],
+                vec![blob(2, 16), blob(2, 32), Cell::Int(0)],
+            ],
+            "the same ids as bytes, the digest on the first row only"
+        );
+        let one = s
+            .query(&format!(
+                "SELECT count(*) FROM sightings WHERE sighting_id = {}",
+                frank_core::sql_blob(&[1; 16])
+            ))
+            .unwrap();
+        assert_eq!(scalar(&one), 2);
+        assert_eq!(partitions(&s.table), before, "rows stay in their hours");
+        assert_eq!(
+            counts(&s, "sightings, UNNEST(techniques) AS t(tech)"),
+            ["T1059 1"],
+            "the list is kept"
+        );
+
+        // New rows go in as bytes; a second open does not rewrite again.
+        BIN_CLOCK.store(T0 + 4 * HOUR, Ordering::SeqCst);
+        s.append(&[row(3, bin_now(), &[], 0)]).unwrap();
+        s.close().unwrap();
+        std::fs::remove_dir_all(data.join(PRE_BINARY)).unwrap();
+        let s = Sightings::open(&data, None, bin_now).unwrap();
+        assert!(!data.join(PRE_BINARY).exists());
+        let all = s
+            .query("SELECT count(DISTINCT sighting_id) FROM sightings")
+            .unwrap();
+        assert_eq!(scalar(&all), 3);
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    #[test]
+    fn a_text_id_that_is_no_uuid_stops_the_rewrite() {
+        let data = std::env::temp_dir().join(format!("frank-badid-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        std::fs::create_dir_all(&data).unwrap();
+        let t = Table::open(data.join(NAME), options(text_schema(), SORT_KEY, None, now)).unwrap();
+        let mut v = text_record(&row(1, T0, &[], 0));
+        v[1] = RecordValue::Str("s1".into());
+        t.append_row(v, Ack::Durable).unwrap();
+        t.close().unwrap();
+
+        let e = Sightings::open(&data, None, now).err().unwrap();
+        assert!(e.to_string().contains("sighting_id"), "{e}");
+        assert!(
+            !data.join(PRE_BINARY).exists(),
+            "the table is left as it was"
+        );
         let _ = std::fs::remove_dir_all(&data);
     }
 }

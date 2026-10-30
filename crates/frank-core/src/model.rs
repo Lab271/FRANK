@@ -1,4 +1,4 @@
-//! The no.all(|r| r.techniques == ["T1059", "T1071.001"]));malised sighting (`frank/1`, #160) and the rows of the shared
+//! The normalised sighting (`frank/1`, #160) and the rows of the shared
 //! `sightings` table derived from it.
 //!
 //! A FRANK sighting packs three STIX concepts: what fired (a SIGMA rule, a
@@ -60,10 +60,10 @@ impl std::error::Error for Error {}
 pub struct Sighting {
     /// Always [`FORMAT`].
     pub format: &'static str,
-    /// The sender's id for this sighting, `sighting--{uuid}` (lower case):
-    /// with the participant, the key it is registered under (#159).
+    /// The sender's id for this sighting: with the participant, the key
+    /// it is registered under (#159).
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub sighting_id: Option<String>,
+    pub sighting_id: Option<SightingId>,
     /// When the threat was observed, ns since the epoch (UTC).
     #[serde(rename = "timestamp", serialize_with = "rfc3339")]
     pub ts_ns: i64,
@@ -166,7 +166,7 @@ pub struct Observable {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct SightingRow {
     pub ts_ns: i64,
-    pub sighting_id: String,
+    pub sighting_id: SightingId,
     pub rule_id: Option<String>,
     /// All ATT&CK techniques, each once, stored as the `techniques` list
     /// (0.21) and ranked with `UNNEST(techniques)`.
@@ -186,9 +186,10 @@ pub struct SightingRow {
     #[serde(skip_serializing_if = "String::is_empty")]
     pub reporter: String,
     /// SHA-256 of the normalised sighting (#159): with `reporter` and
-    /// `sighting_id` the registration. Set by the server.
-    #[serde(skip_serializing_if = "String::is_empty")]
-    pub digest: String,
+    /// `sighting_id` the registration. Set by the server, on the `seq = 0`
+    /// row only (#200).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub digest: Option<Digest>,
     /// When the server first stored it, ns since the epoch; 0 until set.
     #[serde(skip_serializing_if = "is_zero")]
     pub received_ns: i64,
@@ -254,9 +255,9 @@ impl Sighting {
     /// `sighting_id`: everything but the target's identity, since the
     /// table's files are handed to partners whole.
     #[must_use]
-    pub fn detail(&self, sighting_id: &str) -> String {
+    pub fn detail(&self, sighting_id: SightingId) -> String {
         let mut s = self.clone();
-        s.sighting_id = Some(sighting_id.to_string());
+        s.sighting_id = Some(sighting_id);
         s.target.id = None;
         serde_json::to_string(&s).unwrap_or_default()
     }
@@ -265,11 +266,11 @@ impl Sighting {
     /// one per distinct IoC (`seq` 0, 1, ...), the first carrying the
     /// detail.
     #[must_use]
-    pub fn rows(&self, sighting_id: &str) -> Vec<SightingRow> {
+    pub fn rows(&self, sighting_id: SightingId) -> Vec<SightingRow> {
         let of = &self.sighting_of;
         let row = |seq: usize, ioc: Option<&Ioc>| SightingRow {
             ts_ns: self.ts_ns,
-            sighting_id: sighting_id.to_string(),
+            sighting_id,
             rule_id: of.rule.as_ref().and_then(|r| r.id.clone()),
             techniques: of.techniques.clone(),
             campaign: of.campaign.clone(),
@@ -283,7 +284,7 @@ impl Sighting {
             observations: self.count,
             tlp: self.tlp,
             reporter: String::new(),
-            digest: String::new(),
+            digest: None,
             received_ns: 0,
             seq: u32::try_from(seq).unwrap_or(u32::MAX),
             detail: (seq == 0).then(|| self.detail(sighting_id)),
@@ -350,9 +351,9 @@ impl SightingBuilder {
     }
 
     /// A UUID, bare or with the STIX `sighting--` prefix (or Phase 2's
-    /// `sighting-`), kept as `sighting--{uuid}` in lower case.
+    /// `sighting-`).
     pub fn sighting_id(&mut self, id: &str) -> &mut Self {
-        match sighting_id(id) {
+        match SightingId::parse(id) {
             Ok(id) => self.s.sighting_id = Some(id),
             Err(e) => {
                 self.fail(e);
@@ -804,28 +805,79 @@ fn common(b: &mut SightingBuilder, v: &Value) -> Result<(), Error> {
     Ok(())
 }
 
-/// A sighting id: a UUID, bare or with the STIX `sighting--` prefix (or
-/// Phase 2's `sighting-`), stored as `sighting--{uuid}` in lower case.
-///
-/// # Errors
-///
-/// [`Error::Invalid`] for anything else.
-pub fn sighting_id(s: &str) -> Result<String, Error> {
-    let bad = || Error::Invalid("sighting_id must be a UUID (or sighting--<uuid>)".into());
-    let s = s.trim().to_ascii_lowercase();
-    let u = s
-        .strip_prefix("sighting--")
-        .or_else(|| s.strip_prefix("sighting-"))
-        .unwrap_or(&s);
-    let groups: Vec<&str> = u.split('-').collect();
-    let ok = groups.iter().map(|g| g.len()).eq([8, 4, 4, 4, 12])
-        && groups
-            .iter()
-            .all(|g| g.bytes().all(|b| b.is_ascii_hexdigit()));
-    if ok {
-        Ok(format!("sighting--{u}"))
-    } else {
-        Err(bad())
+/// A sighting id: the 16 bytes of a UUID, stored as they are (#200) and
+/// written `sighting--{uuid}` in lower case.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord, Default)]
+pub struct SightingId(pub [u8; 16]);
+
+impl SightingId {
+    /// A UUID, bare or with the STIX `sighting--` prefix (or Phase 2's
+    /// `sighting-`), in either case.
+    ///
+    /// # Errors
+    ///
+    /// [`Error::Invalid`] for anything else.
+    pub fn parse(s: &str) -> Result<SightingId, Error> {
+        let bad = || Error::Invalid("sighting_id must be a UUID (or sighting--<uuid>)".into());
+        let s = s.trim().to_ascii_lowercase();
+        let u = s
+            .strip_prefix("sighting--")
+            .or_else(|| s.strip_prefix("sighting-"))
+            .unwrap_or(&s);
+        let groups: Vec<&str> = u.split('-').collect();
+        if !groups.iter().map(|g| g.len()).eq([8, 4, 4, 4, 12]) {
+            return Err(bad());
+        }
+        crate::unhex(&groups.concat())
+            .and_then(|b| b.try_into().ok())
+            .map(SightingId)
+            .ok_or_else(bad)
+    }
+}
+
+impl std::fmt::Display for SightingId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let h = crate::hex(&self.0);
+        write!(
+            f,
+            "sighting--{}-{}-{}-{}-{}",
+            &h[..8],
+            &h[8..12],
+            &h[12..16],
+            &h[16..20],
+            &h[20..]
+        )
+    }
+}
+
+impl Serialize for SightingId {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
+    }
+}
+
+/// SHA-256 of a normalised sighting (#159): 32 bytes, stored as they are
+/// (#200) and written in lower-case hex.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Digest(pub [u8; 32]);
+
+impl Digest {
+    /// A digest written in hex, either case.
+    #[must_use]
+    pub fn parse(s: &str) -> Option<Digest> {
+        crate::unhex(s)?.try_into().ok().map(Digest)
+    }
+}
+
+impl std::fmt::Display for Digest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&crate::hex(&self.0))
+    }
+}
+
+impl Serialize for Digest {
+    fn serialize<S: Serializer>(&self, s: S) -> Result<S::Ok, S::Error> {
+        s.collect_str(self)
     }
 }
 
@@ -979,7 +1031,7 @@ mod tests {
         )
         .unwrap();
         assert_eq!(s.target.id.as_deref(), Some("identity-b"), "kept for Core");
-        let rows = serde_json::to_string(&s.rows("s-1")).unwrap();
+        let rows = serde_json::to_string(&s.rows(SightingId::default())).unwrap();
         assert!(!rows.contains("identity-"), "{rows}");
         assert!(!rows.contains("organisation"), "{rows}");
         let record = serde_json::to_string(&s).unwrap();
@@ -1032,7 +1084,7 @@ mod tests {
             .unwrap();
         assert_eq!(ip.context["subject"], "Verify");
         assert!(!ip.context.contains_key("sender_ip"));
-        assert_eq!(s.rows("x").len(), 3);
+        assert_eq!(s.rows(SightingId::default()).len(), 3);
     }
 
     #[test]
@@ -1068,7 +1120,11 @@ mod tests {
                 .any(|o| o.role.as_deref() == Some("benign")),
             "FRANK does not judge"
         );
-        assert_eq!(s.rows("x").len(), 2, "rows stay one per IoC");
+        assert_eq!(
+            s.rows(SightingId::default()).len(),
+            2,
+            "rows stay one per IoC"
+        );
     }
 
     #[test]
@@ -1141,7 +1197,7 @@ mod tests {
         )
         .unwrap();
         let id = "sighting--0f8fad5b-d9cb-469f-a165-70867728950e";
-        let rows = s.rows(id);
+        let rows = s.rows(SightingId::parse(id).unwrap());
         assert_eq!(rows.iter().map(|r| r.seq).collect::<Vec<_>>(), [0, 1, 2]);
         assert!(rows.iter().all(|r| r.techniques == ["T1059", "T1071.001"]));
         assert!(rows[1..].iter().all(|r| r.detail.is_none()));
@@ -1163,7 +1219,7 @@ mod tests {
             NOW,
         )
         .unwrap();
-        let rows = s.rows("x");
+        let rows = s.rows(SightingId::default());
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0].ioc_type, None);
         assert_eq!(rows[0].ts_ns, NOW, "undated: the server's clock");
@@ -1235,7 +1291,10 @@ mod tests {
             Err(Error::Invalid(_))
         ));
         let s = Sighting::parse(&with(r#""tlp_level": "amber","#), NOW).unwrap();
-        assert!(s.rows("x").iter().all(|r| r.tlp == Tlp::Amber));
+        assert!(s
+            .rows(SightingId::default())
+            .iter()
+            .all(|r| r.tlp == Tlp::Amber));
     }
 
     #[test]
@@ -1301,7 +1360,8 @@ mod tests {
                 NOW,
             )
         };
-        let want = Some("sighting--0f8fad5b-d9cb-469f-a165-70867728950e".to_string());
+        let id = SightingId::parse("sighting--0f8fad5b-d9cb-469f-a165-70867728950e").unwrap();
+        let want = Some(id);
         assert_eq!(
             with("0F8FAD5B-D9CB-469F-A165-70867728950E")
                 .unwrap()
@@ -1323,6 +1383,21 @@ mod tests {
         );
         assert!(with("not-a-uuid").is_err());
         assert!(with("sight_789").is_err());
+        assert!(with("+f8fad5b-d9cb-469f-a165-70867728950e").is_err());
+        assert_eq!(id.0[..2], [0x0f, 0x8f], "stored as bytes (#200)");
+        assert_eq!(
+            id.to_string(),
+            "sighting--0f8fad5b-d9cb-469f-a165-70867728950e",
+            "written as text"
+        );
+        assert_eq!(
+            serde_json::to_value(id).unwrap(),
+            "sighting--0f8fad5b-d9cb-469f-a165-70867728950e"
+        );
+        let d = Digest([0xab; 32]);
+        assert_eq!(Digest::parse(&d.to_string()), Some(d));
+        assert_eq!(serde_json::to_value(d).unwrap(), "ab".repeat(32));
+        assert_eq!(Digest::parse("ab"), None, "not 32 bytes");
         assert!(
             with("0f8fad5b-d9cb-469f-a165-70867728950").is_err(),
             "one digit short"
