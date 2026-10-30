@@ -26,7 +26,9 @@ duplicate with its original receipt. A batch that fails to arrive (say,
 the server restarts) is sent again until it does, which is safe for the
 same reason. Exit code 1 on any mismatch.
 
-Only documentation addresses (RFC 5737) and `.example` domains.
+The content is `demo_sightings.py`'s: campaigns from the abuse.ch exports
+in `--lists` (`data/lists`, filled by `make lists`) when they are there,
+else documentation addresses (RFC 5737) and `.example` domains.
 """
 import argparse
 import datetime as dt
@@ -44,7 +46,7 @@ from collections import Counter
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from demo_sightings import submission  # noqa: E402
+from demo_sightings import campaigns, submission  # noqa: E402
 
 TOKENS_FILE = Path(__file__).resolve().parent / "stream_tokens.json"
 # A partner watcher sees these; AMBER+STRICT may become core-only (#164).
@@ -186,6 +188,8 @@ def main() -> int:
     p.add_argument("--setup", action="store_true",
                    help="register the test tokens of stream_tokens.json with the frank CLI, then stop")
     p.add_argument("--frank", default="target/release/frank", help="the frank binary for --setup")
+    p.add_argument("--lists", type=Path, default=Path(os.environ.get("FRANK_DATA", "data")) / "lists",
+                   help="the lists the campaigns come from (data/lists; synthetic without them)")
     a = p.parse_args()
 
     if a.setup:
@@ -201,6 +205,8 @@ def main() -> int:
 
     api = Api(a.url)
     rng = random.Random(a.seed)
+    camps = campaigns(a.lists)
+    log("campaigns: " + ", ".join(c[0] for c in camps))
     # The statistics window must cover the whole run.
     watch = Watch(api, a.watch_token, int(a.duration // 86400) + 2) if a.watch_token else None
     if watch:
@@ -232,7 +238,7 @@ def main() -> int:
                     turn += 1
                     batch = []
                     for _ in range(a.batch):
-                        s = submission(rng, now_utc())
+                        s = submission(rng, now_utc(), camps)
                         s["submission"]["sighting"]["timestamp"] = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
                         s["submission"]["tlp_level"] = rng.choices(*TLP_MIX)[0]
                         batch.append(s)

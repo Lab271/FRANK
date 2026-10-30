@@ -107,7 +107,7 @@ stream-setup: server ## Register the checked-in test tokens (scripts/stream_toke
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) python3 scripts/stream_sightings.py --setup --frank $(FRANK)
 
 stream: ## Stream sightings through the API and watch the table: make stream RATE=60 DURATION=1h [FRANK_URL=…]
-	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION)
+	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION) --lists $(DATA)/lists
 
 geoip: ## Download DB-IP Lite Country + ASN into data/geoip/dbip-lite (this month's, else last month's)
 	@install -d -m 700 $(DATA)/geoip $(GEOIP_DIR)
