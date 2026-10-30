@@ -4,6 +4,15 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.24.0] - 2026-10-30
+
+### Added
+
+- **Reserved addresses are marked** (#192): `make lists` adds MISP's warning lists for private (RFC 1918), documentation (RFC 5737, RFC 3849), shared, link-local and multicast ranges. A sensor reporting such an address is greyed out instead of looking like an indicator. The UI says "warning list" for these and for public DNS resolvers.
+- **URLhaus and ThreatFox work again** (#193): abuse.ch moved its exports behind an Auth-Key. `make lists` reads it from 1Password (`ABUSE_KEY_REF`) and skips those two lists when there is none. A download that fails now stops `make lists` instead of passing quietly.
+- **Demo and stream from abuse.ch data**: with `data/lists`, `make demo` and `make stream` send 15 campaigns built from ThreatFox, URLhaus and Feodo Tracker. They cover about 90 real addresses from about 30 countries, some listed and some on no list. Real addresses come only from abuse.ch.
+- **Faster start**: the server listens right away instead of after importing every list.
+
 ## [0.23.0] - 2026-10-30
 
 ### Added
