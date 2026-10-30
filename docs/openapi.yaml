@@ -308,6 +308,30 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "422": { $ref: "#/components/responses/Unprocessable" }
 
+  /v1/live:
+    get:
+      tags: [statistics]
+      summary: The IoCs of the sightings that arrived recently
+      description: |
+        By arrival (`received`), not by when a sighting was seen. Counters
+        and arrivals per bar (5 minutes for 1h, 30 for 6h, 60 for 24h); the
+        window's IoCs newest first (`feed`), and those two or more
+        participants report (`converging`), 50 each. `seen_since` is the
+        earliest sighting of the IoC that arrived before the window; null
+        means it is new. Below partner, an IoC with fewer than `min_cell`
+        reporters is left out of both lists; the counters include it.
+      x-min-status: contributor
+      parameters:
+        - { name: window, in: query, schema: { enum: ["1h", "6h", "24h"], default: "1h" } }
+      responses:
+        "200":
+          description: The counters, `buckets`, `feed` and `converging`.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "422": { $ref: "#/components/responses/Unprocessable" }
+
   /v1/rules/{id}:
     get:
       tags: [lookup]
