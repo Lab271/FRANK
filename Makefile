@@ -12,8 +12,11 @@ COMPOSE := podman compose -f deploy/podman/compose.yaml
 N ?= 60
 RATE ?= 60
 DURATION ?= 1h
+# DB-IP's free country and ASN databases, CC BY 4.0, no account needed (#191).
+GEOIP_DIR := $(DATA)/geoip/dbip-lite
+DBIP_URL := https://download.db-ip.com/free
 
-.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream image up down clean
+.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down clean
 
 ##@ General
 
@@ -101,6 +104,37 @@ stream-setup: server ## Register the checked-in test tokens (scripts/stream_toke
 
 stream: ## Stream sightings through the API and watch the table: make stream RATE=60 DURATION=1h [FRANK_URL=…]
 	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION)
+
+geoip: ## Download DB-IP Lite Country + ASN into data/geoip/dbip-lite (this month's, else last month's)
+	@install -d -m 700 $(DATA)/geoip $(GEOIP_DIR)
+	@set -euo pipefail; \
+	tmp=$$(mktemp -d $(DATA)/geoip/.download.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
+	months="$$(date -u +%Y-%m) $$(date -u -v-1m +%Y-%m 2>/dev/null || date -u -d '1 month ago' +%Y-%m)"; \
+	for db in country asn; do \
+	  for m in $$months; do \
+	    curl -fsSL "$(DBIP_URL)/dbip-$$db-lite-$$m.mmdb.gz" -o "$$tmp/$$db.gz" && break; \
+	  done; \
+	  gunzip -c "$$tmp/$$db.gz" > "$$tmp/dbip-$$db-lite.mmdb"; \
+	done; \
+	chmod 600 "$$tmp"/*.mmdb; mv -f "$$tmp"/*.mmdb $(GEOIP_DIR)/
+	@ls -l $(GEOIP_DIR)
+
+MISP_LISTS := https://raw.githubusercontent.com/MISP/misp-warninglists/main/lists
+ABUSE_CH := urlhaus=https://urlhaus.abuse.ch/downloads/csv_online/ \
+	threatfox_recent=https://threatfox.abuse.ch/export/csv/recent/ \
+	feodo_ipblocklist=https://feodotracker.abuse.ch/downloads/ipblocklist.csv
+
+lists: ## Download the warning (MISP public DNS, CC0) and reference (abuse.ch, CC0) lists into data/lists; the server imports them within a minute
+	@install -d $(DATA)/lists/warning $(DATA)/lists/reference
+	@set -euo pipefail; for l in public-dns-v4 public-dns-v6 public-dns-hostname; do \
+	  curl -fsSL -o $(DATA)/lists/warning/.$$l.json "$(MISP_LISTS)/$$l/list.json" \
+	    && mv -f $(DATA)/lists/warning/.$$l.json $(DATA)/lists/warning/$$l.json; \
+	done
+	@set -euo pipefail; for kv in $(ABUSE_CH); do n=$${kv%%=*}; u=$${kv#*=}; \
+	  curl -fsSL -o $(DATA)/lists/reference/.$$n.csv "$$u" \
+	    && mv -f $(DATA)/lists/reference/.$$n.csv $(DATA)/lists/reference/$$n.csv; \
+	done
+	@ls -l $(DATA)/lists/warning $(DATA)/lists/reference
 
 ##@ Container (podman)
 

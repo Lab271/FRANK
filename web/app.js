@@ -43,6 +43,18 @@ function table(columns, rows) {
 
 const iso = (ns) => new Date(ns / 1e6).toISOString().replace(".000", "");
 const isoDay = (ns) => iso(ns).slice(0, 10);
+/** An IP address's country and network from DB-IP (#191), or "". */
+const where = (g) => !g ? "" : [g.country === "ZZ" ? "unknown country" : g.country,
+  g.asn ? `AS${g.asn}${g.as_org ? ` ${g.as_org}` : ""}` : "unknown network"].join(" · ");
+/** What warning and reference lists say about an IoC (#192, #193), one line each. */
+/** A "listed" badge naming the reference lists that have an IoC (#193). */
+const badges = (listed) => {
+  const refs = (listed || []).filter((l) => l.kind === "reference");
+  return refs.length ? [el("span", { class: "badge", title: refs.map((l) => l.source).join(", ") }, "listed")] : [];
+};
+const listedLines = (listed) => (listed || []).map((l) => el("p", { class: `note listed listed-${l.kind}` },
+  l.kind === "warning" ? `common infrastructure: ${l.source}`
+    : `listed by ${l.source}${l.tags ? ` (${l.tags})` : ""}${l.first_listed ? ` since ${isoDay(l.first_listed)}` : ""}`));
 
 // --- tabs, routing and token ----------------------------------------------
 // The URL hash is the state: "#stats", "#explore?group=rule&sector=energy&pane=rule:r1".
@@ -239,7 +251,7 @@ async function lookup(type, value) {
   try {
     const r = await (await api(`/v1/iocs?${new URLSearchParams({ type, value })}`)).json();
     if (!r.known) {
-      show(out, el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`));
+      show(out, el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`), ...listedLines(r.listed));
       closePane();
       return;
     }
@@ -247,6 +259,8 @@ async function lookup(type, value) {
     show(out,
       el("p", {}, linkTo(`${r.ioc.type} ${r.ioc.value}`, () => openPane("ioc", key), "label"),
         `: seen ${r.count}× by ${r.reporters} reporter(s), first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
+      ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
+      ...listedLines(r.listed),
       table(["day", "count", "first", "last"],
         r.days.map((d) => [linkTo(d.day, () => openPane("ioc", key, d.day), "label"), d.count, iso(d.first_ts), iso(d.last_ts)])),
       table(["SIGMA rule", "rows"],
@@ -387,14 +401,18 @@ async function loadExplore(params) {
   if (pane) openPane(pane.slice(0, pane.indexOf(":")), pane.slice(pane.indexOf(":") + 1));
   else closePane();
 
-  const query = new URLSearchParams([["group", group], ["days", $("ex-days").value], ...filters]);
+  // Reference lists (#193): IoCs a list has, or that none has.
+  $("ex-listed-wrap").hidden = group !== "ioc";
+  $("ex-listed").value = group === "ioc" ? (params.get("listed") || "") : "";
+  const listed = $("ex-listed").value ? [["listed", $("ex-listed").value]] : [];
+  const query = new URLSearchParams([["group", group], ["days", $("ex-days").value], ...filters, ...listed]);
   const seq = ++exploreSeq;
   try {
     const r = await (await api(`/v1/explore?${query}`)).json();
     if (seq !== exploreSeq) return;
     const rows = r.rows.map((x) => {
-      const tr = el("tr", { class: "go", tabindex: "0" },
-        el("td", {}, x.key), el("td", { class: "num" }, x.count.toLocaleString()),
+      const tr = el("tr", { class: `go${x.common ? " common" : ""}`, tabindex: "0" },
+        el("td", {}, x.key, ...badges(x.listed)), el("td", { class: "num" }, x.count.toLocaleString()),
         el("td", { class: "num" }, x.reporters), el("td", {}, isoDay(x.first_seen)), el("td", {}, isoDay(x.last_seen)));
       const open = () => drill(group, x.key);
       tr.addEventListener("click", open);
@@ -417,9 +435,16 @@ for (const id of ["ex-group", "ex-days"]) {
     const p = current();
     p.set(id === "ex-group" ? "group" : "days", $(id).value);
     p.delete("pane");
+    if (id === "ex-group" && $(id).value !== "ioc") p.delete("listed");
     go(p);
   });
 }
+$("ex-listed").addEventListener("change", () => {
+  const p = current();
+  if ($("ex-listed").value) p.set("listed", $("ex-listed").value); else p.delete("listed");
+  p.delete("pane");
+  go(p);
+});
 
 // --- detail pane ---------------------------------------------------------------
 
@@ -528,6 +553,8 @@ async function openPane(kind, key, day) {
           ...(panels.length ? panels : [thin]),
           linkTo("all days", () => openPane("ioc", key), "label")]
         : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
+          ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
+          ...listedLines(r.listed),
           kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
@@ -1034,13 +1061,15 @@ function seenCell(i) {
 }
 
 function liveFeed(items, prev) {
-  const head = el("tr", {}, ...["arrived (UTC)", "type", "value", "rule", "sightings", "reporters", "seen before"]
+  const head = el("tr", {}, ...["arrived (UTC)", "type", "value", "where", "rule", "sightings", "reporters", "seen before"]
     .map((c) => el("th", {}, c)));
   const rows = items.map((i) =>
-    el("tr", prev && i.last_received > prev ? { class: "fresh" } : {},
+    el("tr", { class: [prev && i.last_received > prev ? "fresh" : "", i.common ? "common" : ""].join(" ").trim(),
+      title: i.common ? "common infrastructure: shown, not converging" : "" },
       el("td", { class: "mono" }, clock(i.last_received)),
       el("td", {}, i.ioc_type),
-      el("td", {}, iocLink(i)),
+      el("td", {}, iocLink(i), ...badges(i.listed)),
+      el("td", { class: "note" }, where(i.geo)),
       el("td", {}, i.rule_id ? linkTo(i.rule_id, () => openPane("rule", i.rule_id), "label") : "∅"),
       el("td", { class: "num" }, i.sightings),
       el("td", { class: "num" }, i.reporters),
@@ -1057,7 +1086,8 @@ function liveNodes(r, prev) {
   ];
   nodes.push(r.converging.length
     ? el("div", {}, ...r.converging.map((i) => el("div", { class: "bar" }, el("span", {}, `${i.ioc_type} `), iocLink(i),
-      el("span", { class: "n" }, `${i.reporters} participants · ${i.sightings} sightings · last ${clock(i.last_received)}`))))
+      el("span", { class: "n" }, [where(i.geo), `${i.reporters} participants · ${i.sightings} sightings · last ${clock(i.last_received)}`]
+        .filter(Boolean).join(" · ")))))
     : el("p", { class: "note" }, "none in this window"));
   nodes.push(el("h3", {}, "IoCs, latest arrival first"));
   nodes.push(r.feed.length ? liveFeed(r.feed, prev) : el("p", { class: "note" }, "nothing arrived in this window"));
@@ -1076,7 +1106,8 @@ async function loadLive() {
     return;
   }
   try {
-    const r = await (await api(`/v1/live?window=${$("live-window").value}`)).json();
+    const common = $("live-common").checked ? "&common=include" : "";
+    const r = await (await api(`/v1/live?window=${$("live-window").value}${common}`)).json();
     if (!onLive()) return;
     show($("live-out"), ...liveNodes(r, livePrev));
     livePrev = r.now;
@@ -1088,6 +1119,7 @@ async function loadLive() {
 }
 
 $("live-window").addEventListener("change", () => { livePrev = 0; loadLive(); });
+$("live-common").addEventListener("change", () => loadLive());
 $("live-pause").addEventListener("click", () => {
   livePaused = !livePaused;
   $("live-pause").textContent = livePaused ? "resume" : "pause";

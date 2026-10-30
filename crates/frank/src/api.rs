@@ -45,12 +45,18 @@ const MAX_BATCH: usize = 100;
 const MAX_BODY: usize = 2 * 1024 * 1024;
 /// The rows not yet in a file, served as one Parquet file written on request.
 pub const OPEN_FILE: &str = "open/current.parquet";
+/// The `ip_geo` table (#191), served as one Parquet file written on request.
+pub const GEO_FILE: &str = "geo/ip_geo.parquet";
 /// Days in a detail pane's trend.
 const TREND_DAYS: i64 = 30;
 
 pub struct App {
     pub sightings: Sightings,
     pub iocs: Iocs,
+    /// Country and ASN of IP addresses (#191).
+    pub geo: crate::geo::Geo,
+    /// Warning and reference IoC lists (#192, #193).
+    pub lists: crate::lists::Lists,
     pub participants: Participants,
     pub registry: Registry,
     pub audit: Audit,
@@ -129,8 +135,15 @@ pub fn router(app: Shared) -> Router {
         .with_state(app)
 }
 
-async fn health() -> Json<Value> {
-    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }))
+/// Up and its version. The geo databases' state is information only: FRANK is
+/// healthy without it (#191).
+async fn health(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({
+        "status": "ok",
+        "version": env!("CARGO_PKG_VERSION"),
+        "geoip": app.geo.status(),
+        "lists": app.lists.status(),
+    }))
 }
 
 async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
@@ -271,6 +284,7 @@ async fn submit(
             app.sightings.append(&rows).map_err(internal)?;
             app.iocs.record(&rows).map_err(internal)?;
             app.registry.register(fresh).map_err(internal)?;
+            app.geo.fill(&rows, now);
         }
         app.audit
             .record(
@@ -388,6 +402,18 @@ async fn statistics(
 #[derive(Deserialize)]
 struct LiveQuery {
     window: Option<String>,
+    common: Option<String>,
+}
+
+/// `common=include|exclude` (#192): whether IoCs a warning list marks as
+/// common infrastructure stay in the converging list and Explore's IoC
+/// ranking. Excluded by default; they are marked, never dropped, elsewhere.
+fn include_common(v: Option<&str>) -> Result<bool, ApiError> {
+    match v {
+        None | Some("exclude") => Ok(false),
+        Some("include") => Ok(true),
+        Some(_) => Err(unprocessable("common: expected include or exclude")),
+    }
 }
 
 /// IoCs per list in the live view.
@@ -405,6 +431,7 @@ async fn live_view(
     let caller = require(&app, &headers, Tier::Contributor)?;
     let window = Window::parse(q.window.as_deref().unwrap_or("1h"))
         .ok_or_else(|| unprocessable("window: expected 1h, 6h or 24h"))?;
+    let common = include_common(q.common.as_deref())?;
     let now = (app.now)();
     let since = now - window.ns();
     let visible = tlp_visible(caller.tier);
@@ -435,7 +462,49 @@ async fn live_view(
         if !exact {
             iocs.retain(|i| i.reporters >= MIN_CELL);
         }
-        let (feed, converging) = live::lists(&iocs, LIVE_LIMIT);
+        if !common {
+            // Converging candidates marked as common infrastructure stay in
+            // the feed, marked, but do not converge.
+            let candidates: Vec<(String, String)> = iocs
+                .iter()
+                .filter(|i| i.reporters >= 2)
+                .map(|i| (i.ioc_type.clone(), i.value.clone()))
+                .collect();
+            let warned: std::collections::BTreeSet<(String, String)> = candidates
+                .iter()
+                .zip(app.lists.annotate(&candidates))
+                .filter(|(_, l)| crate::lists::warned(l))
+                .map(|(k, _)| k.clone())
+                .collect();
+            for i in &mut iocs {
+                if warned.contains(&(i.ioc_type.clone(), i.value.clone())) {
+                    i.common = true;
+                }
+            }
+        }
+        let (mut feed, mut converging) = live::lists(&iocs, LIVE_LIMIT);
+        let shown: Vec<(String, String)> = feed
+            .iter()
+            .chain(&converging)
+            .map(|i| (i.ioc_type.clone(), i.value.clone()))
+            .collect();
+        for (i, l) in feed
+            .iter_mut()
+            .chain(converging.iter_mut())
+            .zip(app.lists.annotate(&shown))
+        {
+            i.listed = l;
+        }
+        let ips: Vec<String> = feed
+            .iter()
+            .chain(&converging)
+            .filter(|i| matches!(i.ioc_type.as_str(), "ipv4" | "ipv6"))
+            .map(|i| i.value.clone())
+            .collect();
+        let geo = app.geo.answers(ips);
+        for i in feed.iter_mut().chain(converging.iter_mut()) {
+            i.geo = geo.get(&i.value).cloned();
+        }
         Ok(Json(json!({
             "window": window.label(),
             "since": since,
@@ -571,8 +640,18 @@ async fn ioc_lookup(
             (None, Some(d)) => ioc_panels(&app.sightings, &ioc, d.first_ts, None, caller.tier)?,
             (None, None) => Value::Null,
         };
+        let geo = ioc
+            .ip_hex()
+            .and_then(|_| app.geo.answers(vec![ioc.value.clone()]).remove(&ioc.value));
+        let listed = app
+            .lists
+            .annotate(&[(ioc.ioc_type.as_str().to_string(), ioc.value.clone())])
+            .pop()
+            .unwrap_or_default();
         Ok(Json(json!({
             "ioc": ioc,
+            "geo": geo,
+            "listed": listed,
             "known": !days.is_empty(),
             "count": days.iter().map(|d| d.count).sum::<i64>(),
             "reporters": reporters,
@@ -648,20 +727,72 @@ fn grouped(
 async fn explore(
     State(app): State<Shared>,
     headers: HeaderMap,
-    Query(params): Query<BTreeMap<String, String>>,
+    Query(mut params): Query<BTreeMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
+    let common = include_common(params.remove("common").as_deref())?;
+    // `listed=any|none|<list>` (#193): IoCs a reference list has, has not,
+    // or a given one has; with group=ioc.
+    let listed_by = params.remove("listed");
     let q = ex::Query::parse(&params).map_err(unprocessable)?;
+    if listed_by.is_some() && q.group != Dimension::Ioc {
+        return Err(unprocessable("listed: only with group=ioc"));
+    }
+    if listed_by
+        .as_deref()
+        .is_some_and(|l| l.is_empty() || l.len() > 200)
+    {
+        return Err(unprocessable("listed: any, none or a list name"));
+    }
     let caller = require(&app, &headers, q.min_tier())?;
     let since = (app.now)() - q.days * DAY_NS;
     let visible = tlp_visible(caller.tier);
     let exact = caller.tier >= Tier::Partner;
     blocking(move || {
-        let rows = grouped(&app.sightings, &q, since, &visible, exact, 100)?;
+        let by_ioc = q.group == Dimension::Ioc;
+        let mut rows = grouped(
+            &app.sightings,
+            &q,
+            since,
+            &visible,
+            exact,
+            if by_ioc { 200 } else { 100 },
+        )?;
+        if by_ioc {
+            // What the lists say about each IoC (#192, #193); common
+            // infrastructure is left out unless asked for.
+            let keys: Vec<(String, String)> = rows
+                .iter()
+                .filter_map(|r| r["key"].as_str()?.split_once(':'))
+                .map(|(t, v)| (t.to_string(), v.to_string()))
+                .collect();
+            let listed = app.lists.annotate(&keys);
+            let mut keep = Vec::with_capacity(rows.len());
+            for (r, l) in rows.iter_mut().zip(listed) {
+                let refs: Vec<&str> = l
+                    .iter()
+                    .filter(|x| x.kind == "reference")
+                    .map(|x| x.list.as_str())
+                    .collect();
+                keep.push(match listed_by.as_deref() {
+                    None => true,
+                    Some("any") => !refs.is_empty(),
+                    Some("none") => refs.is_empty(),
+                    Some(name) => refs.contains(&name),
+                });
+                r["common"] = json!(crate::lists::warned(&l));
+                r["listed"] = json!(l);
+            }
+            let mut keep = keep.into_iter();
+            rows.retain(|_| keep.next().unwrap_or(false));
+            rows.retain(|r| common || r["common"] != true);
+            rows.truncate(100);
+        }
         Ok(Json(json!({
             "group": q.group.name(),
             "days": q.days,
             "filters": q.filters.iter().map(|(d, v)| (d.name(), v)).collect::<BTreeMap<_, _>>(),
             "min_cell": if exact { 1 } else { MIN_CELL },
+            "listed": listed_by,
             "rows": rows,
         })))
     })
@@ -730,7 +861,7 @@ struct RangeQuery {
 }
 
 /// The first and last address of a CIDR block, as 32 hex digits.
-fn cidr_bounds(cidr: &str) -> Option<(String, String)> {
+pub(crate) fn cidr_bounds(cidr: &str) -> Option<(String, String)> {
     let (addr, len) = cidr.trim().split_once('/')?;
     let ip: IpAddr = addr.parse().ok()?;
     let len: u32 = len.parse().ok()?;
@@ -810,8 +941,12 @@ async fn files(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Val
         if open > 0 {
             files.push(json!({ "path": OPEN_FILE, "rows": open, "bytes": null, "open": true }));
         }
+        let geo = app.geo.db().all().map_err(internal)?.len();
+        let ip_geo = (geo > 0).then(|| {
+            json!({ "table": "ip_geo", "path": GEO_FILE, "rows": geo, "attribution": crate::geo::ATTRIBUTION })
+        });
         Ok(Json(
-            json!({ "table": crate::store::sightings::NAME, "files": files }),
+            json!({ "table": crate::store::sightings::NAME, "files": files, "ip_geo": ip_geo }),
         ))
     })
     .await
@@ -832,6 +967,22 @@ async fn file(
         return Err(ApiError(StatusCode::NOT_FOUND, "no such file".into()));
     }
     blocking(move || {
+        if path == GEO_FILE {
+            // Served when listed: when `ip_geo` has rows.
+            let rows = app.geo.db().all().map_err(internal)?;
+            if rows.is_empty() {
+                return Err(ApiError(StatusCode::NOT_FOUND, "no such file".into()));
+            }
+            let bytes = geo_parquet(&rows).map_err(internal)?;
+            return Ok((
+                [
+                    (header::CONTENT_TYPE, "application/vnd.apache.parquet"),
+                    (header::CACHE_CONTROL, "no-store"),
+                ],
+                bytes,
+            )
+                .into_response());
+        }
         if path == OPEN_FILE {
             let bytes = app.sightings.open_rows_parquet().map_err(internal)?;
             return Ok((
@@ -863,6 +1014,45 @@ async fn file(
             .into_response())
     })
     .await
+}
+
+/// `ip_geo` as one Parquet file, DB-IP's attribution in its metadata.
+fn geo_parquet(rows: &[crate::store::geo::IpGeo]) -> Result<Vec<u8>, String> {
+    use db_core::storage::parquet::schema::ColumnValues as V;
+    use db_core::storage::parquet::writer::{
+        ColumnSpec, ColumnType, Compression, ParquetWriter, WriterOptions,
+    };
+    let text = |name| ColumnSpec::new(name, ColumnType::Utf8, false);
+    let schema = vec![
+        text("ip"),
+        text("country"),
+        ColumnSpec::new("asn", ColumnType::Int64, false),
+        ColumnSpec::new("as_org", ColumnType::Utf8, true),
+        ColumnSpec::new("looked_up", ColumnType::TimestampNanos, false),
+    ];
+    let mut w = ParquetWriter::new(
+        Vec::new(),
+        schema,
+        WriterOptions {
+            compression: Compression::Zstd,
+            key_value_metadata: vec![("attribution".into(), crate::geo::ATTRIBUTION.into())],
+            ..WriterOptions::default()
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    if !rows.is_empty() {
+        w.write_columns(vec![
+            V::Utf8(rows.iter().map(|g| Some(g.ip.clone())).collect()),
+            V::Utf8(rows.iter().map(|g| Some(g.country.clone())).collect()),
+            V::Int64(rows.iter().map(|g| Some(g.asn)).collect()),
+            V::Utf8(rows.iter().map(|g| g.as_org.clone()).collect()),
+            V::TimestampNanos(rows.iter().map(|g| Some(g.looked_up)).collect()),
+        ])
+        .map_err(|e| e.to_string())?;
+    }
+    w.finish()
+        .map(|(bytes, _)| bytes)
+        .map_err(|e| e.to_string())
 }
 
 /// The API description (`docs/openapi.yaml`), as JSON.

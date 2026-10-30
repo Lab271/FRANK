@@ -65,6 +65,7 @@
       <label>arrived in the last <select id="live-window" class="lab-input">
         <option value="1h" selected>hour</option><option value="6h">6 hours</option><option value="24h">24 hours</option>
       </select></label>
+      <label><input type="checkbox" id="live-common"> show common infrastructure</label>
       <button id="live-pause" class="lab-btn lab-btn--secondary">pause</button>
       <span id="live-status" class="note"></span>
     </div>
@@ -82,6 +83,10 @@
       <label>window <select id="ex-days" class="lab-input">
         <option value="1">1 day</option><option value="7">7 days</option>
         <option value="30" selected>30 days</option><option value="365">365 days</option>
+      </select></label>
+      <label id="ex-listed-wrap" hidden>reference lists <select id="ex-listed" class="lab-input">
+        <option value="">all IoCs</option><option value="any">listed somewhere</option>
+        <option value="none">listed nowhere</option>
       </select></label>
     </div>
     <div id="ex-filters" class="row chips"></div>
@@ -154,6 +159,9 @@
       level allows). Identities of the sender and the target are never stored.</p>
     <div id="about-legend" class="row chips-static"></div>
     <pre id="about-yaml" class="yaml"></pre>
+    <h2>sources</h2>
+    <p class="note">Country and network of IP addresses: <a href="https://db-ip.com">IP Geolocation by DB-IP</a>,
+      licensed under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>.</p>
   </section>
 
   <section id="admin" role="tabpanel" hidden>
