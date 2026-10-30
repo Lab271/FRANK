@@ -1058,9 +1058,20 @@ async fn a_resend_is_recognised() {
     // gives the same receipt.
     let r = h
         .sightings
-        .query("SELECT DISTINCT digest, received FROM sightings")
+        .query("SELECT DISTINCT digest, received FROM sightings WHERE digest IS NOT NULL")
         .unwrap();
     assert_eq!(r.rows.len(), 1);
+    let stored = frank_core::unhex(receipt["digest"].as_str().unwrap()).unwrap();
+    assert_eq!(
+        r.rows[0][0],
+        db_core::engine::Cell::Blob(stored),
+        "the receipt's digest, stored as bytes on the first row (#200)"
+    );
+    let firsts = h
+        .sightings
+        .query("SELECT count(*) FROM sightings WHERE digest IS NOT NULL AND seq <> 0")
+        .unwrap();
+    assert_eq!(frank::store::sightings::scalar(&firsts), 0);
     assert_eq!(h.registry.rebuild(&h.sightings).unwrap(), 1);
     let (status, rebuilt) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s.clone())).await;
     assert_eq!(status, StatusCode::OK);
@@ -2129,7 +2140,7 @@ async fn live_shows_recent_iocs_new_and_converging() {
     h.sightings
         .append(&[frank_core::SightingRow {
             ts_ns: NOW - 31 * HOUR_NS,
-            sighting_id: "sighting--old".into(),
+            sighting_id: frank_core::SightingId([0x01; 16]),
             rule_id: Some("r0".into()),
             techniques: Vec::new(),
             campaign: None,
@@ -2143,7 +2154,7 @@ async fn live_shows_recent_iocs_new_and_converging() {
             observations: 1,
             tlp: frank_core::Tlp::Green,
             reporter: "identity--old".into(),
-            digest: "d-old".into(),
+            digest: Some(frank_core::Digest([0x01; 32])),
             received_ns: NOW - 30 * HOUR_NS,
             seq: 0,
             detail: None,

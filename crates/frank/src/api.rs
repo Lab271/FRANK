@@ -26,7 +26,9 @@ use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use axum::{Json, Router};
 use db_core::engine::Cell;
-use frank_core::{sql_quote, Format, Ioc, IocType, Sighting, Tier, Tlp, MIN_CELL};
+use frank_core::{
+    sql_blob, sql_quote, Digest, Format, Ioc, IocType, Sighting, SightingId, Tier, Tlp, MIN_CELL,
+};
 use serde::Deserialize;
 use serde_json::{json, Value};
 
@@ -194,7 +196,7 @@ async fn preview(
     let subs = submissions(&headers, &body, (app.now)())?;
     let rows: Vec<_> = subs
         .iter()
-        .flat_map(|s| s.rows("sighting--preview"))
+        .flat_map(|s| s.rows(s.sighting_id.unwrap_or_default()))
         .collect();
     Ok(Json(json!({ "rows": rows })))
 }
@@ -211,9 +213,9 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&headers, &body, (app.now)())?;
-    let mut items: Vec<(String, String, Sighting)> = Vec::with_capacity(subs.len());
+    let mut items: Vec<(SightingId, Digest, Sighting)> = Vec::with_capacity(subs.len());
     for (i, s) in subs.into_iter().enumerate() {
-        let id = s.sighting_id.clone().ok_or_else(|| {
+        let id = s.sighting_id.ok_or_else(|| {
             unprocessable(format!(
                 "[{i}] sighting.sighting_id is required: a UUID the sender chooses, so a resend is recognised"
             ))
@@ -234,12 +236,12 @@ async fn submit(
     let (receipts, rows) = blocking(move || {
         let app = app2;
         let _one_at_a_time = app.submit_lock.lock().map_err(internal)?;
-        let ids = items.iter().map(|(id, _, _)| id.clone()).collect();
+        let ids = items.iter().map(|(id, _, _)| *id).collect();
         let known = app.registry.find(&caller2.participant, ids).map_err(internal)?;
-        let conflicts: Vec<&str> = items
+        let conflicts: Vec<String> = items
             .iter()
             .filter(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
-            .map(|(id, _, _)| id.as_str())
+            .map(|(id, _, _)| id.to_string())
             .collect();
         if !conflicts.is_empty() {
             app.audit
@@ -269,13 +271,13 @@ async fn submit(
             }
             // Sightings are stored under the organisation, never the user,
             // and carry their registration.
-            rows.extend(s.rows(&id).into_iter().map(|mut r| {
+            rows.extend(s.rows(id).into_iter().map(|mut r| {
                 r.reporter.clone_from(&caller2.participant);
-                r.digest.clone_from(&digest);
+                r.digest = (r.seq == 0).then_some(digest);
                 r.received_ns = now;
                 r
             }));
-            fresh.push((caller2.participant.clone(), id.clone(), digest.clone(), now));
+            fresh.push((caller2.participant.clone(), id, digest, now));
             receipts.push(Receipt { sighting_id: id, digest, received: now, status: "created" });
         }
         if !fresh.is_empty() {
@@ -1118,7 +1120,7 @@ async fn list(
     blocking(move || {
         let s = &app.sightings;
         let r = reporter.as_deref();
-        let ids: Option<Vec<String>> = match q.ioc_sql(&visible, r) {
+        let ids: Option<Vec<SightingId>> = match q.ioc_sql(&visible, r) {
             None => None,
             Some(sql) => Some(
                 s.query(&sql)
@@ -1126,7 +1128,7 @@ async fn list(
                     .rows
                     .into_iter()
                     .filter_map(|row| match row.into_iter().next() {
-                        Some(Cell::Text(id)) => Some(id),
+                        Some(Cell::Blob(id)) => id.try_into().ok().map(SightingId),
                         _ => None,
                     })
                     .collect(),
@@ -1164,10 +1166,10 @@ async fn sighting(
     axum::extract::Path(id): axum::extract::Path<String>,
 ) -> Result<Json<Value>, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
-    let id = frank_core::model::sighting_id(&id).map_err(unprocessable)?;
+    let id = SightingId::parse(&id).map_err(unprocessable)?;
     let mut filter = format!(
         "sighting_id = {} AND seq = 0 AND {}",
-        sql_quote(&id),
+        sql_blob(&id.0),
         tlp_visible(caller.tier)
     );
     if caller.tier < Tier::Partner {
@@ -1278,7 +1280,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
         types.insert(t.as_str().to_string(), t);
         rows.push(frank_core::SightingRow {
             ts_ns: *ts,
-            sighting_id: String::new(),
+            sighting_id: SightingId::default(),
             rule_id: None,
             techniques: Vec::new(),
             campaign: None,
@@ -1292,7 +1294,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             observations: u32::try_from(*n).unwrap_or(1),
             tlp,
             reporter: String::new(),
-            digest: String::new(),
+            digest: None,
             received_ns: 0,
             seq: 0,
             detail: None,

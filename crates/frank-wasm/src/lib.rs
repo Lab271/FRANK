@@ -29,7 +29,7 @@ fn preview_rows(submission: &str, now_ms: f64) -> Result<String, String> {
         formats::parse(submission, Format::sniff(submission), now).map_err(|e| e.to_string())?;
     let rows: Vec<_> = sightings
         .iter()
-        .flat_map(|s| s.rows("sighting--preview"))
+        .flat_map(|s| s.rows(s.sighting_id.unwrap_or_default()))
         .collect();
     Ok(json!({ "rows": rows }).to_string())
 }
@@ -187,6 +187,7 @@ fn lt(a: &Cell, b: &Cell) -> bool {
         (Cell::Int(x), Cell::Int(y)) => x < y,
         (Cell::Real(x), Cell::Real(y)) => x < y,
         (Cell::Text(x), Cell::Text(y)) => x < y,
+        (Cell::Blob(x), Cell::Blob(y)) => x < y,
         _ => false,
     }
 }
@@ -198,6 +199,8 @@ fn cell(c: &Cell) -> Value {
         Cell::Real(x) => json!(x),
         Cell::Bool(b) => json!(b),
         Cell::Text(s) => json!(s),
+        // `sighting_id` and `digest` are bytes (#200): shown in hex.
+        Cell::Blob(b) => json!(frank_core::hex(b)),
         other => json!(other.to_string()),
     }
 }
@@ -213,6 +216,15 @@ mod tests {
         assert_eq!(merge_kind("ioc_type"), Some(Merge::Key));
         assert_eq!(merge_kind("COUNT(DISTINCT sighting_id)"), None);
         assert_eq!(merge_kind("AVG(confidence)"), None);
+    }
+
+    #[test]
+    fn blobs_show_in_hex_and_order_by_bytes() {
+        assert_eq!(cell(&Cell::Blob(vec![0x0f, 0xab])), json!("0fab"));
+        assert_eq!(
+            combine(&Cell::Blob(vec![2]), Cell::Blob(vec![1]), Merge::Min),
+            Cell::Blob(vec![1])
+        );
     }
 
     #[test]

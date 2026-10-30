@@ -17,7 +17,7 @@ pub mod tlp;
 pub mod yaml;
 
 pub use formats::Format;
-pub use model::{Error, Observable, Sighting, SightingBuilder, SightingRow};
+pub use model::{Digest, Error, Observable, Sighting, SightingBuilder, SightingId, SightingRow};
 pub use observable::{Ioc, IocType};
 pub use tier::Tier;
 pub use tlp::Tlp;
@@ -33,6 +33,31 @@ pub fn sql_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "''"))
 }
 
+/// `bytes` as an SQL blob literal, `x'…'` (#200).
+#[must_use]
+pub fn sql_blob(bytes: &[u8]) -> String {
+    format!("x'{}'", hex(bytes))
+}
+
+/// `bytes` in lower-case hex.
+#[must_use]
+pub fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// The bytes of a hex string (either case); `None` for anything else.
+#[must_use]
+pub fn unhex(s: &str) -> Option<Vec<u8>> {
+    // Checked first: `from_str_radix` takes a leading `+`.
+    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..s.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&s[i..i + 2], 16).ok())
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -41,5 +66,20 @@ mod tests {
     fn sql_quote_doubles_quotes() {
         assert_eq!(sql_quote("a'b"), "'a''b'");
         assert_eq!(sql_quote("x' OR '1'='1"), "'x'' OR ''1''=''1'");
+    }
+
+    #[test]
+    fn hex_round_trips() {
+        assert_eq!(hex(&[0x0f, 0xab]), "0fab");
+        assert_eq!(unhex("0FaB"), Some(vec![0x0f, 0xab]));
+        assert_eq!(sql_blob(&[0x0f, 0xab]), "x'0fab'");
+        assert_eq!(unhex("0fa"), None);
+        assert_eq!(unhex("0g"), None);
+        assert_eq!(
+            unhex("aé0"),
+            None,
+            "not hex, and no panic on a char boundary"
+        );
+        assert_eq!(unhex("+f"), None, "from_str_radix would take it");
     }
 }

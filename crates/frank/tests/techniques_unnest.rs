@@ -22,6 +22,13 @@ fn now() -> i64 {
 }
 
 /// The rows of one sighting: one per IoC (`seq` 0, 1, ...), or one without.
+/// A test id: `label`'s first 16 bytes, zero-padded.
+fn test_id(label: &str) -> frank_core::SightingId {
+    let mut b = [0; 16];
+    b.iter_mut().zip(label.bytes()).for_each(|(b, c)| *b = c);
+    frank_core::SightingId(b)
+}
+
 fn sighting(
     id: &str,
     ts: i64,
@@ -32,7 +39,7 @@ fn sighting(
 ) -> Vec<SightingRow> {
     let row = |seq: u32, ioc: Option<&(IocType, &str)>| SightingRow {
         ts_ns: ts,
-        sighting_id: id.into(),
+        sighting_id: test_id(id),
         rule_id: Some("sigma-rule-x".into()),
         techniques: techniques.iter().map(|t| (*t).to_string()).collect(),
         campaign: Some("c1".into()),
@@ -46,7 +53,7 @@ fn sighting(
         observations: 1,
         tlp,
         reporter: reporter.into(),
-        digest: format!("d-{id}"),
+        digest: (seq == 0).then_some(frank_core::Digest([1; 32])),
         received_ns: ts,
         seq,
         detail: (seq == 0).then(|| "{}".into()),

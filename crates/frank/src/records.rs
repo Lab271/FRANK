@@ -11,7 +11,7 @@
 use std::collections::BTreeMap;
 
 use db_core::engine::Cell;
-use frank_core::sql_quote;
+use frank_core::{sql_blob, sql_quote, SightingId};
 use serde_json::{json, Value};
 use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
@@ -42,7 +42,7 @@ pub struct List {
     /// Newest first.
     pub desc: bool,
     /// The cursor: list after this `(ts, sighting_id)`.
-    pub after: Option<(i64, String)>,
+    pub after: Option<(i64, SightingId)>,
     pub limit: usize,
 }
 
@@ -141,18 +141,18 @@ impl List {
     /// more than the limit so the caller knows whether a next page
     /// exists. `ids` are those [`List::ioc_sql`] found.
     #[must_use]
-    pub fn sql(&self, visible: &str, reporter: Option<&str>, ids: Option<&[String]>) -> String {
+    pub fn sql(&self, visible: &str, reporter: Option<&str>, ids: Option<&[SightingId]>) -> String {
         let mut c = self.conditions(visible, reporter, false);
         c.push("seq = 0".into());
         if let Some(ids) = ids {
-            let ids: Vec<String> = ids.iter().map(|i| sql_quote(i)).collect();
+            let ids: Vec<String> = ids.iter().map(|i| sql_blob(&i.0)).collect();
             c.push(format!("sighting_id IN ({})", ids.join(", ")));
         }
         let (past, dir) = if self.desc { ("<", " DESC") } else { (">", "") };
         if let Some((ts, id)) = &self.after {
             c.push(format!(
                 "(ts {past} {ts} OR (ts = {ts} AND sighting_id {past} {}))",
-                sql_quote(id)
+                sql_blob(&id.0)
             ));
         }
         format!(
@@ -168,11 +168,12 @@ impl List {
 /// normalised sighting. `None` for a row without a record.
 #[must_use]
 pub fn item(row: &[Cell]) -> Option<(String, Value)> {
-    let (Cell::Int(ts), Cell::Text(id), Cell::Text(reporter), Cell::Text(detail)) =
+    let (Cell::Int(ts), Cell::Blob(id), Cell::Text(reporter), Cell::Text(detail)) =
         (&row[0], &row[1], &row[2], &row[4])
     else {
         return None;
     };
+    let id = SightingId(id.as_slice().try_into().ok()?);
     let received = match &row[3] {
         Cell::Int(ns) => rfc3339(*ns),
         _ => Value::Null,
@@ -203,9 +204,9 @@ fn time(key: &str, v: &str) -> Result<i64, String> {
 }
 
 /// A cursor `{ts}.{sighting_id}` this API gave.
-fn cursor(v: &str) -> Option<(i64, String)> {
+fn cursor(v: &str) -> Option<(i64, SightingId)> {
     let (ts, id) = v.split_once('.')?;
-    let id = frank_core::model::sighting_id(id).ok()?;
+    let id = SightingId::parse(id).ok()?;
     Some((ts.parse().ok()?, id))
 }
 
@@ -241,7 +242,10 @@ mod tests {
             [(Dimension::Ioc, "IPv4:198.51.100.7".to_string())]
         );
         assert!(q.mine);
-        assert_eq!((q.limit, q.after), (10, Some((5, ID.to_string()))));
+        assert_eq!(
+            (q.limit, q.after),
+            (10, Some((5, SightingId::parse(ID).unwrap())))
+        );
         let bad = |kv: &[(&str, &str)]| List::parse(&params(kv), NOW).is_err();
         assert!(bad(&[("limit", "0")]));
         assert!(bad(&[("limit", "501")]));
@@ -270,7 +274,11 @@ mod tests {
             ids.contains("ioc_type = 'ipv4'") && ids.contains("target_sector = 'energy'"),
             "{ids}"
         );
-        let page = q.sql("x", None, Some(&["s".into()]));
+        let page = q.sql("x", None, Some(&[SightingId([0xab; 16])]));
+        assert!(
+            page.contains(&format!("sighting_id IN (x'{}')", "ab".repeat(16))),
+            "{page}"
+        );
         assert!(!page.contains("ioc_type"), "IoCs are on any row: {page}");
         assert!(
             page.contains("target_sector = 'energy'") && page.contains("list_contains(techniques"),
@@ -293,7 +301,12 @@ mod tests {
         assert!(sql.contains("rule_id = 'x'' OR ''1''=''1'"), "{sql}");
         assert!(sql.contains("seq = 0"), "{sql}");
         assert!(sql.contains("reporter = 'identity--a'"), "{sql}");
-        assert!(sql.contains(&format!("(ts > 5 OR (ts = 5 AND sighting_id > '{ID}'))")));
+        assert!(
+            sql.contains(
+                "(ts > 5 OR (ts = 5 AND sighting_id > x'0f8fad5bd9cb469fa16570867728950e'))"
+            ),
+            "{sql}"
+        );
         assert!(sql.ends_with("ORDER BY ts, sighting_id LIMIT 101"), "{sql}");
         assert!(q.ioc_sql("x", None).is_none());
     }

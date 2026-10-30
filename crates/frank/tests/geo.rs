@@ -30,10 +30,17 @@ fn dir(name: &str) -> Dir {
     Dir(d)
 }
 
+/// A test id: `label`'s first 16 bytes, zero-padded.
+fn test_id(label: &str) -> frank_core::SightingId {
+    let mut b = [0; 16];
+    b.iter_mut().zip(label.bytes()).for_each(|(b, c)| *b = c);
+    frank_core::SightingId(b)
+}
+
 fn row(ip: &str, t: IocType) -> SightingRow {
     SightingRow {
         ts_ns: NOW,
-        sighting_id: format!("sighting--{ip}"),
+        sighting_id: test_id(ip),
         rule_id: None,
         techniques: Vec::new(),
         campaign: None,
@@ -47,7 +54,7 @@ fn row(ip: &str, t: IocType) -> SightingRow {
         observations: 1,
         tlp: Tlp::Green,
         reporter: "identity--a".into(),
-        digest: format!("d-{ip}"),
+        digest: Some(frank_core::Digest([1; 32])),
         received_ns: NOW,
         seq: 0,
         detail: None,

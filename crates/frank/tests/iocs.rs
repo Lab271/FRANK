@@ -9,7 +9,9 @@ fn rows(ip: &str) -> Vec<frank_core::SightingRow> {
     let json = format!(
         r#"{{"sighting": {{"observables": {{"network": [{{"type": "ipv4", "value": "{ip}"}}]}}}}}}"#
     );
-    Sighting::parse(&json, NOW).unwrap().rows("s")
+    Sighting::parse(&json, NOW)
+        .unwrap()
+        .rows(frank_core::SightingId::default())
 }
 
 #[test]

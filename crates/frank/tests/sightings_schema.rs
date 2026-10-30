@@ -8,6 +8,8 @@ use frank::store::sightings::NAME;
 use frank::store::Sightings;
 
 const NOW: i64 = 1_792_670_400_000_000_000;
+/// Ids are UUIDs since 0.13, the first version this table opens.
+const ID: &str = "sighting--0f8fad5b-d9cb-469f-a165-70867728950e";
 
 fn now() -> i64 {
     NOW
@@ -55,7 +57,7 @@ fn old_table(name: &str, schema: Vec<ColumnSpec>, extra: Vec<RecordValue>) -> st
             },
         )
         .unwrap();
-        let mut row = vec![RecordValue::Int(NOW), RecordValue::Str("s".into())];
+        let mut row = vec![RecordValue::Int(NOW), RecordValue::Str(ID.into())];
         row.extend((0..9).map(|_| RecordValue::Null));
         row.extend([
             RecordValue::Int(50),
@@ -82,7 +84,8 @@ fn a_0_12_table_is_refused() {
 }
 
 /// A table as FRANK 0.13 and 0.14 wrote it gains `seq` and `detail`
-/// (#160); its rows read NULL there and still count.
+/// (#160); its rows read NULL there and still count. Its text id and
+/// digest become bytes (#200).
 #[test]
 fn a_0_14_table_gains_the_grain_columns() {
     let mut schema = schema_0_12();
@@ -95,11 +98,20 @@ fn a_0_14_table_gains_the_grain_columns() {
     let dir = old_table(
         "0.14",
         schema,
-        vec![RecordValue::Str("d".into()), RecordValue::Int(NOW)],
+        vec![RecordValue::Str("ab".repeat(32)), RecordValue::Int(NOW)],
     );
     let s = Sightings::open(&dir, None, now).unwrap();
     let r = s
         .query("SELECT count(*) FROM sightings WHERE (seq = 0 OR seq IS NULL) AND detail IS NULL")
+        .unwrap();
+    assert_eq!(frank::store::sightings::scalar(&r), 1);
+    let id = frank_core::SightingId::parse(ID).unwrap();
+    let r = s
+        .query(&format!(
+            "SELECT count(*) FROM sightings WHERE sighting_id = {} AND digest = {}",
+            frank_core::sql_blob(&id.0),
+            frank_core::sql_blob(&[0xab; 32])
+        ))
         .unwrap();
     assert_eq!(frank::store::sightings::scalar(&r), 1);
     s.close().unwrap();
