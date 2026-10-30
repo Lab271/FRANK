@@ -8,8 +8,9 @@
 //! data/lists/reference/<name>.txt    as for warnings
 //! ```
 //!
-//! A **warning** list marks common infrastructure, such as public DNS
-//! resolvers, so it does not crowd out the signal: marked IoCs are left
+//! A **warning** list marks what is not an indicator, such as public DNS
+//! resolvers or private and documentation addresses (RFC 1918, RFC 5737),
+//! so it does not crowd out the signal: marked IoCs are left
 //! out of the converging list and Explore's IoC ranking by default. A
 //! **reference** list says what an outside source lists. Neither changes
 //! a sighting or a count: FRANK does not judge, it shows who says what.
@@ -40,14 +41,15 @@ pub struct Lists {
 }
 
 impl Lists {
-    pub fn open(data: &Path, now: i64) -> Result<Lists, String> {
-        let l = Lists {
+    /// Opens `data/lists.db`. The files are imported by the first
+    /// [`Lists::refresh`], not here: an import can take a minute, and the
+    /// server should not wait for it to start listening.
+    pub fn open(data: &Path) -> Result<Lists, String> {
+        Ok(Lists {
             dir: data.join(DIR),
             db: ListDb::open(data)?,
             checked: Mutex::new(i64::MIN),
-        };
-        l.refresh(now);
-        Ok(l)
+        })
     }
 
     /// Imports the files that are new or changed and drops the lists of

@@ -53,7 +53,7 @@ const badges = (listed) => {
   return refs.length ? [el("span", { class: "badge", title: refs.map((l) => l.source).join(", ") }, "listed")] : [];
 };
 const listedLines = (listed) => (listed || []).map((l) => el("p", { class: `note listed listed-${l.kind}` },
-  l.kind === "warning" ? `common infrastructure: ${l.source}`
+  l.kind === "warning" ? `warning list: ${l.source}`
     : `listed by ${l.source}${l.tags ? ` (${l.tags})` : ""}${l.first_listed ? ` since ${isoDay(l.first_listed)}` : ""}`));
 
 // --- tabs, routing and token ----------------------------------------------
@@ -1065,7 +1065,7 @@ function liveFeed(items, prev) {
     .map((c) => el("th", {}, c)));
   const rows = items.map((i) =>
     el("tr", { class: [prev && i.last_received > prev ? "fresh" : "", i.common ? "common" : ""].join(" ").trim(),
-      title: i.common ? "common infrastructure: shown, not converging" : "" },
+      title: i.common ? "on a warning list: shown, not converging" : "" },
       el("td", { class: "mono" }, clock(i.last_received)),
       el("td", {}, i.ioc_type),
       el("td", {}, iocLink(i), ...badges(i.listed)),

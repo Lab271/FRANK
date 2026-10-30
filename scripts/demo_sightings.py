@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Synthetic FRANK submissions for demos: `demo_sightings.py [N] [DIR]`.
+"""Synthetic FRANK submissions for demos: `demo_sightings.py [N] [DIR] [LISTS]`.
 
 Writes one file per synthetic MDR (`DIR/mdr-<n>.json`, default `target/demo`):
 `frank ingest` counts each file as one reporter, so the statistics see three
@@ -7,38 +7,212 @@ reporters, as k-anonymity needs (#148).
 
 Dated over the last 7 days, so they show up in the default statistics
 window and stay inside retention. A mix of TLP levels, so every tier sees
-something. Only documentation addresses
-(RFC 5737) and `.example` domains (RFC 2606): no real indicators.
+something.
+
+With LISTS (`data/lists`, filled by `make lists`) the campaigns are built
+from what abuse.ch publishes:
+
+- ThreatFox's busiest malware families, each by what it is known for: C2
+  addresses (Cobalt Strike, Sliver, ...), delivery domains (ClickFix,
+  ClearFake), C2 URLs (Vidar) or payload hashes (AMOS). Listed: they carry
+  abuse.ch's listing next to their country and network.
+- URLhaus's online Mirai downloads, and two campaigns on the addresses of
+  servers URLhaus has malware on, without the URLs: real bad
+  infrastructure that no list FRANK imports has by address, so "listed
+  nowhere", what participants see before the lists do.
+- Feodo Tracker's C2s.
+- Public DNS resolvers and private and documentation addresses, which
+  warning lists grey out as not an indicator (#192).
+
+Real addresses come only from abuse.ch: none are made up, so none is an
+innocent host. Without LISTS, only documentation addresses (RFC 5737) and
+`.example` domains (RFC 2606).
 """
+import collections
+import csv
 import datetime as dt
 import hashlib
+import ipaddress
 import json
+import pathlib
 import random
+import re
 import sys
+import urllib.parse
 import uuid
 
-CAMPAIGNS = [  # name, SIGMA rule, ATT&CK technique, severity, IPs, domains, weight
+LOADER = [hashlib.sha256(f"loader-{i}".encode()).hexdigest() for i in (1, 2, 3)]
+SYNTHETIC = [  # name, SIGMA rule, ATT&CK technique, severity, IPs, domains, URLs, hashes, weight
     ("npm_worm_2026_q4", "sigma-rule-npm-postinstall-exfil", "T1195.001", "high",
-     [f"198.51.100.{i}" for i in range(10, 16)], ["pkg-telemetry.example", "webhook-relay.example"], 4),
+     [f"198.51.100.{i}" for i in range(10, 16)], ["pkg-telemetry.example", "webhook-relay.example"], [], [], 4),
     ("banking_phish_2026_q4", "sigma-rule-credential-harvest-login", "T1566.002", "medium",
-     [f"203.0.113.{i}" for i in range(40, 48)], ["secure-bank-verify.example", "login-update.example"], 3),
+     [f"203.0.113.{i}" for i in range(40, 48)], ["secure-bank-verify.example", "login-update.example"], [], [], 3),
     ("ransomware_loader_2026", "sigma-rule-lsass-access", "T1003.001", "critical",
-     [f"192.0.2.{i}" for i in range(100, 104)], ["c2-update.example"], 1),
+     [f"192.0.2.{i}" for i in range(100, 104)], ["c2-update.example"], [], LOADER, 1),
     ("rdp_bruteforce", "sigma-rule-rdp-many-failures", "T1110.001", "low",
-     [f"198.51.100.{i}" for i in range(200, 220)], [], 4),
+     [f"198.51.100.{i}" for i in range(200, 220)], [], [], [], 4),
 ]
+# ThreatFox families by what most of their IoCs are (IoC type, threat
+# type): campaign suffix, SIGMA rule, ATT&CK technique, severity.
+FAMILY_RULES = {
+    ("ip:port", "botnet_cc"): ("c2", "sigma-rule-c2-beacon", "T1071.001", "high"),
+    ("domain", "botnet_cc"): ("c2", "sigma-rule-c2-beacon", "T1071.001", "high"),
+    ("url", "botnet_cc"): ("c2", "sigma-rule-stealer-dead-drop-resolver", "T1102.001", "high"),
+    ("domain", "payload_delivery"): ("delivery", "sigma-rule-clipboard-paste-run", "T1204.004", "medium"),
+    ("url", "payload_delivery"): ("delivery", "sigma-rule-payload-download", "T1105", "high"),
+    ("sha256_hash", "payload"): ("payload", "sigma-rule-malicious-file-execution", "T1204.002", "high"),
+}
+FAMILIES = 9
+# Well-known resolvers, used when the public DNS warning list has them.
+RESOLVERS = ["8.8.8.8", "1.1.1.1", "9.9.9.9", "208.67.222.222"]
+# Private (RFC 1918) and documentation (RFC 5737) addresses: what a
+# misconfigured sensor reports. On the special-purpose warning lists.
+RESERVED = ["10.20.30.40", "192.168.1.10", "172.16.5.4", "192.0.2.15", "198.51.100.77"]
 SECTORS = ["energy"] * 5 + ["financial_services"] * 4 + ["healthcare"] * 2 + ["government", "water", "logistics"]
 
 
-def submission(rng: random.Random, now: dt.datetime) -> dict:
-    name, rule, tech, sev, ips, domains, _ = rng.choices(CAMPAIGNS, weights=[c[6] for c in CAMPAIGNS])[0]
+def rows(path: pathlib.Path):
+    """The data rows of an abuse.ch CSV export: `#` lines are comments."""
+    if not path.exists():
+        return []
+    with path.open(encoding="utf-8", errors="replace") as f:
+        return list(csv.reader((l for l in f if not l.startswith("#") and l.strip()), skipinitialspace=True))
+
+
+def is_ipv4(v: str) -> bool:
+    try:
+        return ipaddress.ip_address(v).version == 4
+    except ValueError:
+        return False
+
+
+def slug(s: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "_", s.lower()).strip("_")
+
+
+def threatfox(lists: pathlib.Path) -> list:
+    """ThreatFox's busiest malware families, the most recent IoCs of each
+    (the export is newest first)."""
+    fams: dict[str, dict[str, dict]] = {}
+    kinds: dict[str, collections.Counter] = collections.defaultdict(collections.Counter)
+    for r in rows(lists / "reference" / "threatfox_recent.csv"):
+        if len(r) < 8:
+            continue
+        value, kind, threat, family = r[2], r[3], r[4], r[7]
+        if not family or family in ("None", "Unknown malware"):
+            continue
+        kinds[family][(kind, threat)] += 1
+        # Dicts as ordered sets: first seen is most recent.
+        f = fams.setdefault(family, {"ips": {}, "domains": {}, "urls": {}, "hashes": {}})
+        if kind == "ip:port" and is_ipv4(value.rsplit(":", 1)[0]):
+            f["ips"][value.rsplit(":", 1)[0]] = None
+        elif kind == "domain":
+            f["domains"][value.lower()] = None
+        elif kind == "url":
+            f["urls"][value] = None
+        elif kind == "sha256_hash":
+            f["hashes"][value.lower()] = None
+    out = []
+    for family in sorted(fams, key=lambda f: (-sum(kinds[f].values()), f)):
+        rule = next((FAMILY_RULES[k] for k, _ in kinds[family].most_common() if k in FAMILY_RULES), None)
+        if rule is None:
+            continue
+        suffix, sigma, tech, sev = rule
+        f = fams[family]
+        out.append((f"{slug(family)}_{suffix}", sigma, tech, sev, list(f["ips"])[:10], list(f["domains"])[:6],
+                    list(f["urls"])[:4], list(f["hashes"])[:4], 3 if len(out) < 3 else 2))
+        if len(out) == FAMILIES:
+            break
+    return out
+
+
+def spread(ips, n: int) -> list:
+    """Up to `n` of `ips`, one per /8 first, so they fall in many networks."""
+    first, rest, seen = [], [], set()
+    for ip in ips:
+        (rest if ip.split(".")[0] in seen else first).append(ip)
+        seen.add(ip.split(".")[0])
+    return (first + rest)[:n]
+
+
+def urlhaus(lists: pathlib.Path, listed: set) -> list:
+    """URLhaus's online Mirai downloads, with the addresses serving them,
+    and the addresses of malware servers without their URLs: on no list
+    by address unless in `listed` (ThreatFox's and Feodo's), left out."""
+    mirai, iot, other = [], {}, {}
+    for r in rows(lists / "reference" / "urlhaus.csv"):
+        if len(r) < 7 or r[3] != "online":
+            continue
+        tags = set(r[6].split(","))
+        if "mirai" in tags and len(mirai) < 12:
+            mirai.append(r[2])
+        host = urllib.parse.urlsplit(r[2]).hostname or ""
+        if is_ipv4(host) and host not in listed:
+            (iot if tags & {"mirai", "Mozi", "elf", "ua-wget"} else other)[host] = None
+    hosts = list(dict.fromkeys(h for u in mirai if (h := urllib.parse.urlsplit(u).hostname) and is_ipv4(h)))[:8]
+    out = [("mirai_downloads", "sigma-rule-iot-wget-pipe-shell", "T1105", "medium", hosts, [], mirai, [], 2)] if mirai else []
+    unlisted = [("iot_botnet_scanning", "sigma-rule-inbound-telnet-bruteforce", "T1110.001", "low",
+                 spread([h for h in iot if h not in hosts], 12), [], [], [], 3),
+                ("malware_hosting", "sigma-rule-download-from-raw-ip", "T1105", "medium",
+                 spread(other, 12), [], [], [], 3)]
+    return out + [c for c in unlisted if c[4]]
+
+
+def feodo(lists: pathlib.Path) -> list:
+    """Feodo Tracker's botnet C2 addresses, when there are a few."""
+    ips = sorted({r[1] for r in rows(lists / "reference" / "feodo_ipblocklist.csv")
+                  if len(r) > 5 and is_ipv4(r[1])})
+    if len(ips) < 2:
+        return []
+    return [("feodo_botnet_c2", "sigma-rule-c2-beacon", "T1071.001", "high", ips[:8], [], [], [], 1)]
+
+
+def resolvers(lists: pathlib.Path) -> list:
+    """Traffic to public DNS resolvers: on a warning list, greyed out."""
+    path = lists / "warning" / "public-dns-v4.json"
+    if not path.exists():
+        return []
+    listed = set(json.loads(path.read_text()).get("list", []))
+    ips = [ip for ip in RESOLVERS if ip in listed or f"{ip}/32" in listed]
+    if not ips:
+        return []
+    return [("dns_to_public_resolvers", "sigma-rule-dns-public-resolver", "T1071.004", "low", ips, [], [], [], 2)]
+
+
+def listed_ips(lists: pathlib.Path) -> set:
+    """Every address ThreatFox and Feodo Tracker list."""
+    tf = {r[2].rsplit(":", 1)[0] for r in rows(lists / "reference" / "threatfox_recent.csv")
+          if len(r) > 3 and r[3] == "ip:port"}
+    return tf | {r[1] for r in rows(lists / "reference" / "feodo_ipblocklist.csv") if len(r) > 1}
+
+
+def campaigns(lists: pathlib.Path | None) -> list:
+    if lists is None or not lists.is_dir():
+        return SYNTHETIC
+    tf, fd = threatfox(lists), feodo(lists)
+    real = tf + fd + urlhaus(lists, {ip for c in tf + fd for ip in c[4]} | listed_ips(lists))
+    if not real:
+        print(f"{lists}: no abuse.ch exports (make lists), synthetic campaigns only", file=sys.stderr)
+        return SYNTHETIC
+    reserved = ("misconfigured_sensor", "sigma-rule-outbound-scan", "T1046", "low", RESERVED, [], [], [], 1)
+    return real + resolvers(lists) + [reserved]
+
+
+def pick(rng: random.Random, values: list, most: int, least: int = 0) -> list:
+    return rng.sample(values, k=rng.randint(min(least, len(values)), min(most, len(values))))
+
+
+def submission(rng: random.Random, now: dt.datetime, camps: list) -> dict:
+    name, rule, tech, sev, ips, domains, urls, hashes, _ = rng.choices(camps, weights=[c[8] for c in camps])[0]
     ts = now - dt.timedelta(days=rng.uniform(0, 7), minutes=5)
-    net = [{"type": "ipv4", "value": ip} for ip in rng.sample(ips, k=rng.randint(1, min(3, len(ips))))]
-    net += [{"type": "domain", "value": d} for d in rng.sample(domains, k=rng.randint(0, len(domains)))]
-    obs = {"network": net}
-    if name == "ransomware_loader_2026":
-        digest = hashlib.sha256(f"loader-{rng.randint(1, 3)}".encode()).hexdigest()
-        obs["files"] = [{"type": "executable", "hash_sha256": digest}]
+    # At least one IoC: from the first kind the campaign has, the rest maybe.
+    first = next(i for i, v in enumerate([ips, domains, urls, hashes]) if v)
+    net = [{"type": "ipv4", "value": ip} for ip in pick(rng, ips, 3, int(first == 0))]
+    net += [{"type": "domain", "value": d} for d in pick(rng, domains, 2, int(first == 1))]
+    net += [{"type": "url", "value": u} for u in pick(rng, urls, 2, int(first == 2))]
+    obs = {"network": net} if net else {}
+    if files := [{"type": "executable", "hash_sha256": h} for h in pick(rng, hashes, 2, int(first == 3))]:
+        obs["files"] = files
     return {"submission": {
         "tlp_level": rng.choices(["clear", "green", "amber", "amber+strict"], weights=[3, 5, 2, 1])[0],
         "submitter": {"organisation_id": f"identity-mdr-{rng.randint(1, 3)}", "sector": "cybersecurity_services"},
@@ -57,10 +231,10 @@ def submission(rng: random.Random, now: dt.datetime) -> dict:
 
 
 if __name__ == "__main__":
-    import pathlib
-
     n = int(sys.argv[1]) if len(sys.argv) > 1 else 60
     out = pathlib.Path(sys.argv[2] if len(sys.argv) > 2 else "target/demo")
+    camps = campaigns(pathlib.Path(sys.argv[3]) if len(sys.argv) > 3 else None)
+    print("campaigns: " + ", ".join(c[0] for c in camps))
     out.mkdir(parents=True, exist_ok=True)
     for old in out.glob("mdr-*.json"):
         old.unlink()
@@ -68,7 +242,7 @@ if __name__ == "__main__":
     now = dt.datetime.now(dt.timezone.utc)
     by_mdr: dict[str, list] = {}
     for _ in range(n):
-        s = submission(rng, now)
+        s = submission(rng, now, camps)
         mdr = s["submission"]["submitter"]["organisation_id"].removeprefix("identity-")
         by_mdr.setdefault(mdr, []).append(s)
     for mdr, subs in sorted(by_mdr.items()):
