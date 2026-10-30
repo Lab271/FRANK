@@ -1,0 +1,13 @@
+# FRANK Platform - Background Processing Spike Requirements
+# These are the dependencies needed to run spike 012
+
+# Core web framework
+fastapi>=0.109.0
+uvicorn[standard]>=0.27.0
+
+# FRANK core (already in project)
+# frank>=0.1.0  # Installed via project setup
+
+# Testing
+pytest>=7.4.0
+httpx>=0.26.0  # For TestClient
