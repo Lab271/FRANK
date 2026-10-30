@@ -80,11 +80,13 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
     let sightings = Sightings::open(&dir, None, now).unwrap();
     let iocs = Iocs::open(&dir).unwrap();
     let registry = Registry::open(&dir, &sightings).unwrap();
+    let lists = frank::lists::Lists::open(&dir).unwrap();
+    lists.refresh(now());
     let app = router(Arc::new(App {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
         geo: frank::geo::Geo::open(&dir, now()).unwrap(),
-        lists: frank::lists::Lists::open(&dir, now()).unwrap(),
+        lists,
         participants: Participants::open(&dir).unwrap(),
         registry: registry.clone(),
         audit: Audit::open(&dir).unwrap(),

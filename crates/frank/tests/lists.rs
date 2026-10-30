@@ -31,7 +31,8 @@ fn lists_follow_their_files() {
     std::fs::create_dir_all(&r).unwrap();
 
     // No files: nothing listed, nothing fails.
-    let l = Lists::open(&d.0, NOW).unwrap();
+    let l = Lists::open(&d.0).unwrap();
+    l.refresh(NOW);
     assert!(names(&l, "ipv4", "8.8.8.8").is_empty());
 
     std::fs::write(w.join("dns.txt"), "8.8.8.0/24\ncdn.example\n").unwrap();

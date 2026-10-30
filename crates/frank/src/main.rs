@@ -359,7 +359,7 @@ fn main() -> Result<(), String> {
             let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
             let registry = Registry::open(&cli.data, &sightings)?;
             let geo = frank::geo::Geo::open(&cli.data, now_ns())?;
-            let lists = frank::lists::Lists::open(&cli.data, now_ns())?;
+            let lists = frank::lists::Lists::open(&cli.data)?;
             let app = Arc::new(App {
                 sightings,
                 iocs,
