@@ -92,12 +92,23 @@ enum Rec {
 }
 
 /// Writes a database of `networks` (`"192.0.2.0/24"`, `"2001:db8::/32"`)
-/// to `path`.
+/// to `path`, with 24-bit records as GeoLite2 Country and ASN have.
 pub fn write(
     path: &Path,
     database_type: &'static str,
     networks: Vec<(&str, Val)>,
     build_epoch: u64,
+) {
+    write_with(path, database_type, networks, build_epoch, 24);
+}
+
+/// [`write`] with `record_size` 24, 28 or 32.
+pub fn write_with(
+    path: &Path,
+    database_type: &'static str,
+    networks: Vec<(&str, Val)>,
+    build_epoch: u64,
+    record_size: u16,
 ) {
     let mut data = Vec::new();
     let mut nodes: Vec<[Rec; 2]> = vec![[Rec::Empty; 2]];
@@ -131,13 +142,29 @@ pub fn write(
     let count = nodes.len();
     let mut out = Vec::new();
     for pair in &nodes {
-        for r in pair {
-            let v = match *r {
+        let [l, r] = pair.map(|r| {
+            u32::try_from(match r {
                 Rec::Empty => count,
                 Rec::Node(n) => n,
                 Rec::Data(off) => count + 16 + off,
-            };
-            out.extend(&u32::try_from(v).unwrap().to_be_bytes()[1..]);
+            })
+            .unwrap()
+        });
+        match record_size {
+            24 => {
+                out.extend(&l.to_be_bytes()[1..]);
+                out.extend(&r.to_be_bytes()[1..]);
+            }
+            28 => {
+                // The left record's top nibble, then the right's, in the middle byte.
+                out.extend(&l.to_be_bytes()[1..]);
+                out.push(u8::try_from(((l >> 24) << 4) | (r >> 24)).unwrap());
+                out.extend(&r.to_be_bytes()[1..]);
+            }
+            _ => {
+                out.extend(l.to_be_bytes());
+                out.extend(r.to_be_bytes());
+            }
         }
     }
     out.extend([0u8; 16]);
@@ -157,7 +184,7 @@ pub fn write(
             ("ip_version", Val::U16(6)),
             ("languages", Val::Array(vec![Val::Str("en")])),
             ("node_count", Val::U32(u32::try_from(count).unwrap())),
-            ("record_size", Val::U16(24)),
+            ("record_size", Val::U16(record_size)),
         ]),
     );
     std::fs::create_dir_all(path.parent().unwrap()).unwrap();

@@ -16,9 +16,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 use std::time::SystemTime;
 
+use crate::mmdb::Mmdb;
 use frank_core::observable::ip_hex;
 use frank_core::{IocType, SightingRow};
-use maxminddb::{geoip2, Reader};
 use serde_json::{json, Value};
 
 use crate::store::geo::{GeoDb, IpGeo};
@@ -38,8 +38,8 @@ const CHECK_NS: i64 = 60 * 1_000_000_000;
 const STEP: usize = 1000;
 
 struct Loaded {
-    country: Option<Reader<Vec<u8>>>,
-    asn: Option<Reader<Vec<u8>>>,
+    country: Option<Mmdb>,
+    asn: Option<Mmdb>,
     /// The files' modification times when loaded; `None` for a missing file.
     stamps: [Option<SystemTime>; 2],
     checked: i64,
@@ -113,12 +113,12 @@ impl Geo {
     }
 
     /// One database, or `None` (warned) when it is missing or unusable.
-    fn read(&self, name: &str) -> Option<Reader<Vec<u8>>> {
+    fn read(&self, name: &str) -> Option<Mmdb> {
         let path = self.dir.join(name);
         if !path.exists() {
             return None;
         }
-        match Reader::open_readfile(&path) {
+        match Mmdb::open(&path) {
             Ok(r) => Some(r),
             Err(e) => {
                 tracing::warn!("{} is unusable, ignored: {e}", path.display());
@@ -132,29 +132,25 @@ impl Geo {
     pub fn lookup(&self, ip: IpAddr, now: i64) -> Option<IpGeo> {
         let l = self.lock();
         let b = build(&l)?;
-        let country = l
-            .country
-            .as_ref()
-            .and_then(|r| r.lookup(ip).ok()?.decode::<geoip2::Country>().ok()?)
-            .and_then(|c| {
-                c.country
-                    .iso_code
-                    .or(c.registered_country.iso_code)
-                    .map(str::to_string)
-            });
-        let asn = l
-            .asn
-            .as_ref()
-            .and_then(|r| r.lookup(ip).ok()?.decode::<geoip2::Asn>().ok()?);
+        // A record that cannot be read counts as no record.
+        let record = |db: &Option<Mmdb>| db.as_ref().and_then(|r| r.lookup(ip).ok().flatten());
+        let country = record(&l.country).and_then(|c| {
+            [["country", "iso_code"], ["registered_country", "iso_code"]]
+                .iter()
+                .find_map(|path| c.get(path).and_then(|v| v.as_str()).map(str::to_string))
+        });
+        let asn = record(&l.asn);
+        let field = |k: &str| asn.as_ref().and_then(|a| a.get(&[k]).cloned());
         Some(IpGeo {
             ip: ip.to_string(),
             ip_hex: ip_hex(ip),
             country: country.unwrap_or_else(|| UNKNOWN.into()),
-            asn: asn
-                .as_ref()
-                .and_then(|a| a.autonomous_system_number)
-                .map_or(0, i64::from),
-            as_org: asn.and_then(|a| a.autonomous_system_organization.map(str::to_string)),
+            asn: field("autonomous_system_number")
+                .and_then(|n| n.as_u64())
+                .and_then(|n| i64::try_from(n).ok())
+                .unwrap_or(0),
+            as_org: field("autonomous_system_organization")
+                .and_then(|o| o.as_str().map(str::to_string)),
             looked_up: now,
             db_build: b,
         })
@@ -241,7 +237,7 @@ fn build(l: &Loaded) -> Option<i64> {
     [&l.country, &l.asn]
         .into_iter()
         .flatten()
-        .filter_map(|r| i64::try_from(r.metadata().build_epoch).ok())
+        .filter_map(|r| i64::try_from(r.build_epoch).ok())
         .max()
 }
 

@@ -167,3 +167,35 @@ fn backfill_looks_up_every_address_once_per_build() {
     assert_eq!(g.backfill(&s, NOW).unwrap(), 2);
     s.close().unwrap();
 }
+
+#[test]
+fn every_record_size_reads() {
+    let d = dir("sizes");
+    for size in [24, 28, 32] {
+        let path = d.0.join(format!("c{size}.mmdb"));
+        mmdb::write_with(
+            &path,
+            "GeoLite2-Country",
+            vec![
+                ("192.0.2.0/24", mmdb::country("NL")),
+                ("2001:db8::/32", mmdb::country("DE")),
+            ],
+            BUILD,
+            size,
+        );
+        let db = frank::mmdb::Mmdb::open(&path).unwrap();
+        let iso = |ip: &str| {
+            db.lookup(ip.parse().unwrap()).unwrap().and_then(|v| {
+                v.get(&["country", "iso_code"])
+                    .and_then(|c| c.as_str().map(str::to_string))
+            })
+        };
+        assert_eq!(iso("192.0.2.200").as_deref(), Some("NL"), "{size}");
+        assert_eq!(iso("2001:db8:1::9").as_deref(), Some("DE"), "{size}");
+        assert_eq!(iso("198.51.100.1"), None, "{size}");
+        assert_eq!(
+            (db.build_epoch, db.database_type.as_str()),
+            (BUILD, "GeoLite2-Country")
+        );
+    }
+}
