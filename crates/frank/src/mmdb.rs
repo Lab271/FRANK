@@ -238,7 +238,7 @@ fn decode(buf: &[u8], base: usize, at: usize, depth: usize) -> Result<(Value, us
         5 | 6 | 9 | 10 => (Value::Uint(uint(size)?), p + size),
         8 => {
             let n = u32::try_from(uint(size)?).map_err(|_| bad("int32"))?;
-            (Value::Int(n.cast_signed()), p + size)
+            (Value::Int(i32::from_be_bytes(n.to_be_bytes())), p + size)
         }
         7 => {
             let mut m = Vec::with_capacity(size.min(64));
