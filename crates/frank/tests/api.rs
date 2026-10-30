@@ -1,5 +1,7 @@
 //! The HTTP API end to end, over a temporary data directory.
 
+mod support;
+
 use std::sync::Arc;
 
 use axum::body::Body;
@@ -43,9 +45,18 @@ impl Drop for TempDir {
 }
 
 fn harness(name: &str) -> Harness {
+    harness_with(name, false)
+}
+
+/// With `geoip`, GeoLite2 test databases are in place before the server
+/// starts (#191).
+fn harness_with(name: &str, geoip: bool) -> Harness {
     let dir = std::env::temp_dir().join(format!("frank-api-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
+    if geoip {
+        support::mmdb::geolite2(&dir, 1_792_454_400);
+    }
     // One organisation per test token, each with one user of its name.
     let db = dir.join(FILE);
     for (token, name, status) in [
@@ -65,6 +76,7 @@ fn harness(name: &str) -> Harness {
     let app = router(Arc::new(App {
         sightings: sightings.clone(),
         iocs: iocs.clone(),
+        geo: frank::geo::Geo::open(&dir, now()).unwrap(),
         participants: Participants::open(&dir).unwrap(),
         registry: registry.clone(),
         audit: Audit::open(&dir).unwrap(),
@@ -2217,5 +2229,128 @@ async fn live_shows_recent_iocs_new_and_converging() {
             .await
             .0,
         StatusCode::UNPROCESSABLE_ENTITY
+    );
+}
+
+/// #191: IP addresses get their country and ASN, for lookups, the live
+/// view and partners' download; without GeoLite2 everything else works.
+#[tokio::test]
+async fn ip_addresses_carry_country_and_asn() {
+    let h = harness_with("geo", true);
+    let (_, health) = call(&h.app, "GET", "/health", None, None).await;
+    assert_eq!(health["geoip"]["status"], "ok", "{health}");
+    for tok in ["c", "c2", "c3"] {
+        let s = sighting("energy", "192.0.2.10", "r1");
+        assert_eq!(
+            call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s))
+                .await
+                .0,
+            StatusCode::CREATED
+        );
+    }
+    let (_, ip) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=ipv4&value=192.0.2.10",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (&ip["geo"]["country"], &ip["geo"]["asn"]),
+        (&json!("NL"), &json!(64496)),
+        "{ip}"
+    );
+    let (_, dom) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=domain&value=evil.example",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert!(dom["geo"].is_null(), "only addresses: {dom}");
+    let (_, live) = call(&h.app, "GET", "/v1/live?window=24h", Some("p"), None).await;
+    let item = live["feed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["value"] == "192.0.2.10")
+        .unwrap();
+    assert_eq!(item["geo"]["as_org"], "Example Net", "{item}");
+
+    let (_, files) = call(&h.app, "GET", "/v1/files", Some("p"), None).await;
+    assert_eq!(
+        (&files["ip_geo"]["path"], &files["ip_geo"]["rows"]),
+        (&json!("geo/ip_geo.parquet"), &json!(1)),
+        "{files}"
+    );
+    assert!(files["ip_geo"]["attribution"]
+        .as_str()
+        .unwrap()
+        .contains("MaxMind"));
+    let req = Request::builder()
+        .uri("/v1/files/geo/ip_geo.parquet")
+        .header("authorization", "Bearer p")
+        .body(Body::empty())
+        .unwrap();
+    let resp = h.app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(&bytes[..4], b"PAR1");
+    assert!(
+        bytes.windows(7).any(|w| w == b"MaxMind"),
+        "attribution in the file's metadata"
+    );
+    for path in [
+        "../geo.db",
+        "../geoip/geolite2/GeoLite2-ASN.mmdb",
+        "geoip/geolite2/GeoLite2-ASN.mmdb",
+    ] {
+        assert_eq!(
+            call(&h.app, "GET", &format!("/v1/files/{path}"), Some("p"), None)
+                .await
+                .0,
+            StatusCode::NOT_FOUND,
+            "{path}"
+        );
+    }
+
+    // Without GeoLite2: health stays ok, nothing is looked up or listed.
+    let h = harness("nogeo");
+    let (st, health) = call(&h.app, "GET", "/health", None, None).await;
+    assert_eq!(
+        (st, &health["status"], &health["geoip"]["status"]),
+        (StatusCode::OK, &json!("ok"), &json!("missing"))
+    );
+    let s = sighting("energy", "192.0.2.10", "r1");
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let (_, ip) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=ipv4&value=192.0.2.10",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert!(ip["geo"].is_null() && ip["known"] == true, "{ip}");
+    let (_, files) = call(&h.app, "GET", "/v1/files", Some("p"), None).await;
+    assert!(files["ip_geo"].is_null());
+    assert_eq!(
+        call(
+            &h.app,
+            "GET",
+            "/v1/files/geo/ip_geo.parquet",
+            Some("p"),
+            None
+        )
+        .await
+        .0,
+        StatusCode::NOT_FOUND
     );
 }

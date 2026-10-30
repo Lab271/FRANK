@@ -47,7 +47,7 @@ paths:
       x-min-status: public
       responses:
         "200":
-          description: The server is up.
+          description: "The server is up. `geoip` says whether the GeoLite2 databases are loaded (`ok` with their build day) or `missing`; FRANK is healthy either way (#191)."
           content:
             application/json:
               schema:
@@ -359,7 +359,7 @@ paths:
         - { name: day, in: query, required: false, description: "Limit `panels` to one day, YYYY-MM-DD.", schema: { type: string, format: date } }
       responses:
         "200":
-          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`."
+          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from GeoLite2, or null when not looked up (#191)."
           content:
             application/json:
               schema: { type: object }
@@ -672,6 +672,11 @@ paths:
         sighting: `WHERE seq = 0 OR seq IS NULL` (NULL in rows stored before
         0.15). Without it a sighting counts once per IoC. `count(*)` over all
         rows counts sighting × IoC pairs.
+
+        `ip_geo`, when present, names one more file: the country and ASN of
+        every IP address FRANK has seen (`ip`, `country`, `asn`, `as_org`,
+        `looked_up`), to join on `sightings.ioc_value = ip_geo.ip`. It
+        carries the attribution GeoLite2's licence asks for (#191).
       x-min-status: partner
       responses:
         "200":

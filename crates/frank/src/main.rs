@@ -323,8 +323,11 @@ fn main() -> Result<(), String> {
             let (s, i) = open(&cli.data, None)?;
             let n = api::rebuild_iocs(&s, &i)?;
             let r = Registry::open(&cli.data, &s)?.rebuild(&s)?;
+            let g = frank::geo::Geo::open(&cli.data, now_ns())?.backfill(&s, now_ns())?;
             s.close().map_err(|e| e.to_string())?;
-            eprintln!("rebuilt iocs from {n} sighting rows, the registry with {r} registrations");
+            eprintln!(
+                "rebuilt iocs from {n} sighting rows, the registry with {r} registrations, ip_geo with {g} addresses"
+            );
             Ok(())
         }
         Command::Serve {
@@ -355,9 +358,11 @@ fn main() -> Result<(), String> {
             }
             let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
             let registry = Registry::open(&cli.data, &sightings)?;
+            let geo = frank::geo::Geo::open(&cli.data, now_ns())?;
             let app = Arc::new(App {
                 sightings,
                 iocs,
+                geo,
                 participants,
                 registry,
                 audit: audit.clone(),
@@ -580,6 +585,12 @@ async fn maintain(app: api::Shared, retention_days: u32) {
         n += 1;
         let app = app.clone();
         let result = tokio::task::spawn_blocking(move || -> Result<(), String> {
+            // GeoLite2 picked up when it appears or changes (#191); its
+            // errors never stop the rest of the maintenance.
+            app.geo.refresh(now_ns());
+            if let Err(e) = app.geo.backfill(&app.sightings, now_ns()) {
+                tracing::warn!("ip_geo backfill: {e}");
+            }
             let flushed = app.sightings.flush().map_err(|e| e.to_string())?;
             if flushed > 0 {
                 tracing::info!(files = flushed, "flushed closed hours");

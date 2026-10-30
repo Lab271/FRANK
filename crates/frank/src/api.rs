@@ -45,12 +45,16 @@ const MAX_BATCH: usize = 100;
 const MAX_BODY: usize = 2 * 1024 * 1024;
 /// The rows not yet in a file, served as one Parquet file written on request.
 pub const OPEN_FILE: &str = "open/current.parquet";
+/// The `ip_geo` table (#191), served as one Parquet file written on request.
+pub const GEO_FILE: &str = "geo/ip_geo.parquet";
 /// Days in a detail pane's trend.
 const TREND_DAYS: i64 = 30;
 
 pub struct App {
     pub sightings: Sightings,
     pub iocs: Iocs,
+    /// Country and ASN of IP addresses (#191).
+    pub geo: crate::geo::Geo,
     pub participants: Participants,
     pub registry: Registry,
     pub audit: Audit,
@@ -129,8 +133,10 @@ pub fn router(app: Shared) -> Router {
         .with_state(app)
 }
 
-async fn health() -> Json<Value> {
-    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION") }))
+/// Up and its version. GeoLite2's state is information only: FRANK is
+/// healthy without it (#191).
+async fn health(State(app): State<Shared>) -> Json<Value> {
+    Json(json!({ "status": "ok", "version": env!("CARGO_PKG_VERSION"), "geoip": app.geo.status() }))
 }
 
 async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
@@ -271,6 +277,7 @@ async fn submit(
             app.sightings.append(&rows).map_err(internal)?;
             app.iocs.record(&rows).map_err(internal)?;
             app.registry.register(fresh).map_err(internal)?;
+            app.geo.fill(&rows, now);
         }
         app.audit
             .record(
@@ -435,7 +442,17 @@ async fn live_view(
         if !exact {
             iocs.retain(|i| i.reporters >= MIN_CELL);
         }
-        let (feed, converging) = live::lists(&iocs, LIVE_LIMIT);
+        let (mut feed, mut converging) = live::lists(&iocs, LIVE_LIMIT);
+        let ips: Vec<String> = feed
+            .iter()
+            .chain(&converging)
+            .filter(|i| matches!(i.ioc_type.as_str(), "ipv4" | "ipv6"))
+            .map(|i| i.value.clone())
+            .collect();
+        let geo = app.geo.answers(ips);
+        for i in feed.iter_mut().chain(converging.iter_mut()) {
+            i.geo = geo.get(&i.value).cloned();
+        }
         Ok(Json(json!({
             "window": window.label(),
             "since": since,
@@ -571,8 +588,12 @@ async fn ioc_lookup(
             (None, Some(d)) => ioc_panels(&app.sightings, &ioc, d.first_ts, None, caller.tier)?,
             (None, None) => Value::Null,
         };
+        let geo = ioc
+            .ip_hex()
+            .and_then(|_| app.geo.answers(vec![ioc.value.clone()]).remove(&ioc.value));
         Ok(Json(json!({
             "ioc": ioc,
+            "geo": geo,
             "known": !days.is_empty(),
             "count": days.iter().map(|d| d.count).sum::<i64>(),
             "reporters": reporters,
@@ -810,8 +831,12 @@ async fn files(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Val
         if open > 0 {
             files.push(json!({ "path": OPEN_FILE, "rows": open, "bytes": null, "open": true }));
         }
+        let geo = app.geo.db().all().map_err(internal)?.len();
+        let ip_geo = (geo > 0).then(|| {
+            json!({ "table": "ip_geo", "path": GEO_FILE, "rows": geo, "attribution": crate::geo::ATTRIBUTION })
+        });
         Ok(Json(
-            json!({ "table": crate::store::sightings::NAME, "files": files }),
+            json!({ "table": crate::store::sightings::NAME, "files": files, "ip_geo": ip_geo }),
         ))
     })
     .await
@@ -832,6 +857,22 @@ async fn file(
         return Err(ApiError(StatusCode::NOT_FOUND, "no such file".into()));
     }
     blocking(move || {
+        if path == GEO_FILE {
+            // Served when listed: when `ip_geo` has rows.
+            let rows = app.geo.db().all().map_err(internal)?;
+            if rows.is_empty() {
+                return Err(ApiError(StatusCode::NOT_FOUND, "no such file".into()));
+            }
+            let bytes = geo_parquet(&rows).map_err(internal)?;
+            return Ok((
+                [
+                    (header::CONTENT_TYPE, "application/vnd.apache.parquet"),
+                    (header::CACHE_CONTROL, "no-store"),
+                ],
+                bytes,
+            )
+                .into_response());
+        }
         if path == OPEN_FILE {
             let bytes = app.sightings.open_rows_parquet().map_err(internal)?;
             return Ok((
@@ -863,6 +904,45 @@ async fn file(
             .into_response())
     })
     .await
+}
+
+/// `ip_geo` as one Parquet file, MaxMind's attribution in its metadata.
+fn geo_parquet(rows: &[crate::store::geo::IpGeo]) -> Result<Vec<u8>, String> {
+    use db_core::storage::parquet::schema::ColumnValues as V;
+    use db_core::storage::parquet::writer::{
+        ColumnSpec, ColumnType, Compression, ParquetWriter, WriterOptions,
+    };
+    let text = |name| ColumnSpec::new(name, ColumnType::Utf8, false);
+    let schema = vec![
+        text("ip"),
+        text("country"),
+        ColumnSpec::new("asn", ColumnType::Int64, false),
+        ColumnSpec::new("as_org", ColumnType::Utf8, true),
+        ColumnSpec::new("looked_up", ColumnType::TimestampNanos, false),
+    ];
+    let mut w = ParquetWriter::new(
+        Vec::new(),
+        schema,
+        WriterOptions {
+            compression: Compression::Zstd,
+            key_value_metadata: vec![("attribution".into(), crate::geo::ATTRIBUTION.into())],
+            ..WriterOptions::default()
+        },
+    )
+    .map_err(|e| e.to_string())?;
+    if !rows.is_empty() {
+        w.write_columns(vec![
+            V::Utf8(rows.iter().map(|g| Some(g.ip.clone())).collect()),
+            V::Utf8(rows.iter().map(|g| Some(g.country.clone())).collect()),
+            V::Int64(rows.iter().map(|g| Some(g.asn)).collect()),
+            V::Utf8(rows.iter().map(|g| g.as_org.clone()).collect()),
+            V::TimestampNanos(rows.iter().map(|g| Some(g.looked_up)).collect()),
+        ])
+        .map_err(|e| e.to_string())?;
+    }
+    w.finish()
+        .map(|(bytes, _)| bytes)
+        .map_err(|e| e.to_string())
 }
 
 /// The API description (`docs/openapi.yaml`), as JSON.

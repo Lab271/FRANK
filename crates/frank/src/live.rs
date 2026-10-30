@@ -81,6 +81,8 @@ pub struct LiveIoc {
     /// The earliest `ts` of a visible sighting with it that arrived before
     /// the window; `None` makes it new.
     pub seen_since: Option<i64>,
+    /// Country and ASN of an IP address, when looked up (#191).
+    pub geo: Option<crate::store::geo::IpGeo>,
 }
 
 /// The window's IoCs: per IoC, the latest arrival, the sightings and
@@ -143,6 +145,7 @@ pub fn iocs(rows: &[Vec<Cell>]) -> Vec<LiveIoc> {
                     sightings: *n,
                     reporters: *r,
                     seen_since: None,
+                    geo: None,
                 })
             }
             _ => None,
@@ -235,6 +238,7 @@ mod tests {
             sightings: n,
             reporters: r,
             seen_since: None,
+            geo: None,
         }
     }
 

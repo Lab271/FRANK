@@ -43,6 +43,9 @@ function table(columns, rows) {
 
 const iso = (ns) => new Date(ns / 1e6).toISOString().replace(".000", "");
 const isoDay = (ns) => iso(ns).slice(0, 10);
+/** An IP address's country and network from GeoLite2 (#191), or "". */
+const where = (g) => !g ? "" : [g.country === "ZZ" ? "unknown country" : g.country,
+  g.asn ? `AS${g.asn}${g.as_org ? ` ${g.as_org}` : ""}` : "unknown network"].join(" · ");
 
 // --- tabs, routing and token ----------------------------------------------
 // The URL hash is the state: "#stats", "#explore?group=rule&sector=energy&pane=rule:r1".
@@ -247,6 +250,7 @@ async function lookup(type, value) {
     show(out,
       el("p", {}, linkTo(`${r.ioc.type} ${r.ioc.value}`, () => openPane("ioc", key), "label"),
         `: seen ${r.count}× by ${r.reporters} reporter(s), first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
+      ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
       table(["day", "count", "first", "last"],
         r.days.map((d) => [linkTo(d.day, () => openPane("ioc", key, d.day), "label"), d.count, iso(d.first_ts), iso(d.last_ts)])),
       table(["SIGMA rule", "rows"],
@@ -528,6 +532,7 @@ async function openPane(kind, key, day) {
           ...(panels.length ? panels : [thin]),
           linkTo("all days", () => openPane("ioc", key), "label")]
         : [el("h2", {}, `${r.ioc.type} ${r.ioc.value}`),
+          ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
           kpis([["sightings", r.count], ["reporters", r.reporters]]),
           el("p", { class: "note" }, `first ${iso(r.first_seen)} · last ${iso(r.last_seen)}`),
           el("h3", {}, `per day, last ${r.trend.length} days`), spark(r.trend),
@@ -1034,13 +1039,14 @@ function seenCell(i) {
 }
 
 function liveFeed(items, prev) {
-  const head = el("tr", {}, ...["arrived (UTC)", "type", "value", "rule", "sightings", "reporters", "seen before"]
+  const head = el("tr", {}, ...["arrived (UTC)", "type", "value", "where", "rule", "sightings", "reporters", "seen before"]
     .map((c) => el("th", {}, c)));
   const rows = items.map((i) =>
     el("tr", prev && i.last_received > prev ? { class: "fresh" } : {},
       el("td", { class: "mono" }, clock(i.last_received)),
       el("td", {}, i.ioc_type),
       el("td", {}, iocLink(i)),
+      el("td", { class: "note" }, where(i.geo)),
       el("td", {}, i.rule_id ? linkTo(i.rule_id, () => openPane("rule", i.rule_id), "label") : "∅"),
       el("td", { class: "num" }, i.sightings),
       el("td", { class: "num" }, i.reporters),
@@ -1057,7 +1063,8 @@ function liveNodes(r, prev) {
   ];
   nodes.push(r.converging.length
     ? el("div", {}, ...r.converging.map((i) => el("div", { class: "bar" }, el("span", {}, `${i.ioc_type} `), iocLink(i),
-      el("span", { class: "n" }, `${i.reporters} participants · ${i.sightings} sightings · last ${clock(i.last_received)}`))))
+      el("span", { class: "n" }, [where(i.geo), `${i.reporters} participants · ${i.sightings} sightings · last ${clock(i.last_received)}`]
+        .filter(Boolean).join(" · ")))))
     : el("p", { class: "note" }, "none in this window"));
   nodes.push(el("h3", {}, "IoCs, latest arrival first"));
   nodes.push(r.feed.length ? liveFeed(r.feed, prev) : el("p", { class: "note" }, "nothing arrived in this window"));
