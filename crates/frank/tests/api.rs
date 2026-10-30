@@ -2097,3 +2097,125 @@ async fn users_are_disabled_then_removed() {
         "the last working superadmin"
     );
 }
+
+/// #186: the IoCs of the sightings that arrived in the window, new or seen
+/// before, and those several participants report.
+#[tokio::test]
+async fn live_shows_recent_iocs_new_and_converging() {
+    let h = harness("live");
+    // Seen 31 hours ago, stored 30 hours ago: before any window.
+    h.sightings
+        .append(&[frank_core::SightingRow {
+            ts_ns: NOW - 31 * HOUR_NS,
+            sighting_id: "sighting--old".into(),
+            rule_id: Some("r0".into()),
+            techniques: Vec::new(),
+            campaign: None,
+            ioc_type: Some(frank_core::IocType::Ipv4),
+            ioc_value: Some("198.51.100.7".into()),
+            reporter_sector: None,
+            target_sector: None,
+            target_size: None,
+            severity: None,
+            confidence: 50,
+            observations: 1,
+            tlp: frank_core::Tlp::Green,
+            reporter: "identity--old".into(),
+            digest: "d-old".into(),
+            received_ns: NOW - 30 * HOUR_NS,
+            seq: 0,
+            detail: None,
+        }])
+        .unwrap();
+    // Three participants report 198.51.100.7 and evil.example; one also
+    // reports 203.0.113.9 alone.
+    for tok in ["c", "c2", "c3"] {
+        let s = sighting("energy", "198.51.100.7", "r1");
+        assert_eq!(
+            call(&h.app, "POST", "/v1/sightings", Some(tok), Some(s))
+                .await
+                .0,
+            StatusCode::CREATED
+        );
+    }
+    let s = sighting("energy", "203.0.113.9", "r2");
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+
+    let values = |v: &Value, list: &str| -> Vec<String> {
+        v[list]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|i| i["value"].as_str().unwrap().to_string())
+            .collect()
+    };
+    let (st, p) = call(&h.app, "GET", "/v1/live?window=24h", Some("p"), None).await;
+    assert_eq!(st, StatusCode::OK, "{p}");
+    assert_eq!(
+        (
+            &p["sightings"],
+            &p["participants"],
+            &p["iocs"],
+            &p["new_iocs"]
+        ),
+        (&json!(4), &json!(3), &json!(3), &json!(2)),
+        "{p}"
+    );
+    let mut feed = values(&p, "feed");
+    feed.sort();
+    assert_eq!(feed, ["198.51.100.7", "203.0.113.9", "evil.example"]);
+    let mut converging = values(&p, "converging");
+    converging.sort();
+    assert_eq!(converging, ["198.51.100.7", "evil.example"]);
+    let ip = p["converging"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["value"] == "198.51.100.7")
+        .unwrap();
+    assert_eq!(
+        (&ip["reporters"], &ip["seen_since"]),
+        (&json!(3), &json!(NOW - 31 * HOUR_NS)),
+        "{ip}"
+    );
+    let dom = p["feed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["value"] == "evil.example")
+        .unwrap();
+    assert!(dom["seen_since"].is_null(), "new: {dom}");
+    let buckets = p["buckets"].as_array().unwrap();
+    assert_eq!(buckets.len(), 24);
+    assert_eq!(
+        buckets
+            .iter()
+            .map(|b| b["sightings"].as_i64().unwrap())
+            .sum::<i64>(),
+        4
+    );
+
+    // Below partner, an IoC one participant reports is left out; the
+    // counters stay.
+    let (_, c) = call(&h.app, "GET", "/v1/live?window=24h", Some("c"), None).await;
+    let mut feed = values(&c, "feed");
+    feed.sort();
+    assert_eq!(feed, ["198.51.100.7", "evil.example"], "{c}");
+    assert_eq!((&c["iocs"], &c["min_cell"]), (&json!(3), &json!(3)));
+
+    assert_eq!(
+        call(&h.app, "GET", "/v1/live", Some("o"), None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    assert_eq!(
+        call(&h.app, "GET", "/v1/live?window=2h", Some("p"), None)
+            .await
+            .0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+}

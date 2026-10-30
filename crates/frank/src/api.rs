@@ -10,6 +10,7 @@
 //! | `POST /v1/sightings`      | contributor |
 //! | `GET  /v1/iocs`           | contributor |
 //! | `GET  /v1/iocs/range`     | contributor |
+//! | `GET  /v1/live`           | contributor |
 //! | `GET  /v1/files`, `/v1/files/{*path}` | partner |
 //! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
 //! | `/v1/admin/…`             | a user with a role ([`crate::admin`]) |
@@ -32,6 +33,7 @@ use serde_json::{json, Value};
 use crate::audit::Audit;
 use crate::auth::Caller;
 use crate::explore::{self as ex, Dimension, BY_TECHNIQUE, FIRST_ROW, TECH, TECH_SET};
+use crate::live::{self, Window};
 use crate::records;
 use crate::store::registry::{self, Receipt};
 use crate::store::sightings::{scalar, NAME as SIGHTINGS};
@@ -117,6 +119,7 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/iocs", get(ioc_lookup))
         .route("/v1/iocs/range", get(ioc_range))
         .route("/v1/explore", get(explore))
+        .route("/v1/live", get(live_view))
         .route("/v1/rules/{id}", get(rule_detail))
         .route("/v1/participants", get(participants))
         .route("/v1/files", get(files))
@@ -378,6 +381,78 @@ async fn statistics(
             out["top_campaigns"] = json!(breakdown(s, "campaign", v, since, 25, exact)?);
         }
         Ok(Json(out))
+    })
+    .await
+}
+
+#[derive(Deserialize)]
+struct LiveQuery {
+    window: Option<String>,
+}
+
+/// IoCs per list in the live view.
+const LIVE_LIMIT: usize = 50;
+
+/// What arrived in the window (#186): counters, arrivals per bar, and the
+/// window's IoCs as a feed (newest first) and as the converging list (two
+/// or more reporters). Below partner an IoC with fewer than [`MIN_CELL`]
+/// reporters is left out of both lists, as Explore leaves out small cells.
+async fn live_view(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<LiveQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let caller = require(&app, &headers, Tier::Contributor)?;
+    let window = Window::parse(q.window.as_deref().unwrap_or("1h"))
+        .ok_or_else(|| unprocessable("window: expected 1h, 6h or 24h"))?;
+    let now = (app.now)();
+    let since = now - window.ns();
+    let visible = tlp_visible(caller.tier);
+    let exact = caller.tier >= Tier::Partner;
+    blocking(move || {
+        let s = &app.sightings;
+        let v = visible.as_str();
+        let rows = |sql: &str| s.query(sql).map(|r| r.rows).map_err(internal);
+        let mut iocs = live::iocs(&rows(&live::window_sql(since, v))?);
+        let mut before = Vec::new();
+        for values in live::chunks(&iocs) {
+            before.extend(rows(&live::before_sql(since, v, &values))?);
+        }
+        live::mark_seen(&mut iocs, &before);
+        let arrivals: Vec<i64> = rows(&live::arrivals_sql(since, v))?
+            .iter()
+            .filter_map(|r| match r.first() {
+                Some(Cell::Int(t)) => Some(*t),
+                _ => None,
+            })
+            .collect();
+        let participants = s
+            .query(&live::reporters_sql(since, v))
+            .map(|r| scalar(&r))
+            .map_err(internal)?;
+        let new = iocs.iter().filter(|i| i.seen_since.is_none()).count();
+        let total = iocs.len();
+        if !exact {
+            iocs.retain(|i| i.reporters >= MIN_CELL);
+        }
+        let (feed, converging) = live::lists(&iocs, LIVE_LIMIT);
+        Ok(Json(json!({
+            "window": window.label(),
+            "since": since,
+            "now": now,
+            "min_cell": if exact { 1 } else { MIN_CELL },
+            "sightings": arrivals.len(),
+            "participants": participants,
+            "iocs": total,
+            "new_iocs": new,
+            "bucket_ns": window.bucket_ns(),
+            "buckets": live::buckets(&arrivals, window, now)
+                .into_iter()
+                .map(|(t, n)| json!({ "t": t, "sightings": n }))
+                .collect::<Vec<_>>(),
+            "feed": feed,
+            "converging": converging,
+        })))
     })
     .await
 }

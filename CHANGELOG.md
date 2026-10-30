@@ -4,6 +4,13 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.22.0] - 2026-10-30
+
+### Added
+
+- **Live tab** (#186): the IoCs of the sightings that arrived in the last hour, 6 hours or 24 hours, refreshed every 15 s. Each IoC is marked new or "since <day>", there is a list of IoCs two or more participants report, and there are counters and arrivals per bar. Contributor and up; below partner an IoC needs 3 reporters to be listed, as in Explore.
+- `GET /v1/live?window=1h|6h|24h`: the same, for machine clients.
+
 ## [0.21.0] - 2026-10-29
 
 ### Changed

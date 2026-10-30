@@ -77,6 +77,7 @@ function route() {
   } else {
     closePane();
   }
+  if (tab === "live") loadLive(); else stopLive();
   if (tab === "about") loadAbout();
   if (tab === "api") loadApi();
   if (tab === "admin") loadAdmin();
@@ -435,7 +436,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key === "Escape" && $("pane").classList.contains("open")) $("pane-close").click();
 });
 
-function spark(trend) {
+function spark(trend, unit = "per day") {
   const ns = "http://www.w3.org/2000/svg";
   const svg = document.createElementNS(ns, "svg");
   const w = 6, gap = 2, h = 48, max = Math.max(1, ...trend.map((d) => d[1]));
@@ -443,7 +444,7 @@ function spark(trend) {
   svg.setAttribute("preserveAspectRatio", "none");
   svg.setAttribute("class", "spark");
   svg.setAttribute("role", "img");
-  svg.setAttribute("aria-label", `per day, ${trend[0]?.[0]} to ${trend.at(-1)?.[0]}`);
+  svg.setAttribute("aria-label", `${unit}, ${trend[0]?.[0]} to ${trend.at(-1)?.[0]}`);
   trend.forEach(([day, n], i) => {
     const r = document.createElementNS(ns, "rect");
     const bh = n ? Math.max(2, (h * n) / max) : 1;
@@ -1007,3 +1008,97 @@ $("adm-org-add").addEventListener("submit", (ev) => {
 });
 
 whoami();
+
+// --- live (#186) ----------------------------------------------------------
+// The IoCs of the sightings that arrived recently, polled every 15 s while
+// the tab is shown. Rows that arrived since the previous poll are marked.
+
+const LIVE_MS = 15000;
+let liveTimer = null;
+let livePaused = false;
+let livePrev = 0; // `now` of the previous poll
+const clock = (ns) => iso(ns).slice(11, 19);
+const onLive = () => location.hash.slice(1).split("?")[0] === "live";
+
+function stopLive() {
+  clearTimeout(liveTimer);
+  liveTimer = null;
+}
+
+function iocLink(i) {
+  return linkTo(i.value, () => openPane("ioc", `${i.ioc_type}:${i.value}`), "label mono");
+}
+
+function seenCell(i) {
+  return i.seen_since === null ? el("strong", {}, "new") : `since ${isoDay(i.seen_since)}`;
+}
+
+function liveFeed(items, prev) {
+  const head = el("tr", {}, ...["arrived (UTC)", "type", "value", "rule", "sightings", "reporters", "seen before"]
+    .map((c) => el("th", {}, c)));
+  const rows = items.map((i) =>
+    el("tr", prev && i.last_received > prev ? { class: "fresh" } : {},
+      el("td", { class: "mono" }, clock(i.last_received)),
+      el("td", {}, i.ioc_type),
+      el("td", {}, iocLink(i)),
+      el("td", {}, i.rule_id ? linkTo(i.rule_id, () => openPane("rule", i.rule_id), "label") : "∅"),
+      el("td", { class: "num" }, i.sightings),
+      el("td", { class: "num" }, i.reporters),
+      el("td", {}, seenCell(i))));
+  return el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows)));
+}
+
+function liveNodes(r, prev) {
+  const nodes = [
+    kpis([["sightings", r.sightings], ["IoCs", r.iocs], ["new IoCs", r.new_iocs], ["participants", r.participants]]),
+    el("h3", {}, `arrivals per ${r.bucket_ns / 60e9} minutes`),
+    spark(r.buckets.map((b) => [clock(b.t).slice(0, 5), b.sightings]), "arrivals"),
+    el("h3", {}, "converging: IoCs two or more participants report"),
+  ];
+  nodes.push(r.converging.length
+    ? el("div", {}, ...r.converging.map((i) => el("div", { class: "bar" }, el("span", {}, `${i.ioc_type} `), iocLink(i),
+      el("span", { class: "n" }, `${i.reporters} participants · ${i.sightings} sightings · last ${clock(i.last_received)}`))))
+    : el("p", { class: "note" }, "none in this window"));
+  nodes.push(el("h3", {}, "IoCs, latest arrival first"));
+  nodes.push(r.feed.length ? liveFeed(r.feed, prev) : el("p", { class: "note" }, "nothing arrived in this window"));
+  if (r.min_cell > 1) {
+    nodes.push(el("p", { class: "note" },
+      `IoCs reported by fewer than ${r.min_cell} participants are left out of the lists; the counters include them.`));
+  }
+  return nodes;
+}
+
+async function loadLive() {
+  stopLive();
+  if (!atLeast("contributor")) {
+    $("live-status").textContent = "";
+    show($("live-out"), el("p", { class: "note" }, "The live view needs a contributor token or higher."));
+    return;
+  }
+  try {
+    const r = await (await api(`/v1/live?window=${$("live-window").value}`)).json();
+    if (!onLive()) return;
+    show($("live-out"), ...liveNodes(r, livePrev));
+    livePrev = r.now;
+    $("live-status").textContent = livePaused ? `paused at ${clock(r.now)}` : `updated ${clock(r.now)} UTC · every 15 s`;
+  } catch (e) {
+    show($("live-out"), errorNode(e));
+  }
+  if (!livePaused && onLive() && !document.hidden) liveTimer = setTimeout(loadLive, LIVE_MS);
+}
+
+$("live-window").addEventListener("change", () => { livePrev = 0; loadLive(); });
+$("live-pause").addEventListener("click", () => {
+  livePaused = !livePaused;
+  $("live-pause").textContent = livePaused ? "resume" : "pause";
+  if (livePaused) {
+    stopLive();
+    $("live-status").textContent = "paused";
+  } else {
+    loadLive();
+  }
+});
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) stopLive();
+  else if (onLive() && !livePaused) loadLive();
+});
