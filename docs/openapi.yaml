@@ -362,7 +362,7 @@ paths:
         - { name: day, in: query, required: false, description: "Limit `panels` to one day, YYYY-MM-DD.", schema: { type: string, format: date } }
       responses:
         "200":
-          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from DB-IP Lite, or null when not looked up (#191). `listed` is what warning lists (common infrastructure) and reference lists (outside sources such as abuse.ch) say about it, each with its list, source and, for references, tags and when it was first listed (#192, #193)."
+          description: "Whether it is known, when, by how many reporters, under which rules. `panels` groups its sightings by rule, target sector, severity, technique and campaign, as Explore does: same reporter threshold and TLP rules; over the retained days, or one `day`. For an IP address, `geo` is its country (ISO 3166, `ZZ` when unknown), ASN (0 when unknown) and AS organisation from DB-IP Lite, or null when not looked up (#191). `listed` is what warning lists (common infrastructure, private and documentation addresses) and reference lists (outside sources such as abuse.ch) say about it, each with its list, source and, for references, tags and when it was first listed (#192, #193)."
           content:
             application/json:
               schema: { type: object }
@@ -715,7 +715,7 @@ components:
     Common:
       name: common
       in: query
-      description: "Whether IoCs a warning list marks as common infrastructure (public DNS resolvers, ...) stay in the converging list and Explore's IoC ranking (#192). They are marked, never dropped, elsewhere, and every count includes them."
+      description: "Whether IoCs a warning list marks as not an indicator (public DNS resolvers, private and documentation addresses, ...) stay in the converging list and Explore's IoC ranking (#192). They are marked, never dropped, elsewhere, and every count includes them."
       schema: { enum: [exclude, include], default: exclude }
     Days:
       name: days

@@ -15,6 +15,10 @@ DURATION ?= 1h
 # DB-IP's free country and ASN databases, CC BY 4.0, no account needed (#191).
 GEOIP_DIR := $(DATA)/geoip/dbip-lite
 DBIP_URL := https://download.db-ip.com/free
+# The abuse.ch Auth-Key for URLhaus and ThreatFox, read from 1Password by
+# `make lists` (#193). The item is named by id: "abuse.ch" matches more than one.
+ABUSE_KEY_REF ?= op://Private/ghrds67j2aclbtl2v2dbsodqiu/auth key
+OP_ACCOUNT ?= my.1password.eu
 
 .PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down clean
 
@@ -94,7 +98,7 @@ token: server ## Another token for a user: make token NAME=alice
 
 demo: server ## Load N (60) synthetic sightings from the last 7 days into ./data (server stopped)
 	@! pgrep -f "frank.* serve" >/dev/null || { echo "stop the running frank server first (it holds the table lock), or POST the file to /v1/sightings" >&2; exit 1; }
-	python3 scripts/demo_sightings.py $(N) target/demo
+	python3 scripts/demo_sightings.py $(N) target/demo $(DATA)/lists
 	@for f in target/demo/mdr-*.json; do \
 	  FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) ingest --as "$$(basename $$f .json)" --create $$f || exit 1; \
 	done
@@ -120,19 +124,32 @@ geoip: ## Download DB-IP Lite Country + ASN into data/geoip/dbip-lite (this mont
 	@ls -l $(GEOIP_DIR)
 
 MISP_LISTS := https://raw.githubusercontent.com/MISP/misp-warninglists/main/lists
-ABUSE_CH := urlhaus=https://urlhaus.abuse.ch/downloads/csv_online/ \
-	threatfox_recent=https://threatfox.abuse.ch/export/csv/recent/ \
-	feodo_ipblocklist=https://feodotracker.abuse.ch/downloads/ipblocklist.csv
+# Public DNS resolvers, and the special-purpose ranges: private, documentation
+# (RFC 5737, RFC 3849), shared, link-local and multicast addresses.
+MISP_WARNING := public-dns-v4 public-dns-v6 public-dns-hostname \
+	rfc5735 rfc1918 rfc3849 rfc6598 ipv6-linklocal multicast
+ABUSE_API := https://%s-api.abuse.ch/v2/files/exports/%s/%s
+# name=host:export, the key going in between.
+ABUSE_KEYED := urlhaus=urlhaus:online.csv threatfox_recent=threatfox:recent.csv
+FEODO := https://feodotracker.abuse.ch/downloads/ipblocklist.csv
 
-lists: ## Download the warning (MISP public DNS, CC0) and reference (abuse.ch, CC0) lists into data/lists; the server imports them within a minute
+lists: ## Download the warning (MISP, CC0) and reference (abuse.ch, CC0; Auth-Key from 1Password, ABUSE_KEY_REF) lists into data/lists; the server imports them within a minute
 	@install -d $(DATA)/lists/warning $(DATA)/lists/reference
-	@set -euo pipefail; for l in public-dns-v4 public-dns-v6 public-dns-hostname; do \
-	  curl -fsSL -o $(DATA)/lists/warning/.$$l.json "$(MISP_LISTS)/$$l/list.json" \
-	    && mv -f $(DATA)/lists/warning/.$$l.json $(DATA)/lists/warning/$$l.json; \
+	@set -euo pipefail; for l in $(MISP_WARNING); do \
+	  curl -fsS -o $(DATA)/lists/warning/.$$l.json "$(MISP_LISTS)/$$l/list.json" \
+	    || { echo "lists: MISP $$l failed" >&2; exit 1; }; \
+	  mv -f $(DATA)/lists/warning/.$$l.json $(DATA)/lists/warning/$$l.json; \
 	done
-	@set -euo pipefail; for kv in $(ABUSE_CH); do n=$${kv%%=*}; u=$${kv#*=}; \
-	  curl -fsSL -o $(DATA)/lists/reference/.$$n.csv "$$u" \
-	    && mv -f $(DATA)/lists/reference/.$$n.csv $(DATA)/lists/reference/$$n.csv; \
+	@set -euo pipefail; d=$(DATA)/lists/reference; \
+	curl -fsS -o $$d/.feodo_ipblocklist.csv "$(FEODO)" || { echo "lists: Feodo Tracker failed" >&2; exit 1; }; \
+	mv -f $$d/.feodo_ipblocklist.csv $$d/feodo_ipblocklist.csv; \
+	if ! KEY=$$(op read --account "$(OP_ACCOUNT)" "$(ABUSE_KEY_REF)" 2>/dev/null) || [ -z "$$KEY" ]; then \
+	  echo "lists: no abuse.ch Auth-Key ($(ABUSE_KEY_REF)): URLhaus and ThreatFox skipped" >&2; exit 0; \
+	fi; \
+	for kv in $(ABUSE_KEYED); do n=$${kv%%=*}; he=$${kv#*=}; \
+	  printf 'url = "$(ABUSE_API)"\noutput = "%s"\n' "$${he%%:*}" "$$KEY" "$${he#*:}" "$$d/.$$n.csv" \
+	    | curl -fsS --config - || { echo "lists: abuse.ch $$n failed" >&2; exit 1; }; \
+	  mv -f $$d/.$$n.csv $$d/$$n.csv; \
 	done
 	@ls -l $(DATA)/lists/warning $(DATA)/lists/reference
 
