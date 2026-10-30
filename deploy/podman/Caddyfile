@@ -1,0 +1,22 @@
+# HTTPS in front of FRANK in podman (`make up`): https://frank.local
+# (FRANK_HOST), and https://localhost. The certificate comes from Caddy's
+# own local CA (`tls internal`), kept in the caddy-data volume; `make
+# trust` adds that CA's root to the macOS keychain once, so browsers
+# accept it. On STACKIT the same Caddy gets a public certificate instead.
+{
+	# Only 443 is published: no HTTP listener to redirect from.
+	auto_https disable_redirects
+	# The root goes into the host's keychain (`make trust`), not the
+	# container's trust store.
+	skip_install_trust
+	# TCP only is published, so no HTTP/3 (QUIC) to advertise.
+	servers {
+		protocols h1 h2
+	}
+}
+
+{$FRANK_HOST:frank.local}, localhost {
+	tls internal
+	encode zstd gzip
+	reverse_proxy frank:8080
+}
