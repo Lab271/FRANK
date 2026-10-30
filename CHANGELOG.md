@@ -4,6 +4,18 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.28.0] - 2026-10-30
+
+### Changed
+
+- **Breaking (partners' files):** in the `sightings` Parquet files, `sighting_id` (16 bytes) and `digest` (32 bytes) are now binary, a `BLOB` in DuckDB, and `digest` is on the `seq = 0` row only. Read them with `lower(hex(digest))`; the `sighting--` form is in the `/v1/files` docs. The API, receipts and STIX are unchanged (#200).
+- The table is rewritten once on the first start (backup in `sightings.pre-binary`), and `registry.db` is rebuilt. On the demo data the table is 19% smaller (#200).
+- db-core v0.217.2: a long IoC filter on `/v1/sightings` no longer overflows the stack (db-core#901, see #201), and the browser module builds again (db-core#898).
+
+### Fixed
+
+- Analyse tab: a count or sum given a name (`count(*) AS sightings`, as in the default query) now adds up across files instead of showing one row per file.
+
 ## [0.27.0] - 2026-10-30
 
 ### Added
