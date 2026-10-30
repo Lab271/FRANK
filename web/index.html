@@ -130,7 +130,8 @@
       maximums merge across files; other results are shown per file.</p>
     <p class="note">A sighting is one row per IoC (<code>seq</code> 0, 1, …), its other fields repeated. Count
       sightings or sum <code>observations</code> over <code>WHERE seq = 0 OR seq IS NULL</code>, or a sighting
-      counts once per IoC; its record (<code>detail</code>) is on that row only.</p>
+      counts once per IoC; its record (<code>detail</code>) and <code>digest</code> are on that row only.
+      <code>sighting_id</code> and <code>digest</code> are bytes, shown in hex; filter with <code>x'…'</code>.</p>
     <div class="row">
       <button id="load-files" class="lab-btn lab-btn--secondary">download files</button>
       <span id="files-status" class="note"></span>

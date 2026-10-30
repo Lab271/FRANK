@@ -32,7 +32,7 @@ Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db
 - **Admins** (#175, [ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)): a role on a person, apart from the status. An admin manages its own organisation's users and tokens, a superadmin (core only) every organisation, in the web UI's admin tab or under `/v1/admin`.
 - **Statuses** (ADR-002): public sees totals; observer sees breakdowns with cells of fewer than 3 distinct reporters suppressed; contributor submits and looks up IoCs; partner downloads the Parquet files and sees reporter ids; core operates and sees who they are.
 - **The sender's id is the registration:** each sighting carries a `sighting_id` (UUID) chosen by the sender. Sending it again returns the original receipt; other content under the same id is refused (409).
-- **Open data format:** every table is plain Parquet, so DuckDB reads it as well.
+- **Open data format:** every table is plain Parquet, so DuckDB reads it as well. In `sightings`, `sighting_id` and `digest` are bytes (a `BLOB`; `lower(hex(digest))` is the receipt's digest); the queries are in the OpenAPI description of `/v1/files`.
 
 ## Run it
 

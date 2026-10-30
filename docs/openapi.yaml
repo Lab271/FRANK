@@ -686,6 +686,16 @@ paths:
         0.15). Without it a sighting counts once per IoC. `count(*)` over all
         rows counts sighting × IoC pairs.
 
+        `sighting_id` (16 bytes, the UUID) and `digest` (32 bytes, SHA-256)
+        are binary, a `BLOB` in DuckDB (since 0.28, #200); `digest` is on the
+        `seq = 0` row only. The text forms of the API and the receipts:
+
+            lower(hex(digest))
+            'sighting--' || lower(regexp_replace(hex(sighting_id),
+              '(.{8})(.{4})(.{4})(.{4})(.{12})', '\1-\2-\3-\4-\5'))
+
+        One sighting by id: `WHERE sighting_id = unhex('0f8fad5bd9cb469fa16570867728950e')`.
+
         `ip_geo`, when present, names one more file: the country and ASN of
         every IP address FRANK has seen (`ip`, `country`, `asn`, `as_org`,
         `looked_up`), to join on `sightings.ioc_value = ip_geo.ip`. It
