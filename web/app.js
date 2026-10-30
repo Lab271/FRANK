@@ -1077,11 +1077,49 @@ function liveFeed(items, prev) {
   return el("div", { class: "table-wrap" }, el("table", {}, el("thead", {}, head), el("tbody", {}, ...rows)));
 }
 
+/** A country's flag from its ISO 3166 code (regional indicator symbols). */
+const flag = (cc) => String.fromCodePoint(...[...cc.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65));
+const regionNames = typeof Intl.DisplayNames === "function" ? new Intl.DisplayNames(["en"], { type: "region" }) : null;
+const countryName = (cc) => { try { return regionNames?.of(cc) || cc; } catch { return cc; } };
+const tallyText = (t) => `${t.iocs} IoC${t.iocs === 1 ? "" : "s"} · ${t.reporters} reporter${t.reporters === 1 ? "" : "s"}`;
+
+/** One top list of the live view's places (#195): label, distinct IoCs and reporters, a bar by reporters. */
+function placeCard(title, ranked, label, extra) {
+  const max = Math.max(1, ...ranked.top.map((c) => c.reporters));
+  const card = el("div", { class: "card" }, el("h3", {}, title));
+  if (!ranked.top.length) card.append(el("p", { class: "note" }, "none above the threshold"));
+  for (const c of ranked.top) {
+    const fill = el("div", { class: "fill" });
+    fill.style.width = `${(100 * c.reporters) / max}%`;
+    card.append(el("div", { class: "bar" }, label(c), el("span", { class: "n" }, tallyText(c)), el("div", { class: "track" }, fill)));
+  }
+  if (ranked.other) card.append(el("p", { class: "note" }, `other: ${tallyText(ranked.other)}`));
+  if (extra) card.append(extra);
+  return card;
+}
+
+function placeNodes(r) {
+  if (!r.places) return [];
+  const p = r.places;
+  const nodes = [el("h3", {}, "where the addresses are")];
+  if (r.geoip !== "ok") {
+    return [...nodes, el("p", { class: "note" }, "Country and network need the DB-IP databases (make geoip).")];
+  }
+  nodes.push(el("div", { class: "grid" },
+    placeCard("countries", p.countries,
+      (c) => el("span", { class: "label", title: c.country }, `${flag(c.country)} ${countryName(c.country)}`),
+      p.unknown ? el("p", { class: "note" }, `no country (reserved, or not in DB-IP): ${tallyText(p.unknown)}`) : null),
+    placeCard("networks", p.networks,
+      (n) => el("span", { class: "label", title: n.as_org || "" }, `AS${n.asn}${n.as_org ? ` ${n.as_org}` : ""}`))));
+  return nodes;
+}
+
 function liveNodes(r, prev) {
   const nodes = [
     kpis([["sightings", r.sightings], ["IoCs", r.iocs], ["new IoCs", r.new_iocs], ["participants", r.participants]]),
     el("h3", {}, `arrivals per ${r.bucket_ns / 60e9} minutes`),
     spark(r.buckets.map((b) => [clock(b.t).slice(0, 5), b.sightings]), "arrivals"),
+    ...placeNodes(r),
     el("h3", {}, "converging: IoCs two or more participants report"),
   ];
   nodes.push(r.converging.length
@@ -1093,7 +1131,7 @@ function liveNodes(r, prev) {
   nodes.push(r.feed.length ? liveFeed(r.feed, prev) : el("p", { class: "note" }, "nothing arrived in this window"));
   if (r.min_cell > 1) {
     nodes.push(el("p", { class: "note" },
-      `IoCs reported by fewer than ${r.min_cell} participants are left out of the lists; the counters include them.`));
+      `IoCs, countries and networks reported by fewer than ${r.min_cell} participants are left out of the lists; the counters include them.`));
   }
   return nodes;
 }

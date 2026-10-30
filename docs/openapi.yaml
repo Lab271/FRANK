@@ -322,13 +322,23 @@ paths:
         earliest sighting of the IoC that arrived before the window; null
         means it is new. Below partner, an IoC with fewer than `min_cell`
         reporters is left out of both lists; the counters include it.
+
+        `places` says where the window's IP addresses are (#195): the top
+        10 `countries` (ISO 3166 `country`) and `networks` (`asn`,
+        `as_org`), each with its distinct `iocs` and `reporters`, most
+        reporters first. `other` is the rest taken together, `unknown` the
+        addresses without a country (reserved, or not in DB-IP).
+        Below partner a place with fewer than `min_cell` reporters is not
+        shown, and neither is `other` or `unknown` then. Addresses on a
+        warning list are left out unless `common=include`; addresses not
+        looked up yet are left out. `geoip` is `ok` or `missing`.
       x-min-status: contributor
       parameters:
         - { name: window, in: query, schema: { enum: ["1h", "6h", "24h"], default: "1h" } }
         - $ref: "#/components/parameters/Common"
       responses:
         "200":
-          description: The counters, `buckets`, `feed` and `converging`.
+          description: The counters, `buckets`, `feed`, `converging`, `geoip` and `places`.
           content:
             application/json:
               schema: { type: object }

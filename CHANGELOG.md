@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.25.0] - 2026-10-30
+
+### Added
+
+- **Where the addresses are** (#195): the Live tab shows the top 10 countries, with flags, and the top 10 networks of the window's IP addresses, each with its distinct IoCs and reporters. Below partner a country or network needs 3 reporters to be shown. Warning-listed addresses (public DNS, reserved ranges) are left out unless "show warning-listed" is ticked. `GET /v1/live` returns them as `places`.
+
 ## [0.24.0] - 2026-10-30
 
 ### Added

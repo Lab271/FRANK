@@ -7,13 +7,15 @@
 //! query reads little. "Seen before" is one `IN (...)` query over the rest
 //! of the table for the window's IoCs only.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 use db_core::engine::Cell;
 use frank_core::sql_quote;
 use serde::Serialize;
 
 use crate::explore::FIRST_ROW;
+use crate::geo::UNKNOWN;
+use crate::store::geo::IpGeo;
 
 const MINUTE_NS: i64 = 60 * 1_000_000_000;
 /// IoCs per `IN (...)` query.
@@ -234,6 +236,188 @@ pub fn lists(iocs: &[LiveIoc], limit: usize) -> (Vec<LiveIoc>, Vec<LiveIoc>) {
     (feed, converging)
 }
 
+/// The window's IP addresses with each reporter that sent one (#195):
+/// one row per address and reporter.
+#[must_use]
+pub fn addresses_sql(since: i64, visible: &str) -> String {
+    format!(
+        "SELECT ioc_value, reporter, count(*) FROM sightings \
+         WHERE received >= {since} AND {visible} AND ioc_type IN ('ipv4', 'ipv6') \
+         GROUP BY ioc_value, reporter"
+    )
+}
+
+/// The rows of [`addresses_sql`]: `(address, reporter)`.
+#[must_use]
+pub fn addresses(rows: &[Vec<Cell>]) -> Vec<(String, String)> {
+    rows.iter()
+        .filter_map(|row| match row.as_slice() {
+            [Cell::Text(ip), Cell::Text(r), ..] => Some((ip.clone(), r.clone())),
+            _ => None,
+        })
+        .collect()
+}
+
+/// Distinct IoCs and reporters of a place (#195).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+pub struct Tally {
+    pub iocs: i64,
+    pub reporters: i64,
+}
+
+/// One country of the top list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Country {
+    /// ISO 3166 alpha-2.
+    pub country: String,
+    #[serde(flatten)]
+    pub tally: Tally,
+}
+
+/// One network (autonomous system) of the top list.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Network {
+    pub asn: i64,
+    pub as_org: Option<String>,
+    #[serde(flatten)]
+    pub tally: Tally,
+}
+
+/// A top list, and what is not in it taken together.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Ranked<T> {
+    pub top: Vec<T>,
+    /// The places below the top, or below the reporter threshold; `None`
+    /// when there are none, or too few reporters to show them.
+    pub other: Option<Tally>,
+}
+
+/// Where the window's addresses are (#195).
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct Places {
+    pub countries: Ranked<Country>,
+    pub networks: Ranked<Network>,
+    /// Addresses without a country: reserved (private, documentation) or
+    /// not in the database.
+    pub unknown: Option<Tally>,
+}
+
+type Sets<'a> = (BTreeSet<&'a str>, BTreeSet<&'a str>);
+
+fn tally(s: &Sets) -> Tally {
+    let n = |set: &BTreeSet<&str>| i64::try_from(set.len()).unwrap_or(i64::MAX);
+    Tally {
+        iocs: n(&s.0),
+        reporters: n(&s.1),
+    }
+}
+
+/// Groups `(key, address, reporter)` by key: the `limit` keys with the most
+/// reporters (then addresses) that have at least `min` reporters, and the
+/// rest together when that has `min` reporters too.
+fn rank<'a, K: Ord>(
+    items: impl Iterator<Item = (K, &'a str, &'a str)>,
+    min: i64,
+    limit: usize,
+) -> (Vec<(K, Tally)>, Option<Tally>) {
+    let mut by: BTreeMap<K, Sets<'a>> = BTreeMap::new();
+    for (k, ip, r) in items {
+        let e = by.entry(k).or_default();
+        e.0.insert(ip);
+        e.1.insert(r);
+    }
+    let mut ranked: Vec<(K, Tally, Sets<'a>)> =
+        by.into_iter().map(|(k, s)| (k, tally(&s), s)).collect();
+    ranked.sort_by(|(ka, a, _), (kb, b, _)| {
+        (b.reporters, b.iocs)
+            .cmp(&(a.reporters, a.iocs))
+            .then_with(|| ka.cmp(kb))
+    });
+    let mut top = Vec::new();
+    let mut rest = Sets::default();
+    for (k, t, s) in ranked {
+        if top.len() < limit && t.reporters >= min {
+            top.push((k, t));
+        } else {
+            rest.0.extend(s.0);
+            rest.1.extend(s.1);
+        }
+    }
+    let other = tally(&rest);
+    (
+        top,
+        (other.iocs > 0 && other.reporters >= min).then_some(other),
+    )
+}
+
+/// The top `limit` countries and networks of `pairs` (address, reporter),
+/// by `geo`. Addresses not looked up are left out; those without a
+/// country count as unknown, and those without a network are left out of
+/// the networks. Every place needs `min` reporters to be shown.
+#[must_use]
+pub fn places(
+    pairs: &[(String, String)],
+    geo: &BTreeMap<String, IpGeo>,
+    min: i64,
+    limit: usize,
+) -> Places {
+    let found = || {
+        pairs
+            .iter()
+            .filter_map(|(ip, r)| geo.get(ip).map(|g| (g, ip.as_str(), r.as_str())))
+    };
+    let (countries, other) = rank(
+        found()
+            .filter(|(g, ..)| g.country != UNKNOWN)
+            .map(|(g, ip, r)| (g.country.as_str(), ip, r)),
+        min,
+        limit,
+    );
+    let (networks, other_networks) = rank(
+        found()
+            .filter(|(g, ..)| g.asn != 0)
+            .map(|(g, ip, r)| (g.asn, ip, r)),
+        min,
+        limit,
+    );
+    let org = |asn: i64| {
+        geo.values()
+            .find(|g| g.asn == asn)
+            .and_then(|g| g.as_org.clone())
+    };
+    let (_, unknown) = rank(
+        found()
+            .filter(|(g, ..)| g.country == UNKNOWN)
+            .map(|(_, ip, r)| ((), ip, r)),
+        min,
+        0,
+    );
+    Places {
+        countries: Ranked {
+            top: countries
+                .into_iter()
+                .map(|(c, tally)| Country {
+                    country: c.to_string(),
+                    tally,
+                })
+                .collect(),
+            other,
+        },
+        networks: Ranked {
+            top: networks
+                .into_iter()
+                .map(|(asn, tally)| Network {
+                    asn,
+                    as_org: org(asn),
+                    tally,
+                })
+                .collect(),
+            other: other_networks,
+        },
+        unknown,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,5 +482,72 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["c", "b"]
         );
+    }
+
+    fn geo(ip: &str, country: &str, asn: i64, org: Option<&str>) -> (String, IpGeo) {
+        let g = IpGeo {
+            ip: ip.into(),
+            ip_hex: String::new(),
+            country: country.into(),
+            asn,
+            as_org: org.map(str::to_string),
+            looked_up: 0,
+            db_build: 0,
+        };
+        (ip.into(), g)
+    }
+
+    #[test]
+    fn places_rank_by_reporters_and_hide_small_cells() {
+        let geo: BTreeMap<String, IpGeo> = [
+            geo("192.0.2.1", "NL", 64496, Some("Example Net")),
+            geo("192.0.2.2", "NL", 64496, Some("Example Net")),
+            geo("198.51.100.1", "DE", 64497, None),
+            geo("198.51.100.2", "DE", 64497, None),
+            geo("198.51.100.3", "DE", 64497, None),
+            geo("203.0.113.1", "ZZ", 0, None),
+        ]
+        .into_iter()
+        .collect();
+        let pairs: Vec<(String, String)> = [
+            ("192.0.2.1", "a"),
+            ("192.0.2.1", "b"),
+            ("192.0.2.2", "c"),
+            ("198.51.100.1", "a"),
+            ("198.51.100.2", "a"),
+            ("198.51.100.3", "b"),
+            ("203.0.113.1", "a"),
+            ("2001:db8::1", "c"),
+        ]
+        .iter()
+        .map(|(i, r)| (i.to_string(), r.to_string()))
+        .collect();
+        let t = |iocs, reporters| Tally { iocs, reporters };
+
+        // Partner and up: every place, by reporters, then addresses.
+        let p = places(&pairs, &geo, 1, 10);
+        let c: Vec<(&str, Tally)> = p
+            .countries
+            .top
+            .iter()
+            .map(|c| (c.country.as_str(), c.tally))
+            .collect();
+        assert_eq!(c, [("NL", t(2, 3)), ("DE", t(3, 2))]);
+        assert_eq!(p.countries.other, None);
+        assert_eq!(
+            (p.networks.top[0].asn, p.networks.top[0].as_org.as_deref()),
+            (64496, Some("Example Net"))
+        );
+        assert_eq!(p.unknown, Some(t(1, 1)), "ZZ, not a country");
+
+        // Below partner: DE has two reporters, so it is not shown, and
+        // neither is the rest, which is DE alone.
+        let p = places(&pairs, &geo, 3, 10);
+        assert_eq!(p.countries.top.len(), 1);
+        assert_eq!((p.countries.other, p.unknown), (None, None));
+
+        // Beyond the top: taken together.
+        let p = places(&pairs, &geo, 1, 1);
+        assert_eq!(p.countries.other, Some(t(3, 2)));
     }
 }
