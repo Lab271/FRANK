@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.26.0] - 2026-10-30
+
+### Added
+
+- **HTTPS locally**: `make up` serves FRANK at `https://frank.local:8443` through Caddy, with a certificate from Caddy's local certificate authority, as on STACKIT. `make trust` (once, with `sudo`) adds that authority to the macOS keychain and `frank.local` to `/etc/hosts`; `make untrust` removes the authority again. Plain HTTP stays on `127.0.0.1:8080`. `FRANK_HOST` changes the name; `FRANK_TLS_ADDR=443` gives `https://frank.local`, reachable from the local network too.
+
 ## [0.25.0] - 2026-10-30
 
 ### Added
