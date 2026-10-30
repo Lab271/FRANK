@@ -2502,3 +2502,114 @@ async fn common_infrastructure_is_marked_not_dropped() {
     let lists = health["lists"].as_array().unwrap();
     assert_eq!(lists.len(), 2, "{health}");
 }
+
+/// #193: what outside sources (abuse.ch) list about an IoC is shown as
+/// context, and Explore finds the IoCs no list has yet.
+#[tokio::test]
+async fn reference_lists_are_context_and_a_filter() {
+    let h = harness_setup("refs", |dir| {
+        let r = dir.join("lists/reference");
+        std::fs::create_dir_all(&r).unwrap();
+        std::fs::write(
+            r.join("feodo_ipblocklist.csv"),
+            "# Feodo Tracker\nfirst_seen_utc,dst_ip,dst_port,c2_status,last_online,malware\n2026-10-01 00:00:00,192.0.2.66,443,online,,QakBot\n",
+        )
+        .unwrap();
+        std::fs::write(
+            r.join("urlhaus.csv"),
+            "# URLhaus\n\"1\",\"2026-10-20 08:00:00\",\"http://evil.example/x.sh\",\"online\",\"\",\"malware_download\",\"mirai\",\"https://urlhaus.abuse.ch/url/1/\",\"r\"\n",
+        )
+        .unwrap();
+    });
+    for ip in ["192.0.2.66", "192.0.2.67"] {
+        let s = sighting("energy", ip, "r1");
+        assert_eq!(
+            call(&h.app, "POST", "/v1/sightings", Some("p"), Some(s))
+                .await
+                .0,
+            StatusCode::CREATED
+        );
+    }
+    let (_, ip) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=ipv4&value=192.0.2.66",
+        Some("c"),
+        None,
+    )
+    .await;
+    let l = &ip["listed"][0];
+    assert_eq!(
+        (&l["kind"], &l["source"], &l["tags"]),
+        (
+            &json!("reference"),
+            &json!("abuse.ch Feodo Tracker"),
+            &json!("QakBot")
+        ),
+        "{ip}"
+    );
+    assert!(l["first_listed"].is_i64());
+    let (_, url) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=url&value=http://evil.example/x.sh",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(
+        (&url["known"], &url["listed"][0]["tags"]),
+        (&json!(false), &json!("malware_download,mirai")),
+        "a lookup says what the lists say, sighted or not: {url}"
+    );
+
+    let keys = |v: &Value| -> Vec<String> {
+        let mut k: Vec<String> = v["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| r["key"].as_str().unwrap().to_string())
+            .collect();
+        k.sort();
+        k
+    };
+    let get = |uri: &'static str| {
+        let app = h.app.clone();
+        async move { call(&app, "GET", uri, Some("p"), None).await }
+    };
+    assert_eq!(
+        keys(&get("/v1/explore?group=ioc&listed=any").await.1),
+        ["ipv4:192.0.2.66"]
+    );
+    assert_eq!(
+        keys(
+            &get("/v1/explore?group=ioc&listed=feodo_ipblocklist")
+                .await
+                .1
+        ),
+        ["ipv4:192.0.2.66"]
+    );
+    assert_eq!(
+        keys(&get("/v1/explore?group=ioc&listed=none").await.1),
+        ["domain:evil.example", "ipv4:192.0.2.67"],
+        "what partners see that nobody lists yet"
+    );
+    assert!(keys(&get("/v1/explore?group=ioc&listed=urlhaus").await.1).is_empty());
+    assert_eq!(
+        get("/v1/explore?group=rule&listed=any").await.0,
+        StatusCode::UNPROCESSABLE_ENTITY
+    );
+    let (_, live) = get("/v1/live?window=24h").await;
+    let item = live["feed"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|i| i["value"] == "192.0.2.66")
+        .unwrap();
+    assert_eq!(item["listed"][0]["list"], "feodo_ipblocklist", "{item}");
+    assert_eq!(
+        live["sightings"],
+        json!(2),
+        "references are never sightings"
+    );
+}

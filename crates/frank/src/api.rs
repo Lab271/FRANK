@@ -730,7 +730,19 @@ async fn explore(
     Query(mut params): Query<BTreeMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
     let common = include_common(params.remove("common").as_deref())?;
+    // `listed=any|none|<list>` (#193): IoCs a reference list has, has not,
+    // or a given one has; with group=ioc.
+    let listed_by = params.remove("listed");
     let q = ex::Query::parse(&params).map_err(unprocessable)?;
+    if listed_by.is_some() && q.group != Dimension::Ioc {
+        return Err(unprocessable("listed: only with group=ioc"));
+    }
+    if listed_by
+        .as_deref()
+        .is_some_and(|l| l.is_empty() || l.len() > 200)
+    {
+        return Err(unprocessable("listed: any, none or a list name"));
+    }
     let caller = require(&app, &headers, q.min_tier())?;
     let since = (app.now)() - q.days * DAY_NS;
     let visible = tlp_visible(caller.tier);
@@ -754,10 +766,24 @@ async fn explore(
                 .map(|(t, v)| (t.to_string(), v.to_string()))
                 .collect();
             let listed = app.lists.annotate(&keys);
+            let mut keep = Vec::with_capacity(rows.len());
             for (r, l) in rows.iter_mut().zip(listed) {
+                let refs: Vec<&str> = l
+                    .iter()
+                    .filter(|x| x.kind == "reference")
+                    .map(|x| x.list.as_str())
+                    .collect();
+                keep.push(match listed_by.as_deref() {
+                    None => true,
+                    Some("any") => !refs.is_empty(),
+                    Some("none") => refs.is_empty(),
+                    Some(name) => refs.contains(&name),
+                });
                 r["common"] = json!(crate::lists::warned(&l));
                 r["listed"] = json!(l);
             }
+            let mut keep = keep.into_iter();
+            rows.retain(|_| keep.next().unwrap_or(false));
             rows.retain(|r| common || r["common"] != true);
             rows.truncate(100);
         }
@@ -766,6 +792,7 @@ async fn explore(
             "days": q.days,
             "filters": q.filters.iter().map(|(d, v)| (d.name(), v)).collect::<BTreeMap<_, _>>(),
             "min_cell": if exact { 1 } else { MIN_CELL },
+            "listed": listed_by,
             "rows": rows,
         })))
     })

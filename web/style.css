@@ -188,3 +188,7 @@ tr.fresh td { background: color-mix(in srgb, var(--c-tq) 14%, transparent); }
 tr.common td { color: var(--c-muted); }
 tr.common td .label { color: var(--c-muted); }
 p.listed-reference { color: var(--c-text); }
+.badge {
+  margin-left: 6px; padding: 0 6px; border: 1px solid var(--c-tq); border-radius: 8px;
+  font-family: var(--lab-type-family-mono); font-size: 11px; color: var(--c-tq-text);
+}

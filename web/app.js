@@ -47,6 +47,11 @@ const isoDay = (ns) => iso(ns).slice(0, 10);
 const where = (g) => !g ? "" : [g.country === "ZZ" ? "unknown country" : g.country,
   g.asn ? `AS${g.asn}${g.as_org ? ` ${g.as_org}` : ""}` : "unknown network"].join(" · ");
 /** What warning and reference lists say about an IoC (#192, #193), one line each. */
+/** A "listed" badge naming the reference lists that have an IoC (#193). */
+const badges = (listed) => {
+  const refs = (listed || []).filter((l) => l.kind === "reference");
+  return refs.length ? [el("span", { class: "badge", title: refs.map((l) => l.source).join(", ") }, "listed")] : [];
+};
 const listedLines = (listed) => (listed || []).map((l) => el("p", { class: `note listed listed-${l.kind}` },
   l.kind === "warning" ? `common infrastructure: ${l.source}`
     : `listed by ${l.source}${l.tags ? ` (${l.tags})` : ""}${l.first_listed ? ` since ${isoDay(l.first_listed)}` : ""}`));
@@ -246,7 +251,7 @@ async function lookup(type, value) {
   try {
     const r = await (await api(`/v1/iocs?${new URLSearchParams({ type, value })}`)).json();
     if (!r.known) {
-      show(out, el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`));
+      show(out, el("p", {}, `${r.ioc.type} ${r.ioc.value}: not seen in the retained days.`), ...listedLines(r.listed));
       closePane();
       return;
     }
@@ -396,14 +401,18 @@ async function loadExplore(params) {
   if (pane) openPane(pane.slice(0, pane.indexOf(":")), pane.slice(pane.indexOf(":") + 1));
   else closePane();
 
-  const query = new URLSearchParams([["group", group], ["days", $("ex-days").value], ...filters]);
+  // Reference lists (#193): IoCs a list has, or that none has.
+  $("ex-listed-wrap").hidden = group !== "ioc";
+  $("ex-listed").value = group === "ioc" ? (params.get("listed") || "") : "";
+  const listed = $("ex-listed").value ? [["listed", $("ex-listed").value]] : [];
+  const query = new URLSearchParams([["group", group], ["days", $("ex-days").value], ...filters, ...listed]);
   const seq = ++exploreSeq;
   try {
     const r = await (await api(`/v1/explore?${query}`)).json();
     if (seq !== exploreSeq) return;
     const rows = r.rows.map((x) => {
-      const tr = el("tr", { class: "go", tabindex: "0" },
-        el("td", {}, x.key), el("td", { class: "num" }, x.count.toLocaleString()),
+      const tr = el("tr", { class: `go${x.common ? " common" : ""}`, tabindex: "0" },
+        el("td", {}, x.key, ...badges(x.listed)), el("td", { class: "num" }, x.count.toLocaleString()),
         el("td", { class: "num" }, x.reporters), el("td", {}, isoDay(x.first_seen)), el("td", {}, isoDay(x.last_seen)));
       const open = () => drill(group, x.key);
       tr.addEventListener("click", open);
@@ -426,9 +435,16 @@ for (const id of ["ex-group", "ex-days"]) {
     const p = current();
     p.set(id === "ex-group" ? "group" : "days", $(id).value);
     p.delete("pane");
+    if (id === "ex-group" && $(id).value !== "ioc") p.delete("listed");
     go(p);
   });
 }
+$("ex-listed").addEventListener("change", () => {
+  const p = current();
+  if ($("ex-listed").value) p.set("listed", $("ex-listed").value); else p.delete("listed");
+  p.delete("pane");
+  go(p);
+});
 
 // --- detail pane ---------------------------------------------------------------
 
@@ -1052,7 +1068,7 @@ function liveFeed(items, prev) {
       title: i.common ? "common infrastructure: shown, not converging" : "" },
       el("td", { class: "mono" }, clock(i.last_received)),
       el("td", {}, i.ioc_type),
-      el("td", {}, iocLink(i)),
+      el("td", {}, iocLink(i), ...badges(i.listed)),
       el("td", { class: "note" }, where(i.geo)),
       el("td", {}, i.rule_id ? linkTo(i.rule_id, () => openPane("rule", i.rule_id), "label") : "∅"),
       el("td", { class: "num" }, i.sightings),

@@ -300,6 +300,7 @@ paths:
         - { name: ioc_type, in: query, schema: { type: string } }
         - { name: severity, in: query, schema: { type: string } }
         - $ref: "#/components/parameters/Common"
+        - { name: listed, in: query, description: "With group=ioc: `any` keeps the IoCs a reference list has (abuse.ch, ...), `none` those no list has, a list name those that list has (#193).", schema: { type: string, examples: [none] } }
       responses:
         "200":
           description: "Up to 100 groups, most sightings first. Grouped by IoC, each row also has `common` and `listed`, as `/v1/iocs` gives them."
