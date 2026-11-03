@@ -125,39 +125,60 @@ impl List {
         c
     }
 
-    /// With an `ioc` or `ioc_type` filter, the query for the ids of the
-    /// sightings that match: on any of their rows, not only the first.
+    /// With an `ioc` or `ioc_type` filter, the query for one page of
+    /// `(ts, sighting_id)` of the sightings that match, on any of their
+    /// rows, not only the first: after the cursor, one more than the
+    /// limit (#201). Every row of a sighting repeats its `ts`, so the ids
+    /// page as the records do.
     #[must_use]
     pub fn ioc_sql(&self, visible: &str, reporter: Option<&str>) -> Option<String> {
         self.filters.iter().any(|(d, _)| Self::by_ioc(*d)).then(|| {
+            let mut c = self.conditions(visible, reporter, true);
+            c.extend(self.after_cursor());
             format!(
-                "SELECT DISTINCT sighting_id FROM sightings WHERE {}",
-                self.conditions(visible, reporter, true).join(" AND ")
+                "SELECT DISTINCT ts, sighting_id FROM sightings WHERE {} {}",
+                c.join(" AND "),
+                self.order_limit()
             )
         })
     }
 
     /// The page query: [`COLUMNS`] of the records after the cursor, one
     /// more than the limit so the caller knows whether a next page
-    /// exists. `ids` are those [`List::ioc_sql`] found.
+    /// exists. With `ids` (a chunk of one page [`List::ioc_sql`] found),
+    /// the records of those sightings only: the ids are the page.
     #[must_use]
     pub fn sql(&self, visible: &str, reporter: Option<&str>, ids: Option<&[SightingId]>) -> String {
         let mut c = self.conditions(visible, reporter, false);
         c.push("seq = 0".into());
-        if let Some(ids) = ids {
-            let ids: Vec<String> = ids.iter().map(|i| sql_blob(&i.0)).collect();
-            c.push(format!("sighting_id IN ({})", ids.join(", ")));
-        }
-        let (past, dir) = if self.desc { ("<", " DESC") } else { (">", "") };
-        if let Some((ts, id)) = &self.after {
-            c.push(format!(
+        let Some(ids) = ids else {
+            c.extend(self.after_cursor());
+            return format!(
+                "SELECT {COLUMNS} FROM sightings WHERE {} {}",
+                c.join(" AND "),
+                self.order_limit()
+            );
+        };
+        let ids: Vec<String> = ids.iter().map(|i| sql_blob(&i.0)).collect();
+        c.push(format!("sighting_id IN ({})", ids.join(", ")));
+        format!("SELECT {COLUMNS} FROM sightings WHERE {}", c.join(" AND "))
+    }
+
+    /// The rows after the cursor, in the listing's order.
+    fn after_cursor(&self) -> Option<String> {
+        let past = if self.desc { "<" } else { ">" };
+        self.after.as_ref().map(|(ts, id)| {
+            format!(
                 "(ts {past} {ts} OR (ts = {ts} AND sighting_id {past} {}))",
                 sql_blob(&id.0)
-            ));
-        }
+            )
+        })
+    }
+
+    fn order_limit(&self) -> String {
+        let dir = if self.desc { " DESC" } else { "" };
         format!(
-            "SELECT {COLUMNS} FROM sightings WHERE {} ORDER BY ts{dir}, sighting_id{dir} LIMIT {}",
-            c.join(" AND "),
+            "ORDER BY ts{dir}, sighting_id{dir} LIMIT {}",
             self.limit + 1
         )
     }
@@ -285,8 +306,27 @@ mod tests {
             "{page}"
         );
         assert!(
-            page.contains("ORDER BY ts DESC, sighting_id DESC"),
-            "{page}"
+            ids.ends_with("ORDER BY ts DESC, sighting_id DESC LIMIT 101"),
+            "the ids are the page (#201): {ids}"
+        );
+        assert!(!page.contains("LIMIT"), "{page}");
+    }
+
+    #[test]
+    fn an_ioc_filter_pages_in_the_ids_query() {
+        let q = List::parse(
+            &params(&[("ioc_type", "ipv4"), ("cursor", &format!("5.{ID}"))]),
+            NOW,
+        )
+        .unwrap();
+        let after = "(ts > 5 OR (ts = 5 AND sighting_id > x'0f8fad5bd9cb469fa16570867728950e'))";
+        let ids = q.ioc_sql("x", None).unwrap();
+        assert!(ids.starts_with("SELECT DISTINCT ts, sighting_id "), "{ids}");
+        assert!(ids.contains(after), "{ids}");
+        let page = q.sql("x", None, Some(&[SightingId([0xab; 16])]));
+        assert!(
+            !page.contains(after),
+            "the ids are after the cursor: {page}"
         );
     }
 
