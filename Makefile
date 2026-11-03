@@ -28,8 +28,15 @@ DBIP_URL := https://download.db-ip.com/free
 # `make lists` (#193). The item is named by id: "abuse.ch" matches more than one.
 ABUSE_KEY_REF ?= op://Private/ghrds67j2aclbtl2v2dbsodqiu/auth key
 OP_ACCOUNT ?= my.1password.eu
+# Tests (#208): `make smoke` checks a running FRANK at FRANK_URL (scheme and
+# port; TLS=1 for the podman deployment's HTTPS) with TOKEN (space separated,
+# never echoed). `make e2e` builds the image, unless E2E_TAG names one.
+PYTHON ?= python3
+FRANK_URL ?= http://127.0.0.1:8080
+E2E_PORT ?= 18080
+E2E_TAG ?=
 
-.PHONY: help check build server wasm test lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down trust untrust clean
+.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down trust untrust clean
 
 ##@ General
 
@@ -38,7 +45,7 @@ help: ## Show targets by section (colour on a terminal, unless NO_COLOR is set)
 	awk -v b="$$b" -v c="$$c" -v d="$$d" -v r="$$r" ' \
 	  BEGIN { FS = ":.*## "; printf "%sFRANK %s%s  %smake <target> [VAR=value]%s\n", b, "$(VERSION)", r, d, r } \
 	  /^##@/ { printf "\n%s%s%s\n", b, substr($$0, 5), r; next } \
-	  /^[a-z-]+:.*## / { printf "  %s%-13s%s %s\n", c, $$1, r, $$2 }' $(MAKEFILE_LIST)
+	  /^[a-z0-9-]+:.*## / { printf "  %s%-13s%s %s\n", c, $$1, r, $$2 }' $(MAKEFILE_LIST)
 
 check: ## Verify the toolchain
 	@rustup target list --installed | grep -q wasm32-unknown-unknown || { echo "rustup target add wasm32-unknown-unknown"; exit 1; }
@@ -102,6 +109,18 @@ role: server ## Set a user's role: make role NAME=alice ROLE=admin|superadmin|no
 token: server ## Another token for a user: make token NAME=alice
 	@[ -n "$(NAME)" ] || { echo "usage: make token NAME=<user>" >&2; exit 2; }
 	@FRANK_DATA=$(DATA) FRANK_PARTICIPANTS=$(PARTICIPANTS) $(FRANK) token new "$(NAME)"
+
+##@ Test
+
+test-slow: ## Slow Rust tests (#[ignore = "slow"]): volume and paging
+	$(CARGO) test --workspace --locked --release -- --ignored
+
+smoke: ## Read-only checks of a running FRANK: make smoke TOKEN=… [FRANK_URL=…|TLS=1] [CA=…]
+	@TOKEN="$(TOKEN)" $(PYTHON) scripts/smoke.py --url $(if $(TLS),$(FRANK_URL_TLS),$(FRANK_URL)) \
+	  $(if $(TLS),--ca $(CA_CERT),$(if $(CA),--ca $(CA)))
+
+e2e: $(if $(E2E_TAG),,image) ## Throwaway container (no Caddy), generated data, every check: [E2E_TAG=…] [E2E_PORT=18080] [KEEP=1]
+	IMAGE=$(IMAGE):$(or $(E2E_TAG),$(VERSION)) E2E_PORT=$(E2E_PORT) PYTHON="$(PYTHON)" KEEP=$(KEEP) scripts/e2e.sh
 
 ##@ Data
 

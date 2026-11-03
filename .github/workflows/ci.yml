@@ -25,6 +25,8 @@ jobs:
       - run: cargo clippy --workspace --all-targets --locked -- -D warnings
       - run: cargo clippy -p frank-wasm --target wasm32-unknown-unknown --locked -- -D warnings
       - run: cargo test --workspace --locked
+      - name: Slow tests (make test-slow)
+        run: cargo test --workspace --locked --release -- --ignored
 
   image:
     name: container image
@@ -37,6 +39,8 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Build
         run: podman build -t ghcr.io/lab271/frank:${{ github.sha }} -f Containerfile .
+      - name: End-to-end on the built image (make e2e), before it is pushed
+        run: IMAGE=ghcr.io/lab271/frank:${{ github.sha }} scripts/e2e.sh
       - name: Push (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
         run: |
