@@ -15,7 +15,7 @@
 //! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
 //! | `/v1/admin/…`             | a user with a role ([`crate::admin`]) |
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
 use std::path::{Component, Path};
 use std::sync::Arc;
@@ -44,6 +44,9 @@ use crate::store::{Iocs, Participants, Registry, Sightings};
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 /// Most submissions in one POST.
 const MAX_BATCH: usize = 100;
+/// Most sighting ids in one query's `IN` list (#201): db-core parsed a
+/// long literal list recursively and overflowed the stack (db-core#901).
+const IDS_PER_QUERY: usize = 100;
 const MAX_BODY: usize = 2 * 1024 * 1024;
 /// The rows not yet in a file, served as one Parquet file written on request.
 pub const OPEN_FILE: &str = "open/current.parquet";
@@ -1120,39 +1123,57 @@ async fn list(
     blocking(move || {
         let s = &app.sightings;
         let r = reporter.as_deref();
-        let ids: Option<Vec<SightingId>> = match q.ioc_sql(&visible, r) {
-            None => None,
-            Some(sql) => Some(
-                s.query(&sql)
-                    .map_err(internal)?
-                    .rows
-                    .into_iter()
-                    .filter_map(|row| match row.into_iter().next() {
-                        Some(Cell::Blob(id)) => id.try_into().ok().map(SightingId),
-                        _ => None,
-                    })
-                    .collect(),
-            ),
+        let Some(ids_sql) = q.ioc_sql(&visible, r) else {
+            let rows = s.query(&q.sql(&visible, r, None)).map_err(internal)?.rows;
+            let more = rows.len() > q.limit;
+            let mut items: Vec<(String, Value)> = rows
+                .iter()
+                .take(q.limit)
+                .filter_map(|row| records::item(row))
+                .collect();
+            let next = if more {
+                items.last().map(|(c, _)| c.clone())
+            } else {
+                None
+            };
+            let items: Vec<Value> = items.drain(..).map(|(_, v)| v).collect();
+            return Ok(Json(json!({ "sightings": items, "next_cursor": next })));
         };
-        if ids.as_ref().is_some_and(Vec::is_empty) {
-            return Ok(Json(json!({ "sightings": [], "next_cursor": null })));
-        }
-        let rows = s
-            .query(&q.sql(&visible, r, ids.as_deref()))
+        // An IoC filter (#201): one page of ids, then their records in
+        // chunks, so no query holds more than `IDS_PER_QUERY` literals.
+        let mut page: Vec<(i64, SightingId)> = s
+            .query(&ids_sql)
             .map_err(internal)?
-            .rows;
-        let more = rows.len() > q.limit;
-        let mut items: Vec<(String, Value)> = rows
-            .iter()
-            .take(q.limit)
-            .filter_map(|row| records::item(row))
+            .rows
+            .into_iter()
+            .filter_map(|row| match (row.first(), row.get(1)) {
+                (Some(Cell::Int(ts)), Some(Cell::Blob(id))) => {
+                    Some((*ts, SightingId(id.as_slice().try_into().ok()?)))
+                }
+                _ => None,
+            })
             .collect();
-        let next = if more {
-            items.last().map(|(c, _)| c.clone())
-        } else {
-            None
-        };
-        let items: Vec<Value> = items.drain(..).map(|(_, v)| v).collect();
+        let more = page.len() > q.limit;
+        page.truncate(q.limit);
+        let mut found: HashMap<String, Vec<Value>> = HashMap::new();
+        let ids: Vec<SightingId> = page.iter().map(|(_, id)| *id).collect();
+        for chunk in ids.chunks(IDS_PER_QUERY) {
+            for row in s
+                .query(&q.sql(&visible, r, Some(chunk)))
+                .map_err(internal)?
+                .rows
+            {
+                if let Some((cursor, v)) = records::item(&row) {
+                    found.entry(cursor).or_default().push(v);
+                }
+            }
+        }
+        let cursors: Vec<String> = page.iter().map(|(ts, id)| format!("{ts}.{id}")).collect();
+        let items: Vec<Value> = cursors
+            .iter()
+            .flat_map(|c| found.remove(c).unwrap_or_default())
+            .collect();
+        let next = if more { cursors.last().cloned() } else { None };
         Ok(Json(json!({ "sightings": items, "next_cursor": next })))
     })
     .await

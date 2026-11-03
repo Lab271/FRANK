@@ -1556,6 +1556,80 @@ async fn records_are_listed_by_status() {
     assert!(sum["last_received"].is_string());
 }
 
+/// Every sighting id of a listing, following `next_cursor` 500 at a time.
+async fn every_page(app: &axum::Router, uri: &str, token: &str) -> Vec<String> {
+    let mut ids = Vec::new();
+    let mut cursor: Option<String> = None;
+    loop {
+        let u = match &cursor {
+            Some(c) => format!("{uri}&limit=500&cursor={c}"),
+            None => format!("{uri}&limit=500"),
+        };
+        let (code, page) = call(app, "GET", &u, Some(token), None).await;
+        assert_eq!(code, StatusCode::OK, "{u}: {page}");
+        ids.extend(page["sightings"].as_array().unwrap().iter().map(|s| {
+            let id = s["sighting_id"].as_str().unwrap();
+            id.trim_start_matches("sighting--").to_string()
+        }));
+        match page["next_cursor"].as_str() {
+            Some(c) => cursor = Some(c.to_string()),
+            None => return ids,
+        }
+    }
+}
+
+/// #201: an IoC filter matching more sightings than db-core's literal
+/// `IN` list could take (about 1,000 overflowed the stack), paged by
+/// cursor both ways: every sighting exactly once, in order.
+#[tokio::test]
+#[ignore = "slow: make test-slow"]
+async fn an_ioc_filter_pages_through_thousands() {
+    const N: usize = 2_100;
+    let h = harness("ioc-volume");
+    let mut want = Vec::new();
+    for b in 0..N / 100 {
+        let batch: Vec<Value> = (b * 100..(b + 1) * 100)
+            .map(|n| sighting("energy", &format!("10.0.{}.{}", n / 256, n % 256), "r1"))
+            .collect();
+        want.extend(batch.iter().map(|s| {
+            s["submission"]["sighting"]["sighting_id"]
+                .as_str()
+                .unwrap()
+                .to_string()
+        }));
+        let (code, r) = call(
+            &h.app,
+            "POST",
+            "/v1/sightings",
+            Some("c"),
+            Some(json!(batch)),
+        )
+        .await;
+        assert_eq!(code, StatusCode::CREATED, "{r}");
+    }
+    want.sort_unstable();
+
+    for (uri, token) in [
+        ("/v1/sightings?ioc=domain:evil.example", "p"),
+        ("/v1/sightings?ioc_type=ipv4", "p"),
+        ("/v1/sightings?ioc_type=ipv4&sector=Energy&rule=r1", "p"),
+        ("/v1/sightings?mine=true&ioc=domain:evil.example", "c"),
+        ("/v1/sightings?ioc_type=domain&order=desc", "p"),
+    ] {
+        let listed = every_page(&h.app, uri, token).await;
+        let mut sorted = listed.clone();
+        sorted.sort_unstable();
+        assert_eq!(sorted, want, "{uri}: every sighting, each once");
+        // All share one timestamp, so the order is the id's (#160's cursor).
+        if uri.contains("desc") {
+            sorted.reverse();
+        }
+        assert_eq!(listed, sorted, "{uri}: in order");
+    }
+    let none = every_page(&h.app, "/v1/sightings?mine=true&ioc_type=ipv4", "c2").await;
+    assert!(none.is_empty(), "another contributor's: {none:?}");
+}
+
 /// #175: `ops` (core) with superadmin `root` (token `s`); admins `amy` of
 /// `mdr` (token `a`) and `ben` of `mdr2` (token `b`).
 fn admins(h: &Harness) {

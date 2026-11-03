@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.28.1] - 2026-11-03
+
+### Fixed
+
+- `GET /v1/sightings` with an IoC filter (`ioc=`, `ioc_type=`) reads one page of matching sighting ids instead of all of them, and fetches their records at most 100 ids per query. The crash itself (a stack overflow from a long `IN` list) was fixed by db-core in 0.28.0; this keeps each page's work bounded as the data grows (#201).
+
 ## [0.28.0] - 2026-10-30
 
 ### Changed
