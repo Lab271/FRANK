@@ -10,7 +10,7 @@
 # cargo auditable embeds the crate list in the binary (#213), so scanners
 # (syft, trivy, grype) can read a scratch image; CI turns it into the SBOM.
 
-FROM docker.io/library/rust:1.96-slim@sha256:31ee7fc65186be7e0e0ccb3f2ca305f14e4739e7642a1ae65753aa5d7b874523 AS build
+FROM docker.io/library/rust:1.98-slim@sha256:4cd829461bd5c4d511c32e269da9cb8929223b666519d8004e35fc8d1d771ab7 AS build
 ARG WASM_BINDGEN_VERSION=0.2.129
 ARG CARGO_AUDITABLE_VERSION=0.7.7
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
