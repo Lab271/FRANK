@@ -30,6 +30,10 @@ FRANK is to become open source, and its deployments (a trial, the Enablement Pla
 5. **The end-to-end container runs without Caddy.** TLS, certificates and the HTTP redirect belong to a deployment; `make smoke` checks them there (`TLS=1` for the podman deployment, an `https://` URL for a cloud one).
 6. **CI runs `test-slow` in the Rust job and `e2e` on the built image before it is pushed,** so a broken image never becomes `latest`.
 7. **Deployment repositories call `smoke.py` from a pinned FRANK tag** with their own URL and token. FRANK holds no environment's details.
+8. **The image has no third-party runtime base (#211).**
+   - `frank` is a static musl binary on `FROM scratch`, next to `web/` and a minimal `/etc/passwd` for uid 65532. This works because FRANK has no C dependencies and no TLS stack, so it needs no libc, CA certificates or tzdata.
+   - The build image is pinned by its multi-arch index digest, and Dependabot's `docker` ecosystem proposes the bumps.
+   - The same commit therefore builds the same layers, and nobody else's userland ships with FRANK.
 
 ## Consequences
 
@@ -37,4 +41,6 @@ FRANK is to become open source, and its deployments (a trial, the Enablement Pla
 - **Positive:** a deployment is checked the same way locally, in CI and in the cloud.
 - **Cost:** CI builds the Rust workspace a second time in release mode for `test-slow`, and runs the image once more before pushing it.
 - **Cost:** two languages in the tests, Rust and Python. The Python is limited to HTTP checks against a URL; anything that needs FRANK's internals is a Rust test.
+- **Cost:** musl's allocator is slower than glibc's under many threads. If that ever shows in `test-slow` or `e2e`, the fix is a Rust allocator such as `mimalloc`, not a return to a distro base image.
+- **Limit:** a scratch image has no shell. Debug from the host, with `podman exec` running `frank` itself or with `podman cp`.
 - **Limit:** `make smoke` on a production server is read-only, so it cannot show that submitting works there. A deployment that wants that needs a sender whose sightings it accepts as permanent.
