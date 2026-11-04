@@ -34,6 +34,25 @@ FRANK is to become open source, and its deployments (a trial, the Enablement Pla
    - `frank` is a static musl binary on `FROM scratch`, next to `web/` and a minimal `/etc/passwd` for uid 65532. This works because FRANK has no C dependencies and no TLS stack, so it needs no libc, CA certificates or tzdata.
    - The build image is pinned by its multi-arch index digest, and Dependabot's `docker` ecosystem proposes the bumps.
    - The same commit therefore builds the same layers, and nobody else's userland ships with FRANK.
+9. **Every image pushed from `main` is signed and attested, by digest (#213).**
+   - `frank` is built with `cargo auditable`, so its crate list is inside the binary. A scratch image has no package database, and this is what scanners read instead.
+   - CI then attaches three things to the image:
+     - a CycloneDX SBOM attestation, made by Syft from that crate list;
+     - an SLSA build-provenance attestation;
+     - a keyless `cosign` signature, under the identity of `ci.yml` on `refs/heads/main`.
+   - Pull requests build and test, but sign nothing.
+   - A deployment checks an image before it uses it:
+
+     ```sh
+     cosign verify ghcr.io/lab271/frank@sha256:<digest> \
+       --certificate-identity https://github.com/Lab271/FRANK/.github/workflows/ci.yml@refs/heads/main \
+       --certificate-oidc-issuer https://token.actions.githubusercontent.com
+     gh attestation verify oci://ghcr.io/lab271/frank:<sha> --owner Lab271                  # provenance
+     gh attestation verify oci://ghcr.io/lab271/frank:<sha> --owner Lab271 \
+       --predicate-type https://cyclonedx.org/bom                                            # SBOM
+     ```
+
+     Podman can enforce the signature itself, with a `sigstoreSigned` policy that names the same Fulcio identity.
 
 ## Consequences
 
@@ -42,5 +61,7 @@ FRANK is to become open source, and its deployments (a trial, the Enablement Pla
 - **Cost:** CI builds the Rust workspace a second time in release mode for `test-slow`, and runs the image once more before pushing it.
 - **Cost:** two languages in the tests, Rust and Python. The Python is limited to HTTP checks against a URL; anything that needs FRANK's internals is a Rust test.
 - **Cost:** musl's allocator is slower than glibc's under many threads. If that ever shows in `test-slow` or `e2e`, the fix is a Rust allocator such as `mimalloc`, not a return to a distro base image.
+- **Limit:** keyless signing depends on the public Sigstore services (Fulcio, Rekor) and on GitHub's attestation store. Signing with a key held in a deployment's own KMS would remove that dependency, but nothing needs it yet.
+- **Limit:** the SBOM covers the server binary. The wasm module's crates are not in its auditable data, and `web/` has no package dependencies.
 - **Limit:** a scratch image has no shell. Debug from the host, with `podman exec` running `frank` itself or with `podman cp`.
 - **Limit:** `make smoke` on a production server is read-only, so it cannot show that submitting works there. A deployment that wants that needs a sender whose sightings it accepts as permanent.
