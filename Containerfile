@@ -7,13 +7,17 @@
 # FRANK has no C dependencies and no TLS stack (TLS ends in front of it),
 # so it needs no userland: no libc, CA certificates or tzdata. The build
 # image is pinned by its multi-arch index digest; Dependabot bumps it.
+# cargo auditable embeds the crate list in the binary (#213), so scanners
+# (syft, trivy, grype) can read a scratch image; CI turns it into the SBOM.
 
 FROM docker.io/library/rust:1.96-slim@sha256:31ee7fc65186be7e0e0ccb3f2ca305f14e4739e7642a1ae65753aa5d7b874523 AS build
 ARG WASM_BINDGEN_VERSION=0.2.129
+ARG CARGO_AUDITABLE_VERSION=0.7.7
 RUN apt-get update && apt-get install -y --no-install-recommends git ca-certificates \
  && rm -rf /var/lib/apt/lists/* \
  && rustup target add wasm32-unknown-unknown "$(uname -m)-unknown-linux-musl" \
- && cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked
+ && cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked \
+ && cargo install cargo-auditable --version ${CARGO_AUDITABLE_VERSION} --locked
 WORKDIR /src
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
@@ -21,7 +25,7 @@ COPY examples examples
 COPY docs/openapi.yaml docs/openapi.yaml
 COPY web web
 RUN target="$(uname -m)-unknown-linux-musl" \
- && cargo build --release --locked -p frank --target "$target" \
+ && cargo auditable build --release --locked -p frank --target "$target" \
  && cargo build --release --locked -p frank-wasm --target wasm32-unknown-unknown \
  && wasm-bindgen --target web --no-typescript --out-dir web/pkg \
       target/wasm32-unknown-unknown/release/frank_wasm.wasm \
