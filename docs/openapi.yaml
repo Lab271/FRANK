@@ -506,7 +506,7 @@ paths:
               required: [name]
               properties:
                 participant: { type: string, description: "The organisation's id; the caller's own when missing." }
-                name: { type: string, description: "1-64 of [A-Za-z0-9._@-], unique on the platform" }
+                name: { type: string, description: "1-64 of [A-Za-z0-9._@+-], unique on the platform" }
                 kind: { enum: [human, machine], default: human }
                 role: { $ref: "#/components/schemas/Role" }
             example: { name: alice, role: admin }
