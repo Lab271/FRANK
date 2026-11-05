@@ -312,18 +312,22 @@ fn check_role(user: &str, kind: &str, status: Tier, role: Role) -> Result<(), St
 // --- administration: one call opens, changes and closes the file ---------
 
 /// A name: 1-64 characters of `[A-Za-z0-9._@-]`, so it is safe in logs,
-/// on the command line and in SQL.
+/// on the command line and in SQL. User names may also hold `+`, for
+/// plus-addressed e-mail (#215); they only travel in URL paths, while an
+/// organisation's name is also a query value, where `+` reads as a space.
 fn check_name(what: &str, name: &str) -> Result<(), String> {
+    let extra: &[u8] = if what == "user" { b"._@-+" } else { b"._@-" };
     let ok = !name.is_empty()
         && name.len() <= 64
         && name
             .bytes()
-            .all(|b| b.is_ascii_alphanumeric() || b"._@-".contains(&b));
+            .all(|b| b.is_ascii_alphanumeric() || extra.contains(&b));
     if ok {
         Ok(())
     } else {
+        let plus = if what == "user" { ", '+'" } else { "" };
         Err(format!(
-            "{what} {name:?}: use 1-64 letters, digits, '.', '_', '@' or '-'"
+            "{what} {name:?}: use 1-64 letters, digits, '.', '_', '@'{plus} or '-'"
         ))
     }
 }
@@ -931,9 +935,15 @@ mod tests {
         );
         assert!(add_user(&path, "nope", "u2", "human", None).is_err());
         assert!(add_user(&path, "lab", "u3", "robot", None).is_err());
+        add_user(&path, "lab", "u4+mdr@example.com", "machine", None).unwrap();
+        assert!(add_user(&path, "lab", "u5 x", "human", None).is_err());
+        assert!(
+            add_organisation(&path, "a+b", Tier::Observer, "cyber_partner", None, None).is_err(),
+            "organisation names keep the old rule"
+        );
         let orgs = organisations(&path).unwrap();
         assert_eq!(orgs.len(), 1);
-        assert_eq!(orgs[0].users, ["u1"]);
+        assert_eq!(orgs[0].users, ["u1", "u4+mdr@example.com"]);
         std::fs::remove_dir_all(&dir).ok();
     }
 

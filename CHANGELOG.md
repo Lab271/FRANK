@@ -4,6 +4,20 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.29.0] - 2026-11-05
+
+### Added
+
+- Every image pushed from `main` is signed (keyless `cosign`) and carries a CycloneDX SBOM and an SLSA build-provenance attestation, by digest. The binary is built with `cargo auditable`, so scanners can read its crates in a scratch image. Verify with the commands in ADR-018, item 9 (#213).
+
+### Changed
+
+- The image is a static musl binary on `FROM scratch`: no third-party runtime base, no libc, CA certificates or tzdata. The build image is pinned by its digest (#211).
+
+### Fixed
+
+- User names may contain `+`, for plus-addressed e-mail (#215).
+
 ## [0.28.1] - 2026-11-03
 
 ### Fixed
