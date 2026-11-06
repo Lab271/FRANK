@@ -882,7 +882,8 @@ impl Serialize for Digest {
 }
 
 /// A string field that is set and not blank. A non-string is an error.
-fn present<'a>(v: &'a Value, key: &str) -> Result<Option<&'a str>, Error> {
+fn present(v: &Value, key: impl AsRef<str>) -> Result<Option<&str>, Error> {
+    let key = key.as_ref();
     match v.get(key) {
         None | Some(Value::Null) => Ok(None),
         Some(Value::String(s)) => Ok((!s.trim().is_empty()).then_some(s.as_str())),
@@ -892,13 +893,13 @@ fn present<'a>(v: &'a Value, key: &str) -> Result<Option<&'a str>, Error> {
 
 /// A string field that is set and not blank, or nothing: the forgiving
 /// read for observables (a form left empty, ADR-008).
-fn filled<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
+fn filled(v: &Value, key: impl AsRef<str>) -> Option<&str> {
     text_of(v, key).filter(|s| !s.trim().is_empty())
 }
 
 /// A string field, or nothing: the forgiving read for optional context.
-fn text_of<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
-    v.get(key)?.as_str()
+fn text_of(v: &Value, key: impl AsRef<str>) -> Option<&str> {
+    v.get(key.as_ref())?.as_str()
 }
 
 /// An RFC 3339 time field, as ns since the epoch.

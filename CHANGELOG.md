@@ -4,6 +4,16 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.30.0] - 2026-11-06
+
+### Added
+
+- `make check-mvl-limit` (part of `make lint` and CI): `frank-core` must stay in the qualified Rust subset (no `unsafe`, `dyn`, explicit lifetimes or non-allowlisted macros), checked with `cargo-mvl-limit` from mvl-rust, as in t-rust-db. The `frank` and `frank-wasm` crates are exempt as I/O boundaries (#217).
+
+### Changed
+
+- `frank-core`'s STIX reader owns its object index instead of borrowing it, and the string-field helpers in `model.rs` drop their explicit lifetimes, to fit the subset (#217).
+
 ## [0.29.0] - 2026-11-05
 
 ### Added
