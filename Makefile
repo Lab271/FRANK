@@ -73,10 +73,32 @@ clean: ## Remove build output
 test: ## Run all tests
 	$(CARGO) test --workspace --locked
 
-lint: ## fmt check + clippy (native and wasm32), as CI runs them
+lint: check-mvl-limit ## fmt check + clippy (native and wasm32) + qualified-subset gate, as CI runs them
 	$(CARGO) fmt --all --check
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 	$(CARGO) clippy -p frank-wasm --target wasm32-unknown-unknown --locked -- -D warnings
+
+# Qualified-subset gate (#217), as in t-rust-db's sqlite-rs: no unsafe, dyn,
+# explicit lifetimes or macros outside the curated allowlist (mvl-rust
+# rust-limit). Scope: frank-core, the pure model. The frank server crate and
+# frank-wasm are I/O boundaries (axum, tracing, json!, dyn callbacks) and are
+# exempt. Production code only: each file is cut at its first #[cfg(test)]
+# (the test module comes last by convention) before it is checked.
+MVL_LIMIT ?= cargo-mvl-limit
+MVL_LIMIT_CRATES := crates/frank-core
+check-mvl-limit: ## Qualified-subset gate on frank-core (cargo-mvl-limit; MVL_LIMIT=path to override)
+	@command -v $(MVL_LIMIT) >/dev/null 2>&1 || { \
+	  echo "error: $(MVL_LIMIT) not found."; \
+	  echo "install: cargo install --git https://github.com/mvl-lang/mvl-rust rust-limit --bin cargo-mvl-limit"; \
+	  exit 1; }
+	@tmp=$$(mktemp -d); trap 'rm -rf "$$tmp"' EXIT; fail=0; \
+	for f in $$(find $(MVL_LIMIT_CRATES) -path '*/src/*' -name '*.rs' | sort); do \
+	  mkdir -p "$$tmp/$$(dirname $$f)"; \
+	  awk '/^#\[cfg\(test\)\]/{exit} {print}' "$$f" > "$$tmp/$$f"; \
+	  if ! (cd "$$tmp" && $(MVL_LIMIT) "$$f"); then echo "LIMIT VIOLATION: $$f"; fail=1; fi; \
+	done; \
+	if [ $$fail -eq 0 ]; then echo "check-mvl-limit: all files in the qualified subset"; fi; \
+	exit $$fail
 
 fmt: ## Format the code
 	$(CARGO) fmt --all

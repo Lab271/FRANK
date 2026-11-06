@@ -55,7 +55,7 @@ const TLP_MARKINGS: [(&str, Tlp); 9] = [
     ),
 ];
 
-type Objects<'a> = HashMap<&'a str, &'a Value>;
+type Objects = HashMap<String, Value>;
 
 /// Whether `v` is a STIX bundle.
 #[must_use]
@@ -76,7 +76,7 @@ pub fn sightings(bundle: &Value) -> Result<Vec<SightingBuilder>, Error> {
         .ok_or_else(|| Error::Malformed("a STIX bundle needs `objects`".into()))?;
     let by_id: Objects = objects
         .iter()
-        .filter_map(|o| Some((o.get("id")?.as_str()?, o)))
+        .filter_map(|o| Some((o.get("id")?.as_str()?.to_owned(), o.clone())))
         .collect();
     let out = objects
         .iter()
@@ -125,8 +125,8 @@ fn sighting(s: &Value, by_id: &Objects) -> Result<SightingBuilder, Error> {
     if let Some(indicator) = of.filter(|o| type_of(o) == Some("indicator")) {
         sigma(&mut b, indicator);
     }
-    for od in refs(s, "observed_data_refs", by_id) {
-        for sco in observed(od, by_id) {
+    for od in &refs(s, "observed_data_refs", by_id) {
+        for sco in &observed(od, by_id) {
             observable(&mut b, sco);
         }
     }
@@ -205,10 +205,10 @@ fn sigma(b: &mut SightingBuilder, indicator: &Value) {
 
 /// The SCOs an `observed-data` object refers to (`object_refs`), or the
 /// ones it embeds (`objects`, deprecated in 2.1).
-fn observed<'a>(od: &'a Value, by_id: &Objects<'a>) -> Vec<&'a Value> {
+fn observed(od: &Value, by_id: &Objects) -> Vec<Value> {
     let mut out = refs(od, "object_refs", by_id);
     if let Some(embedded) = od.get("objects").and_then(Value::as_object) {
-        out.extend(embedded.values());
+        out.extend(embedded.values().cloned());
     }
     out
 }
@@ -245,12 +245,12 @@ fn observable(b: &mut SightingBuilder, sco: &Value) {
     }
 }
 
-fn refs<'a>(o: &Value, key: &str, by_id: &Objects<'a>) -> Vec<&'a Value> {
+fn refs(o: &Value, key: &str, by_id: &Objects) -> Vec<Value> {
     o.get(key)
         .and_then(Value::as_array)
         .into_iter()
         .flatten()
-        .filter_map(|id| by_id.get(id.as_str()?).copied())
+        .filter_map(|id| by_id.get(id.as_str()?).cloned())
         .collect()
 }
 
