@@ -83,6 +83,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
     let lists = frank::lists::Lists::open(&dir).unwrap();
     lists.refresh(now());
     let app = router(Arc::new(App {
+        data: dir.clone(),
         sightings: sightings.clone(),
         iocs: iocs.clone(),
         geo: frank::geo::Geo::open(&dir, now()).unwrap(),
@@ -2791,4 +2792,89 @@ async fn live_ranks_countries_and_networks() {
     let (_, live) = call(&h.app, "GET", "/v1/live?window=24h", Some("p"), None).await;
     assert_eq!(live["geoip"], "missing");
     assert_eq!(places(&live)["countries"]["top"], json!([]));
+}
+
+/// #222: only a superadmin lists files, one directory at a time, inside
+/// the data and participants directories; each listing is audited.
+#[tokio::test]
+async fn superadmins_list_files_inside_the_roots_only() {
+    let h = harness("admin-files");
+    admins(&h);
+    let app = &h.app;
+    for t in ["a", "c"] {
+        let (st, _) = call(app, "GET", "/v1/admin/files", Some(t), None).await;
+        assert_eq!(st, StatusCode::FORBIDDEN, "token {t}");
+    }
+    let (st, _) = call(app, "GET", "/v1/admin/files", None, None).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+
+    let (st, roots) = call(app, "GET", "/v1/admin/files", Some("s"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    assert_eq!(names(&roots, "entries"), ["data", "participants"]);
+
+    let (st, top) = call(app, "GET", "/v1/admin/files?path=data", Some("s"), None).await;
+    assert_eq!(st, StatusCode::OK);
+    let n = names(&top, "entries");
+    assert!(n.contains(&"audit".to_string()) && n.contains(&"participants.db".to_string()));
+    let db = top["entries"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|e| e["name"] == "participants.db")
+        .unwrap();
+    assert_eq!(db["kind"], "file");
+    assert!(db["size"].as_u64().unwrap() > 0);
+    assert!(db.get("content").is_none());
+
+    let (st, _) = call(
+        app,
+        "GET",
+        "/v1/admin/files?path=data/audit",
+        Some("s"),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::OK);
+    for bad in [
+        "data/..",
+        "data/../x",
+        "/etc",
+        "etc",
+        "data/nope",
+        "data/audit/..%2F..",
+    ] {
+        let (st, _) = call(
+            app,
+            "GET",
+            &format!("/v1/admin/files?path={bad}"),
+            Some("s"),
+            None,
+        )
+        .await;
+        assert!(st.is_client_error(), "{bad}: {st}");
+    }
+
+    // A symlink out of the root is refused, not followed.
+    #[cfg(unix)]
+    {
+        let link = h._dir.0.join("out");
+        std::os::unix::fs::symlink("/", &link).unwrap();
+        let (st, _) = call(app, "GET", "/v1/admin/files?path=data/out", Some("s"), None).await;
+        assert_eq!(st, StatusCode::FORBIDDEN);
+        let (_, top) = call(app, "GET", "/v1/admin/files?path=data", Some("s"), None).await;
+        let l = top["entries"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|e| e["name"] == "out")
+            .unwrap();
+        assert_eq!(l["kind"], "link");
+    }
+
+    let (_, log) = call(app, "GET", "/v1/admin/audit", Some("s"), None).await;
+    assert!(log["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|l| l["action"] == "files_listed" && l["path"] == "data"));
 }

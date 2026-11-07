@@ -672,6 +672,25 @@ paths:
               schema: { type: object, properties: { days: { type: integer }, lines: { type: array, items: { type: object } } } }
         "403": { $ref: "#/components/responses/Forbidden" }
 
+  /v1/admin/files:
+    get:
+      tags: [admin]
+      summary: List one directory of the server's state files
+      description: Superadmin only. Names, sizes and times of the data and participants directories, never contents. Without `path` the two roots; paths stay inside them (no `..`, symlinks out are refused). Each listing writes a `files_listed` audit line.
+      x-min-status: contributor
+      x-role: superadmin
+      parameters:
+        - { name: path, in: query, description: "A directory such as `data/audit`; empty for the roots.", schema: { type: string } }
+      responses:
+        "200":
+          description: The entries, directories first.
+          content:
+            application/json:
+              schema: { type: object, properties: { path: { type: string }, entries: { type: array, items: { type: object, properties: { name: { type: string }, kind: { type: string, enum: [dir, file, link] }, size: { type: integer }, modified: { type: [integer, "null"], description: "ns since the epoch" } } } } } }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { description: No such directory. }
+        "422": { description: A path component that is not a plain name. }
+
   /v1/files:
     get:
       tags: [files]

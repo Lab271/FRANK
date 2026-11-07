@@ -56,6 +56,8 @@ pub const GEO_FILE: &str = "geo/ip_geo.parquet";
 const TREND_DAYS: i64 = 30;
 
 pub struct App {
+    /// The data directory, for the admin file listing (#222).
+    pub data: std::path::PathBuf,
     pub sightings: Sightings,
     pub iocs: Iocs,
     /// Country and ASN of IP addresses (#191).
