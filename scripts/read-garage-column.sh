@@ -9,7 +9,7 @@
 # manifest says, each query reading the manifest again and fetching only the
 # files it has not seen. Flushed files only: the open hour is in FRANK's WAL
 # until the hour closes. http:// only (Garage); AWS S3 over https waits on
-# tools#125. The key comes from s3/frank.env through the environment, never
+# tools#125, in 0.46 behind `--features s3-tls`. The key comes from s3/frank.env through the environment, never
 # on the command line. COLUMN_RS names the binary when it is not on the PATH;
 # GARAGE_S3_PORT (3900) and FRANK_S3_ENV (s3/frank.env) change where it looks.
 set -euo pipefail
@@ -18,7 +18,7 @@ ENV_FILE=${FRANK_S3_ENV:-s3/frank.env}
 PORT=${GARAGE_S3_PORT:-3900}
 COLUMN_RS=${COLUMN_RS:-$(command -v column-rs || true)}
 
-[ -x "$COLUMN_RS" ] || { echo "read-garage-column: column-rs not found (cargo install --git https://github.com/t-rust-db/tools --tag column-rs-v0.45.0 column-rs, or COLUMN_RS=path/to/column-rs)" >&2; exit 1; }
+[ -x "$COLUMN_RS" ] || { echo "read-garage-column: column-rs not found (cargo install --git https://github.com/t-rust-db/tools --tag column-rs-v0.46.0 column-rs, or COLUMN_RS=path/to/column-rs)" >&2; exit 1; }
 version=$("$COLUMN_RS" --version | awk '{print $2}')
 [ "$(printf '%s\n0.45.0\n' "$version" | sort -V | head -1)" = 0.45.0 ] \
   || { echo "read-garage-column: column-rs $version cannot open s3:// locations; 0.45.0 or later" >&2; exit 1; }

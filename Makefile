@@ -233,13 +233,14 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 # The compose files name s3/*.env, which must exist for any compose command,
 # also in up-solo and down. Empty until up-s3 fills them.
 s3-env:
-	@mkdir -p $(S3_DIR) && (umask 077; touch $(S3_DIR)/garage.env $(S3_DIR)/frank.env) && chmod 600 $(S3_DIR)/garage.env $(S3_DIR)/frank.env
+	@mkdir -p $(S3_DIR) && chmod 700 $(S3_DIR) && (umask 077; touch $(S3_DIR)/garage.env $(S3_DIR)/frank.env) && chmod 600 $(S3_DIR)/garage.env $(S3_DIR)/frank.env
 
 s3-ls: s3-env ## List the objects in the Garage bucket (after up-s3)
 	@$(COMPOSE_S3) exec -T garage /garage bucket info frank
 	@set -a; . $(S3_DIR)/frank.env; set +a; \
-	  curl -fsS --user "$$AWS_ACCESS_KEY_ID:$$AWS_SECRET_ACCESS_KEY" --aws-sigv4 "aws:amz:garage:s3" \
-	    "http://127.0.0.1:$${GARAGE_S3_PORT:-3900}/frank?list-type=2" | sed 's/<Key>/\n<Key>/g' | sed -n 's|.*<Key>\([^<]*\)</Key>.*<Size>\([0-9]*\)</Size>.*|\2\t\1|p'
+	  printf 'user = "%s:%s"\n' "$$AWS_ACCESS_KEY_ID" "$$AWS_SECRET_ACCESS_KEY" \
+	  | curl -fsS --config - --aws-sigv4 "aws:amz:garage:s3" "http://127.0.0.1:$${GARAGE_S3_PORT:-3900}/frank?list-type=2" \
+	  | sed 's|<Contents>|\n|g' | sed -n 's|.*<Key>\([^<]*\)</Key>.*<Size>\([0-9]*\)</Size>.*|\2\t\1|p'
 
 s3-browse: s3-env ## Browse the Garage bucket in the terminal with rclone ncdu (brew install rclone, after up-s3); S3_PATH=sightings/live starts deeper
 	@command -v rclone >/dev/null || { echo "s3-browse: rclone is not installed (brew install rclone)" >&2; exit 1; }

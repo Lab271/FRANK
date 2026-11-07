@@ -388,11 +388,11 @@ fn main() -> Result<(), String> {
 
 fn open(
     data: &Path,
-    store: Option<&str>,
+    location: Option<&str>,
     retention_days: Option<u32>,
 ) -> Result<(Sightings, Iocs), String> {
     std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
-    let store = store
+    let store = location
         .map(Store::at)
         .transpose()
         .map_err(|e| format!("FRANK_STORE: {e}"))?;
@@ -407,6 +407,15 @@ fn open(
             ),
             e => format!("sightings: {e}"),
         })?;
+    if let Some(location) = location {
+        // No credentials in it: the key comes from the AWS environment, and
+        // db-core refuses options it does not know.
+        tracing::info!(
+            store = location,
+            wal = %sightings.dir().display(),
+            "sightings in an object store; the WAL, iocs.db and the rest stay on this volume"
+        );
+    }
     let iocs = Iocs::open(data).map_err(|e| format!("iocs: {e}"))?;
     Ok((sightings, iocs))
 }

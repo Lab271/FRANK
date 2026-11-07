@@ -45,6 +45,7 @@ if ! garage key info "$KEY" >/dev/null 2>&1; then
   fi
 fi
 
+chmod 600 "$ENV_FILE"
 garage bucket allow --read --write --owner "$BUCKET" --key "$KEY" >/dev/null
 garage bucket website --allow "$BUCKET" >/dev/null
 echo "garage: bucket $BUCKET ready"
