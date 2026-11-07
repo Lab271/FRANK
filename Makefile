@@ -40,7 +40,7 @@ FRANK_URL ?= http://127.0.0.1:8080
 E2E_PORT ?= 18080
 E2E_TAG ?=
 
-.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls s3-browse s3-read down trust untrust clean
+.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -251,6 +251,9 @@ s3-browse: s3-env ## Browse the Garage bucket in the terminal with rclone ncdu (
 
 s3-read: s3-env ## DuckDB on the sightings in the Garage bucket (brew install duckdb, after up-s3): view `sightings`; SQL="SELECT …" runs one query
 	@scripts/read-garage.sh
+
+s3-column: s3-env ## column-rs on the sightings in the Garage bucket, mirrored to ./s3/mirror first (rclone, COLUMN_RS=path if not on the PATH, after up-s3): SQL="SELECT …" runs one query
+	@scripts/read-garage-column.sh
 
 down: s3-env ## Stop the podman deployment, either mode (the data stays)
 	$(COMPOSE_S3) down --remove-orphans
