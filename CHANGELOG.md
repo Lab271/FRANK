@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.31.0] - 2026-11-07
+
+### Added
+
+- Web UI footer shows the FRANK and API versions.
+
 ## [0.30.0] - 2026-11-06
 
 ### Added
