@@ -1034,6 +1034,14 @@ $("adm-org-add").addEventListener("submit", (ev) => {
   });
 });
 
+// footer: server build and API description versions; each is optional
+async function versions() {
+  const parts = [];
+  try { parts.push(`FRANK v${(await (await fetch("/health")).json()).version}`); } catch (e) { /* omit */ }
+  try { parts.push(`API v${(await (await api("/v1/openapi.json")).json()).info.version}`); } catch (e) { /* omit */ }
+  $("versions").textContent = parts.join(" · ");
+}
+versions();
 whoami();
 
 // --- live (#186) ----------------------------------------------------------
