@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.32.0] - 2026-11-07
+
+### Added
+
+- Admin tab: a superadmin browses the server's data and participants directories (`GET /v1/admin/files`): names, sizes and times, never contents. Each listing is audited (#222).
+
 ## [0.31.0] - 2026-11-07
 
 ### Added
