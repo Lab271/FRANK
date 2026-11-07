@@ -40,7 +40,7 @@ FRANK_URL ?= http://127.0.0.1:8080
 E2E_PORT ?= 18080
 E2E_TAG ?=
 
-.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls down trust untrust clean
+.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls s3-browse down trust untrust clean
 
 ##@ General
 
@@ -233,13 +233,21 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 # The compose files name s3/*.env, which must exist for any compose command,
 # also in up-solo and down. Empty until up-s3 fills them.
 s3-env:
-	@mkdir -p $(S3_DIR) && touch $(S3_DIR)/garage.env $(S3_DIR)/frank.env
+	@mkdir -p $(S3_DIR) && (umask 077; touch $(S3_DIR)/garage.env $(S3_DIR)/frank.env) && chmod 600 $(S3_DIR)/garage.env $(S3_DIR)/frank.env
 
 s3-ls: s3-env ## List the objects in the Garage bucket (after up-s3)
 	@$(COMPOSE_S3) exec -T garage /garage bucket info frank
 	@set -a; . $(S3_DIR)/frank.env; set +a; \
 	  curl -fsS --user "$$AWS_ACCESS_KEY_ID:$$AWS_SECRET_ACCESS_KEY" --aws-sigv4 "aws:amz:garage:s3" \
 	    "http://127.0.0.1:$${GARAGE_S3_PORT:-3900}/frank?list-type=2" | sed 's/<Key>/\n<Key>/g' | sed -n 's|.*<Key>\([^<]*\)</Key>.*<Size>\([0-9]*\)</Size>.*|\2\t\1|p'
+
+s3-browse: s3-env ## Browse the Garage bucket in the terminal with rclone ncdu (brew install rclone, after up-s3); S3_PATH=sightings/live starts deeper
+	@command -v rclone >/dev/null || { echo "s3-browse: rclone is not installed (brew install rclone)" >&2; exit 1; }
+	@[ -s $(S3_DIR)/frank.env ] || { echo "s3-browse: no $(S3_DIR)/frank.env; run make up-s3 first" >&2; exit 1; }
+	@set -a; . $(S3_DIR)/frank.env; set +a; \
+	  RCLONE_CONFIG_GARAGE_TYPE=s3 RCLONE_CONFIG_GARAGE_PROVIDER=Other RCLONE_CONFIG_GARAGE_ENV_AUTH=true \
+	  RCLONE_CONFIG_GARAGE_REGION=garage RCLONE_CONFIG_GARAGE_ENDPOINT=http://127.0.0.1:$${GARAGE_S3_PORT:-3900} \
+	  rclone ncdu garage:frank/$(S3_PATH)
 
 down: s3-env ## Stop the podman deployment, either mode (the data stays)
 	$(COMPOSE_S3) down --remove-orphans
