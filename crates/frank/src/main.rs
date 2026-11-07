@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
-use db_core::storage::ingest::IngestError;
+use db_core::storage::ingest::{IngestError, Store};
 use frank::api::{self, App};
 use frank::audit::{self, Audit};
 use frank::auth::{hash, Role};
@@ -40,6 +40,13 @@ struct Cli {
         global = true
     )]
     participants: PathBuf,
+    /// Where the sightings' Parquet files live, when not under the data
+    /// directory: `s3://bucket/prefix?endpoint=URL&region=NAME` (#220). The
+    /// WAL stays in `<data>/s3/sightings`. Credentials come from
+    /// `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or the AWS shared
+    /// credentials file.
+    #[arg(long, env = "FRANK_STORE", global = true)]
+    store: Option<String>,
     #[command(subcommand)]
     command: Command,
 }
@@ -317,10 +324,10 @@ fn main() -> Result<(), String> {
                 }
                 Err(e) => return Err(format!("{e} (register it, or pass --create)")),
             };
-            ingest(&cli.data, &files, &id, &audit)
+            ingest(&cli.data, cli.store.as_deref(), &files, &id, &audit)
         }
         Command::Rebuild => {
-            let (s, i) = open(&cli.data, None)?;
+            let (s, i) = open(&cli.data, cli.store.as_deref(), None)?;
             let n = api::rebuild_iocs(&s, &i)?;
             let r = Registry::open(&cli.data, &s)?.rebuild(&s)?;
             let g = frank::geo::Geo::open(&cli.data, now_ns())?.backfill(&s, now_ns())?;
@@ -356,7 +363,7 @@ fn main() -> Result<(), String> {
                      (`frank participant add NAME --status partner --with-token`)"
                 );
             }
-            let (sightings, iocs) = open(&cli.data, Some(retention_days))?;
+            let (sightings, iocs) = open(&cli.data, cli.store.as_deref(), Some(retention_days))?;
             let registry = Registry::open(&cli.data, &sightings)?;
             let geo = frank::geo::Geo::open(&cli.data, now_ns())?;
             let lists = frank::lists::Lists::open(&cli.data)?;
@@ -379,18 +386,27 @@ fn main() -> Result<(), String> {
     }
 }
 
-fn open(data: &Path, retention_days: Option<u32>) -> Result<(Sightings, Iocs), String> {
+fn open(
+    data: &Path,
+    store: Option<&str>,
+    retention_days: Option<u32>,
+) -> Result<(Sightings, Iocs), String> {
     std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
-    let sightings = Sightings::open(data, retention_days, now_ns).map_err(|e| match e {
-        // 0.13 added `digest` and `received`; `Sightings::open` refuses a
-        // table without them.
-        IngestError::SchemaMismatch => format!(
-            "{}: written by FRANK 0.12 or older (no digest column, pseudonymous \
+    let store = store
+        .map(Store::at)
+        .transpose()
+        .map_err(|e| format!("FRANK_STORE: {e}"))?;
+    let sightings =
+        Sightings::open_in(data, store, retention_days, now_ns).map_err(|e| match e {
+            // 0.13 added `digest` and `received`; `Sightings::open` refuses a
+            // table without them.
+            IngestError::SchemaMismatch => format!(
+                "{}: written by FRANK 0.12 or older (no digest column, pseudonymous \
              reporters): move it aside and reload the sightings",
-            data.join(frank::store::sightings::NAME).display()
-        ),
-        e => format!("sightings: {e}"),
-    })?;
+                data.join(frank::store::sightings::NAME).display()
+            ),
+            e => format!("sightings: {e}"),
+        })?;
     let iocs = Iocs::open(data).map_err(|e| format!("iocs: {e}"))?;
     Ok((sightings, iocs))
 }
@@ -470,8 +486,14 @@ fn participant(
 /// sighting without an id gets one derived from its content, so loading a
 /// file twice adds nothing. A file with a conflicting sighting is refused
 /// whole.
-fn ingest(data: &Path, files: &[PathBuf], reporter: &str, audit: &Audit) -> Result<(), String> {
-    let (s, i) = open(data, None)?;
+fn ingest(
+    data: &Path,
+    store: Option<&str>,
+    files: &[PathBuf],
+    reporter: &str,
+    audit: &Audit,
+) -> Result<(), String> {
+    let (s, i) = open(data, store, None)?;
     let reg = Registry::open(data, &s)?;
     let (mut created, mut duplicates) = (0, 0);
     for f in files {

@@ -1,0 +1,24 @@
+# Garage (S3-compatible, https://garagehq.deuxfleurs.fr) for `make up-s3`: one
+# node, one bucket, a trial of FRANK's S3 storage (#220). The secrets are not
+# here: GARAGE_RPC_SECRET and GARAGE_ADMIN_TOKEN come from s3/garage.env,
+# which `make up-s3` generates.
+metadata_dir = "/meta"
+data_dir = "/data"
+db_engine = "sqlite"
+replication_factor = 1
+rpc_bind_addr = "[::]:3901"
+rpc_public_addr = "127.0.0.1:3901"
+
+[s3_api]
+s3_region = "garage"
+api_bind_addr = "[::]:3900"
+
+# The bucket as a static website, at http://<bucket>.web.garage.localhost:3902/<key>
+# (*.localhost is this machine in a browser). It serves objects by key; there is
+# no directory listing.
+[s3_web]
+bind_addr = "[::]:3902"
+root_domain = ".web.garage.localhost"
+
+[admin]
+api_bind_addr = "[::]:3903"

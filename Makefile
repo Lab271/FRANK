@@ -8,7 +8,11 @@ IMAGE ?= ghcr.io/lab271/frank
 VERSION := $(shell sed -n 's/^version = "\(.*\)"/\1/p' Cargo.toml | head -1)
 WASM_BINDGEN_VERSION := 0.2.129
 FRANK := target/release/frank
-COMPOSE := podman compose -f deploy/podman/compose.yaml
+# PROJECT names the compose project (default: the directory, `podman`); the
+# modes below share it, so `make down` stops either.
+COMPOSE := podman compose $(if $(PROJECT),-p $(PROJECT)) -f deploy/podman/compose.yaml
+COMPOSE_S3 := $(COMPOSE) -f deploy/podman/compose.s3.yaml
+S3_DIR := s3
 # The name and address of the podman deployment's HTTPS (Caddy, `tls
 # internal`); FRANK_TLS_ADDR=443 for https://frank.local, on every interface.
 FRANK_HOST ?= frank.local
@@ -36,7 +40,7 @@ FRANK_URL ?= http://127.0.0.1:8080
 E2E_PORT ?= 18080
 E2E_TAG ?=
 
-.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up down trust untrust clean
+.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls down trust untrust clean
 
 ##@ General
 
@@ -208,19 +212,42 @@ lists: ## Download the warning (MISP, CC0) and reference (abuse.ch, CC0; Auth-Ke
 image: ## Build the container image with podman
 	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
-up: image ## Run in podman (the same ./data and ./participants as run): http://127.0.0.1:8080 and https://frank.local:8443
+up: up-solo ## Alias of up-solo
+
+up-solo: image s3-env ## Run in podman, the table on disk (the same ./data and ./participants as run): http://127.0.0.1:8080 and https://frank.local:8443
 	mkdir -p data participants && touch $(TOKENS)
 	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
-	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE) up -d --force-recreate
+	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 
-down: ## Stop the podman deployment
-	$(COMPOSE) down
+up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API, its web endpoint and the admin API on 127.0.0.1:3900, :3902 and :3903
+	mkdir -p data participants $(S3_DIR)/meta $(S3_DIR)/data && touch $(TOKENS)
+	@[ -s $(S3_DIR)/garage.env ] || { umask 077; printf 'GARAGE_RPC_SECRET=%s\nGARAGE_ADMIN_TOKEN=%s\n' "$$(openssl rand -hex 32)" "$$(openssl rand -hex 32)" > $(S3_DIR)/garage.env; }
+	$(COMPOSE_S3) up -d --force-recreate --remove-orphans garage
+	FRANK_S3_ENV=$(S3_DIR)/frank.env deploy/podman/garage-init.sh "$(COMPOSE_S3)"
+	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
+	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE_S3) up -d --force-recreate --remove-orphans
+	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
+	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900}, bucket website http://frank.web.garage.localhost:$${GARAGE_WEB_PORT:-3902}/<key>, files in ./$(S3_DIR); make s3-ls lists the bucket"
 
-trust: ## Once, after make up: trust its HTTPS (Caddy's local CA) in the macOS keychain and map FRANK_HOST to this machine; asks for sudo
+# The compose files name s3/*.env, which must exist for any compose command,
+# also in up-solo and down. Empty until up-s3 fills them.
+s3-env:
+	@mkdir -p $(S3_DIR) && touch $(S3_DIR)/garage.env $(S3_DIR)/frank.env
+
+s3-ls: s3-env ## List the objects in the Garage bucket (after up-s3)
+	@$(COMPOSE_S3) exec -T garage /garage bucket info frank
+	@set -a; . $(S3_DIR)/frank.env; set +a; \
+	  curl -fsS --user "$$AWS_ACCESS_KEY_ID:$$AWS_SECRET_ACCESS_KEY" --aws-sigv4 "aws:amz:garage:s3" \
+	    "http://127.0.0.1:$${GARAGE_S3_PORT:-3900}/frank?list-type=2" | sed 's/<Key>/\n<Key>/g' | sed -n 's|.*<Key>\([^<]*\)</Key>.*<Size>\([0-9]*\)</Size>.*|\2\t\1|p'
+
+down: s3-env ## Stop the podman deployment, either mode (the data stays)
+	$(COMPOSE_S3) down --remove-orphans
+
+trust: s3-env ## Once, after make up: trust its HTTPS (Caddy's local CA) in the macOS keychain and map FRANK_HOST to this machine; asks for sudo
 	@[ "$$(uname)" = Darwin ] || { echo "trust: macOS only; elsewhere add Caddy's root (caddy-data volume, caddy/pki/authorities/local/root.crt) to the system's trust store" >&2; exit 1; }
 	@mkdir -p target
-	@$(COMPOSE) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(CA_CERT) 2>/dev/null && [ -s $(CA_CERT) ] \
+	@$(COMPOSE_S3) exec -T caddy cat /data/caddy/pki/authorities/local/root.crt > $(CA_CERT) 2>/dev/null && [ -s $(CA_CERT) ] \
 	  || { rm -f $(CA_CERT); echo "trust: start the podman deployment first (make up)" >&2; exit 1; }
 	sudo security add-trusted-cert -d -r trustRoot -k /Library/Keychains/System.keychain $(CA_CERT)
 	@grep -qE '^[^#]*[[:space:]]$(FRANK_HOST)([[:space:]]|$$)' /etc/hosts || { \

@@ -19,7 +19,8 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use db_core::engine::{Cell, QueryResult};
 use db_core::storage::ingest::{
-    Ack, IngestError, Layout, Manifest, PageBody, RecordValue, Table, TableOptions, TierOptions,
+    Ack, IngestError, Layout, Manifest, PageBody, RecordValue, Store, Table, TableOptions,
+    TableStore, TierOptions,
 };
 use db_core::storage::parquet::writer::{
     ColumnSpec, ColumnType, Compression, ParquetWriter, WriterOptions,
@@ -28,6 +29,8 @@ use frank_core::{Digest, SightingId, SightingRow};
 
 /// The table's directory name, which is also its name in SQL.
 pub const NAME: &str = "sightings";
+/// Under the data directory, where a table kept in a store has its WAL.
+const LOCAL_WITH_STORE: &str = "s3";
 /// The directory of the technique table FRANK wrote until 0.18 (#180).
 const OLD_TECHNIQUES: &str = "sighting_techniques";
 /// The list column, in place of the `technique` string since 0.21.
@@ -303,6 +306,9 @@ fn options(
 #[derive(Clone)]
 pub struct Sightings {
     table: Table,
+    /// Where the manifest and the Parquet files live when that is not the
+    /// table directory (S3, `FRANK_STORE`); `None` for the local table.
+    store: Option<Store>,
 }
 
 impl Sightings {
@@ -314,6 +320,32 @@ impl Sightings {
         retention_days: Option<u32>,
         clock: fn() -> i64,
     ) -> Result<Sightings, IngestError> {
+        Sightings::open_in(data, None, retention_days, clock)
+    }
+
+    /// [`Sightings::open`] with the manifest and the Parquet files kept in
+    /// `store` when given (an `s3://` location, #220). The WAL, the writer
+    /// lock and scratch space stay on this machine, in `data/s3/sightings`
+    /// (apart from the local table's `data/sightings`, so a switch between
+    /// the two never mixes them; the directory is named `sightings` for the
+    /// table's name in SQL). A
+    /// table in a store starts from the current schema: the rewrites of
+    /// older local tables below rename directories, which a store cannot.
+    pub fn open_in(
+        data: &Path,
+        store: Option<Store>,
+        retention_days: Option<u32>,
+        clock: fn() -> i64,
+    ) -> Result<Sightings, IngestError> {
+        if let Some(store) = store {
+            let local = data.join(LOCAL_WITH_STORE).join(NAME);
+            std::fs::create_dir_all(&local)?;
+            let sightings = options(schema(), SORT_KEY, retention_days, clock);
+            return Ok(Sightings {
+                table: Table::open_in(local, store.clone(), sightings)?,
+                store: Some(store),
+            });
+        }
         // db-core adds trailing nullable columns to a stored schema (#740),
         // which would take a 0.12 table (no `digest`, pseudonymous
         // reporters) as it is. Refuse it instead.
@@ -336,6 +368,7 @@ impl Sightings {
         let sightings = options(schema(), SORT_KEY, retention_days, clock);
         Ok(Sightings {
             table: Table::open(data.join(NAME), sightings)?,
+            store: None,
         })
     }
 
@@ -406,9 +439,20 @@ impl Sightings {
             .map_err(|e| e.to_string())
     }
 
-    /// The table directory.
+    /// The table directory: for a table in a store, only its WAL.
     pub fn dir(&self) -> &Path {
         self.table.dir()
+    }
+
+    /// One file the table lists, by its path relative to the table.
+    pub fn read_file(&self, path: &str) -> Result<Vec<u8>, String> {
+        match &self.store {
+            Some(store) => store
+                .get(path)
+                .map_err(|e| format!("{path}: {e}"))?
+                .ok_or_else(|| format!("{path}: not in the store")),
+            None => std::fs::read(self.dir().join(path)).map_err(|e| format!("{path}: {e}")),
+        }
     }
 
     pub fn close(&self) -> Result<(), IngestError> {
@@ -522,6 +566,60 @@ mod tests {
                 other => format!("{other:?}"),
             })
             .collect()
+    }
+
+    static STORE_CLOCK: AtomicI64 = AtomicI64::new(T0);
+    fn store_now() -> i64 {
+        STORE_CLOCK.load(Ordering::SeqCst)
+    }
+
+    #[test]
+    fn a_table_in_a_store_keeps_its_files_there_and_its_wal_apart() {
+        let data = std::env::temp_dir().join(format!("frank-store-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let bucket = data.join("bucket");
+        let open = || {
+            let store = Store::at(bucket.to_str().unwrap()).unwrap();
+            Sightings::open_in(&data, Some(store), None, store_now).unwrap()
+        };
+
+        STORE_CLOCK.store(T0, Ordering::SeqCst);
+        let s = open();
+        s.append(&[row(1, T0, &[], 0), row(2, T0, &[], 0)]).unwrap();
+        STORE_CLOCK.store(T0 + 2 * HOUR, Ordering::SeqCst);
+        assert_eq!(s.flush().unwrap(), 1);
+
+        let files = s.files().unwrap();
+        assert_eq!(files.len(), 1);
+        let path = &files[0].0;
+        assert!(path.starts_with("live/"), "{path}");
+        assert!(bucket.join(path).is_file(), "the file is in the store");
+        assert!(bucket.join("manifest.json").is_file(), "so is the manifest");
+        let local = data.join(LOCAL_WITH_STORE).join(NAME);
+        assert!(local.join("wal").is_dir(), "the WAL is local");
+        assert!(!local.join("live").exists(), "no Parquet beside it");
+        assert!(
+            !data.join(NAME).exists(),
+            "the local table's directory is untouched"
+        );
+
+        let bytes = s.read_file(path).unwrap();
+        assert_eq!(&bytes[..4], b"PAR1");
+        assert!(s.read_file("live/none.parquet").is_err());
+        assert_eq!(
+            scalar(&s.query("SELECT count(*) FROM sightings").unwrap()),
+            2
+        );
+        s.close().unwrap();
+
+        // A new process, with no WAL left to replay, reads it from the store.
+        let s = open();
+        assert_eq!(
+            scalar(&s.query("SELECT count(*) FROM sightings").unwrap()),
+            2
+        );
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
     }
 
     #[test]
