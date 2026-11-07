@@ -17,7 +17,7 @@ The target is an AWS deployment with S3 (#220). FRANK has run on a local filesys
 4. **One writer.** Garage ignores `If-Match` / `If-None-Match`, so against it db-core uses its local lock only (`SingleWriter`): a second machine on the same bucket is not refused. AWS S3 gets a fenced manifest commit and a lease. FRANK runs one writer either way.
 5. **Starting from nothing.** A table in a store is created with the current schema. The rewrites of older local tables rename directories and stay local-only.
 6. **Locally: Garage.** `make up-solo` (alias `make up`) is the filesystem mode; `make up-s3` adds a Garage container and sets `FRANK_STORE`, behind the same Caddy and URLs. The two replace each other, so one runs at a time. Garage's S3 API, web endpoint and admin API are published on 127.0.0.1 (3900, 3902, 3903). The web endpoint serves the bucket's objects by key **without credentials**; it is for a laptop only.
-7. **TLS to AWS is the application's job.** db-core's `S3Store` speaks `http://` only (its dependency charter excludes a TLS stack). AWS needs a `Transport` over `ureq` and rustls, a `tls` Cargo feature of FRANK, in a later change (#220).
+7. **TLS to AWS is the application's job.** db-core's `S3Store` speaks `http://` only (its dependency charter excludes a TLS stack). AWS needs a `Transport` over `ureq` and rustls, passed to `S3Store::with_transport`: a `tls` Cargo feature of FRANK, in a later change (#220). t-rust-db/tools took the same route for column-rs (#125), which reads the table directly since 0.45 (`s3://…`, read-only, through the manifest; tools#123). Until then HTTP covers every local and container test.
 
 ## Consequences
 

@@ -13,7 +13,7 @@ rust-version = "1.85"
 frank-core = { path = "crates/frank-core" }
 # db-core 0.170+ carries the browser fixes (no threads, no clock, nanosecond
 # timestamps), 0.171 appends nullable columns to a table (#740).
-db-core = { git = "https://github.com/t-rust-db/db-core", tag = "v0.234.0", default-features = false }
+db-core = { git = "https://github.com/t-rust-db/db-core", tag = "v0.235.0", default-features = false }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }

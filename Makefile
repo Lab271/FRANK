@@ -252,7 +252,7 @@ s3-browse: s3-env ## Browse the Garage bucket in the terminal with rclone ncdu (
 s3-read: s3-env ## DuckDB on the sightings in the Garage bucket (brew install duckdb, after up-s3): view `sightings`; SQL="SELECT …" runs one query
 	@scripts/read-garage.sh
 
-s3-column: s3-env ## column-rs on the sightings in the Garage bucket, mirrored to ./s3/mirror first (rclone, COLUMN_RS=path if not on the PATH, after up-s3): SQL="SELECT …" runs one query
+s3-column: s3-env ## column-rs (0.45+) on the sightings in the Garage bucket, read directly through the manifest (after up-s3; COLUMN_RS=path if not on the PATH): SQL="SELECT …" runs one query
 	@scripts/read-garage-column.sh
 
 down: s3-env ## Stop the podman deployment, either mode (the data stays)
