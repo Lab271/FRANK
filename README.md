@@ -116,6 +116,7 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `GET, POST /v1/admin/users`, `PATCH, DELETE …/{name}`, `POST …/{name}/disable`, `…/enable` | admin | users, roles; remove a disabled user |
 | `GET, POST /v1/admin/tokens`, `DELETE …/{prefix}` | admin | token prefixes; a new token is in its one response |
 | `GET /v1/admin/audit?days=7` | admin | audit lines about the organisation; superadmin: all |
+| `GET /v1/admin/files?path=data` | superadmin | names, sizes and times of the data and participants directories; no contents |
 
 Send tokens as `Authorization: Bearer <token>`.
 

@@ -361,6 +361,7 @@ fn main() -> Result<(), String> {
             let geo = frank::geo::Geo::open(&cli.data, now_ns())?;
             let lists = frank::lists::Lists::open(&cli.data)?;
             let app = Arc::new(App {
+                data: cli.data.clone(),
                 sightings,
                 iocs,
                 geo,

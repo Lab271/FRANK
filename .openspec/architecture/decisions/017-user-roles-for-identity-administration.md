@@ -32,6 +32,7 @@ Two things had to stay true:
 
    The CLI stays the operator's tool. It applies the role rules (2 and the status rule) and the disable-before-remove rule, but not the last-admin guards, so it can always recover a platform.
 7. **Every change is audited.** The server writes the same audit lines as the CLI (`role_set`, `user_disabled`, `user_enabled`, `user_removed`, `token_issued`, `token_revoked`, `participant_added`, `status_set`), with `by` set to `user@organisation`. A token appears only as the first 12 hex digits of its hash; the plain token is in the one response that issues it (`Cache-Control: no-store`).
+8. **A superadmin can list the server's files** (#222). `GET /v1/admin/files` shows names, sizes and times of one directory of the data or participants directory, never contents (they hold token hashes). Paths stay inside those roots, and each listing is audited as `files_listed`.
 
 ## Consequences
 

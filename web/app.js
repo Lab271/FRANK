@@ -979,6 +979,8 @@ async function loadAdmin(clearMessage = true) {
   $("adm-orgs-new").hidden = !superadmin;
   $("adm-user-super").hidden = !superadmin;
   $("adm-user-super").disabled = !superadmin;
+  $("adm-files-box").hidden = !superadmin;
+  if (superadmin) loadFiles(filesPath);
   try {
     const { organisations } = await (await api("/v1/admin/organisations")).json();
     if (!organisations.some((o) => o.id === adminOrg)) adminOrg = organisations[0]?.id || "";
@@ -1002,6 +1004,29 @@ async function loadAdmin(clearMessage = true) {
       ? table(["at", "by", "action", "details"], lines.map(({ at, by, action, ...rest }) =>
         [at, by, action, JSON.stringify(rest)]))
       : el("p", { class: "note" }, "nothing in this window"));
+  } catch (e) {
+    adminMessage(errorNode(e));
+  }
+}
+
+// The file listing (#222): a superadmin browses one directory at a time.
+let filesPath = "";
+
+async function loadFiles(path) {
+  try {
+    const r = await (await api(`/v1/admin/files?path=${encodeURIComponent(path)}`)).json();
+    filesPath = path;
+    const parent = path.split("/").slice(0, -1).join("/");
+    const open = (name) => linkTo(name, () => loadFiles(path ? `${path}/${name}` : name), "label");
+    show($("adm-files-path"),
+      el("code", {}, `/${path}`),
+      ...(path ? [el("button", { class: "lab-btn lab-btn--secondary", onclick: () => loadFiles(parent) }, "up")] : []));
+    show($("adm-files"), r.entries.length
+      ? table(["name", "kind", "size", "modified"], r.entries.map((f) => [
+        f.kind === "dir" ? open(f.name) : f.name, f.kind,
+        f.kind === "file" ? `${f.size.toLocaleString()} B` : "",
+        f.modified ? new Date(f.modified / 1e6).toISOString().slice(0, 19) + "Z" : ""]))
+      : el("p", { class: "note" }, "empty"));
   } catch (e) {
     adminMessage(errorNode(e));
   }

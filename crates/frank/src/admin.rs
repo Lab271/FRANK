@@ -18,6 +18,7 @@
 //! | `POST   /v1/admin/tokens`             | admin      |
 //! | `DELETE /v1/admin/tokens/{prefix}`    | admin      |
 //! | `GET    /v1/admin/audit`              | admin      |
+//! | `GET    /v1/admin/files`              | superadmin |
 //!
 //! Only a superadmin changes a superadmin. Every change writes an audit
 //! line naming `user@organisation`; a token appears there only as its
@@ -25,6 +26,9 @@
 //! admin or the platform's last working superadmin (by a role change or
 //! by disabling), disabling oneself, removing a user that is not
 //! disabled, and revoking the caller's own last token.
+//!
+//! `files` lists one directory of the data or participants directory:
+//! names, sizes and times, never contents (#222).
 
 use std::sync::Mutex;
 
@@ -67,6 +71,7 @@ pub fn routes() -> Router<Shared> {
         .route("/v1/admin/tokens", get(tokens).post(add_token))
         .route("/v1/admin/tokens/{prefix}", delete(revoke))
         .route("/v1/admin/audit", get(audit))
+        .route("/v1/admin/files", get(files))
 }
 
 fn forbidden(msg: &str) -> ApiError {
@@ -636,6 +641,95 @@ async fn audit(
         lines.reverse();
         lines.truncate(MAX_AUDIT_LINES);
         Ok(Json(json!({ "days": days, "lines": lines })))
+    })
+    .await
+}
+
+// --- files --------------------------------------------------------------
+
+#[derive(Deserialize)]
+struct FilesQuery {
+    path: Option<String>,
+}
+
+/// `path` (`data/audit`, ...) as the directory it names under one of the
+/// two roots. Only plain names are accepted, and the directory must stay
+/// inside its root once symlinks are resolved.
+fn resolve(app: &App, path: &str) -> Result<std::path::PathBuf, ApiError> {
+    let mut parts = path.split('/').filter(|p| !p.is_empty());
+    let root = match parts.next() {
+        Some("data") => app.data.clone(),
+        Some("participants") => app
+            .participants
+            .path()
+            .parent()
+            .map(std::path::Path::to_path_buf)
+            .ok_or_else(|| internal("participants.db has no directory"))?,
+        _ => return Err(not_found("directory")),
+    };
+    let root = root.canonicalize().map_err(internal)?;
+    let mut dir = root.clone();
+    for p in parts {
+        if p == ".." || p == "." || p.contains(['\\', '\0']) {
+            return Err(unprocessable("path: plain names only"));
+        }
+        dir.push(p);
+    }
+    let dir = dir.canonicalize().map_err(|_| not_found("directory"))?;
+    if !dir.starts_with(&root) {
+        return Err(forbidden("path leaves its root"));
+    }
+    Ok(dir)
+}
+
+/// One directory level: name, kind (`dir`, `file`, `link`), size, and
+/// modification time in ns. Without `path`, the two roots. Contents of
+/// files are never served; the listing is audited.
+async fn files(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    Query(q): Query<FilesQuery>,
+) -> Result<Json<Value>, ApiError> {
+    let c = superadmin(&app, &headers)?;
+    let path = q.path.unwrap_or_default();
+    blocking(move || {
+        let entries: Vec<Value> = if path.trim_matches('/').is_empty() {
+            ["data", "participants"]
+                .iter()
+                .map(|n| json!({ "name": n, "kind": "dir", "size": 0, "modified": Value::Null }))
+                .collect()
+        } else {
+            let dir = resolve(&app, &path)?;
+            let mut out = Vec::new();
+            for e in std::fs::read_dir(&dir).map_err(internal)? {
+                let e = e.map_err(internal)?;
+                let m = e.metadata().map_err(internal)?;
+                let kind = match e.file_type().map_err(internal)? {
+                    t if t.is_symlink() => "link",
+                    t if t.is_dir() => "dir",
+                    _ => "file",
+                };
+                let modified = m
+                    .modified()
+                    .ok()
+                    .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                    .map(|d| d.as_nanos() as i64);
+                out.push(json!({
+                    "name": e.file_name().to_string_lossy(),
+                    "kind": kind,
+                    "size": if kind == "file" { m.len() } else { 0 },
+                    "modified": modified,
+                }));
+            }
+            out.sort_by(|a, b| {
+                (b["kind"] == "dir")
+                    .cmp(&(a["kind"] == "dir"))
+                    .then_with(|| a["name"].as_str().cmp(&b["name"].as_str()))
+            });
+            out
+        };
+        record(&app, &c, "files_listed", json!({ "path": path }))?;
+        Ok(Json(json!({ "path": path, "entries": entries })))
     })
     .await
 }
