@@ -10,5 +10,6 @@ pub mod geo;
 pub mod lists;
 pub mod live;
 pub mod mmdb;
+pub mod objects;
 pub mod records;
 pub mod store;

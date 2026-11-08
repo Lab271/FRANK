@@ -15,6 +15,7 @@ allow = [
     "Unlicense",
     "Unicode-3.0",
     "Zlib", # foldhash
+    "CDLA-Permissive-2.0", # webpki-roots, webpki-root-certs: the CA list (TLS client for AWS, #220)
 ]
 confidence-threshold = 0.9
 
