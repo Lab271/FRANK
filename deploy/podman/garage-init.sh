@@ -5,14 +5,17 @@
 # if Garage's files are wiped, the same key is imported again).
 #
 #   garage-init.sh "podman compose -f … -f …"   (the compose command, as `make` runs it)
+#   GARAGE_EXEC="podman exec -e RUST_LOG=warn NAME /garage" garage-init.sh -
+#       (a Garage container outside compose: `S3=1 make e2e`)
 set -euo pipefail
 
 COMPOSE=${1:?usage: garage-init.sh COMPOSE_COMMAND}
+GARAGE_EXEC=${GARAGE_EXEC:-$COMPOSE exec -T -e RUST_LOG=warn garage /garage}
 BUCKET=frank
 KEY=frank-key
 ENV_FILE=${FRANK_S3_ENV:-s3/frank.env}
 
-garage() { $COMPOSE exec -T -e RUST_LOG=warn garage /garage "$@"; }
+garage() { $GARAGE_EXEC "$@"; }
 
 for _ in $(seq 1 60); do
   garage status >/dev/null 2>&1 && break
