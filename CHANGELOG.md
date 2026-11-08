@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.35.0] - 2026-11-08
+
+### Changed
+
+- `make s3-column` reads over HTTPS by default; `TLS=0` reads over http and `URL=s3://…` reads any location; it prints the location first (#220).
+
 ## [0.34.0] - 2026-11-08
 
 ### Added
