@@ -11,6 +11,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 - README: "Storage: filesystem or S3", with the copy that switches mode on an existing install; tested both ways (#220).
 - With `FRANK_STORE` the audit log lives in the store too: one object per line under `audit/YYYY-MM-DD/<ns>-<pid>-<n>.jsonl`, listed by prefix for reads, whole days dropped with the retention (#220).
 
+## [0.35.0] - 2026-11-08
+
+### Changed
+
+- `make s3-column` reads over HTTPS by default; `TLS=0` reads over http and `URL=s3://…` reads any location; it prints the location first (#220).
+
 ## [0.34.0] - 2026-11-08
 
 ### Added

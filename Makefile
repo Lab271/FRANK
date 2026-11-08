@@ -253,8 +253,8 @@ s3-browse: s3-env ## Browse the Garage bucket in the terminal with rclone ncdu (
 s3-read: s3-env ## DuckDB on the sightings in the Garage bucket (brew install duckdb, after up-s3): view `sightings`; SQL="SELECT …" runs one query
 	@scripts/read-garage.sh
 
-s3-column: s3-env ## column-rs (0.45+) on the sightings in the Garage bucket, read directly through the manifest (after up-s3; COLUMN_RS=path if not on the PATH): SQL="SELECT …" runs one query; TLS=1 over https://frank.local:9443 (0.46+ with s3-tls, after make trust)
-	@TLS="$(TLS)" FRANK_HOST=$(FRANK_HOST) CA_CERT=$(CA_CERT) scripts/read-garage-column.sh
+s3-column: s3-env ## column-rs (0.46+, built with --features s3-tls) on the sightings in the Garage bucket over https://frank.local:9443 (after up-s3 and make trust; COLUMN_RS=path if not on the PATH): SQL="SELECT …" runs one query; TLS=0 reads http://127.0.0.1:3900 (0.45+); URL=s3://bucket/prefix?endpoint=…&region=… reads any location (AWS)
+	@TLS="$(TLS)" URL="$(URL)" FRANK_HOST=$(FRANK_HOST) CA_CERT=$(CA_CERT) scripts/read-garage-column.sh
 
 down: s3-env ## Stop the podman deployment, either mode (the data stays)
 	$(COMPOSE_S3) down --remove-orphans
