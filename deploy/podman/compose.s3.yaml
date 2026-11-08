@@ -7,7 +7,9 @@
 # each other.
 # Host ports, all on 127.0.0.1: GARAGE_S3_PORT (3900, the S3 API, for the aws
 # CLI or an S3 browser), GARAGE_WEB_PORT (3902, the bucket as a website; reads
-# need no credentials), GARAGE_ADMIN_PORT (3903, the admin API).
+# need no credentials), GARAGE_ADMIN_PORT (3903, the admin API), and
+# GARAGE_TLS_PORT (9443, the S3 API over HTTPS through Caddy:
+# https://frank.local:9443, #224).
 services:
   garage:
     image: docker.io/dxflrs/garage:v2.1.0
@@ -29,3 +31,10 @@ services:
     env_file: ../../s3/frank.env
     environment:
       FRANK_STORE: "s3://frank/sightings?endpoint=http://garage:3900&region=garage"
+
+  caddy:
+    command: caddy run --config /etc/caddy/Caddyfile.s3 --adapter caddyfile
+    ports:
+      - "127.0.0.1:${GARAGE_TLS_PORT:-9443}:9443"
+    volumes:
+      - ./Caddyfile.s3:/etc/caddy/Caddyfile.s3:ro,Z

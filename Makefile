@@ -220,7 +220,7 @@ up-solo: image s3-env ## Run in podman, the table on disk (the same ./data and .
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 
-up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API, its web endpoint and the admin API on 127.0.0.1:3900, :3902 and :3903
+up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API, its web endpoint and the admin API on 127.0.0.1:3900, :3902 and :3903, the S3 API over HTTPS at https://frank.local:9443
 	mkdir -p data participants $(S3_DIR)/meta $(S3_DIR)/data && touch $(TOKENS)
 	@[ -s $(S3_DIR)/garage.env ] || { umask 077; printf 'GARAGE_RPC_SECRET=%s\nGARAGE_ADMIN_TOKEN=%s\n' "$$(openssl rand -hex 32)" "$$(openssl rand -hex 32)" > $(S3_DIR)/garage.env; }
 	$(COMPOSE_S3) up -d --force-recreate --remove-orphans garage
@@ -228,7 +228,7 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE_S3) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
-	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900}, bucket website http://frank.web.garage.localhost:$${GARAGE_WEB_PORT:-3902}/<key>, files in ./$(S3_DIR); make s3-ls lists the bucket"
+	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, bucket website http://frank.web.garage.localhost:$${GARAGE_WEB_PORT:-3902}/<key>, files in ./$(S3_DIR); make s3-ls lists the bucket"
 
 # The compose files name s3/*.env, which must exist for any compose command,
 # also in up-solo and down. Empty until up-s3 fills them.
@@ -253,8 +253,8 @@ s3-browse: s3-env ## Browse the Garage bucket in the terminal with rclone ncdu (
 s3-read: s3-env ## DuckDB on the sightings in the Garage bucket (brew install duckdb, after up-s3): view `sightings`; SQL="SELECT …" runs one query
 	@scripts/read-garage.sh
 
-s3-column: s3-env ## column-rs (0.45+) on the sightings in the Garage bucket, read directly through the manifest (after up-s3; COLUMN_RS=path if not on the PATH): SQL="SELECT …" runs one query
-	@scripts/read-garage-column.sh
+s3-column: s3-env ## column-rs (0.45+) on the sightings in the Garage bucket, read directly through the manifest (after up-s3; COLUMN_RS=path if not on the PATH): SQL="SELECT …" runs one query; TLS=1 over https://frank.local:9443 (0.46+ with s3-tls, after make trust)
+	@TLS="$(TLS)" FRANK_HOST=$(FRANK_HOST) CA_CERT=$(CA_CERT) scripts/read-garage-column.sh
 
 down: s3-env ## Stop the podman deployment, either mode (the data stays)
 	$(COMPOSE_S3) down --remove-orphans
