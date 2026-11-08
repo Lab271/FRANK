@@ -622,6 +622,38 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
     }
 
+    /// Retention removes the objects themselves from the store (#220).
+    #[test]
+    fn retention_deletes_the_objects_in_the_store() {
+        let data = std::env::temp_dir().join(format!("frank-store-ret-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let bucket = data.join("bucket");
+        let store = Store::at(bucket.to_str().unwrap()).unwrap();
+        STORE_CLOCK.store(T0, Ordering::SeqCst);
+        let s = Sightings::open_in(&data, Some(store), Some(2), store_now).unwrap();
+        s.append(&[row(1, T0, &[], 0)]).unwrap();
+        STORE_CLOCK.store(T0 + 2 * HOUR, Ordering::SeqCst);
+        s.flush().unwrap();
+        STORE_CLOCK.store(T0 + DAY, Ordering::SeqCst);
+        s.compact().unwrap();
+        let files = s.files().unwrap();
+        assert_eq!(files.len(), 1);
+        let kept = files[0].0.clone();
+        assert!(bucket.join(&kept).is_file(), "{kept}");
+
+        // Past the retention the day drops out of the manifest; the object
+        // goes once db-core's delete grace (10 minutes, for readers still on
+        // the old manifest) has passed.
+        STORE_CLOCK.store(T0 + 5 * DAY, Ordering::SeqCst);
+        s.compact().unwrap();
+        assert!(s.files().unwrap().is_empty());
+        STORE_CLOCK.store(T0 + 5 * DAY + HOUR, Ordering::SeqCst);
+        s.compact().unwrap();
+        assert!(!bucket.join(&kept).exists(), "{kept} still in the store");
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
     #[test]
     fn a_table_with_the_string_is_rewritten_in_its_partitions() {
         let data = std::env::temp_dir().join(format!("frank-list-{}", std::process::id()));
