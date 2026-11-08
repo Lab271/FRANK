@@ -206,7 +206,13 @@ fn main() -> Result<(), String> {
             cli.participants.display()
         ));
     }
-    let audit = Audit::open(&cli.data)?;
+    let store = cli
+        .store
+        .as_deref()
+        .map(Store::at)
+        .transpose()
+        .map_err(|e| format!("FRANK_STORE: {e}"))?;
+    let audit = Audit::open_in(&cli.data, store)?;
     let log = |action: &str, fields: serde_json::Value| {
         audit.record(now_ns(), &audit::cli_user(), action, fields)
     };

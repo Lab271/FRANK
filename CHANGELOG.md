@@ -4,6 +4,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- With `FRANK_STORE` the audit log lives in the store too: one object per line under `audit/YYYY-MM-DD/<ns>-<pid>-<n>.jsonl`, listed by prefix for reads, whole days dropped with the retention (#220).
+
 ## [0.34.0] - 2026-11-08
 
 ### Added
