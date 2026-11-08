@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.34.0] - 2026-11-08
+
+### Added
+
+- `make up-s3` serves Garage's S3 API over HTTPS at `https://frank.local:9443` (`GARAGE_TLS_PORT`) through Caddy, with the same local CA as FRANK; `make s3-column TLS=1` reads there with column-rs 0.46+ built with `--features s3-tls` (#224).
+
 ## [0.33.0] - 2026-11-07
 
 ### Added
