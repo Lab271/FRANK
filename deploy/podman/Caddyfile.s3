@@ -1,0 +1,12 @@
+# `make up-s3` (#224): Caddyfile plus Garage's S3 API over HTTPS at
+# https://frank.local:9443 (FRANK_HOST, GARAGE_TLS_PORT), a certificate from
+# the same local CA as FRANK's, so `make trust` covers it. An S3 client
+# signs the Host header, port included; Caddy passes it to Garage unchanged,
+# so the signature still holds. Clients that do not read the keychain take
+# the CA from target/frank-local-ca.crt (AWS_CA_BUNDLE).
+import /etc/caddy/Caddyfile
+
+https://{$FRANK_HOST:frank.local}:9443, https://localhost:9443 {
+	tls internal
+	reverse_proxy garage:3900
+}
