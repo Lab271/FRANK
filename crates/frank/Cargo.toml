@@ -9,7 +9,7 @@ rust-version.workspace = true
 
 [dependencies]
 frank-core.workspace = true
-db-core = { workspace = true, features = ["ingest", "engine-column", "engine-row", "storage-column-write"] }
+db-core = { workspace = true, features = ["ingest", "engine-column", "engine-row", "storage-column-write", "storage-s3"] }
 serde.workspace = true
 serde_json.workspace = true
 time.workspace = true

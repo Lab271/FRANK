@@ -278,3 +278,4 @@ AGENTS.md
 .terraform/
 *.tfstate*
 *.tfvars
+/s3/

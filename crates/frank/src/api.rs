@@ -1045,7 +1045,7 @@ async fn file(
         if !listed {
             return Err(ApiError(StatusCode::NOT_FOUND, "no such file".into()));
         }
-        let bytes = std::fs::read(app.sightings.dir().join(&path)).map_err(internal)?;
+        let bytes = app.sightings.read_file(&path).map_err(internal)?;
         Ok((
             [
                 (header::CONTENT_TYPE, "application/vnd.apache.parquet"),

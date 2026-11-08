@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.32.0
+## Version: 0.33.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -50,10 +50,12 @@ make run                                  # http://127.0.0.1:8080, data in ./dat
 **In podman** (the same `./data` and `./participants` as `make run`, so participants, tokens and sightings are shared; run one of the two at a time):
 
 ```bash
-make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT) and https://frank.local:8443
+make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT) and https://frank.local:8443; same as make up-solo
 make trust                         # once: trust its local CA in the macOS keychain, add frank.local to /etc/hosts (sudo)
 make down
 ```
+
+**In podman, the sightings in S3** (#220, [ADR-019](.openspec/architecture/decisions/019-sightings-in-s3-state-on-a-volume.md)): `make up-s3` starts a [Garage](https://garagehq.deuxfleurs.fr) container next to FRANK and sets `FRANK_STORE`, so the manifest and the Parquet files of the sightings are in its bucket (files in `./s3`) and the WAL, `iocs.db` and the other state stay in `./data` and `./participants`. Same Caddy, same URLs, same `make trust` and `make down`; `make up-solo` and `make up-s3` replace each other. The S3 API is at `http://127.0.0.1:3900` (key in `s3/frank.env`; `make s3-ls` lists the bucket, `make s3-browse` browses it with `rclone ncdu`, `make s3-read` opens DuckDB on the sightings, `make s3-column` opens column-rs 0.45+ on it, read through the manifest), the bucket as a website, readable without credentials, at `http://frank.web.garage.localhost:3902/<key>`, the admin API at `:3903`. A table is in one place only: switching mode starts the other mode's table. Without podman: `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` with `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`. The WAL needs a local volume either way, and AWS S3 over HTTPS is not supported yet.
 
 HTTPS comes from Caddy in front of FRANK, as on STACKIT, with a certificate from Caddy's own local CA (`tls internal`). The CA lives in the `caddy-data` volume, so `make trust` holds across `make down` and `make up`; `make untrust` removes it from the keychain again. `FRANK_HOST` changes the name. macOS lets a user bind port 443 only on every interface, so the default is `127.0.0.1:8443`; `FRANK_TLS_ADDR=443` gives `https://frank.local`, reachable from the local network too. `http://frank.local` (port 80, `FRANK_HTTP_ADDR`; on every interface for the same reason) only redirects to the HTTPS address. The plain `http://127.0.0.1:8080` does not redirect: `make stream` and API clients use it. Firefox keeps its own certificate store: set `security.enterprise_roots.enabled` to `true` in `about:config` to use the keychain.
 

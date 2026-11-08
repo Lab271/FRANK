@@ -4,6 +4,18 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.33.0] - 2026-11-07
+
+### Added
+
+- The sightings can live in S3: `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` (`--store`) keeps the manifest and the Parquet files in a bucket, through db-core 0.234's `storage-s3`; the WAL stays on the local volume in `data/s3/sightings`. Unset, nothing changes. `/v1/files/…` reads through the store, and the log says where the sightings are (the location carries no credentials: the key comes from the AWS environment). The audit lines and the TLS client for AWS follow (#220, [ADR-019](.openspec/architecture/decisions/019-sightings-in-s3-state-on-a-volume.md)).
+- `make up-s3`: the podman deployment with a Garage (S3) container holding the sightings, behind the same Caddy and URLs; the S3 API, the bucket's web endpoint and the admin API on 127.0.0.1:3900, :3902 and :3903. `make s3-ls` lists the bucket, `make s3-browse` browses it with `rclone ncdu`, `make s3-read` (`scripts/read-garage.sh`) opens DuckDB on the sightings the manifest lists, `make s3-column` (`scripts/read-garage-column.sh`) opens column-rs 0.45+ on the table directly, through its manifest (t-rust-db/tools#123). `make up-solo` is the filesystem mode, `make up` its alias; `make down`, `make trust` and `make untrust` work for both (#220).
+
+### Changed
+
+- db-core 0.221.0 to 0.235.0.
+- `make up` and `make down` now name the compose project with `PROJECT=` when given, and `make up` removes containers of the other mode.
+
 ## [0.32.0] - 2026-11-07
 
 ### Added
