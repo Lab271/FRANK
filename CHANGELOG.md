@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.38.2] - 2026-11-09
+
+### Fixed
+
+- `make stream` (`scripts/stream_sightings.py`) resends only a sender's own sightings, so the watcher no longer reports false mismatches.
+
 ## [0.38.1] - 2026-11-09
 
 ### Fixed

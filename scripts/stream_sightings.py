@@ -242,8 +242,10 @@ def main() -> int:
                         s["submission"]["sighting"]["timestamp"] = now_utc().strftime("%Y-%m-%dT%H:%M:%SZ")
                         s["submission"]["tlp_level"] = rng.choices(*TLP_MIX)[0]
                         batch.append(s)
-                    # Some already-sent sightings again, unchanged.
-                    sent_before = [r["body"] for r in receipts.values()]
+                    # Some of this sender's already-sent sightings again,
+                    # unchanged: a sighting_id is the sender's own (#159),
+                    # so from another sender it would be a new sighting.
+                    sent_before = [r["body"] for r in receipts.values() if r["token"] == token]
                     k = sum(rng.random() < a.resend for _ in batch)
                     batch += rng.sample(sent_before, min(k, len(sent_before)))
                 else:
@@ -270,13 +272,13 @@ def main() -> int:
                         if r["status"] == "created":
                             created += 1
                             per_hour[hour] += 1
-                            receipts[sid] = {"r": r, "body": item}
+                            receipts[sid] = {"r": r, "body": item, "token": token}
                         elif sid not in receipts:
                             # Stored by an attempt whose answer was lost (a
                             # retry after a failed send): it counts as created.
                             created += 1
                             per_hour[hour] += 1
-                            receipts[sid] = {"r": r, "body": item}
+                            receipts[sid] = {"r": r, "body": item, "token": token}
                         else:
                             duplicates += 1
                             first = receipts[sid]["r"]
