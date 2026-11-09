@@ -4,6 +4,16 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.37.0] - 2026-11-09
+
+### Added
+
+- With `FRANK_STORE`, FRANK signs with an ECS task role or the EC2 instance role (IMDSv2) when no keys are in the environment or the shared credentials file, and fetches the role's credentials again before they expire (db-core 0.237, #228).
+
+### Changed
+
+- db-core 0.235.0 to 0.237.0.
+
 ## [0.36.0] - 2026-11-09
 
 ### Added

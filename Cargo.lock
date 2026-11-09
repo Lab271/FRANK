@@ -267,8 +267,8 @@ dependencies = [
 
 [[package]]
 name = "db-core"
-version = "0.235.0"
-source = "git+https://github.com/t-rust-db/db-core?tag=v0.235.0#631563267f1baf166a9ba9b1ca7ccfb4f323621d"
+version = "0.237.0"
+source = "git+https://github.com/t-rust-db/db-core?tag=v0.237.0#a5734e8969b4bac77aaef8f556a24f09282b0bc2"
 dependencies = [
  "memmap2",
 ]
@@ -322,7 +322,7 @@ dependencies = [
 
 [[package]]
 name = "frank"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "axum",
  "clap",
@@ -344,7 +344,7 @@ dependencies = [
 
 [[package]]
 name = "frank-core"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "serde",
  "serde_json",
@@ -354,7 +354,7 @@ dependencies = [
 
 [[package]]
 name = "frank-wasm"
-version = "0.36.0"
+version = "0.37.0"
 dependencies = [
  "db-core",
  "frank-core",
