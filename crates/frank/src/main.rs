@@ -43,8 +43,8 @@ struct Cli {
     /// Where the sightings' Parquet files live, when not under the data
     /// directory: `s3://bucket/prefix?endpoint=URL&region=NAME` (#220). The
     /// WAL stays in `<data>/s3/sightings`. Credentials come from
-    /// `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, or the AWS shared
-    /// credentials file.
+    /// `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY`, the AWS shared
+    /// credentials file, an ECS task role or the EC2 instance role.
     #[arg(long, env = "FRANK_STORE", global = true)]
     store: Option<String>,
     #[command(subcommand)]
