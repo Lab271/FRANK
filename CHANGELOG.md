@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-09
+
 ### Added
 
 - AWS S3 over HTTPS: a `tls` Cargo feature (on in the container image, with the CA bundle copied in) sends db-core's S3 requests through `ureq` and rustls. `deny.toml` and `cargo deny check` in CI (#220).
