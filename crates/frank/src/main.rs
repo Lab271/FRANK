@@ -7,7 +7,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use clap::{Parser, Subcommand};
-use db_core::storage::ingest::{IngestError, Store};
+use db_core::storage::ingest::IngestError;
 use frank::api::{self, App};
 use frank::audit::{self, Audit};
 use frank::auth::{hash, Role};
@@ -206,7 +206,13 @@ fn main() -> Result<(), String> {
             cli.participants.display()
         ));
     }
-    let audit = Audit::open(&cli.data)?;
+    let store = cli
+        .store
+        .as_deref()
+        .map(frank::objects::open)
+        .transpose()
+        .map_err(|e| format!("FRANK_STORE: {e}"))?;
+    let audit = Audit::open_in(&cli.data, store)?;
     let log = |action: &str, fields: serde_json::Value| {
         audit.record(now_ns(), &audit::cli_user(), action, fields)
     };
@@ -393,7 +399,7 @@ fn open(
 ) -> Result<(Sightings, Iocs), String> {
     std::fs::create_dir_all(data).map_err(|e| format!("{}: {e}", data.display()))?;
     let store = location
-        .map(Store::at)
+        .map(frank::objects::open)
         .transpose()
         .map_err(|e| format!("FRANK_STORE: {e}"))?;
     let sightings =

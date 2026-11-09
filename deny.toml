@@ -1,0 +1,36 @@
+# cargo-deny policy (#220). CI runs `cargo deny check`; locally the same.
+# Licences: what the dependency tree (the TLS client for AWS S3 included)
+# is under today; a new one fails the check until someone reads it.
+
+[graph]
+targets = []
+all-features = true
+
+[licenses]
+allow = [
+    "Apache-2.0",
+    "MIT",
+    "ISC",
+    "BSD-3-Clause",
+    "Unlicense",
+    "Unicode-3.0",
+    "Zlib", # foldhash
+    "CDLA-Permissive-2.0", # webpki-roots, webpki-root-certs: the CA list (TLS client for AWS, #220)
+]
+confidence-threshold = 0.9
+
+[bans]
+multiple-versions = "warn"
+# The workspace crates depend on each other by path, without a version.
+wildcards = "allow"
+
+[sources]
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
+# db-core is pinned by tag; see Cargo.toml.
+allow-git = ["https://github.com/t-rust-db/db-core"]
+
+[advisories]
+# `cargo deny check advisories` needs the advisory DB; CI fetches it.
+yanked = "deny"

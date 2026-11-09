@@ -4,6 +4,15 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.36.0] - 2026-11-09
+
+### Added
+
+- AWS S3 over HTTPS: a `tls` Cargo feature (on in the container image, with the CA bundle copied in) sends db-core's S3 requests through `ureq` and rustls. `deny.toml` and `cargo deny check` in CI (#220).
+- `S3=1 make e2e` runs the end-to-end check against a throwaway Garage and checks that the sightings are in the bucket (#220).
+- README: "Storage: filesystem or S3", with the copy that switches mode on an existing install; tested both ways (#220).
+- With `FRANK_STORE` the audit log lives in the store too: one object per line under `audit/YYYY-MM-DD/<ns>-<pid>-<n>.jsonl`, listed by prefix for reads, whole days dropped with the retention (#220).
+
 ## [0.35.0] - 2026-11-08
 
 ### Changed

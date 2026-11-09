@@ -622,6 +622,97 @@ mod tests {
         let _ = std::fs::remove_dir_all(&data);
     }
 
+    /// The documented way to switch mode (README, "Switching mode"): a local
+    /// table's directory copied to the bucket, its `wal/` to the store mode's
+    /// WAL directory, is the table in the store, and the other way round.
+    #[test]
+    fn a_local_table_copied_to_a_store_is_the_same_table() {
+        fn copy(from: &Path, to: &Path) {
+            for e in std::fs::read_dir(from).unwrap().flatten() {
+                let (src, dst) = (e.path(), to.join(e.file_name()));
+                if matches!(e.file_name().to_str(), Some("tmp" | "lock" | "LOCK")) {
+                    continue;
+                }
+                if src.is_dir() {
+                    std::fs::create_dir_all(&dst).unwrap();
+                    copy(&src, &dst);
+                } else {
+                    std::fs::copy(&src, &dst).unwrap();
+                }
+            }
+        }
+        let data = std::env::temp_dir().join(format!("frank-switch-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let count = |s: &Sightings| scalar(&s.query("SELECT count(*) FROM sightings").unwrap());
+
+        // Local mode: two sightings, the server stopped (closed).
+        STORE_CLOCK.store(T0, Ordering::SeqCst);
+        let local = Sightings::open(&data, None, store_now).unwrap();
+        local
+            .append(&[row(1, T0, &[], 0), row(2, T0, &[], 0)])
+            .unwrap();
+        local.close().unwrap();
+
+        // Switch to a store: copy `data/sightings` (no WAL) to the bucket.
+        let bucket = data.join("bucket");
+        let wal = data.join(LOCAL_WITH_STORE).join(NAME);
+        std::fs::create_dir_all(&bucket).unwrap();
+        std::fs::create_dir_all(&wal).unwrap();
+        copy(&data.join(NAME), &bucket);
+        // The WAL is not an object: it goes beside the other state, with the
+        // open hour that is not in Parquet yet.
+        std::fs::rename(bucket.join("wal"), wal.join("wal")).unwrap();
+        let store = Store::at(bucket.to_str().unwrap()).unwrap();
+        let s = Sightings::open_in(&data, Some(store), None, store_now).unwrap();
+        assert_eq!(count(&s), 2, "what the local table held is in the store");
+        s.append(&[row(3, T0, &[], 0)]).unwrap();
+        s.close().unwrap();
+
+        // And back: the bucket and the WAL over a fresh local directory.
+        let back = data.join("back");
+        std::fs::create_dir_all(back.join(NAME)).unwrap();
+        copy(&bucket, &back.join(NAME));
+        std::fs::remove_dir_all(back.join(NAME).join("wal")).ok();
+        std::fs::create_dir_all(back.join(NAME).join("wal")).unwrap();
+        copy(&wal.join("wal"), &back.join(NAME).join("wal"));
+        let s = Sightings::open(&back, None, store_now).unwrap();
+        assert_eq!(count(&s), 3, "the sighting written in the store came along");
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// Retention removes the objects themselves from the store (#220).
+    #[test]
+    fn retention_deletes_the_objects_in_the_store() {
+        let data = std::env::temp_dir().join(format!("frank-store-ret-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        let bucket = data.join("bucket");
+        let store = Store::at(bucket.to_str().unwrap()).unwrap();
+        STORE_CLOCK.store(T0, Ordering::SeqCst);
+        let s = Sightings::open_in(&data, Some(store), Some(2), store_now).unwrap();
+        s.append(&[row(1, T0, &[], 0)]).unwrap();
+        STORE_CLOCK.store(T0 + 2 * HOUR, Ordering::SeqCst);
+        s.flush().unwrap();
+        STORE_CLOCK.store(T0 + DAY, Ordering::SeqCst);
+        s.compact().unwrap();
+        let files = s.files().unwrap();
+        assert_eq!(files.len(), 1);
+        let kept = files[0].0.clone();
+        assert!(bucket.join(&kept).is_file(), "{kept}");
+
+        // Past the retention the day drops out of the manifest; the object
+        // goes once db-core's delete grace (10 minutes, for readers still on
+        // the old manifest) has passed.
+        STORE_CLOCK.store(T0 + 5 * DAY, Ordering::SeqCst);
+        s.compact().unwrap();
+        assert!(s.files().unwrap().is_empty());
+        STORE_CLOCK.store(T0 + 5 * DAY + HOUR, Ordering::SeqCst);
+        s.compact().unwrap();
+        assert!(!bucket.join(&kept).exists(), "{kept} still in the store");
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
     #[test]
     fn a_table_with_the_string_is_rewritten_in_its_partitions() {
         let data = std::env::temp_dir().join(format!("frank-list-{}", std::process::id()));
