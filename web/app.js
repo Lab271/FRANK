@@ -89,6 +89,7 @@ function route() {
   } else {
     closePane();
   }
+  if (tab === "stats") loadStats();
   if (tab === "live") loadLive(); else stopLive();
   if (tab === "about") loadAbout();
   if (tab === "api") loadApi();
@@ -111,7 +112,6 @@ async function whoami() {
   adminOrg = "";
   apiDone = false;
   for (const o of $("ex-group").options) o.disabled = !atLeast(DIMENSION_TIER[o.value]);
-  loadStats();
   route();
 }
 
