@@ -12,7 +12,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Changed
 
-- db-core 0.236.0 to 0.237.0.
+- db-core 0.235.0 to 0.237.0.
 
 ## [0.36.0] - 2026-11-09
 
