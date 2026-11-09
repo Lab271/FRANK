@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.38.0] - 2026-11-09
+
+### Added
+
+- Header theme button cycles auto / light / dark; the choice is kept in localStorage (`frank.theme`), auto follows the OS.
+
 ## [0.37.0] - 2026-11-09
 
 ### Added
