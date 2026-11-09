@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.38.1] - 2026-11-09
+
+### Fixed
+
+- The statistics tab reloads its numbers every time it is opened, not only on the first load and the refresh button.
+
 ## [0.38.0] - 2026-11-09
 
 ### Added
