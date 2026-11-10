@@ -6,7 +6,7 @@
 **Date:** 2026-11-07
 
 **Owner:** Platform Team
-- **Related ADR:** [ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md), [ADR-002](.openspec/architecture/decisions/002-tiered-access-control.md)
+- **Related ADR:** [ADR-017](../../architecture/decisions/017-user-roles-for-identity-administration.md), [ADR-002](../../architecture/decisions/002-tiered-access-control.md)
 **Implementation:** `crates/frank/src/admin.rs::routes`
 - **Database:** `participants.db` (SQLite, in the `--participants` directory)
 **Tests:** `crates/frank/tests/api.rs`
