@@ -6,14 +6,21 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Added
 
-- The Phase 3 specs 001 data model, 010 sightings API, 013 disclosure, 014 query API, 020 sightings storage, 021 IoC lookups and 030 browser client (#250). They link 88 requirements to code and 161 of 179 scenarios to tests.
+- The Phase 3 specs 001 data model, 010 sightings API, 013 disclosure, 014 query API, 020 sightings storage, 021 IoC lookups and 030 browser client (#250). They link 88 requirements to code and 172 of 180 scenarios to tests.
 - Added `make assurance` and `make check-assurance` (`scripts/assurance.py`, ADR-021): every spec `**Implementation:**`/`**Tests:**` link and every relative Markdown link in the docs must resolve, and CI runs the gate. Replaces `.openspec/validate.py` and the spec-validation workflow, which never ran.
 
 ### Changed
 
-- `make check-assurance` now requires 85% of scenarios to be tested (`ASSURANCE_MIN`).
+- ADR-016 §3: a target's identity is accepted and not stored, so no status sees it; the ADR said core would (#256).
+- `make check-assurance` covers every Rust scenario; the floor is 95% (`ASSURANCE_MIN`), the rest being web UI scenarios marked planned (#254).
 - ADRs that Phase 3 replaced are marked superseded (001, 003, 004, 005, 007, 011, 013) or deprecated (012, 014, 015); one status format; cross-links fixed; `decisions/index.md` added.
 - `.openspec/README.md`, `docs/glossary.md` and the PR template describe Phase 3.
+
+### Fixed
+
+- `/v1/iocs` below partner leaves out rules reported by fewer than 3 participants and answers `reporters` as null under 3, as Explore and `/v1/rules/{id}` do (#255). `known`, `count` and `days` are unchanged.
+- `iocs.db` counts an IoC on the day its sightings arrived, the clock the sightings' retention uses, so a sighting dated before it arrived keeps its IoC as long as its rows (#257). `first_seen` is still the sightings' own time.
+- The new-token card reads "shown once" after a `·` instead of a backslash (#258).
 
 ### Removed
 
