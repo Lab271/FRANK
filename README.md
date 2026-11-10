@@ -154,9 +154,11 @@ make smoke TOKEN="…"               # read-only checks of http://127.0.0.1:8080
 make smoke TLS=1 TOKEN="…"         # the same through Caddy: https://frank.local:8443, its CA, the redirect
 make e2e                           # builds the image, runs it on :18080 without Caddy, generates data, checks everything
 make e2e E2E_TAG=0.26.0 KEEP=1     # an existing image; keep its data directory
+make fuzz                          # fuzz the submission parsers for FUZZ_TIME=60 s (nightly, cargo-fuzz)
+make audit                         # cargo-deny: RustSec advisories, licences, sources (deny.toml)
 ```
 
-`scripts/smoke.py` needs Python 3.9 or later and nothing else (macOS's own `python3` does; `PYTHON=` for another). It asks `/v1/whoami` for each token's status (`TOKEN` takes several, space separated) and checks what that status may and may not read. It never submits unless `--writable` is given, which only `make e2e` does: sightings cannot be deleted. CI runs `test-slow`, and runs `e2e` on the image before pushing it.
+`scripts/smoke.py` needs Python 3.9 or later and nothing else (macOS's own `python3` does; `PYTHON=` for another). It asks `/v1/whoami` for each token's status (`TOKEN` takes several, space separated) and checks what that status may and may not read. It never submits unless `--writable` is given, which only `make e2e` does: sightings cannot be deleted. CI runs `test-slow`, `audit` and a short `fuzz`, and runs `e2e` on the image before pushing it.
 
 **Streaming test** (#177): `scripts/stream_sightings.py` sends synthetic sightings through `POST /v1/sightings` at a steady rate, stamped now, so they pass through every stage of the striped table: the open hour, an hour file in `live/` once the hour closes, a merged day in `archive/` after midnight UTC. With a partner or core token it polls `/v1/statistics` and `/v1/files` and checks that the stored count is the starting count plus what was created at every poll; a share of the sightings is resent and must get its original receipt. Exit code 1 on any mismatch. Run nothing else against the server meanwhile.
 
