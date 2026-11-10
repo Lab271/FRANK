@@ -219,7 +219,7 @@ Every value from the API, a Parquet file or the submission MUST be written to th
 
 A header button SHOULD cycle the theme through auto, light and dark, keep the choice in `localStorage` (`frank.theme`), and in auto follow the operating system's setting as it changes. Storage that is blocked SHOULD leave the theme on auto.
 
-**Implementation:** `web/index.html::frank.theme`
+**Implementation:** `web/theme.js::frank.theme`
 
 #### Scenario: The choice survives a reload
 

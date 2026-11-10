@@ -405,6 +405,38 @@ Each `POST /v1/sightings` that passes authentication and parsing MUST write one 
 
 ---
 
+### Requirement 17: Security headers and limits [MUST]
+
+Every response, the web UI's included, MUST carry a Content-Security-Policy that allows only FRANK's own origin (with `'wasm-unsafe-eval'` for the WASM module, no inline script, `frame-ancestors 'none'`), `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. The server MUST handle at most `FRANK_MAX_CONCURRENCY` requests at once, across all routes; a request that is not answered within `FRANK_REQUEST_TIMEOUT`, waiting included, MUST get 503. HSTS is Caddy's to set (#244).
+
+**Implementation:** `crates/frank/src/api.rs::harden`
+
+#### Scenario: Every response carries the headers
+
+- GIVEN the hardened router
+- WHEN an answer, a refusal and an unknown route are requested
+- THEN each response carries the CSP, nosniff and the referrer policy
+
+**Tests:** `crates/frank/tests/api.rs::every_response_carries_the_security_headers`
+
+#### Scenario: A slow request times out
+
+- GIVEN a time limit shorter than a request takes
+- WHEN the request is made
+- THEN the answer is 503, with the headers
+
+**Tests:** `crates/frank/tests/api.rs::a_slow_request_times_out_with_503`
+
+#### Scenario: The limit is one for all routes
+
+- GIVEN one slot and a request in progress on one route
+- WHEN a request is made to another route
+- THEN it waits for the slot, and past the time limit gets 503
+
+**Tests:** `crates/frank/tests/api.rs::requests_wait_for_a_slot`
+
+---
+
 ## Document History
 
 | Date | Version | Author | Notes |
