@@ -61,6 +61,14 @@ Every `/v1/admin/` route MUST require a caller that holds a role. A caller witho
 
 **Tests:** `crates/frank/tests/api.rs::admins_manage_their_own_organisation_only`
 
+#### Scenario: Every caller, target and endpoint (#243)
+
+- GIVEN callers of each kind (superadmin, admin in a core and in another organisation, a user without a role, a machine user, no token) and users of each role in the caller's own and another organisation
+- WHEN each caller calls each `/v1/admin/` endpoint on each target
+- THEN each answer is the status this spec gives for that cell
+
+**Tests:** `crates/frank/tests/api.rs::admin_user_writes_follow_the_matrix`, `crates/frank/tests/api.rs::admin_organisation_writes_and_reads_follow_the_matrix`
+
 ---
 
 ### Requirement 2: Organisations [MUST]
@@ -113,7 +121,7 @@ The platform MUST keep at least one working superadmin, and each organisation MU
 
 ### Requirement 5: Tokens [MUST]
 
-Issuing a token MUST return the plain token once, with `Cache-Control: no-store`. The server MUST store only the token's hash. Listing tokens MUST show a prefix, never the token.
+Issuing a token MUST return the plain token once, with `Cache-Control: no-store`. The server MUST store only the token's hash. Listing tokens MUST show a prefix, never the token. Only a superadmin MAY issue or revoke a superadmin's token (#242).
 
 **Implementation:** `crates/frank/src/admin.rs::tokens`, `crates/frank/src/admin.rs::add_token`, `crates/frank/src/admin.rs::revoke`
 
@@ -124,6 +132,14 @@ Issuing a token MUST return the plain token once, with `Cache-Control: no-store`
 - THEN `GET /v1/whoami` names that user
 
 **Tests:** `crates/frank/tests/api.rs::admins_manage_their_own_organisation_only`
+
+#### Scenario: An admin cannot take a superadmin's token
+
+- GIVEN an admin and a superadmin in the same core organisation
+- WHEN the admin issues or revokes a token of the superadmin
+- THEN both answer 403, and the superadmin's token still works
+
+**Tests:** `crates/frank/tests/api.rs::core_admins_cannot_take_a_superadmins_tokens`
 
 ---
 

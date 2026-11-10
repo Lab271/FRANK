@@ -44,6 +44,30 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - run: make check-assurance
 
+  fuzz:
+    name: fuzz the parsers (make fuzz, 60 s)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: nightly
+      - uses: Swatinem/rust-cache@2201cc584a476d1b508be977bbe4b7d1c7a52e9c # v2.9.3
+        with:
+          workspaces: fuzz
+      - run: cargo install --locked cargo-fuzz
+      - name: make fuzz
+        run: |
+          mkdir -p fuzz/corpus/parse
+          cd fuzz && cargo fuzz run parse corpus/parse ../examples ../examples/formats ../examples/demo \
+            -- -max_total_time=60 -timeout=10
+      - name: Crash inputs
+        if: failure()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: fuzz-artifacts
+          path: fuzz/artifacts
+
   deny:
     name: licences, sources, advisories (cargo deny)
     runs-on: ubuntu-latest

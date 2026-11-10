@@ -2063,6 +2063,43 @@ async fn superadmins_and_the_guards() {
     );
 }
 
+/// #242: a plain admin in a core organisation manages that organisation,
+/// but cannot issue or revoke a superadmin's token there.
+#[tokio::test]
+async fn core_admins_cannot_take_a_superadmins_tokens() {
+    let h = harness("admin-core-tokens");
+    admins(&h);
+    parts::add_user(&h.db, "ops", "otto", "human", Some(Role::Admin)).unwrap();
+    parts::add_token_hash(&h.db, "otto", &hash("otto")).unwrap();
+    let app = &h.app;
+    let root = &hash("s")[..12];
+    let post = |user: &str| Some(json!({ "user": user }));
+
+    let (st, body) = call(app, "POST", "/v1/admin/tokens", Some("otto"), post("root")).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.get("token").is_none());
+    let uri = format!("/v1/admin/tokens/{root}");
+    assert_eq!(
+        call(app, "DELETE", &uri, Some("otto"), None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, me) = call(app, "GET", "/v1/whoami", Some("s"), None).await;
+    assert_eq!(me["role"], "superadmin", "root's token still works");
+
+    // otto still manages the rest of its organisation, itself included.
+    let (st, _) = call(app, "POST", "/v1/admin/tokens", Some("otto"), post("otto")).await;
+    assert_eq!(st, StatusCode::CREATED);
+    // A superadmin does both for another superadmin.
+    parts::add_user(&h.db, "ops", "root2", "human", Some(Role::Superadmin)).unwrap();
+    let (st, new) = call(app, "POST", "/v1/admin/tokens", Some("s"), post("root2")).await;
+    assert_eq!(st, StatusCode::CREATED);
+    let uri = format!("/v1/admin/tokens/{}", new["prefix"].as_str().unwrap());
+    assert_eq!(
+        call(app, "DELETE", &uri, Some("s"), None).await.0,
+        StatusCode::OK
+    );
+}
+
 /// #175: a user is disabled first and removed after; a disabled user's
 /// tokens stop working, and the guards count working admins only.
 #[tokio::test]
@@ -3021,4 +3058,460 @@ async fn a_malformed_block_is_refused() {
         .await;
         assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{cidr}: {body}");
     }
+}
+
+// --- #243: the admin authorisation matrix --------------------------------
+
+/// A caller of the admin API: its token and the organisation it is in.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Who {
+    Superadmin,
+    CoreAdmin,
+    Admin,
+    Plain,
+    Machine,
+    Anonymous,
+}
+
+impl Who {
+    const ALL: [Who; 6] = [
+        Who::Superadmin,
+        Who::CoreAdmin,
+        Who::Admin,
+        Who::Plain,
+        Who::Machine,
+        Who::Anonymous,
+    ];
+
+    fn token(self) -> Option<&'static str> {
+        match self {
+            Who::Superadmin => Some("s"),
+            Who::CoreAdmin => Some("otto"),
+            Who::Admin => Some("a"),
+            Who::Plain => Some("c"),
+            Who::Machine => Some("mbot"),
+            Who::Anonymous => None,
+        }
+    }
+
+    fn org(self) -> &'static str {
+        match self {
+            Who::Superadmin | Who::CoreAdmin => "ops",
+            _ => "mdr",
+        }
+    }
+
+    /// The refusal for a caller without a role, if it is one. Without a
+    /// token a caller is public, which holds no role either.
+    fn refused(self) -> Option<StatusCode> {
+        match self {
+            Who::Plain | Who::Machine | Who::Anonymous => Some(StatusCode::FORBIDDEN),
+            _ => None,
+        }
+    }
+
+    fn manages(self, org: &str) -> bool {
+        self == Who::Superadmin || self.org() == org
+    }
+}
+
+/// A user the matrix acts on; none of them is a caller.
+struct Target {
+    name: &'static str,
+    org: &'static str,
+    role: Option<Role>,
+    machine: bool,
+}
+
+const TARGETS: [Target; 8] = [
+    Target {
+        name: "root2",
+        org: "ops",
+        role: Some(Role::Superadmin),
+        machine: false,
+    },
+    Target {
+        name: "olga",
+        org: "ops",
+        role: Some(Role::Admin),
+        machine: false,
+    },
+    Target {
+        name: "opal",
+        org: "ops",
+        role: None,
+        machine: false,
+    },
+    Target {
+        name: "ann",
+        org: "mdr",
+        role: Some(Role::Admin),
+        machine: false,
+    },
+    Target {
+        name: "mia",
+        org: "mdr",
+        role: None,
+        machine: false,
+    },
+    Target {
+        name: "mbot2",
+        org: "mdr",
+        role: None,
+        machine: true,
+    },
+    Target {
+        name: "bea",
+        org: "mdr2",
+        role: Some(Role::Admin),
+        machine: false,
+    },
+    Target {
+        name: "bo",
+        org: "mdr2",
+        role: None,
+        machine: false,
+    },
+];
+
+/// `admins()`, plus a core admin, a machine user and the targets, each
+/// with a token. Every organisation keeps another working admin and the
+/// platform another superadmin, so no "last admin" guard decides a cell.
+fn matrix_harness(n: usize) -> Harness {
+    let h = harness(&format!("admin-matrix-{n}"));
+    admins(&h);
+    let user = |org, name, kind, role: Option<Role>, token: &str| {
+        parts::add_user(&h.db, org, name, kind, role).unwrap();
+        parts::add_token_hash(&h.db, name, &hash(token)).unwrap();
+    };
+    user("ops", "otto", "human", Some(Role::Admin), "otto");
+    user("mdr", "mbot", "machine", None, "mbot");
+    for t in &TARGETS {
+        let kind = if t.machine { "machine" } else { "human" };
+        user(t.org, t.name, kind, t.role, &format!("tok-{}", t.name));
+    }
+    h
+}
+
+/// What a role needs of its user (`check_role`): a person, in an
+/// organisation of at least this status.
+fn role_fits(role: Role, org: &str, machine: bool) -> bool {
+    let status = match org {
+        "ops" => Tier::Core,
+        "obs" => Tier::Observer,
+        _ => Tier::Contributor,
+    };
+    let least = match role {
+        Role::Admin => Tier::Contributor,
+        Role::Superadmin => Tier::Core,
+    };
+    !machine && status >= least
+}
+
+#[derive(Clone, Copy, Debug)]
+enum UserOp {
+    SetRole(Option<Role>),
+    Disable,
+    Enable,
+    Remove,
+    IssueToken,
+    Revoke,
+}
+
+/// ADR-017 as a table: what `who` gets for `op` on `t`.
+fn expected(who: Who, op: UserOp, t: &Target) -> StatusCode {
+    if let Some(st) = who.refused() {
+        return st;
+    }
+    if !who.manages(t.org) {
+        return StatusCode::NOT_FOUND;
+    }
+    let superadmin = who == Who::Superadmin;
+    let touches_superadmin = t.role == Some(Role::Superadmin);
+    match op {
+        UserOp::SetRole(new) => {
+            if (new == Some(Role::Superadmin) || touches_superadmin) && !superadmin {
+                StatusCode::FORBIDDEN
+            } else if new.is_some_and(|r| !role_fits(r, t.org, t.machine)) {
+                StatusCode::UNPROCESSABLE_ENTITY
+            } else {
+                StatusCode::OK
+            }
+        }
+        _ if touches_superadmin && !superadmin => StatusCode::FORBIDDEN,
+        UserOp::IssueToken => StatusCode::CREATED,
+        _ => StatusCode::OK,
+    }
+}
+
+async fn run_user_op(h: &Harness, who: Who, op: UserOp, t: &Target) -> StatusCode {
+    let name = t.name;
+    let (method, uri, body) = match op {
+        UserOp::SetRole(r) => (
+            "PATCH",
+            format!("/v1/admin/users/{name}"),
+            Some(json!({ "role": r.map(|r| r.to_string()) })),
+        ),
+        UserOp::Disable => ("POST", format!("/v1/admin/users/{name}/disable"), None),
+        UserOp::Enable => ("POST", format!("/v1/admin/users/{name}/enable"), None),
+        UserOp::Remove => ("DELETE", format!("/v1/admin/users/{name}"), None),
+        UserOp::IssueToken => (
+            "POST",
+            "/v1/admin/tokens".to_string(),
+            Some(json!({ "user": name })),
+        ),
+        UserOp::Revoke => (
+            "DELETE",
+            format!("/v1/admin/tokens/{}", &hash(&format!("tok-{name}"))[..12]),
+            None,
+        ),
+    };
+    call(&h.app, method, &uri, who.token(), body).await.0
+}
+
+/// #243: every admin write on a user, for every kind of caller and
+/// target: superadmin, admin in a core and in another organisation, a
+/// user without a role, a machine user and no token; targets of each
+/// role, in the caller's own organisation and in another one.
+#[tokio::test]
+async fn admin_user_writes_follow_the_matrix() {
+    let ops = [
+        UserOp::SetRole(None),
+        UserOp::SetRole(Some(Role::Admin)),
+        UserOp::SetRole(Some(Role::Superadmin)),
+        UserOp::Disable,
+        UserOp::Enable,
+        UserOp::Remove,
+        UserOp::IssueToken,
+        UserOp::Revoke,
+    ];
+    let mut wrong = Vec::new();
+    let mut n = 0;
+    for op in ops {
+        for who in Who::ALL {
+            // A fresh directory per row: a write must not decide the next cell.
+            n += 1;
+            let h = matrix_harness(n);
+            for t in &TARGETS {
+                if matches!(op, UserOp::Enable | UserOp::Remove) {
+                    parts::set_disabled(&h.db, t.name, true).unwrap();
+                }
+                let want = expected(who, op, t);
+                let got = run_user_op(&h, who, op, t).await;
+                if got != want {
+                    wrong.push(format!("{who:?} {op:?} {}: {got}, want {want}", t.name));
+                }
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "{} cells:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+}
+
+/// #243: the organisation-level writes and every admin read, by caller.
+#[tokio::test]
+async fn admin_organisation_writes_and_reads_follow_the_matrix() {
+    let mut wrong = Vec::new();
+    let mut check = |what: String, got: StatusCode, want: StatusCode| {
+        if got != want {
+            wrong.push(format!("{what}: {got}, want {want}"));
+        }
+    };
+    for (i, who) in Who::ALL.into_iter().enumerate() {
+        let h = matrix_harness(100 + i);
+        let app = &h.app;
+        let token = who.token();
+        let superadmin_only = who.refused().unwrap_or(if who == Who::Superadmin {
+            StatusCode::OK
+        } else {
+            StatusCode::FORBIDDEN
+        });
+
+        // Adding a user to each organisation, with each role.
+        for org in ["ops", "mdr", "mdr2", "obs"] {
+            let id = parts::organisation_id(&h.db, org).unwrap();
+            for role in [None, Some(Role::Admin), Some(Role::Superadmin)] {
+                let name = format!(
+                    "new-{org}-{}",
+                    role.map_or("none".into(), |r| r.to_string())
+                );
+                let want = who.refused().unwrap_or(
+                    if role == Some(Role::Superadmin) && who != Who::Superadmin {
+                        StatusCode::FORBIDDEN
+                    } else if !who.manages(org) {
+                        StatusCode::NOT_FOUND
+                    } else if role.is_some_and(|r| !role_fits(r, org, false)) {
+                        StatusCode::UNPROCESSABLE_ENTITY
+                    } else {
+                        StatusCode::CREATED
+                    },
+                );
+                let body =
+                    json!({ "participant": id, "name": name, "role": role.map(|r| r.to_string()) });
+                let (got, _) = call(app, "POST", "/v1/admin/users", token, Some(body)).await;
+                check(format!("{who:?} add {name}"), got, want);
+            }
+        }
+
+        // Organisations: only a superadmin adds one or sets a status.
+        let body = json!({ "name": format!("org-{i}"), "status": "contributor" });
+        let (got, _) = call(app, "POST", "/v1/admin/organisations", token, Some(body)).await;
+        let want = if superadmin_only == StatusCode::OK {
+            StatusCode::CREATED
+        } else {
+            superadmin_only
+        };
+        check(format!("{who:?} add organisation"), got, want);
+        for (org, status) in [
+            ("mdr", "partner"),
+            ("mdr2", "partner"),
+            ("obs", "contributor"),
+        ] {
+            let id = parts::organisation_id(&h.db, org).unwrap();
+            let uri = format!("/v1/admin/organisations/{id}");
+            let (got, _) = call(app, "PATCH", &uri, token, Some(json!({ "status": status }))).await;
+            check(format!("{who:?} set {org} {status}"), got, superadmin_only);
+        }
+        let (got, _) = call(app, "GET", "/v1/admin/files", token, None).await;
+        check(format!("{who:?} files"), got, superadmin_only);
+
+        // Reads: any role; an admin sees its own organisation only.
+        let read = who.refused().unwrap_or(StatusCode::OK);
+        for uri in [
+            "/v1/admin/users",
+            "/v1/admin/tokens",
+            "/v1/admin/organisations",
+            "/v1/admin/audit",
+        ] {
+            let (got, body) = call(app, "GET", uri, token, None).await;
+            check(format!("{who:?} GET {uri}"), got, read);
+            if got != StatusCode::OK {
+                continue;
+            }
+            let (key, field) = match uri {
+                "/v1/admin/users" => ("users", "participant"),
+                "/v1/admin/tokens" => ("tokens", "participant"),
+                "/v1/admin/organisations" => ("organisations", "id"),
+                _ => continue,
+            };
+            let own = parts::organisation_id(&h.db, who.org()).unwrap();
+            for row in body[key].as_array().unwrap() {
+                let org = row[field].as_str().unwrap();
+                if who != Who::Superadmin && org != own {
+                    check(
+                        format!("{who:?} GET {uri} shows {org}"),
+                        StatusCode::OK,
+                        StatusCode::NOT_FOUND,
+                    );
+                }
+            }
+        }
+    }
+    assert!(
+        wrong.is_empty(),
+        "{} cells:\n{}",
+        wrong.len(),
+        wrong.join("\n")
+    );
+}
+
+// --- #244: limits and security headers -----------------------------------
+
+const LIMITS: frank::api::Limits = frank::api::Limits {
+    timeout: std::time::Duration::from_secs(5),
+    concurrency: 8,
+};
+
+async fn headers_of(app: &axum::Router, uri: &str) -> (StatusCode, axum::http::HeaderMap) {
+    let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    (resp.status(), resp.headers().clone())
+}
+
+fn assert_hardened(h: &axum::http::HeaderMap, what: &str) {
+    let csp = h["content-security-policy"].to_str().unwrap();
+    for part in [
+        "default-src 'self'",
+        "script-src 'self' 'wasm-unsafe-eval'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+    ] {
+        assert!(csp.contains(part), "{what}: CSP {csp:?} lacks {part:?}");
+    }
+    assert!(!csp.contains("unsafe-inline"), "{what}: {csp}");
+    assert_eq!(h["x-content-type-options"], "nosniff", "{what}");
+    assert_eq!(h["referrer-policy"], "no-referrer", "{what}");
+}
+
+/// #244: every response carries the security headers: an API answer, a
+/// refusal and one for a route that does not exist.
+#[tokio::test]
+async fn every_response_carries_the_security_headers() {
+    let h = harness("hardened");
+    let app = frank::api::harden(h.app.clone(), LIMITS);
+    for (uri, status) in [
+        ("/health", StatusCode::OK),
+        ("/v1/files", StatusCode::FORBIDDEN),
+        ("/nope", StatusCode::NOT_FOUND),
+    ] {
+        let (st, headers) = headers_of(&app, uri).await;
+        assert_eq!(st, status, "{uri}");
+        assert_hardened(&headers, uri);
+    }
+}
+
+/// A router whose two routes each take `ms` milliseconds.
+fn slow(ms: u64) -> axum::Router {
+    let wait = move || async move {
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        "done"
+    };
+    axum::Router::new()
+        .route("/slow", axum::routing::get(wait))
+        .route("/other", axum::routing::get(wait))
+}
+
+/// #244: a request past the time limit is answered 503, headers included.
+#[tokio::test]
+async fn a_slow_request_times_out_with_503() {
+    let limits = frank::api::Limits {
+        timeout: std::time::Duration::from_millis(100),
+        ..LIMITS
+    };
+    let app = frank::api::harden(slow(2_000), limits);
+    let (st, headers) = headers_of(&app, "/slow").await;
+    assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    assert_hardened(&headers, "503");
+    let app = frank::api::harden(slow(10), limits);
+    assert_eq!(headers_of(&app, "/slow").await.0, StatusCode::OK);
+}
+
+/// #244: one concurrency limit for the server, not one per route: with
+/// one slot, a request to another route waits for the first, and its
+/// wait counts against the time limit.
+#[tokio::test]
+async fn requests_wait_for_a_slot() {
+    let limits = frank::api::Limits {
+        timeout: std::time::Duration::from_millis(600),
+        concurrency: 1,
+    };
+    let app = frank::api::harden(slow(400), limits);
+    let (a, b) = tokio::join!(headers_of(&app, "/slow"), headers_of(&app, "/other"));
+    let mut got = [a.0, b.0];
+    got.sort();
+    assert_eq!(got, [StatusCode::OK, StatusCode::SERVICE_UNAVAILABLE]);
+    // With two slots both fit in the time limit.
+    let app = frank::api::harden(
+        slow(400),
+        frank::api::Limits {
+            concurrency: 2,
+            ..limits
+        },
+    );
+    let (a, b) = tokio::join!(headers_of(&app, "/slow"), headers_of(&app, "/slow"));
+    assert_eq!([a.0, b.0], [StatusCode::OK, StatusCode::OK]);
 }

@@ -17,10 +17,22 @@
 	}
 }
 
-{$FRANK_HOST:frank.local}, localhost {
+(frank) {
 	tls internal
 	encode zstd gzip
 	reverse_proxy frank:8080
+}
+
+# HSTS (#244) for FRANK_HOST only: on localhost it would hold for every
+# other local server too. One day, not a year: after `make untrust` a
+# browser refuses frank.local, with no way past it, until it expires.
+{$FRANK_HOST:frank.local} {
+	import frank
+	header Strict-Transport-Security "max-age=86400"
+}
+
+localhost {
+	import frank
 }
 
 http://{$FRANK_HOST:frank.local}, http://localhost {

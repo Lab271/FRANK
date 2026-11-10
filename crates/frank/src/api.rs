@@ -142,6 +142,44 @@ pub fn router(app: Shared) -> Router {
         .with_state(app)
 }
 
+/// What one server takes on at once (#244).
+#[derive(Clone, Copy, Debug)]
+pub struct Limits {
+    /// Longest a request may take, waiting for a slot included; past it the
+    /// answer is 503. A query already on a blocking thread runs to its end.
+    pub timeout: std::time::Duration,
+    /// Most requests handled at once; the rest wait for a slot.
+    pub concurrency: usize,
+}
+
+/// The page may load scripts, styles, images and data from FRANK itself
+/// only, and compile the WASM preview; no inline script, no plugin, no
+/// frame around it.
+const CSP: &str = "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; \
+    object-src 'none'; base-uri 'none'; form-action 'self'; frame-ancestors 'none'";
+
+/// The layers around the whole server, the web UI included (#244): the
+/// security headers on every response, the time limit, then one
+/// concurrency limit shared by every route. HSTS is set by Caddy, which
+/// knows that it serves HTTPS.
+pub fn harden(router: Router, limits: Limits) -> Router {
+    use axum::http::HeaderValue;
+    use tower_http::set_header::SetResponseHeaderLayer;
+    let set =
+        |name, value| SetResponseHeaderLayer::if_not_present(name, HeaderValue::from_static(value));
+    router
+        .layer(tower::limit::GlobalConcurrencyLimitLayer::new(
+            limits.concurrency,
+        ))
+        .layer(tower_http::timeout::TimeoutLayer::with_status_code(
+            StatusCode::SERVICE_UNAVAILABLE,
+            limits.timeout,
+        ))
+        .layer(set(header::CONTENT_SECURITY_POLICY, CSP))
+        .layer(set(header::X_CONTENT_TYPE_OPTIONS, "nosniff"))
+        .layer(set(header::REFERRER_POLICY, "no-referrer"))
+}
+
 /// Up and its version. The geo databases' state is information only: FRANK is
 /// healthy without it (#191).
 async fn health(State(app): State<Shared>) -> Json<Value> {
