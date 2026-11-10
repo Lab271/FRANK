@@ -52,6 +52,7 @@ make run                                  # http://127.0.0.1:8080, data in ./dat
 ```bash
 make up                            # builds the image; http://127.0.0.1:8080 (FRANK_PORT) and https://frank.local:8443; same as make up-solo
 make trust                         # once: trust its local CA in the macOS keychain, add frank.local to /etc/hosts (sudo)
+make up-sso                        # the same, with sign-in with SSO against a local OIDC stub (development only; see Sign in with SSO)
 make down
 ```
 
@@ -99,6 +100,27 @@ Users are disabled before they are removed. The API refuses to take the last wor
 
 An old `./tokens` file is imported once when the server starts on an empty `participants.db`: one organisation per line. Merge the ones that belong together, then delete the file.
 
+**Sign in with SSO** (#241, [ADR-020](.openspec/architecture/decisions/020-sso-with-openid-connect.md)). People can sign in to the web UI with OpenID Connect (Okta, or any OIDC provider) instead of pasting a token. It is **off unless all five settings are given**; with some but not all, `frank serve` refuses to start and names the missing ones. Without them FRANK behaves exactly as before.
+
+| Setting | What |
+|---|---|
+| `FRANK_SSO_ISSUER` | The issuer, e.g. `https://<org>.okta.com/oauth2/default`; discovery is read from `<issuer>/.well-known/openid-configuration` at the first sign-in |
+| `FRANK_SSO_CLIENT_ID` | The OIDC application's client id |
+| `FRANK_SSO_CLIENT_SECRET_FILE` | **A file** holding the client secret: the only secret SSO adds. Never an environment variable (it would show in `podman inspect`), never in git; FRANK never logs, audits or returns it |
+| `FRANK_SSO_REDIRECT_URL` | FRANK's public callback, `https://<host>/v1/sso/callback`, registered as the sign-in redirect URI in the provider |
+| `FRANK_SSO_ORGANISATION` | The organisation (must exist) that people signing in for the first time are created in |
+
+The issuer and the redirect URL must be `https://`; only `localhost` may be `http://` (the local stub). The application is a confidential web client with the authorization code flow and PKCE (S256), client authentication `client_secret_basic`, scopes `openid email profile`.
+
+- **Users are provisioned on first sign-in.** The ID token's `email`, in lower case, is the user name. A new person becomes a **human user with no role** in `FRANK_SSO_ORGANISATION`; that organisation's status decides what they see, and roles are still given by an admin (SSO never grants one). An existing human user with the same e-mail is linked when the provider says the e-mail is verified, and keeps its organisation and role: make yourself superadmin on the command line, then sign in with SSO. Machine users never sign in; a disabled user is refused.
+- **Bearer tokens are unchanged.** A session is an HttpOnly `frank_session` cookie (eight hours, `SameSite=Lax`, `Secure` on https; only its SHA-256 is stored, in `participants.db`). It names the caller only when a request has no `Authorization` header, so API clients, `make stream` and the token box in the web UI work as before, and a token always wins. A `POST`, `PUT`, `PATCH` or `DELETE` that carries the cookie needs FRANK's own `Origin` (cross-site request forgery). Disabling a user ends its sessions as it stops its tokens.
+- **Audit lines:** `sso_login`, `user_provisioned`, `sso_refused` (with the reason; the browser only sees `/?sso=refused`) and `sso_logout`.
+- **Not (yet):** SCIM. A person removed in the provider keeps their FRANK user until an admin disables it; their session ends within eight hours. Signing out of FRANK leaves the provider's own session as it is.
+
+**Locally, against a stub** (#238, development only): `make up-sso` is `make up` plus a small Python stand-in for Okta's OIDC endpoints ([`deploy/podman/sso-stub/`](deploy/podman/sso-stub/)), at `http://localhost:9400/oauth2/default` (`SSO_STUB_PORT`). It shares the frank container's network, so that one address works for the browser and for FRANK. It signs in **anyone who picks a name** from `users.json`, with a signing key made at every start: never deploy it. `make up-sso` makes the client secret once in `./sso/client-secret` (git-ignored, never printed) and registers the organisation `sso-users` (contributor; `FRANK_SSO_ORGANISATION`) for new users. Open `https://frank.local:8443` (after `make trust`) and press "sign in with SSO". Its tests: `cd deploy/podman/sso-stub && uv run --group dev pytest`.
+
+**In production** the Okta application and its secret are set up outside this repository (GitLab `Labs/deployments/test-frank`); the secret is mounted as a file, as here.
+
 **On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS.
 
 Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`.
@@ -134,8 +156,11 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `GET, POST /v1/admin/tokens`, `DELETE …/{prefix}` | admin | token prefixes; a new token is in its one response |
 | `GET /v1/admin/audit?days=7` | admin | audit lines about the organisation; superadmin: all |
 | `GET /v1/admin/files?path=data` | superadmin | names, sizes and times of the data and participants directories; no contents |
+| `GET /v1/sso` | none | whether sign-in with SSO is on |
+| `GET /v1/sso/login`, `GET /v1/sso/callback` | none | the OIDC sign-in (browser redirects); 404 when SSO is off |
+| `POST /v1/sso/logout` | the session | ends the session; needs FRANK's own `Origin` |
 
-Send tokens as `Authorization: Bearer <token>`.
+Send tokens as `Authorization: Bearer <token>`. With SSO on, a request without that header is named by its `frank_session` cookie, if any.
 
 Each submission may carry `tlp_level` (default GREEN). Every query shows a tier only the TLP levels it may see: CLEAR is public, GREEN observer, AMBER contributor, AMBER+STRICT partner. TLP:RED is refused.
 
@@ -154,6 +179,7 @@ make smoke TOKEN="…"               # read-only checks of http://127.0.0.1:8080
 make smoke TLS=1 TOKEN="…"         # the same through Caddy: https://frank.local:8443, its CA, the redirect
 make e2e                           # builds the image, runs it on :18080 without Caddy, generates data, checks everything
 make e2e E2E_TAG=0.26.0 KEEP=1     # an existing image; keep its data directory
+make e2e SSO=1                     # also sign in through the OIDC stub (scripts/sso_check.py: PKCE, cookies, CSRF, logout)
 ```
 
 `scripts/smoke.py` needs Python 3.9 or later and nothing else (macOS's own `python3` does; `PYTHON=` for another). It asks `/v1/whoami` for each token's status (`TOKEN` takes several, space separated) and checks what that status may and may not read. It never submits unless `--writable` is given, which only `make e2e` does: sightings cannot be deleted. CI runs `test-slow`, and runs `e2e` on the image before pushing it.
