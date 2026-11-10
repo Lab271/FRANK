@@ -3418,3 +3418,100 @@ async fn admin_organisation_writes_and_reads_follow_the_matrix() {
         wrong.join("\n")
     );
 }
+
+// --- #244: limits and security headers -----------------------------------
+
+const LIMITS: frank::api::Limits = frank::api::Limits {
+    timeout: std::time::Duration::from_secs(5),
+    concurrency: 8,
+};
+
+async fn headers_of(app: &axum::Router, uri: &str) -> (StatusCode, axum::http::HeaderMap) {
+    let req = Request::builder().uri(uri).body(Body::empty()).unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    (resp.status(), resp.headers().clone())
+}
+
+fn assert_hardened(h: &axum::http::HeaderMap, what: &str) {
+    let csp = h["content-security-policy"].to_str().unwrap();
+    for part in [
+        "default-src 'self'",
+        "script-src 'self' 'wasm-unsafe-eval'",
+        "object-src 'none'",
+        "frame-ancestors 'none'",
+    ] {
+        assert!(csp.contains(part), "{what}: CSP {csp:?} lacks {part:?}");
+    }
+    assert!(!csp.contains("unsafe-inline"), "{what}: {csp}");
+    assert_eq!(h["x-content-type-options"], "nosniff", "{what}");
+    assert_eq!(h["referrer-policy"], "no-referrer", "{what}");
+}
+
+/// #244: every response carries the security headers: an API answer, a
+/// refusal and one for a route that does not exist.
+#[tokio::test]
+async fn every_response_carries_the_security_headers() {
+    let h = harness("hardened");
+    let app = frank::api::harden(h.app.clone(), LIMITS);
+    for (uri, status) in [
+        ("/health", StatusCode::OK),
+        ("/v1/files", StatusCode::FORBIDDEN),
+        ("/nope", StatusCode::NOT_FOUND),
+    ] {
+        let (st, headers) = headers_of(&app, uri).await;
+        assert_eq!(st, status, "{uri}");
+        assert_hardened(&headers, uri);
+    }
+}
+
+/// A router whose two routes each take `ms` milliseconds.
+fn slow(ms: u64) -> axum::Router {
+    let wait = move || async move {
+        tokio::time::sleep(std::time::Duration::from_millis(ms)).await;
+        "done"
+    };
+    axum::Router::new()
+        .route("/slow", axum::routing::get(wait))
+        .route("/other", axum::routing::get(wait))
+}
+
+/// #244: a request past the time limit is answered 503, headers included.
+#[tokio::test]
+async fn a_slow_request_times_out_with_503() {
+    let limits = frank::api::Limits {
+        timeout: std::time::Duration::from_millis(100),
+        ..LIMITS
+    };
+    let app = frank::api::harden(slow(2_000), limits);
+    let (st, headers) = headers_of(&app, "/slow").await;
+    assert_eq!(st, StatusCode::SERVICE_UNAVAILABLE);
+    assert_hardened(&headers, "503");
+    let app = frank::api::harden(slow(10), limits);
+    assert_eq!(headers_of(&app, "/slow").await.0, StatusCode::OK);
+}
+
+/// #244: one concurrency limit for the server, not one per route: with
+/// one slot, a request to another route waits for the first, and its
+/// wait counts against the time limit.
+#[tokio::test]
+async fn requests_wait_for_a_slot() {
+    let limits = frank::api::Limits {
+        timeout: std::time::Duration::from_millis(600),
+        concurrency: 1,
+    };
+    let app = frank::api::harden(slow(400), limits);
+    let (a, b) = tokio::join!(headers_of(&app, "/slow"), headers_of(&app, "/other"));
+    let mut got = [a.0, b.0];
+    got.sort();
+    assert_eq!(got, [StatusCode::OK, StatusCode::SERVICE_UNAVAILABLE]);
+    // With two slots both fit in the time limit.
+    let app = frank::api::harden(
+        slow(400),
+        frank::api::Limits {
+            concurrency: 2,
+            ..limits
+        },
+    );
+    let (a, b) = tokio::join!(headers_of(&app, "/slow"), headers_of(&app, "/slow"));
+    assert_eq!([a.0, b.0], [StatusCode::OK, StatusCode::OK]);
+}
