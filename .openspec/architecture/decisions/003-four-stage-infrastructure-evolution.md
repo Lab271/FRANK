@@ -1,8 +1,7 @@
-# ADR-0001: Four-Stage Infrastructure Evolution
+# ADR-003: Four-Stage Infrastructure Evolution
 
-## Status
-
-Accepted
+- **Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (no stages: one binary, three deployments of one image)
+- **Date:** 2026-01-23
 
 ## Context
 

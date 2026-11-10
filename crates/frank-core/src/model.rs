@@ -593,7 +593,7 @@ impl SightingBuilder {
     }
 }
 
-/// Phase 2's submission (spec 001/003, `docs/design/submission_message.md`).
+/// Phase 2's submission (spec 001/003; `docs/design/submission_message.md` at the tag `phase2-final`).
 fn phase2(root: &Value) -> Result<SightingBuilder, Error> {
     let sighting = root
         .get("sighting")

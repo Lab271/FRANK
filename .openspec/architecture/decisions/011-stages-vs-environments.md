@@ -1,9 +1,9 @@
-# Stages vs Environments Architecture
+# ADR-011: Stages vs Environments Architecture
 
-- **Status:** accepted
+- **Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (no stages, so no stage-to-environment mapping: one image, three deployments)
 - **Date:** 2026-01-31
 - **Decision Makers:** Development Team
-- **Related:** [ADR-0001](0001-four-stage-infrastructure-evolution.md)
+- **Related:** [ADR-003](003-four-stage-infrastructure-evolution.md)
 
 ## Context and Problem Statement
 
@@ -207,7 +207,7 @@ Environment-specific configuration loaded from:
 
 ## Links
 
-- [ADR-0001: Four-Stage Infrastructure Evolution](0001-four-stage-infrastructure-evolution.md) - Foundational stage philosophy
+- [ADR-003: Four-Stage Infrastructure Evolution](003-four-stage-infrastructure-evolution.md) - Foundational stage philosophy
 - `docs/evolutionary_design.md` - Complete evolutionary design approach
 - `stages/*/README.md` - Individual stage documentation
 - Future: ADR-00XX: Environment Configuration System (Issue #86)

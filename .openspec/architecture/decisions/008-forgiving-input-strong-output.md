@@ -1,9 +1,11 @@
-# Forgiving Input, Strong Output
+# ADR-008: Forgiving Input, Strong Output
 
-- **Status:** accepted
+- **Status:** Accepted
 - **Date:** 2026-01-28
 - **Decision Makers:** FRANK Architecture Team
-- **Related:** [ADR-0008](0008-explicit-error-communication.md)
+- **Related:** [ADR-009](009-explicit-error-communication.md)
+
+**Phase 3:** the principle carries over to the Rust code: `crates/frank-core/src/formats.rs::parse` and `crates/frank-core/src/model.rs` accept JSON, YAML, STIX and CSV and normalise IoCs per type (`crates/frank-core/src/observable.rs`). The Python examples below describe Phase 2 (tag `phase2-final`).
 
 ## Context and Problem Statement
 
@@ -318,6 +320,6 @@ def test_legacy_format_acceptance():
 
 ## Links
 
-- Related to [ADR-0008: Explicit Error Communication](0014-explicit-error-communication.md)
-- Implementation: [src/frank/core/models.py](../../src/frank/core/models.py)
-- Testing: [tests/unit/core/test_models.py](../../tests/unit/core/test_models.py)
+- Related to [ADR-009: Explicit Error Communication](009-explicit-error-communication.md)
+- Implementation: src/frank/core/models.py
+- Testing: tests/unit/core/test_models.py

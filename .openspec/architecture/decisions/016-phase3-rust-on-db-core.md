@@ -1,9 +1,9 @@
 # ADR-016: Phase 3 in Rust on db-core: striped Parquet sightings, a row table for IoCs, a WASM client
 
-- **Status:** accepted, revised 2026-10-23 (participants, #159)
+- **Status:** Accepted, revised 2026-10-23 (participants, #159)
 - **Date:** 2026-10-22
 - **Decision Makers:** Ilja Heitlager
-- **Supersedes:** [ADR-003](003-four-stage-infrastructure-evolution.md) (stages), [ADR-004](004-repository-pattern-database-abstraction.md) (storage backends), [ADR-006](006-cognito-authentication.md) (Cognito), [ADR-010](010-postgresql-management-api.md) (PostgreSQL for organisations)
+- **Supersedes:** [ADR-001](001-single-code-library.md) (one Python library), [ADR-003](003-four-stage-infrastructure-evolution.md) (stages), [ADR-004](004-repository-pattern-database-abstraction.md) (storage backends), [ADR-006](006-cognito-authentication.md) (Cognito), [ADR-010](010-postgresql-management-api.md) (PostgreSQL for organisations), [ADR-007](007-admin-mvc-architecture.md) (Python admin TUI), [ADR-011](011-stages-vs-environments.md) (stages vs environments)
 - **Related:** [ADR-002](002-tiered-access-control.md), [ADR-008](008-forgiving-input-strong-output.md), [ADR-017](017-user-roles-for-identity-administration.md) (user roles: who may manage identities; users still see by their organisation's status)
 
 ## Context

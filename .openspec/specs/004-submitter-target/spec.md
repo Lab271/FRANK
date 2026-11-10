@@ -2,7 +2,7 @@
 
 **Domain:** Core Models / Organization Identity
 **Version:** 1.0.0
-**Status:** Implemented
+**Status:** Outdated (Phase 2 model and links; rewritten for Phase 3 in #250)
 **Date:** 2026-02-06
 **Owner:** FRANK Core Team
 

@@ -37,6 +37,13 @@ jobs:
       - name: Slow tests (make test-slow)
         run: cargo test --workspace --locked --release -- --ignored
 
+  specs:
+    name: spec traceability (make check-assurance)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      - run: make check-assurance
+
   deny:
     name: licences, sources, advisories (cargo deny)
     runs-on: ubuntu-latest

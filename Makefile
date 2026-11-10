@@ -40,7 +40,7 @@ FRANK_URL ?= http://127.0.0.1:8080
 E2E_PORT ?= 18080
 E2E_TAG ?=
 
-.PHONY: help check build server wasm test test-slow smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -103,6 +103,17 @@ check-mvl-limit: ## Qualified-subset gate on frank-core (cargo-mvl-limit; MVL_LI
 	done; \
 	if [ $$fail -eq 0 ]; then echo "check-mvl-limit: all files in the qualified subset"; fi; \
 	exit $$fail
+
+# Spec traceability (ADR-021): every **Implementation:** and **Tests:** link in
+# .openspec/specs must resolve, and every relative Markdown link in the docs.
+# ASSURANCE_MIN is the floor on tested scenarios; raise it as #250 adds specs.
+ASSURANCE_MIN ?= 0
+assurance: ## Spec -> code -> test traceability per spec (V=1: per requirement, with dead links)
+	@python3 scripts/assurance.py $(if $(filter 1,$(V)),-v,)
+
+check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN; tests the checker first
+	@python3 -m unittest discover -q -s scripts -p 'test_assurance.py'
+	@python3 scripts/assurance.py --min $(ASSURANCE_MIN)
 
 fmt: ## Format the code
 	$(CARGO) fmt --all

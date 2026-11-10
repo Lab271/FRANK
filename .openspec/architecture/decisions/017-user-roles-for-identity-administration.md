@@ -1,6 +1,6 @@
 # ADR-017: User roles for identity administration, apart from the participant status
 
-- **Status:** accepted
+- **Status:** Accepted
 - **Date:** 2026-10-27
 - **Decision Makers:** Ilja Heitlager
 - **Related:** [ADR-002](002-tiered-access-control.md) (statuses), [ADR-016](016-phase3-rust-on-db-core.md) (participants), #175

@@ -1,9 +1,9 @@
-# Asynchronous Background Task Processing
+# ADR-014: Asynchronous Background Task Processing
 
-- **Status:** Proposed
+- **Status:** Deprecated (proposed for the Phase 2 service, never implemented; a Phase 3 submission is appended to the db-core WAL within the request)
 - **Date:** 2026-02-06
 - **Decision Makers:** Architecture Team, Backend Team
-- **Related:** [Change Proposal 001](../../specs/changes/001-background-tasks/proposal.md)
+- **Related:** Change Proposal 001
 
 ---
 
@@ -156,18 +156,18 @@ Use Celery distributed task queue with Redis as message broker.
 
 ## Related Specifications
 
-- **Originating Spec**: [Change Proposal 001: Background Task Processing](../../specs/changes/001-background-tasks/proposal.md) - Full problem statement and business case
-- **Design Document**: [Design Doc](../../specs/changes/001-background-tasks/design.md) - Technical architecture and implementation details
-- **Requirements Spec**: [Functional/Non-Functional Requirements](../../specs/changes/001-background-tasks/spec.md)
-- **Implementation Tasks**: [Task Breakdown](../../specs/changes/001-background-tasks/tasks.md) - 25 tasks across 4 phases (15 days)
+- **Originating Spec**: Change Proposal 001: Background Task Processing - Full problem statement and business case
+- **Design Document**: Design Doc - Technical architecture and implementation details
+- **Requirements Spec**: Functional/Non-Functional Requirements
+- **Implementation Tasks**: Task Breakdown - 25 tasks across 4 phases (15 days)
 - **Implementing Specs**: [To be added after implementation]
 - **Impacted Specs**:
-  - [Sightings API Spec](../../specs/apis/sightings-api.spec.md) - Will add async mode
-  - [Management API Spec](../../specs/apis/management-api.spec.md) - Task status endpoints
+  - Sightings API Spec - Will add async mode
+  - Management API Spec - Task status endpoints
 
 ## References
 
-- [Change Proposal 001](../../specs/changes/001-background-tasks/) - Complete proposal package
+- Change Proposal 001 - Complete proposal package
 - [AWS SQS Documentation](https://docs.aws.amazon.com/sqs/)
 - [AWS Lambda Documentation](https://docs.aws.amazon.com/lambda/)
 - [Celery Documentation](https://docs.celeryq.dev/) - Alternative for Stage 4

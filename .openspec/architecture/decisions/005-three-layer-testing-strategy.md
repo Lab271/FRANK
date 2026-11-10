@@ -1,8 +1,7 @@
-# ADR-0004: Three-Layer Testing Strategy
+# ADR-005: Three-Layer Testing Strategy
 
-## Status
-
-Accepted
+- **Status:** Superseded by [ADR-018](018-container-is-the-reference-and-test-tiers.md) (four test tiers around the container image)
+- **Date:** 2026-01-23
 
 ## Context
 

@@ -1,9 +1,9 @@
-# Testing Philosophy and Local Services
+# ADR-013: Testing Philosophy and Local Services
 
-- **Status:** accepted
+- **Status:** Superseded by [ADR-018](018-container-is-the-reference-and-test-tiers.md) (four test tiers; no AWS services to mock)
 - **Date:** 2026-01-31
 - **Decision Makers:** Development Team
-- **Related:** [ADR-0004](0004-three-layer-testing-strategy.md), [ADR-0011](0011-spike-integration-process.md)
+- **Related:** [ADR-005](005-three-layer-testing-strategy.md), [ADR-012](012-spike-integration-process.md)
 
 ## Context and Problem Statement
 
@@ -457,9 +457,9 @@ pytest tests/unit/ --cov=src/frank --cov-report=term-missing
 
 ## Links
 
-- [ADR-0004: Three-Layer Testing Strategy](0004-three-layer-testing-strategy.md) - Foundational testing approach
-- [ADR-0011: Spike Integration Process](0011-spike-integration-process.md) - How spike tests feed production
-- [ADR-0002: Repository Pattern and Database Abstraction](0002-repository-pattern-database-abstraction.md) - Testing database implementations
+- [ADR-005: Three-Layer Testing Strategy](005-three-layer-testing-strategy.md) - Foundational testing approach
+- [ADR-012: Spike Integration Process](012-spike-integration-process.md) - How spike tests feed production
+- [ADR-004: Repository Pattern and Database Abstraction](004-repository-pattern-database-abstraction.md) - Testing database implementations
 - `tests/spikes/015_fastapi_testing/README.md` - FastAPI testing patterns
 - `tests/spikes/014_cognito/README.md` - Cognito authentication spike (origin of stub)
 - `tests/stubs/README.md` - Centralized stub services documentation

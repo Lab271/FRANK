@@ -1,9 +1,9 @@
-# Spike Integration Process
+# ADR-012: Spike Integration Process
 
-- **Status:** accepted
+- **Status:** Deprecated (the Phase 2 spike process; `tests/spikes/` left the tree with Phase 2)
 - **Date:** 2026-01-31
 - **Decision Makers:** Development Team
-- **Related:** [ADR-0004](0004-three-layer-testing-strategy.md), [ADR-0001](0001-four-stage-infrastructure-evolution.md)
+- **Related:** [ADR-005](005-three-layer-testing-strategy.md), [ADR-003](003-four-stage-infrastructure-evolution.md)
 
 ## Context and Problem Statement
 
@@ -268,7 +268,7 @@ Example: "AWS Cognito can provide JWT-based authentication for FRANK APIs with r
 
 ## Links
 
-- [ADR-0004: Three-Layer Testing Strategy](0004-three-layer-testing-strategy.md) - Spike tests are Layer 3
-- [ADR-0001: Four-Stage Infrastructure Evolution](0001-four-stage-infrastructure-evolution.md) - Spikes feed stage evolution
+- [ADR-005: Three-Layer Testing Strategy](005-three-layer-testing-strategy.md) - Spike tests are Layer 3
+- [ADR-003: Four-Stage Infrastructure Evolution](003-four-stage-infrastructure-evolution.md) - Spikes feed stage evolution
 - `tests/spikes/index.md` - Spike inventory and status tracking
 - `tests/spikes/*/README.md` - 15+ spike examples

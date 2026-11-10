@@ -1,9 +1,9 @@
-# C4 Model for Architecture Visualization
+# ADR-015: C4 Model for Architecture Visualization
 
-- **Status:** proposed
+- **Status:** Deprecated (proposed; the per-stage C4 diagrams left the tree with Phase 2)
 - **Date:** 2026-02-06
 - **Decision Makers:** Architecture Team, agent-2
-- **Related:** [ADR-0001](0001-four-stage-infrastructure-evolution.md), [ADR-0010](0010-stages-vs-environments.md)
+- **Related:** [ADR-003](003-four-stage-infrastructure-evolution.md), [ADR-011](011-stages-vs-environments.md)
 
 ## Context and Problem Statement
 
@@ -184,12 +184,12 @@ Example: Extend existing approach in `docs/highlevel_design.md`
 ## Links
 
 - **Related ADRs**:
-  - [ADR-0001: Four-Stage Infrastructure Evolution](0001-four-stage-infrastructure-evolution.md) - Defines stages to visualize
-  - [ADR-0010: Stages vs Environments](0010-stages-vs-environments.md) - Distinguishes infrastructure from deployment
+  - [ADR-003: Four-Stage Infrastructure Evolution](003-four-stage-infrastructure-evolution.md) - Defines stages to visualize
+  - [ADR-011: Stages vs Environments](011-stages-vs-environments.md) - Distinguishes infrastructure from deployment
 - **Specifications**: Agent-1's specs/ directory complements C4 with behavioral requirements
 - **Existing Documentation**:
-  - [docs/highlevel_design.md](../highlevel_design.md) - Current ASCII art diagrams
-  - [docs/hld_functional.md](../hld_functional.md) - Functional/business context
+  - docs/highlevel_design.md - Current ASCII art diagrams
+  - docs/hld_functional.md - Functional/business context
 - **External References**:
   - [C4 Model Official Site](https://c4model.com/)
   - [C4 Model Introduction](https://c4model.com/introduction)

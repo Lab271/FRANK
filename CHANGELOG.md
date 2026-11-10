@@ -4,6 +4,19 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- Added `make assurance` and `make check-assurance` (`scripts/assurance.py`, ADR-021): every spec `**Implementation:**`/`**Tests:**` link and every relative Markdown link in the docs must resolve, and CI runs the gate. Replaces `.openspec/validate.py` and the spec-validation workflow, which never ran.
+
+### Changed
+
+- ADRs that Phase 3 replaced are marked superseded (001, 003, 004, 005, 007, 011, 013) or deprecated (012, 014, 015); one status format; cross-links fixed; `decisions/index.md` added.
+- `.openspec/README.md`, `docs/glossary.md` and the PR template describe Phase 3.
+
+### Removed
+
+- The Phase 2 documents (specs 010, 012, 020–023, 030, 040, the architecture YAML, the design documents under `docs/`); they are at the tag `phase2-final`. Specs 001–004 are marked Outdated until their Phase 3 rewrite (#250).
+
 ## [0.38.2] - 2026-11-09
 
 ### Fixed
