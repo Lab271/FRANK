@@ -240,29 +240,27 @@ impl Url {
         })
     }
 
-    /// `https`, or `http` for `localhost` and `*.local` (the local stub).
+    /// `https`, or `http` for `localhost` only (the local stub, #238).
     pub fn secure(self) -> Result<Url, String> {
-        if self.scheme == "https" || self.is_local() {
+        if self.scheme == "https" || self.host == "localhost" {
             Ok(self)
         } else {
             Err(format!(
-                "{}: https is required (http only for localhost and *.local)",
+                "{}: https is required (http only for localhost)",
                 self.origin()
             ))
         }
     }
 
-    #[must_use]
-    pub fn is_local(&self) -> bool {
-        self.host == "localhost" || self.host.ends_with(".local")
-    }
-
-    /// `scheme://host[:port]`.
+    /// `scheme://host[:port]`, without the scheme's default port, as a
+    /// browser's `Origin` header has it.
     #[must_use]
     pub fn origin(&self) -> String {
-        match self.port {
-            Some(p) => format!("{}://{}:{p}", self.scheme, self.host),
-            None => format!("{}://{}", self.scheme, self.host),
+        match (self.scheme.as_str(), self.port) {
+            ("https", Some(443)) | ("http", Some(80)) | (_, None) => {
+                format!("{}://{}", self.scheme, self.host)
+            }
+            (_, Some(p)) => format!("{}://{}:{p}", self.scheme, self.host),
         }
     }
 }
@@ -1027,17 +1025,31 @@ mod tests {
     }
 
     #[test]
-    fn http_only_for_local_hosts() {
+    fn http_only_for_localhost() {
         let f = secret_file("http", "x");
+        for issuer in ["http://lab271.okta.com", "http://sso.frank.local:9400"] {
+            let mut s = full(&f);
+            s.issuer = Some(issuer.into());
+            let e = Config::from_settings(s).unwrap_err();
+            assert!(e.contains("https is required"), "{issuer}: {e}");
+        }
         let mut s = full(&f);
-        s.issuer = Some("http://lab271.okta.com".into());
-        let e = Config::from_settings(s).unwrap_err();
-        assert!(e.contains("https is required"), "{e}");
-        let mut s = full(&f);
-        s.issuer = Some("http://sso.frank.local:9400".into());
+        s.issuer = Some("http://localhost:9400/oauth2/default".into());
         s.redirect_url = Some("https://frank.local:8443/v1/sso/callback".into());
         let c = Config::from_settings(s).unwrap().unwrap();
         assert_eq!(c.origin, "https://frank.local:8443");
+    }
+
+    #[test]
+    fn origins_leave_out_default_ports() {
+        let origin = |u: &str| Url::parse(u).unwrap().origin();
+        assert_eq!(origin("https://frank.local:443/x"), "https://frank.local");
+        assert_eq!(origin("http://localhost:80/x"), "http://localhost");
+        assert_eq!(origin("http://localhost:443/x"), "http://localhost:443");
+        assert_eq!(
+            origin("https://frank.local:8443/x"),
+            "https://frank.local:8443"
+        );
     }
 
     #[test]

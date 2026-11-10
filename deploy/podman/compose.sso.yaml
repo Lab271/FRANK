@@ -1,0 +1,43 @@
+# `make up-sso` (#238, ADR-020): the compose.yaml stack with sign-in with SSO
+# against a local OIDC stub (deploy/podman/sso-stub). DEVELOPMENT ONLY: the
+# stub signs in anyone who picks a name. Layered on compose.yaml (podman
+# compose -f compose.yaml -f compose.sso.yaml): same Caddy, same URLs.
+#
+# The stub shares the frank container's network (network_mode), so
+# http://localhost:9400 (SSO_STUB_PORT) is the issuer for the browser on the
+# host and for FRANK in its container alike: no extra name in /etc/hosts.
+#
+# The one secret is the OIDC client secret, made once by `make up-sso` in
+# ./sso/client-secret (git-ignored, in a 700 directory) and mounted read-only into both
+# containers. FRANK reads it from the file, never from the environment.
+# FRANK_SSO_ORGANISATION (default sso-users, contributor) is where users
+# signing in for the first time are created; `make up-sso` registers it.
+services:
+  frank:
+    ports:
+      - "127.0.0.1:${SSO_STUB_PORT:-9400}:${SSO_STUB_PORT:-9400}"
+    volumes:
+      - ../../sso/client-secret:/run/secrets/frank-sso-client-secret:ro,Z
+    environment:
+      FRANK_SSO_ISSUER: "http://localhost:${SSO_STUB_PORT:-9400}/oauth2/default"
+      FRANK_SSO_CLIENT_ID: frank-local
+      FRANK_SSO_CLIENT_SECRET_FILE: /run/secrets/frank-sso-client-secret
+      FRANK_SSO_REDIRECT_URL: "${FRANK_SSO_REDIRECT_URL:-https://frank.local:8443/v1/sso/callback}"
+      FRANK_SSO_ORGANISATION: "${FRANK_SSO_ORGANISATION:-sso-users}"
+
+  sso-stub:
+    image: localhost/frank-sso-stub:latest
+    build:
+      context: ./sso-stub
+      dockerfile: Containerfile
+    depends_on: [frank]
+    network_mode: "service:frank"
+    volumes:
+      - ../../sso/client-secret:/run/secrets/frank-sso-client-secret:ro,Z
+    environment:
+      STUB_ISSUER: "http://localhost:${SSO_STUB_PORT:-9400}/oauth2/default"
+      STUB_LISTEN: "0.0.0.0:${SSO_STUB_PORT:-9400}"
+      STUB_CLIENT_ID: frank-local
+      STUB_CLIENT_SECRET_FILE: /run/secrets/frank-sso-client-secret
+      STUB_REDIRECT_URIS: "${FRANK_SSO_REDIRECT_URL:-https://frank.local:8443/v1/sso/callback}"
+    restart: unless-stopped

@@ -1,0 +1,30 @@
+# The SSO stub (#238): a stand-in for Okta's OIDC endpoints. Development only.
+[project]
+name = "frank-sso-stub"
+version = "0.1.0"
+description = "Development-only stand-in for Okta's OpenID Connect endpoints, for FRANK"
+requires-python = ">=3.12"
+dependencies = ["cryptography==50.0.2"]
+
+[dependency-groups]
+dev = ["pytest>=8", "ruff>=0.6", "pyright>=1.1.380"]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 120
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "S"]
+# assert is how pytest checks; binding 0.0.0.0 is the container's job.
+ignore = ["S101", "S104"]
+
+[tool.ruff.lint.per-file-ignores]
+# Fixed test credentials, and urlopen on the test's own localhost server.
+"test_*.py" = ["S105", "S106", "S310"]
+
+[tool.pyright]
+pythonVersion = "3.12"
+typeCheckingMode = "standard"

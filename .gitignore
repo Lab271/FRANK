@@ -279,3 +279,7 @@ AGENTS.md
 *.tfstate*
 *.tfvars
 /s3/
+# The OIDC client secret of the local SSO stub (#238)
+/sso/
+# The SSO stub's uv environment
+/deploy/podman/sso-stub/.venv/
