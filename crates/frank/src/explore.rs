@@ -67,7 +67,9 @@ impl Dimension {
             Dimension::Rule => &["rule_id"],
             Dimension::Ioc => &["ioc_type", "ioc_value"],
             Dimension::Campaign => &["campaign"],
-            Dimension::Technique => &["technique"],
+            // The unnested list (`BY_TECHNIQUE`); the `technique` string
+            // column went in 0.21.
+            Dimension::Technique => &[TECH],
             Dimension::Sector => &["target_sector"],
             Dimension::IocType => &["ioc_type"],
             Dimension::Severity => &["severity"],
@@ -267,6 +269,14 @@ mod tests {
         kv.iter()
             .map(|(k, v)| ((*k).to_string(), (*v).to_string()))
             .collect()
+    }
+
+    #[test]
+    fn refuses_unusable_filter_values() {
+        for v in ["", "  ", "a\u{7}b", "line\nbreak", &"x".repeat(2049)] {
+            assert!(Dimension::Rule.condition(v, false).is_err(), "{v:?}");
+        }
+        assert!(Dimension::Rule.condition(&"x".repeat(2048), false).is_ok());
     }
 
     #[test]

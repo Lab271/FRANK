@@ -87,6 +87,12 @@ enum Command {
         /// created in, with no role.
         #[arg(long, env = "FRANK_SSO_ORGANISATION")]
         sso_organisation: Option<String>,
+        /// Seconds a request may take, waiting included; then 503 (#244).
+        #[arg(long, env = "FRANK_REQUEST_TIMEOUT", default_value_t = 60)]
+        request_timeout: u64,
+        /// Requests handled at once; the rest wait (#244).
+        #[arg(long, env = "FRANK_MAX_CONCURRENCY", default_value_t = 64)]
+        max_concurrency: usize,
     },
     /// Organisations: add, list, set their status.
     #[command(subcommand)]
@@ -373,6 +379,8 @@ fn main() -> Result<(), String> {
             sso_client_secret_file,
             sso_redirect_url,
             sso_organisation,
+            request_timeout,
+            max_concurrency,
         } => {
             let sso = frank::sso::Config::from_settings(frank::sso::Settings {
                 issuer: sso_issuer,
@@ -381,6 +389,13 @@ fn main() -> Result<(), String> {
                 redirect_url: sso_redirect_url,
                 organisation: sso_organisation,
             })?;
+            if request_timeout == 0 || max_concurrency == 0 {
+                return Err("--request-timeout and --max-concurrency must be at least 1".into());
+            }
+            let limits = api::Limits {
+                timeout: std::time::Duration::from_secs(request_timeout),
+                concurrency: max_concurrency,
+            };
             let participants = Participants::open(&cli.participants)?;
             if let Some(sso) = &sso {
                 parts::organisation_id(&db, &sso.organisation)
@@ -430,7 +445,7 @@ fn main() -> Result<(), String> {
             });
             tokio::runtime::Runtime::new()
                 .map_err(|e| e.to_string())?
-                .block_on(serve(app, listen, web, retention_days))
+                .block_on(serve(app, listen, web, retention_days, limits))
         }
     }
 }
@@ -619,6 +634,7 @@ async fn serve(
     listen: SocketAddr,
     web: PathBuf,
     retention_days: u32,
+    limits: api::Limits,
 ) -> Result<(), String> {
     let maintenance = tokio::spawn(maintain(app.clone(), retention_days));
     let router = api::router(app.clone())
@@ -631,8 +647,8 @@ async fn serve(
                     axum::http::header::CACHE_CONTROL,
                     axum::http::HeaderValue::from_static("no-cache"),
                 )),
-        )
-        .layer(TraceLayer::new_for_http());
+        );
+    let router = api::harden(router, limits).layer(TraceLayer::new_for_http());
     let listener = tokio::net::TcpListener::bind(listen)
         .await
         .map_err(|e| format!("{listen}: {e}"))?;

@@ -13,12 +13,8 @@ rpc_public_addr = "127.0.0.1:3901"
 s3_region = "garage"
 api_bind_addr = "[::]:3900"
 
-# The bucket as a static website, at http://<bucket>.web.garage.localhost:3902/<key>
-# (*.localhost is this machine in a browser). It serves objects by key; there is
-# no directory listing.
-[s3_web]
-bind_addr = "[::]:3902"
-root_domain = ".web.garage.localhost"
+# No [s3_web]: a website endpoint serves the bucket's objects, the Parquet
+# files with their reporter ids, without credentials (#246).
 
 [admin]
 api_bind_addr = "[::]:3903"

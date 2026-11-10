@@ -6,8 +6,7 @@
 # Run one of the two modes at a time: `make up-solo` and `make up-s3` replace
 # each other.
 # Host ports, all on 127.0.0.1: GARAGE_S3_PORT (3900, the S3 API, for the aws
-# CLI or an S3 browser), GARAGE_WEB_PORT (3902, the bucket as a website; reads
-# need no credentials), GARAGE_ADMIN_PORT (3903, the admin API), and
+# CLI or an S3 browser), GARAGE_ADMIN_PORT (3903, the admin API), and
 # GARAGE_TLS_PORT (9443, the S3 API over HTTPS through Caddy:
 # https://frank.local:9443, #224).
 services:
@@ -15,7 +14,6 @@ services:
     image: docker.io/dxflrs/garage:v2.1.0
     ports:
       - "127.0.0.1:${GARAGE_S3_PORT:-3900}:3900"
-      - "127.0.0.1:${GARAGE_WEB_PORT:-3902}:3902"
       - "127.0.0.1:${GARAGE_ADMIN_PORT:-3903}:3903"
     volumes:
       - ./garage.toml:/etc/garage.toml:ro,Z

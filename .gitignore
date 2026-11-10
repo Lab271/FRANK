@@ -84,6 +84,10 @@ docs/_build/
 # PyBuilder
 .pybuilder/
 target/
+# cargo-fuzz (#245): the grown corpus and any crash inputs stay local.
+/fuzz/corpus/
+/fuzz/artifacts/
+/fuzz/coverage/
 
 # Jupyter Notebook
 .ipynb_checkpoints

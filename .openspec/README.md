@@ -17,6 +17,19 @@ What FRANK must do (specs) and why it is built the way it is (ADRs), for Phase 3
 | 020–029 | Storage: sightings table, IoC lookups, participants |
 | 030–039 | Clients and deployment: web, WASM, container |
 
+| Spec | Scope |
+|---|---|
+| [001-data-model](specs/001-data-model/spec.md) | Submission formats and shapes, observables, TLP, sighting id and digest, rows, preview |
+| [010-sightings-api](specs/010-sightings-api/spec.md) | Bearer tokens, submitting, receipts and resends, listing, whoami, health, OpenAPI |
+| [011-management-api](specs/011-management-api/spec.md) | Organisations, users, roles, tokens, audit, files under `/v1/admin` |
+| [013-disclosure](specs/013-disclosure/spec.md) | Statuses, TLP per status, the reporter threshold, statistics, summary, participants |
+| [014-query-api](specs/014-query-api/spec.md) | Explore, rule detail, live, warning and reference lists, geo, Parquet files |
+| [020-sightings-storage](specs/020-sightings-storage/spec.md) | Striped Parquet table, WAL, hour files, day merge, retention, S3, row databases |
+| [021-ioc-lookups](specs/021-ioc-lookups/spec.md) | `iocs.db`, IoC and CIDR lookups |
+| [030-browser-client](specs/030-browser-client/spec.md) | `frank-wasm` preview and Parquet queries, the web UI |
+
+012 is kept for authentication over OIDC (#240).
+
 A spec is written in RFC 2119 terms, one requirement per heading, with its scenarios and links to the code and tests that carry it ([spec 011](specs/011-management-api/spec.md) is the model):
 
 ```markdown
@@ -37,8 +50,8 @@ A superadmin SHALL list, create and set the status of organisations. ...
 
 - A link is `path` or `path::symbol`, backtick-quoted, comma-separated. For a `.rs` file the symbol must be a `fn` in that file.
 - `**Implementation:**` sits in the requirement, before its first scenario. `**Tests:**` sits in the scenario it backs.
-- A link suffixed `(planned)` marks work not done yet and is not counted.
-- A spec whose `**Status:**` starts with `Outdated` is not counted either: it awaits a rewrite (#250).
+- `(planned)` on a line marks work not done yet: it counts as neither implemented nor tested, so the gap stays visible.
+- A spec whose `**Status:**` starts with `Outdated` is not counted either: it awaits a rewrite.
 
 `make assurance` shows per spec how many requirements link to existing code and how many scenarios to a test; `make assurance V=1` lists every requirement and each dead link. `make check-assurance` fails on a dead link, and CI runs it: a link to a renamed function or test is a false claim of coverage.
 

@@ -86,6 +86,9 @@ write_files:
     content: |
       ${domain} {
         encode zstd gzip
+        # HSTS (#244): a public certificate, so a year; FRANK sets the
+        # other security headers itself.
+        header Strict-Transport-Security "max-age=31536000"
         reverse_proxy 127.0.0.1:8080
       }
 

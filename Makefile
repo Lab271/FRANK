@@ -45,8 +45,10 @@ PYTHON ?= python3
 FRANK_URL ?= http://127.0.0.1:8080
 E2E_PORT ?= 18080
 E2E_TAG ?=
+# `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
+FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance smoke e2e lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 up-sso sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 up-sso sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -112,8 +114,8 @@ check-mvl-limit: ## Qualified-subset gate on frank-core (cargo-mvl-limit; MVL_LI
 
 # Spec traceability (ADR-021): every **Implementation:** and **Tests:** link in
 # .openspec/specs must resolve, and every relative Markdown link in the docs.
-# ASSURANCE_MIN is the floor on tested scenarios; raise it as #250 adds specs.
-ASSURANCE_MIN ?= 0
+# ASSURANCE_MIN is the floor on tested scenarios (172/180 = 96%; the rest are web UI, #254); raise it as tests land.
+ASSURANCE_MIN ?= 0.95
 assurance: ## Spec -> code -> test traceability per spec (V=1: per requirement, with dead links)
 	@python3 scripts/assurance.py $(if $(filter 1,$(V)),-v,)
 
@@ -157,6 +159,14 @@ token: server ## Another token for a user: make token NAME=alice
 
 test-slow: ## Slow Rust tests (#[ignore = "slow"]): volume and paging
 	$(CARGO) test --workspace --locked --release -- --ignored
+
+fuzz: ## Fuzz frank-core's submission parsers for FUZZ_TIME (60) seconds (nightly + cargo install cargo-fuzz); crashes land in fuzz/artifacts
+	mkdir -p fuzz/corpus/parse
+	cd fuzz && rustup run nightly cargo fuzz run parse corpus/parse ../examples ../examples/formats ../examples/demo \
+	  -- -max_total_time=$(FUZZ_TIME) -timeout=10
+
+audit: ## cargo deny check with deny.toml (#220), as CI runs it: licences, sources, advisories (cargo install cargo-deny)
+	$(CARGO) deny --locked check
 
 smoke: ## Read-only checks of a running FRANK: make smoke TOKEN=… [FRANK_URL=…|TLS=1] [CA=…]
 	@TOKEN="$(TOKEN)" $(PYTHON) scripts/smoke.py --url $(if $(TLS),$(FRANK_URL_TLS),$(FRANK_URL)) \
@@ -237,7 +247,7 @@ up-solo: image s3-env ## Run in podman, the table on disk (the same ./data and .
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 
-up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API, its web endpoint and the admin API on 127.0.0.1:3900, :3902 and :3903, the S3 API over HTTPS at https://frank.local:9443
+up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API and the admin API on 127.0.0.1:3900 and :3903, the S3 API over HTTPS at https://frank.local:9443
 	mkdir -p data participants $(S3_DIR)/meta $(S3_DIR)/data && touch $(TOKENS)
 	@[ -s $(S3_DIR)/garage.env ] || { umask 077; printf 'GARAGE_RPC_SECRET=%s\nGARAGE_ADMIN_TOKEN=%s\n' "$$(openssl rand -hex 32)" "$$(openssl rand -hex 32)" > $(S3_DIR)/garage.env; }
 	$(COMPOSE_S3) up -d --force-recreate --remove-orphans garage
@@ -245,7 +255,7 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE_S3) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
-	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, bucket website http://frank.web.garage.localhost:$${GARAGE_WEB_PORT:-3902}/<key>, files in ./$(S3_DIR); make s3-ls lists the bucket"
+	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, files in ./$(S3_DIR); make s3-ls lists the bucket"
 
 up-sso: image s3-env sso-env ## Like up-solo, with sign-in with SSO against a local OIDC stub at http://localhost:9400 (SSO_STUB_PORT; development only: it signs in anyone who picks a name); new users land in FRANK_SSO_ORGANISATION (sso-users, contributor)
 	mkdir -p data participants && touch $(TOKENS)

@@ -285,7 +285,7 @@ async function lookup(type, value) {
     const key = `${r.ioc.type}:${r.ioc.value}`;
     show(out,
       el("p", {}, linkTo(`${r.ioc.type} ${r.ioc.value}`, () => openPane("ioc", key), "label"),
-        `: seen ${r.count}× by ${r.reporters} reporter(s), first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
+        `: seen ${r.count}× by ${r.reporters ?? `fewer than ${r.min_cell}`} reporter(s), first ${iso(r.first_seen)}, last ${iso(r.last_seen)}.`),
       ...(r.geo ? [el("p", { class: "note" }, where(r.geo))] : []),
       ...listedLines(r.listed),
       table(["day", "count", "first", "last"],
@@ -947,7 +947,7 @@ function tokenCard(t) {
   const copy = el("button", { class: "lab-btn lab-btn--secondary" }, "copy");
   copy.addEventListener("click", () => navigator.clipboard?.writeText(t.token));
   return el("div", { class: "card" },
-    el("h3", {}, `new token for ${t.user} \\ shown once`),
+    el("h3", {}, `new token for ${t.user} · shown once`),
     el("pre", { class: "curl" }, t.token), copy);
 }
 

@@ -21,7 +21,7 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [013](013-testing-philosophy.md) | Testing Philosophy and Local Services | Superseded by [ADR-018](018-container-is-the-reference-and-test-tiers.md) | 2026-01-31 |
 | [014](014-asynchronous-background-task-processing.md) | Asynchronous Background Task Processing | Deprecated | 2026-02-06 |
 | [015](015-c4-model-architecture-visualization.md) | C4 Model for Architecture Visualization | Deprecated | 2026-02-06 |
-| [016](016-phase3-rust-on-db-core.md) | Phase 3 in Rust on db-core: striped Parquet sightings, a row table for IoCs, a WASM client | Accepted, revised 2026-10-23 (participants, #159) | 2026-10-22 |
+| [016](016-phase3-rust-on-db-core.md) | Phase 3 in Rust on db-core: striped Parquet sightings, a row table for IoCs, a WASM client | Accepted, revised 2026-10-23 (participants, #159) and 2026-11-10 (target identities, #256) | 2026-10-22 |
 | [017](017-user-roles-for-identity-administration.md) | User roles for identity administration, apart from the participant status | Accepted | 2026-10-27 |
 | [018](018-container-is-the-reference-and-test-tiers.md) | The container image is the reference; four test tiers | Accepted | 2026-11-03 |
 | [019](019-sightings-in-s3-state-on-a-volume.md) | Sightings in S3, the rest of the state on a volume | Accepted | 2026-11-07 |
