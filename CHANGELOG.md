@@ -6,15 +6,18 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Added
 
+- The Phase 3 specs 001 data model, 010 sightings API, 013 disclosure, 014 query API, 020 sightings storage, 021 IoC lookups and 030 browser client (#250). They link 88 requirements to code and 161 of 179 scenarios to tests.
 - Added `make assurance` and `make check-assurance` (`scripts/assurance.py`, ADR-021): every spec `**Implementation:**`/`**Tests:**` link and every relative Markdown link in the docs must resolve, and CI runs the gate. Replaces `.openspec/validate.py` and the spec-validation workflow, which never ran.
 
 ### Changed
 
+- `make check-assurance` now requires 85% of scenarios to be tested (`ASSURANCE_MIN`).
 - ADRs that Phase 3 replaced are marked superseded (001, 003, 004, 005, 007, 011, 013) or deprecated (012, 014, 015); one status format; cross-links fixed; `decisions/index.md` added.
 - `.openspec/README.md`, `docs/glossary.md` and the PR template describe Phase 3.
 
 ### Removed
 
+- The Phase 2 specs 001–004, which the data model spec replaces.
 - The Phase 2 documents (specs 010, 012, 020–023, 030, 040, the architecture YAML, the design documents under `docs/`); they are at the tag `phase2-final`. Specs 001–004 are marked Outdated until their Phase 3 rewrite (#250).
 
 ## [0.38.2] - 2026-11-09
