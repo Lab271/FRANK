@@ -1394,6 +1394,7 @@ async fn every_route_is_in_the_openapi_document() {
     let source = [
         include_str!("../src/api.rs"),
         include_str!("../src/admin.rs"),
+        include_str!("../src/sso.rs"),
     ]
     .concat();
     let mut routes = 0;

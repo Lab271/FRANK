@@ -14,6 +14,10 @@
 //! | `GET  /v1/files`, `/v1/files/{*path}` | partner |
 //! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
 //! | `/v1/admin/…`             | a user with a role ([`crate::admin`]) |
+//! | `/v1/sso/…`               | sign in with OIDC ([`crate::sso`]) |
+//!
+//! A caller is named by its bearer token; without an `Authorization`
+//! header, by its SSO session cookie, when SSO is on (ADR-020).
 
 use std::collections::{BTreeMap, HashMap};
 use std::net::IpAddr;
@@ -68,7 +72,7 @@ pub struct App {
     pub registry: Registry,
     pub audit: Audit,
     /// Sign in with OpenID Connect (#241); `None` when not configured.
-    pub sso: Option<crate::sso::Config>,
+    pub sso: Option<crate::sso::Sso>,
     /// Makes "is it registered, store it, register it" one step.
     pub submit_lock: std::sync::Mutex<()>,
     /// Wall clock in ns; tests set their own.
@@ -95,16 +99,23 @@ pub(crate) fn unprocessable(e: impl std::fmt::Display) -> ApiError {
     ApiError(StatusCode::UNPROCESSABLE_ENTITY, e.to_string())
 }
 
-/// The caller the request's bearer token names, at least `tier`.
+/// The caller the request's bearer token names, at least `tier`. Without
+/// an `Authorization` header, the SSO session cookie names it (ADR-020);
+/// an unknown or expired session is the public tier, as no token is.
 pub(crate) fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Caller, ApiError> {
     let auth = headers
         .get(header::AUTHORIZATION)
         .and_then(|v| v.to_str().ok());
-    let caller = app
-        .participants
-        .caller(auth)
-        .map_err(internal)?
-        .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown token".into()))?;
+    let caller = match (auth, crate::sso::session_value(app, headers)) {
+        (None, Some(value)) => Some(
+            app.participants
+                .session_caller(&value, (app.now)() / 1_000_000_000)
+                .map_err(internal)?
+                .unwrap_or_else(Caller::public),
+        ),
+        _ => app.participants.caller(auth).map_err(internal)?,
+    }
+    .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown token".into()))?;
     if caller.tier < tier {
         return Err(ApiError(
             StatusCode::FORBIDDEN,
@@ -140,6 +151,11 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/files", get(files))
         .route("/v1/files/{*path}", get(file))
         .merge(crate::admin::routes())
+        .merge(crate::sso::routes())
+        .layer(axum::middleware::from_fn_with_state(
+            app.clone(),
+            crate::sso::csrf,
+        ))
         .layer(DefaultBodyLimit::max(MAX_BODY))
         .with_state(app)
 }

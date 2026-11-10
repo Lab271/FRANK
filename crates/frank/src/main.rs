@@ -424,7 +424,7 @@ fn main() -> Result<(), String> {
                 participants,
                 registry,
                 audit: audit.clone(),
-                sso,
+                sso: sso.map(|c| frank::sso::Sso::new(c, Arc::new(frank::sso::Ureq::new()))),
                 submit_lock: std::sync::Mutex::new(()),
                 now: now_ns,
             });

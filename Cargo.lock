@@ -325,11 +325,13 @@ name = "frank"
 version = "0.38.2"
 dependencies = [
  "axum",
+ "base64",
  "clap",
  "db-core",
  "frank-core",
  "getrandom 0.3.4",
  "http-body-util",
+ "ring",
  "serde",
  "serde_json",
  "sha2",
