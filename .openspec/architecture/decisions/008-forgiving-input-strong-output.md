@@ -5,7 +5,7 @@
 - **Decision Makers:** FRANK Architecture Team
 - **Related:** [ADR-009](009-explicit-error-communication.md)
 
-**Phase 3:** the principle carries over to the Rust code: `crates/frank-core/src/formats.rs::parse` and `crates/frank-core/src/model.rs` accept JSON, YAML, STIX and CSV and normalise IoCs per type (`crates/frank-core/src/observable.rs`). The Python examples below describe Phase 2 (tag `phase2-final`).
+**Phase 3:** the principle carries over to the Rust code: `crates/frank-core/src/formats.rs::parse` and `crates/frank-core/src/model.rs` accept JSON, YAML and STIX and normalise IoCs per type (`crates/frank-core/src/observable.rs`). The Python examples below describe Phase 2 (tag `phase2-final`).
 
 ## Context and Problem Statement
 
