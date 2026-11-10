@@ -231,7 +231,7 @@ up-solo: image s3-env ## Run in podman, the table on disk (the same ./data and .
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 
-up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API, its web endpoint and the admin API on 127.0.0.1:3900, :3902 and :3903, the S3 API over HTTPS at https://frank.local:9443
+up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S3) bucket, files in ./s3; the S3 API and the admin API on 127.0.0.1:3900 and :3903, the S3 API over HTTPS at https://frank.local:9443
 	mkdir -p data participants $(S3_DIR)/meta $(S3_DIR)/data && touch $(TOKENS)
 	@[ -s $(S3_DIR)/garage.env ] || { umask 077; printf 'GARAGE_RPC_SECRET=%s\nGARAGE_ADMIN_TOKEN=%s\n' "$$(openssl rand -hex 32)" "$$(openssl rand -hex 32)" > $(S3_DIR)/garage.env; }
 	$(COMPOSE_S3) up -d --force-recreate --remove-orphans garage
@@ -239,7 +239,7 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE_S3) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
-	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, bucket website http://frank.web.garage.localhost:$${GARAGE_WEB_PORT:-3902}/<key>, files in ./$(S3_DIR); make s3-ls lists the bucket"
+	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, files in ./$(S3_DIR); make s3-ls lists the bucket"
 
 # The compose files name s3/*.env, which must exist for any compose command,
 # also in up-solo and down. Empty until up-s3 fills them.

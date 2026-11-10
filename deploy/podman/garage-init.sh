@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Prepares the Garage of `make up-s3` (#220): the one-node layout, the bucket
-# `frank`, a key for FRANK and the bucket's website option. Safe to run again:
+# `frank` and a key for FRANK. Safe to run again:
 # it only adds what is missing. The key goes to s3/frank.env (created once;
 # if Garage's files are wiped, the same key is imported again).
 #
@@ -50,5 +50,4 @@ fi
 
 chmod 600 "$ENV_FILE"
 garage bucket allow --read --write --owner "$BUCKET" --key "$KEY" >/dev/null
-garage bucket website --allow "$BUCKET" >/dev/null
 echo "garage: bucket $BUCKET ready"
