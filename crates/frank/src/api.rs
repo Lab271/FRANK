@@ -67,6 +67,8 @@ pub struct App {
     pub participants: Participants,
     pub registry: Registry,
     pub audit: Audit,
+    /// Sign in with OpenID Connect (#241); `None` when not configured.
+    pub sso: Option<crate::sso::Config>,
     /// Makes "is it registered, store it, register it" one step.
     pub submit_lock: std::sync::Mutex<()>,
     /// Wall clock in ns; tests set their own.

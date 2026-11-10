@@ -67,6 +67,26 @@ enum Command {
         /// Closed days kept; older days are dropped whole.
         #[arg(long, env = "FRANK_RETENTION_DAYS", default_value_t = 400)]
         retention_days: u32,
+        /// Sign in with OpenID Connect (#241, ADR-020): the issuer, e.g.
+        /// `https://<org>.okta.com/oauth2/default`. SSO is off unless all
+        /// five `--sso-*` settings are given.
+        #[arg(long, env = "FRANK_SSO_ISSUER")]
+        sso_issuer: Option<String>,
+        /// The OIDC client id.
+        #[arg(long, env = "FRANK_SSO_CLIENT_ID")]
+        sso_client_id: Option<String>,
+        /// A file holding the OIDC client secret: the secret itself is
+        /// never taken from the command line or the environment.
+        #[arg(long, env = "FRANK_SSO_CLIENT_SECRET_FILE")]
+        sso_client_secret_file: Option<PathBuf>,
+        /// FRANK's public callback, e.g.
+        /// `https://frank.example/v1/sso/callback`.
+        #[arg(long, env = "FRANK_SSO_REDIRECT_URL")]
+        sso_redirect_url: Option<String>,
+        /// The organisation users signing in for the first time are
+        /// created in, with no role.
+        #[arg(long, env = "FRANK_SSO_ORGANISATION")]
+        sso_organisation: Option<String>,
     },
     /// Organisations: add, list, set their status.
     #[command(subcommand)]
@@ -348,8 +368,30 @@ fn main() -> Result<(), String> {
             tokens,
             web,
             retention_days,
+            sso_issuer,
+            sso_client_id,
+            sso_client_secret_file,
+            sso_redirect_url,
+            sso_organisation,
         } => {
+            let sso = frank::sso::Config::from_settings(frank::sso::Settings {
+                issuer: sso_issuer,
+                client_id: sso_client_id,
+                client_secret_file: sso_client_secret_file,
+                redirect_url: sso_redirect_url,
+                organisation: sso_organisation,
+            })?;
             let participants = Participants::open(&cli.participants)?;
+            if let Some(sso) = &sso {
+                parts::organisation_id(&db, &sso.organisation)
+                    .map_err(|e| format!("FRANK_SSO_ORGANISATION: {e}"))?;
+                tracing::info!(
+                    issuer = %sso.issuer,
+                    client_id = %sso.client_id,
+                    organisation = %sso.organisation,
+                    "sign in with SSO is on"
+                );
+            }
             if participants.active_tokens()? == 0 && tokens.exists() {
                 let created = parts::import_tokens_file(&db, &tokens)?;
                 log(
@@ -382,6 +424,7 @@ fn main() -> Result<(), String> {
                 participants,
                 registry,
                 audit: audit.clone(),
+                sso,
                 submit_lock: std::sync::Mutex::new(()),
                 now: now_ns,
             });
