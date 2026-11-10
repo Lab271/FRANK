@@ -4,13 +4,22 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.39.0] - 2026-11-10
+
+### Security
+
+- A plain admin in a core organisation could issue a token for that organisation's superadmin, and so act as it, or revoke its tokens. Issuing and revoking a superadmin's token now needs a superadmin, like every other change to one (#242).
+
 ### Added
 
+- Every response, the web UI included, carries a Content-Security-Policy, `X-Content-Type-Options: nosniff` and `Referrer-Policy: no-referrer`. A request not answered within `FRANK_REQUEST_TIMEOUT` (60 s, waiting included) gets 503, and at most `FRANK_MAX_CONCURRENCY` (64) requests run at once. Caddy sets HSTS: a year on STACKIT, a day on `FRANK_HOST` in podman (#244).
+- A table-driven test of every admin endpoint for every kind of caller and target (#243). `make fuzz` and a CI job fuzz the submission parsers, and `make audit` runs `cargo deny check` (#245).
 - The Phase 3 specs 001 data model, 010 sightings API, 013 disclosure, 014 query API, 020 sightings storage, 021 IoC lookups and 030 browser client (#250). They link 88 requirements to code and 172 of 180 scenarios to tests.
 - Added `make assurance` and `make check-assurance` (`scripts/assurance.py`, ADR-021): every spec `**Implementation:**`/`**Tests:**` link and every relative Markdown link in the docs must resolve, and CI runs the gate. Replaces `.openspec/validate.py` and the spec-validation workflow, which never ran.
 
 ### Changed
 
+- The theme script is `web/theme.js` instead of inline in `index.html`, so the CSP allows no inline script (#244).
 - ADR-016 §3: a target's identity is accepted and not stored, so no status sees it; the ADR said core would (#256).
 - `make check-assurance` covers every Rust scenario; the floor is 95% (`ASSURANCE_MIN`), the rest being web UI scenarios marked planned (#254).
 - ADRs that Phase 3 replaced are marked superseded (001, 003, 004, 005, 007, 011, 013) or deprecated (012, 014, 015); one status format; cross-links fixed; `decisions/index.md` added.
@@ -24,6 +33,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Removed
 
+- `make up-s3` no longer serves the Garage bucket as a website on `:3902`: that endpoint served the Parquet files, reporter ids included, without credentials (#246).
 - The Phase 2 specs 001–004, which the data model spec replaces.
 - The Phase 2 documents (specs 010, 012, 020–023, 030, 040, the architecture YAML, the design documents under `docs/`); they are at the tag `phase2-final`. Specs 001–004 are marked Outdated until their Phase 3 rewrite (#250).
 
