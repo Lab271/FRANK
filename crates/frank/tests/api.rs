@@ -2063,6 +2063,43 @@ async fn superadmins_and_the_guards() {
     );
 }
 
+/// #242: a plain admin in a core organisation manages that organisation,
+/// but cannot issue or revoke a superadmin's token there.
+#[tokio::test]
+async fn core_admins_cannot_take_a_superadmins_tokens() {
+    let h = harness("admin-core-tokens");
+    admins(&h);
+    parts::add_user(&h.db, "ops", "otto", "human", Some(Role::Admin)).unwrap();
+    parts::add_token_hash(&h.db, "otto", &hash("otto")).unwrap();
+    let app = &h.app;
+    let root = &hash("s")[..12];
+    let post = |user: &str| Some(json!({ "user": user }));
+
+    let (st, body) = call(app, "POST", "/v1/admin/tokens", Some("otto"), post("root")).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "{body}");
+    assert!(body.get("token").is_none());
+    let uri = format!("/v1/admin/tokens/{root}");
+    assert_eq!(
+        call(app, "DELETE", &uri, Some("otto"), None).await.0,
+        StatusCode::FORBIDDEN
+    );
+    let (_, me) = call(app, "GET", "/v1/whoami", Some("s"), None).await;
+    assert_eq!(me["role"], "superadmin", "root's token still works");
+
+    // otto still manages the rest of its organisation, itself included.
+    let (st, _) = call(app, "POST", "/v1/admin/tokens", Some("otto"), post("otto")).await;
+    assert_eq!(st, StatusCode::CREATED);
+    // A superadmin does both for another superadmin.
+    parts::add_user(&h.db, "ops", "root2", "human", Some(Role::Superadmin)).unwrap();
+    let (st, new) = call(app, "POST", "/v1/admin/tokens", Some("s"), post("root2")).await;
+    assert_eq!(st, StatusCode::CREATED);
+    let uri = format!("/v1/admin/tokens/{}", new["prefix"].as_str().unwrap());
+    assert_eq!(
+        call(app, "DELETE", &uri, Some("s"), None).await.0,
+        StatusCode::OK
+    );
+}
+
 /// #175: a user is disabled first and removed after; a disabled user's
 /// tokens stop working, and the guards count working admins only.
 #[tokio::test]

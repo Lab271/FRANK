@@ -519,7 +519,7 @@ async fn add_token(
     let c = admin(&app, &headers)?;
     blocking(move || {
         let _w = WRITE.lock().map_err(internal)?;
-        let user = managed_user(&app, &c, &t.user)?;
+        let user = changeable_user(&app, &c, &t.user)?;
         if user.disabled {
             return Err(conflict(format!(
                 "{} is disabled: enable it first",
@@ -571,6 +571,7 @@ async fn revoke(
             [] => return Err(not_found(&format!("active token {prefix}…"))),
             _ => return Err(unprocessable(format!("{prefix}… matches several tokens"))),
         };
+        changeable_user(&app, &c, &t.user)?;
         if t.user == c.user && active.iter().filter(|a| a.user == c.user).count() == 1 {
             return Err(conflict(
                 "this is your last token: issue another first".into(),
