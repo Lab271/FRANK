@@ -25,4 +25,5 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [017](017-user-roles-for-identity-administration.md) | User roles for identity administration, apart from the participant status | Accepted | 2026-10-27 |
 | [018](018-container-is-the-reference-and-test-tiers.md) | The container image is the reference; four test tiers | Accepted | 2026-11-03 |
 | [019](019-sightings-in-s3-state-on-a-volume.md) | Sightings in S3, the rest of the state on a volume | Accepted | 2026-11-07 |
+| [020](020-sso-with-openid-connect.md) | Sign in with OpenID Connect, users provisioned on first login, bearer tokens unchanged | Accepted | 2026-11-10 |
 | [021](021-spec-links-checked-in-ci.md) | Spec links are checked in CI | Accepted | 2026-11-10 |
