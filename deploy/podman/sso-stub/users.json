@@ -1,0 +1,23 @@
+[
+  {
+    "sub": "00u-stub-alice",
+    "name": "Alice Analyst",
+    "email": "alice@lab271.dev",
+    "email_verified": true,
+    "groups": ["frank-users"]
+  },
+  {
+    "sub": "00u-stub-bob",
+    "name": "Bob Builder",
+    "email": "bob@lab271.dev",
+    "email_verified": true,
+    "groups": ["frank-users"]
+  },
+  {
+    "sub": "00u-stub-eve",
+    "name": "Eve Unverified",
+    "email": "eve@lab271.dev",
+    "email_verified": false,
+    "groups": []
+  }
+]

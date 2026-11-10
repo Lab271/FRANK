@@ -4,6 +4,21 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.40.0] - 2026-11-10
+
+### Added
+
+- Sign in with SSO over OpenID Connect (#241, ADR-020): PKCE authorization code flow at `/v1/sso/login`, `/v1/sso/callback`, `/v1/sso/logout`; off unless all five `FRANK_SSO_` settings are given (some but not all: `frank serve` refuses to start). The client secret is read from `FRANK_SSO_CLIENT_SECRET_FILE`, never from the environment, and never logged, audited or returned.
+- People are provisioned on first sign-in: a human user with no role in `FRANK_SSO_ORGANISATION`, named by the lower-cased e-mail; an existing human user with the same verified e-mail is linked and keeps its organisation and role. New `sso_subjects` and `sessions` tables in `participants.db`, created on open. Audit lines `user_provisioned`, `sso_login`, `sso_refused`, `sso_logout`.
+- The `frank_session` cookie (HttpOnly, SameSite=Lax, Secure on https, 8 h, stored as its SHA-256) names the caller only without an `Authorization` header: bearer tokens work as before and always win. A write with the cookie needs FRANK's own `Origin`. Disabling a user ends its sessions.
+- `make up-sso` and `make e2e SSO=1`: a development-only Python OIDC stub (`deploy/podman/sso-stub`) at `http://localhost:9400`, in the frank container's network.
+- Web UI: "sign in with SSO" when SSO is on, the signed-in user, "sign out"; a refused sign-in says so.
+- Spec 013-sso; `openapi.yaml` documents the `/v1/sso` routes and the cookie scheme. `ureq` is now a regular dependency.
+
+### Changed
+
+- `ureq` is a regular dependency (the identity provider's HTTPS calls); the `tls` feature still only gates the S3 TLS adapter.
+
 ## [0.39.0] - 2026-11-10
 
 ### Security

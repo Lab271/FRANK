@@ -14,6 +14,9 @@
     <h1>FRANK</h1>
   </div>
   <form id="auth" autocomplete="off">
+    <span id="sso-msg" class="note" role="status" hidden></span>
+    <a id="sso-in" class="lab-btn lab-btn--primary" href="/v1/sso/login" hidden>sign in with SSO</a>
+    <button id="sso-out" type="button" class="lab-btn lab-btn--secondary" hidden>sign out</button>
     <input id="token" class="lab-input" type="password" placeholder="frank_… token (empty = public)" aria-label="Token">
     <button type="submit" class="lab-btn lab-btn--secondary">use</button>
     <span id="tier" class="lab-label pill">public</span>

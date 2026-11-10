@@ -26,6 +26,10 @@ header {
 }
 #auth { display: flex; flex-wrap: wrap; gap: var(--lab-space-1); align-items: center; flex: 1 1 320px; justify-content: flex-end; }
 #auth .lab-input { flex: 1 1 200px; max-width: 320px; }
+/* The SSO controls (#239) are shown only when SSO is on: [hidden] must win
+   over .lab-btn's display. */
+#auth [hidden] { display: none; }
+#auth a.lab-btn { text-decoration: none; }
 .beam { display: flex; align-items: center; height: 8px; padding: 0 var(--lab-space-4); }
 .beam::before { content: ""; flex: 1; height: 2px; background: var(--c-text); }
 .beam svg { flex: none; display: block; }

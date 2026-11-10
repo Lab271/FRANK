@@ -97,17 +97,30 @@ function route() {
 }
 window.addEventListener("hashchange", route);
 
+// Sign in with SSO (#239, ADR-020). The session cookie is HttpOnly, so the
+// page never sees it: the browser sends it, and whoami says who it names. A
+// token in the box still comes first, as it does for the API.
+let sso = false;
+async function ssoStatus() {
+  try { sso = (await (await fetch("/v1/sso")).json()).enabled === true; } catch { sso = false; }
+}
+
 async function whoami() {
+  let user = "";
   try {
     const me = await (await api("/v1/whoami")).json();
     tier = me.tier;
     role = me.role || null;
+    user = me.user || "";
     $("tier").textContent = (me.label ? `${me.tier} · ${me.label}` : me.tier) + (role ? ` · ${role}` : "");
   } catch (e) {
     tier = "public";
     role = null;
     $("tier").textContent = `rejected: ${e.message}`;
   }
+  $("sso-in").hidden = !sso || user !== "";
+  // Signed in by the session: no token is sent, yet whoami names a user.
+  $("sso-out").hidden = !sso || token !== "" || user === "";
   document.querySelector('nav [data-tab="admin"]').hidden = !role;
   adminOrg = "";
   apiDone = false;
@@ -124,6 +137,20 @@ $("auth").addEventListener("submit", (ev) => {
   try { sessionStorage.setItem("frank-token", token); } catch { /* storage blocked */ }
   whoami();
 });
+
+$("sso-out").addEventListener("click", async () => {
+  // A same-origin POST carries FRANK's Origin, which the cookie needs.
+  try { await fetch("/v1/sso/logout", { method: "POST" }); } catch { /* the cookie expires anyway */ }
+  whoami();
+});
+
+// The callback sends a refused sign-in to /?sso=refused; the reason is in
+// the audit log, not in the page.
+if (new URLSearchParams(location.search).get("sso") === "refused") {
+  $("sso-msg").textContent = "sign-in refused: ask an admin of your organisation";
+  $("sso-msg").hidden = false;
+  history.replaceState(null, "", location.pathname + location.hash);
+}
 
 // --- statistics -----------------------------------------------------------
 
@@ -1067,7 +1094,7 @@ async function versions() {
   $("versions").textContent = parts.join(" · ");
 }
 versions();
-whoami();
+ssoStatus().then(whoami);
 
 // --- live (#186) ----------------------------------------------------------
 // The IoCs of the sightings that arrived recently, polled every 15 s while

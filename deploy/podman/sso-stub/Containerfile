@@ -1,0 +1,10 @@
+# The SSO stub (#238): a stand-in for Okta's OIDC endpoints, for `make up-sso`
+# and `SSO=1 scripts/e2e.sh`. DEVELOPMENT ONLY: it signs in anyone who picks a
+# name. It is never pushed and never part of a deployment.
+FROM docker.io/library/python:3.13-slim
+RUN pip install --no-cache-dir cryptography==50.0.2
+WORKDIR /stub
+COPY stub.py users.json ./
+EXPOSE 9400
+USER 65533:65533
+ENTRYPOINT ["python", "/stub/stub.py"]

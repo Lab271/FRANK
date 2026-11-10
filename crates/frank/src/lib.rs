@@ -12,4 +12,5 @@ pub mod live;
 pub mod mmdb;
 pub mod objects;
 pub mod records;
+pub mod sso;
 pub mod store;

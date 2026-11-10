@@ -13,6 +13,12 @@ FRANK := target/release/frank
 COMPOSE := podman compose $(if $(PROJECT),-p $(PROJECT)) -f deploy/podman/compose.yaml
 COMPOSE_S3 := $(COMPOSE) -f deploy/podman/compose.s3.yaml
 S3_DIR := s3
+# `make up-sso` (#238): sign-in with SSO against the local OIDC stub
+# (development only). Its client secret lives in ./sso/client-secret.
+COMPOSE_SSO := $(COMPOSE) -f deploy/podman/compose.sso.yaml
+SSO_DIR := sso
+SSO_STUB_PORT ?= 9400
+FRANK_SSO_ORGANISATION ?= sso-users
 # The name and address of the podman deployment's HTTPS (Caddy, `tls
 # internal`); FRANK_TLS_ADDR=443 for https://frank.local, on every interface.
 FRANK_HOST ?= frank.local
@@ -42,7 +48,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 up-sso sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -166,8 +172,8 @@ smoke: ## Read-only checks of a running FRANK: make smoke TOKEN=… [FRANK_URL=�
 	@TOKEN="$(TOKEN)" $(PYTHON) scripts/smoke.py --url $(if $(TLS),$(FRANK_URL_TLS),$(FRANK_URL)) \
 	  $(if $(TLS),--ca $(CA_CERT),$(if $(CA),--ca $(CA)))
 
-e2e: $(if $(E2E_TAG),,image) ## Throwaway container (no Caddy), generated data, every check: [E2E_TAG=…] [E2E_PORT=18080] [KEEP=1] [S3=1: sightings in a throwaway Garage]
-	IMAGE=$(IMAGE):$(or $(E2E_TAG),$(VERSION)) E2E_PORT=$(E2E_PORT) PYTHON="$(PYTHON)" KEEP=$(KEEP) S3=$(S3) scripts/e2e.sh
+e2e: $(if $(E2E_TAG),,image) ## Throwaway container (no Caddy), generated data, every check: [E2E_TAG=…] [E2E_PORT=18080] [KEEP=1] [S3=1: sightings in a throwaway Garage] [SSO=1: sign in through the OIDC stub]
+	IMAGE=$(IMAGE):$(or $(E2E_TAG),$(VERSION)) E2E_PORT=$(E2E_PORT) PYTHON="$(PYTHON)" KEEP=$(KEEP) S3=$(S3) SSO=$(SSO) scripts/e2e.sh
 
 ##@ Data
 
@@ -250,6 +256,26 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) $(COMPOSE_S3) up -d --force-recreate --remove-orphans
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, files in ./$(S3_DIR); make s3-ls lists the bucket"
+
+up-sso: image s3-env sso-env ## Like up-solo, with sign-in with SSO against a local OIDC stub at http://localhost:9400 (SSO_STUB_PORT; development only: it signs in anyone who picks a name); new users land in FRANK_SSO_ORGANISATION (sso-users, contributor)
+	mkdir -p data participants && touch $(TOKENS)
+	@podman run --rm -v $(CURDIR)/participants:/participants:Z $(IMAGE):$(VERSION) participant list 2>/dev/null \
+	  | awk '{print $$1}' | grep -qxF '$(FRANK_SSO_ORGANISATION)' \
+	  || podman run --rm -v $(CURDIR)/participants:/participants:Z $(IMAGE):$(VERSION) \
+	       participant add '$(FRANK_SSO_ORGANISATION)' --status contributor
+	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
+	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) SSO_STUB_PORT=$(SSO_STUB_PORT) \
+	  FRANK_SSO_REDIRECT_URL=$(FRANK_URL_TLS)/v1/sso/callback FRANK_SSO_ORGANISATION=$(FRANK_SSO_ORGANISATION) \
+	  $(COMPOSE_SSO) up -d --build --force-recreate --remove-orphans
+	@echo "FRANK: $(FRANK_URL_TLS) with sign-in with SSO (once: make trust); the OIDC stub at http://localhost:$(SSO_STUB_PORT)/oauth2/default (development only)"
+
+# The OIDC client secret shared by FRANK and the stub (#238): made once,
+# never printed, git-ignored. The directory is private (700); the file is
+# 644 so the containers' own users (65532, 65533) can read the bind mount.
+sso-env:
+	@mkdir -p $(SSO_DIR) && chmod 700 $(SSO_DIR)
+	@[ -s $(SSO_DIR)/client-secret ] || { umask 077; openssl rand -hex 32 > $(SSO_DIR)/client-secret; }
+	@chmod 644 $(SSO_DIR)/client-secret
 
 # The compose files name s3/*.env, which must exist for any compose command,
 # also in up-solo and down. Empty until up-s3 fills them.

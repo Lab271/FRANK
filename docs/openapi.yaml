@@ -14,6 +14,13 @@ info:
     user of a participant, and the participant's status (observer,
     contributor, partner, core) decides what it may see. Each status also
     sees the TLP levels allowed to it; TLP:RED is never accepted.
+
+    When sign-in with SSO is configured (#241, ADR-020), a person can sign
+    in to the web UI with OpenID Connect instead (`/v1/sso/login`). The
+    `frank_session` cookie then names the caller on every route, but only
+    when the request has no `Authorization` header: a bearer token always
+    comes first. A `POST`, `PUT`, `PATCH` or `DELETE` that carries the
+    cookie must have FRANK's own `Origin`, or it is refused with 403.
   version: "0.18"
   license:
     name: Apache-2.0
@@ -22,6 +29,7 @@ servers:
   - url: /
 security:
   - bearer: []
+  - session: []
 tags:
   - name: submit
     description: Sending sightings.
@@ -37,6 +45,8 @@ tags:
     description: Health, identity, participants and this document.
   - name: admin
     description: Organisations, users and tokens, for users with a role. An admin manages its own organisation, a superadmin every one; to an admin, another organisation's objects are 404.
+  - name: sso
+    description: Sign in to the web UI with OpenID Connect (#241, ADR-020). Off unless configured; then these routes answer 404, except `GET /v1/sso`.
 
 paths:
   /health:
@@ -744,11 +754,82 @@ paths:
         "404":
           description: No such file.
 
+  /v1/sso:
+    get:
+      tags: [sso]
+      summary: Whether sign-in with SSO is on
+      security: []
+      x-min-status: public
+      responses:
+        "200":
+          description: "`enabled` is true when FRANK is configured for OpenID Connect."
+          content:
+            application/json:
+              schema: { type: object, properties: { enabled: { type: boolean } } }
+
+  /v1/sso/login:
+    get:
+      tags: [sso]
+      summary: Start signing in with the identity provider
+      description: Redirects the browser to the identity provider's authorize endpoint (authorization code flow with PKCE S256, `state` and `nonce`) and sets the `frank_sso_state` cookie (HttpOnly, SameSite=Lax, ten minutes) that binds the login to this browser.
+      security: []
+      x-min-status: public
+      responses:
+        "303": { description: To the identity provider. }
+        "404": { description: SSO is not configured. }
+        "502": { description: The identity provider's discovery document could not be read. }
+
+  /v1/sso/callback:
+    get:
+      tags: [sso]
+      summary: Where the identity provider sends the browser back
+      description: |
+        Exchanges `code` (with the client secret and the PKCE verifier) and
+        checks the ID token: RS256 signature against the provider's JWKS,
+        `iss`, `aud` (and `azp`), `exp` and `nonce`; `state` must be the one
+        this browser's `frank_sso_state` cookie holds. The first sign-in
+        creates a human user without a role in the configured organisation,
+        or links an existing human user with the same verified e-mail. Then
+        it sets `frank_session` (HttpOnly, SameSite=Lax, Secure on https,
+        eight hours) and redirects to `/`. Any failure redirects to
+        `/?sso=refused` and writes an `sso_refused` audit line with the reason.
+      security: []
+      x-min-status: public
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, description: Set by the identity provider when it refused., schema: { type: string } }
+      responses:
+        "303": { description: "To `/`, signed in; or to `/?sso=refused`." }
+        "404": { description: SSO is not configured. }
+
+  /v1/sso/logout:
+    post:
+      tags: [sso]
+      summary: End the session
+      description: Ends the session the `frank_session` cookie names and clears the cookie; with the cookie, the request needs FRANK's own `Origin`. The identity provider's own session is left as it is.
+      security:
+        - session: []
+      x-min-status: public
+      responses:
+        "200":
+          description: Signed out (also when there was no session).
+          content:
+            application/json:
+              schema: { type: object, properties: { signed_out: { type: boolean } } }
+        "403": { description: The cookie came without FRANK's own `Origin`. }
+        "404": { description: SSO is not configured. }
+
 components:
   securitySchemes:
     bearer:
       type: http
       scheme: bearer
+    session:
+      type: apiKey
+      in: cookie
+      name: frank_session
+      description: An SSO session (#241); only used when there is no `Authorization` header.
 
   parameters:
     Common:

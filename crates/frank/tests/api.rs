@@ -91,6 +91,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
         participants: Participants::open(&dir).unwrap(),
         registry: registry.clone(),
         audit: Audit::open(&dir).unwrap(),
+        sso: None,
         submit_lock: std::sync::Mutex::new(()),
         now,
     }));
@@ -1431,6 +1432,7 @@ async fn every_route_is_in_the_openapi_document() {
     let source = [
         include_str!("../src/api.rs"),
         include_str!("../src/admin.rs"),
+        include_str!("../src/sso.rs"),
     ]
     .concat();
     let mut routes = 0;
