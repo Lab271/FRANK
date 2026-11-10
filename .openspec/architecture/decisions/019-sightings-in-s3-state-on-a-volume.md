@@ -1,6 +1,6 @@
 # ADR-019: Sightings in S3, the rest of the state on a volume
 
-- **Status:** accepted
+- **Status:** Accepted
 - **Date:** 2026-11-07
 - **Decision Makers:** Ilja Heitlager
 - **Related:** [ADR-016](016-phase3-rust-on-db-core.md), [ADR-018](018-container-is-the-reference-and-test-tiers.md), #220, db-core#1015 (ADR 0044 there)

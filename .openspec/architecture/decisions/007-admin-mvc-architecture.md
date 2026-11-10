@@ -1,8 +1,7 @@
-# ADR-0006: MVC Architecture for Admin Module
+# ADR-007: MVC Architecture for Admin Module
 
-## Status
-
-Accepted
+- **Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (the Python TUI is gone; identities are administered over the HTTP API and the web page, ADR-017)
+- **Date:** 2026-01-29
 
 ## Context
 

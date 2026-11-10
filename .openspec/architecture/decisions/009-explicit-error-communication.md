@@ -1,9 +1,11 @@
-# Explicit Error Communication
+# ADR-009: Explicit Error Communication
 
-- **Status:** accepted
+- **Status:** Accepted
 - **Date:** 2026-01-28
 - **Decision Makers:** FRANK Architecture Team
-- **Related:** [ADR-0007](0007-forgiving-input-strong-output.md)
+- **Related:** [ADR-008](008-forgiving-input-strong-output.md)
+
+**Phase 3:** the principle carries over to the Rust code: errors from `crates/frank-core/src/formats.rs::parse` name the sighting and field, and the API returns them as `crates/frank/src/api.rs::ApiError`. The Python examples below describe Phase 2 (tag `phase2-final`).
 
 ## Context and Problem Statement
 
@@ -415,6 +417,6 @@ def test_api_error_response_structure():
 
 ## Links
 
-- Enables [ADR-0007: Forgiving Input, Strong Output](0007-forgiving-input-strong-output.md)
-- Implementation: [src/frank/core/exceptions.py](../../src/frank/core/exceptions.py)
-- API Documentation: [docs/api/error-handling.md](../api/error-handling.md) (to be created)
+- Enables [ADR-008: Forgiving Input, Strong Output](008-forgiving-input-strong-output.md)
+- Implementation: src/frank/core/exceptions.py
+- API Documentation: docs/api/error-handling.md (to be created)

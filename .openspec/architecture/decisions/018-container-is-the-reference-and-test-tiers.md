@@ -1,9 +1,10 @@
 # ADR-018: The container image is the reference; four test tiers
 
-- **Status:** accepted
+- **Status:** Accepted
 - **Date:** 2026-11-03
 - **Decision Makers:** Ilja Heitlager
-- **Related:** [ADR-005](005-three-layer-testing-strategy.md), [ADR-013](013-testing-philosophy.md) (Phase 2 testing), [ADR-016](016-phase3-rust-on-db-core.md) (three deployments, one image), #201, #208
+- **Supersedes:** [ADR-005](005-three-layer-testing-strategy.md), [ADR-013](013-testing-philosophy.md) (Phase 2 testing)
+- **Related:** [ADR-016](016-phase3-rust-on-db-core.md) (three deployments, one image), #201, #208
 
 ## Context
 

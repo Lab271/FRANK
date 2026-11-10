@@ -1,8 +1,7 @@
-# ADR 002: Tiered Access Control Model
+# ADR-002: Tiered Access Control Model
 
-**Status:** Accepted
-
-**Date:** 2026-02-12
+- **Status:** Accepted
+- **Date:** 2026-02-12
 
 **Context:**
 

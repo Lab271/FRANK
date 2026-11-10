@@ -1,8 +1,7 @@
-# ADR 001: Single Code Library Across All Infrastructure Stages
+# ADR-001: Single Code Library Across All Infrastructure Stages
 
-**Status:** Accepted
-
-**Date:** 2026-02-12
+- **Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (one Rust workspace; `frank-core` is the shared library, and there are no stages)
+- **Date:** 2026-02-12
 
 **Context:**
 

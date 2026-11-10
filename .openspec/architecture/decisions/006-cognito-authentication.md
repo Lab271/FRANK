@@ -1,8 +1,7 @@
-# ADR-0005: AWS Cognito Authentication Strategy
+# ADR-006: AWS Cognito Authentication Strategy
 
-## Status
-
-Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (bearer tokens of users in `participants.db`)
+- **Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (bearer tokens of users in `participants.db`)
+- **Date:** 2026-01-29
 
 ## Context
 

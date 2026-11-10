@@ -1,8 +1,7 @@
-# ADR-0002: Repository Pattern for Database Abstraction
+# ADR-004: Repository Pattern for Database Abstraction
 
-## Status
-
-Accepted
+- **Status:** Superseded by [ADR-016](016-phase3-rust-on-db-core.md) (no repository over SQLite/DynamoDB/PostgreSQL: a striped Parquet table and db-core row tables)
+- **Date:** 2026-01-23
 
 ## Context
 
