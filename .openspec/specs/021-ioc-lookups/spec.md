@@ -29,7 +29,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Requirement 1: One row per IoC, day and TLP [MUST]
 
-`iocs.db` MUST hold table `ioc_day` with one row per normalised IoC (`k = type:value`), day of the sighting's timestamp, and TLP level: first and last timestamp and the sum of `observations`. Rows of one submission MUST be counted in one transaction, upserting on the unique key `k|day|tlp`. Each TLP level MUST be counted separately, so a lookup can leave out the levels a caller may not see.
+`iocs.db` MUST hold table `ioc_day` with one row per normalised IoC (`k = type:value`), day the sightings arrived (`received`, else their timestamp), and TLP level: first and last timestamp of the sightings themselves and the sum of `observations`. Rows of one submission MUST be counted in one transaction, upserting on the unique key `k|day|tlp`. Each TLP level MUST be counted separately, so a lookup can leave out the levels a caller may not see.
 
 **Implementation:** `crates/frank/src/store/iocs.rs::record`, `crates/frank/src/store/iocs.rs::upsert`
 
@@ -93,7 +93,7 @@ A submission MUST record its new rows in `iocs.db` right after appending them to
 
 ### Requirement 4: Look up one IoC [MUST]
 
-`GET /v1/iocs?type=…&value=…[&day=YYYY-MM-DD]` MUST require contributor status or above. The value MUST be normalised for its type before the seek; an unknown type, a value invalid for its type or a malformed `day` MUST answer 422. The answer MUST say whether the IoC is `known`, with its total `count`, distinct `reporters`, `first_seen`, `last_seen`, the `days`, its `rules` ranked by count, a `trend`, Explore-style `panels` (limited to `day` when given), and, where they apply, its country and network (`geo`) and list matches (`listed`).
+`GET /v1/iocs?type=…&value=…[&day=YYYY-MM-DD]` MUST require contributor status or above. The value MUST be normalised for its type before the seek; an unknown type, a value invalid for its type or a malformed `day` MUST answer 422. The answer MUST say whether the IoC is `known`, with its total `count`, distinct `reporters`, `first_seen` (the least first timestamp of its days), `last_seen`, the `days`, its `rules` ranked by count, a `trend`, Explore-style `panels` (limited to `day` when given), and, where they apply, its country and network (`geo`) and list matches (`listed`).
 
 **Implementation:** `crates/frank/src/api.rs::ioc_lookup`, `crates/frank/src/store/iocs.rs::lookup`
 
@@ -116,8 +116,8 @@ A submission MUST record its new rows in `iocs.db` right after appending them to
 #### Scenario: Reporters are counted distinct
 
 - GIVEN one IoC sent three times by two participants
-- WHEN it is looked up
-- THEN count is 3 and reporters is 2
+- WHEN a partner looks it up
+- THEN count is 3 and reporters is 2; below partner `reporters` and the rules follow spec 013 Requirement 4
 
 **Tests:** `crates/frank/tests/api.rs::lookups_count_reporters`
 
@@ -159,23 +159,20 @@ A submission MUST record its new rows in `iocs.db` right after appending them to
 - WHEN a contributor asks for it
 - THEN the response is 422
 
+**Tests:** `crates/frank/tests/api.rs::a_malformed_block_is_refused`
+
 ---
 
 ### Requirement 6: Retention [MUST]
 
-Every hour, with the sightings' compaction, `iocs.db` MUST drop the days before the retention cut (`FRANK_RETENTION_DAYS`).
+Every hour, with the sightings' compaction, `iocs.db` MUST drop the days before the retention cut (`FRANK_RETENTION_DAYS`). Its days are arrival days, the clock the sightings table's retention uses, so an IoC is kept exactly as long as the rows it was counted from, also when a sighting is dated before it arrived (#257).
 
 **Implementation:** `crates/frank/src/store/iocs.rs::retain_from`, `crates/frank/src/main.rs::maintain`
 
 #### Scenario: Old days are dropped
 
-- GIVEN IoC days older than the retention
-- WHEN the hourly maintenance runs
-- THEN those days are no longer returned by a lookup
+- GIVEN an IoC that arrived 40 days ago and one dated 40 days back that arrived today, with 30 days' retention
+- WHEN retention runs
+- THEN the first is no longer returned by a lookup; the second is, with its own first time
 
----
-
-## Known gaps
-
-- No test covers a malformed CIDR block or `iocs.db` retention.
-- `iocs.db` keys a day by the sighting's timestamp, the sightings table by its arrival time. A sighting sent with an old timestamp can lose its IoC days at the next retention run while its rows stay in `archive/`.
+**Tests:** `crates/frank/tests/iocs.rs::retention_follows_arrival_not_the_sightings_own_time`

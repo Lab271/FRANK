@@ -101,6 +101,8 @@ Every filter value MUST be normalised for its dimension (IoCs as `type:value` th
 - WHEN Explore parses it
 - THEN the answer is 422
 
+**Tests:** `crates/frank/src/explore.rs::refuses_unusable_filter_values`
+
 ---
 
 ### Requirement 4: Counts are sightings [MUST]

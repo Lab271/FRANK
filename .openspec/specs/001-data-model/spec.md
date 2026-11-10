@@ -91,11 +91,13 @@ A JSON or YAML body MUST hold one sighting or a list of them; a STIX bundle hold
 - WHEN it is posted to `/v1/sightings` or `/v1/preview`
 - THEN the response is 422 and nothing is stored
 
+**Tests:** `crates/frank/tests/api.rs::oversized_batches_and_inner_conflicts_are_refused`
+
 ---
 
 ### Requirement 3: Phase 2 shape and frank/1 [MUST]
 
-A JSON or YAML sighting MUST be read as `frank/1` when its `format` is `"frank/1"`, as Phase 2's submission (`submitter`, `hit_target`, `sighting` with `sigma_detection`, `threat_context`, `observables`, optional `metadata`) when it has no `format`, and refused as Malformed for any other `format`. Both MAY be wrapped in `{"submission": ...}`. `organization_` and `organisation_` spellings MUST both be read. `frank/1` is what a normalised sighting serialises to, and MUST read back to the same sighting.
+A JSON or YAML sighting MUST be read as `frank/1` when its `format` is `"frank/1"`, as Phase 2's submission (`submitter`, `hit_target`, `sighting` with `sigma_detection`, `threat_context`, `observables`, optional `metadata`) when it has no `format`, and refused as Malformed for any other `format`. Both MAY be wrapped in `{"submission": ...}`. `organization_` and `organisation_` spellings MUST both be read. `frank/1` is what a normalised sighting serialises to, and MUST read back to the same sighting. An observable of an unknown type MUST be skipped in Phase 2's shape, which existing Phase 2 senders produce (ADR-008), and refused in `frank/1`, which FRANK itself writes and which must read back exactly (ADR-009).
 
 **Implementation:** `crates/frank-core/src/model.rs::from_json`, `crates/frank-core/src/model.rs::phase2`, `crates/frank-core/src/model.rs::phase2_observable`, `crates/frank-core/src/model.rs::frank1`, `crates/frank-core/src/model.rs::common`
 
@@ -313,6 +315,8 @@ A sighting MUST be refused (Invalid, 422 at the API) for: a confidence outside 0
 - WHEN it is parsed
 - THEN it is Invalid: more than 1000 observables
 
+**Tests:** `crates/frank-core/src/model.rs::refuses_more_than_max_iocs_observables`
+
 ---
 
 ### Requirement 9: When it was observed [MUST]
@@ -365,7 +369,7 @@ Each sighting MUST carry the sender's TLP 2.0 level, read from `tlp_level` or `t
 
 ### Requirement 11: Sighting id and digest [MUST]
 
-The sender's `sighting_id` MUST be a UUID, bare, as `sighting--{uuid}` or as Phase 2's `sighting-{uuid}`, in any case; it MUST be stored as its 16 bytes and written as `sighting--{uuid}` in lower case. The digest MUST be the SHA-256 of the normalised sighting without its id, with a server-filled time left out and techniques in sorted order, so key order, spacing, case, and the order and repeats of evidence do not change it. Written in lower-case hex, stored as 32 bytes. With the participant, id and digest are the registration (spec 010).
+The sender's `sighting_id` MUST be a UUID, bare, as `sighting--{uuid}` or as Phase 2's `sighting-{uuid}`, in any case; it MUST be stored as its 16 bytes and written as `sighting--{uuid}` in lower case. The digest MUST be the SHA-256 of the normalised sighting without its id, with a server-filled time left out and techniques in sorted order, so key order, spacing, case, and the order and repeats of evidence do not change it. Written in lower-case hex, stored as 32 bytes. With the participant, id and digest are the registration (spec 010). Because the digest sorts techniques, a resend that differs only in their order is a duplicate, and the rows keep the order of the first send.
 
 **Implementation:** `crates/frank-core/src/model.rs::sighting_id`, `crates/frank-core/src/model.rs::parse`, `crates/frank/src/store/registry.rs::digest`, `crates/frank-core/src/model.rs::build`
 
@@ -471,9 +475,4 @@ The row's `reporter` MUST be the sending participant's id, set by the server fro
 - WHEN a sighting is previewed
 - THEN the table and the registry are still empty, and sending it afterwards is `created`, not a duplicate
 
----
-
-## Known Issues
-
-- Requirement 2 and 8 limits (100 sightings per body, 1000 observables per sighting) and Requirement 14's "stores nothing" have no test.
-- An unknown observable type is skipped in Phase 2's shape but refused in `frank/1` (`evidence: unknown type`); the two shapes are not equally forgiving.
+**Tests:** `crates/frank/tests/api.rs::a_preview_stores_nothing`

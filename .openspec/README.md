@@ -50,7 +50,7 @@ A superadmin SHALL list, create and set the status of organisations. ...
 
 - A link is `path` or `path::symbol`, backtick-quoted, comma-separated. For a `.rs` file the symbol must be a `fn` in that file.
 - `**Implementation:**` sits in the requirement, before its first scenario. `**Tests:**` sits in the scenario it backs.
-- A link suffixed `(planned)` marks work not done yet and is not counted.
+- `(planned)` on a line marks work not done yet: it counts as neither implemented nor tested, so the gap stays visible.
 - A spec whose `**Status:**` starts with `Outdated` is not counted either: it awaits a rewrite.
 
 `make assurance` shows per spec how many requirements link to existing code and how many scenarios to a test; `make assurance V=1` lists every requirement and each dead link. `make check-assurance` fails on a dead link, and CI runs it: a link to a renamed function or test is a false claim of coverage.

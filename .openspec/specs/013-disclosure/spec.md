@@ -103,9 +103,9 @@ The IoC table keys its rows by TLP level, and IoC lookups and range queries MUST
 
 ### Requirement 4: Small cells suppressed below partner [MUST]
 
-Below partner, an aggregate cell (a sector, type, severity, rule, technique, campaign, IoC, country or network) with fewer than 3 distinct reporters MUST be left out. Reporters are counted, not rows: one participant's many sightings are one reporter. Partners and core MUST see exact cells. Answers MUST say which minimum applied (`min_cell`: 3, or 1 for partner and core).
+Below partner, an aggregate cell (a sector, type, severity, rule, technique, campaign, IoC, country or network) with fewer than 3 distinct reporters MUST be left out. Reporters are counted, not rows: one participant's many sightings are one reporter. Partners and core MUST see exact cells. Answers MUST say which minimum applied (`min_cell`: 3, or 1 for partner and core). An IoC lookup (`/v1/iocs`) MUST answer whether the IoC is known, its count and days to a contributor, but leave out rules with fewer than 3 reporters and answer `reporters` as null below 3 (#255).
 
-**Implementation:** `crates/frank/src/api.rs::breakdown`, `crates/frank/src/api.rs::grouped`, `crates/frank/src/api.rs::live_view`, `crates/frank/src/api.rs::live_places`
+**Implementation:** `crates/frank/src/api.rs::breakdown`, `crates/frank/src/api.rs::grouped`, `crates/frank/src/api.rs::live_view`, `crates/frank/src/api.rs::live_places`, `crates/frank/src/api.rs::ioc_lookup`
 
 #### Scenario: One reporter's cell is dropped
 
@@ -130,6 +130,14 @@ Below partner, an aggregate cell (a sector, type, severity, rule, technique, cam
 - THEN that IoC is not listed, the totals still count it, and `min_cell` is 3
 
 **Tests:** `crates/frank/tests/api.rs::live_shows_recent_iocs_new_and_converging`
+
+#### Scenario: An IoC lookup hides a small rule and reporter count
+
+- GIVEN one IoC sent by two participants under rule r1
+- WHEN a contributor and a partner look it up, and then a third participant sends it
+- THEN the contributor first sees it known with its count but `reporters` null and no rules, the partner sees 2 reporters and r1; after the third, the contributor sees 3 and r1
+
+**Tests:** `crates/frank/tests/api.rs::lookups_count_reporters`
 
 ---
 
@@ -159,7 +167,7 @@ Each stored row's reporter MUST be the sending participant's opaque id, set by t
 
 ### Requirement 6: No target identity in the shared data [MUST]
 
-The record stored with a sighting (`detail`) MUST leave out the target's identity, because partners download the table's files whole. The target's sector, size and region MAY be kept.
+The target's identity (`target.id`) MUST NOT be stored: the record kept with a sighting (`detail`) leaves it out, because partners download the table's files whole, and the rows never have it, so no status, core included, sees it (ADR-016 §3, revised for #256). The target's sector, size and region MAY be kept.
 
 **Implementation:** `crates/frank-core/src/model.rs::detail`
 
@@ -298,10 +306,3 @@ Below partner, a participant MUST see only the records it sent: listing `/v1/sig
 - THEN it gets its own three, their IoCs, and four sightings in the network
 
 **Tests:** `crates/frank/tests/api.rs::records_are_listed_by_status`
-
----
-
-## Known issues
-
-- ADR-016 §3 and the README say core sees the target identities participants send. The server parses the target's id (`Sighting::target.id`) but stores it nowhere: the detail drops it and the rows never had it. No status can see it.
-- `/v1/iocs` below partner applies the TLP levels but not the reporter threshold to its top-level answer: `reporters` is exact, and `rules` lists every rule that flagged the IoC with its count, even one reported by a single participant. Its `panels` do follow Requirement 4. See spec 021.

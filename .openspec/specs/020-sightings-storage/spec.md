@@ -67,9 +67,11 @@ An append MUST return only once its rows are on disk (the WAL fsynced on the las
 
 #### Scenario: A restart in the middle of a stream loses nothing
 
-- GIVEN a stream of sightings being submitted
-- WHEN the server stops and starts again
-- THEN every sighting that got a receipt is stored
+- GIVEN sightings appended to the open hour
+- WHEN the table is closed without a flush and opened again
+- THEN every appended sighting is there, and appending goes on
+
+**Tests:** `crates/frank/tests/restart.rs::a_restart_in_the_middle_of_a_stream_loses_nothing`
 
 ---
 
@@ -277,5 +279,4 @@ The listing over HTTP, including paging through thousands of IoC matches, is spe
 
 ## Known gaps
 
-- No test restarts a server mid-stream (Requirement 2, second scenario); `make stream` with `make down && make up` checks it by hand (README).
 - The hourly maintenance loop itself (`main.rs::maintain`) is not under test; its parts are.

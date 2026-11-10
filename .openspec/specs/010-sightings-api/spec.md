@@ -129,6 +129,8 @@ Every error MUST be a JSON body `{"error": "<reason>"}` with the status code tha
 - WHEN `/v1/whoami` is called
 - THEN the answer holds `tier: public` and `label: public`, and no user or participant
 
+**Tests:** `crates/frank/tests/api.rs::whoami_without_a_token_is_public`
+
 ---
 
 ### Requirement 5: Who may send [MUST]
@@ -149,7 +151,7 @@ Every error MUST be a JSON body `{"error": "<reason>"}` with the status code tha
 
 ### Requirement 6: Request formats [MUST]
 
-A body MUST hold one sighting, a list of sightings or a STIX bundle, in the format its `Content-Type` names: `application/json` (also when no type is given), `application/yaml` or `application/stix+json`. Any other type MUST answer 415. A body that does not parse MUST answer 422. A batch MUST hold at most 100 sightings, and a body MUST be at most 2 MiB. The same sighting in any format MUST be one sighting.
+A body MUST hold one sighting, a list of sightings or a STIX bundle, in the format its `Content-Type` names: `application/json` (also when no type is given), `application/yaml` or `application/stix+json`. Any other type MUST answer 415. A body that does not parse MUST answer 422. A batch MUST hold at most 100 sightings, and a body MUST be at most 2 MiB; the count is checked once the body has parsed, which the 2 MiB limit bounds. The same sighting in any format MUST be one sighting.
 
 **Implementation:** `crates/frank/src/api.rs::submissions`, `crates/frank-core/src/formats.rs::parse`
 
@@ -175,6 +177,8 @@ A body MUST hold one sighting, a list of sightings or a STIX bundle, in the form
 - WHEN it is posted
 - THEN the response is 422 and nothing is stored
 
+**Tests:** `crates/frank/tests/api.rs::oversized_batches_and_inner_conflicts_are_refused`
+
 ---
 
 ### Requirement 7: The sender's sighting id [MUST]
@@ -193,9 +197,11 @@ Each sighting MUST carry a `sighting_id` chosen by the sender; a sighting withou
 
 #### Scenario: One id twice in a batch with different content
 
-- GIVEN a batch with two sightings under one id and different severities
+- GIVEN a batch with two sightings under one id and different observables
 - WHEN it is posted
-- THEN the response is 422 and nothing is stored
+- THEN the response is 422, naming the id as appearing twice, and nothing is stored
+
+**Tests:** `crates/frank/tests/api.rs::oversized_batches_and_inner_conflicts_are_refused`
 
 ---
 
@@ -321,7 +327,7 @@ Submissions MUST be stored one batch at a time: checking the registrations, stor
 
 ### Requirement 13: Submissions are audited [MUST]
 
-Each `POST /v1/sightings` that passes authentication and parsing MUST write one audit line: `submit` with the participant and the receipts, or `submit_refused` with the conflicting ids, by `user@organisation`. The audit log, not the sightings, records which user sent what. Lines MUST be appended per UTC day and MUST be dropped by whole days with the sightings' retention.
+Each `POST /v1/sightings` that passes authentication and parsing MUST write one audit line: `submit` with the participant and the receipts, or `submit_refused` with the conflicting ids, by `user@organisation`. The audit log, not the sightings, records which user sent what. A request refused before that (no or an unknown token, a malformed `Authorization` header, a body that does not parse or is not a valid batch) MUST NOT be audited: it names no user, or changes nothing. Lines MUST be appended per UTC day and MUST be dropped by whole days with the sightings' retention.
 
 **Implementation:** `crates/frank/src/api.rs::submit`, `crates/frank/src/audit.rs::record`, `crates/frank/src/audit.rs::retain_from`
 
