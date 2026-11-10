@@ -1012,6 +1012,28 @@ mod tests {
     }
 
     #[test]
+    fn refuses_more_than_max_iocs_observables() {
+        let network: Vec<String> = (0..=MAX_IOCS)
+            .map(|i| {
+                format!(
+                    r#"{{"type": "ipv4", "value": "10.{}.{}.1"}}"#,
+                    i / 250,
+                    i % 250
+                )
+            })
+            .collect();
+        let json = format!(
+            r#"{{"sighting": {{"observables": {{"network": [{}]}}}}}}"#,
+            network.join(",")
+        );
+        let err = Sighting::parse(&json, NOW).unwrap_err().to_string();
+        assert!(
+            err.contains(&format!("more than {MAX_IOCS} observables")),
+            "{err}"
+        );
+    }
+
+    #[test]
     fn parses_the_phase2_minimal_example() {
         let s = Sighting::parse(MINIMAL, NOW).unwrap();
         assert_eq!(s.confidence, 87);

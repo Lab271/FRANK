@@ -622,12 +622,18 @@ fn ioc_panels(
     }))
 }
 
+/// `GET /v1/iocs`: whether an IoC is known, when and under which rules.
+/// Below partner a rule reported by fewer than [`MIN_CELL`] participants
+/// is left out of `rules`, and `reporters` is null when fewer than
+/// [`MIN_CELL`] reported the IoC, as Explore and `/v1/rules/{id}` do (#148,
+/// #255); `known`, `count` and `days` answer the lookup itself.
 async fn ioc_lookup(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(q): Query<IocQuery>,
 ) -> Result<Json<Value>, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
+    let exact = caller.tier >= Tier::Partner;
     let t = IocType::parse(&q.ioc_type)
         .ok_or_else(|| unprocessable(format!("unknown IoC type {:?}", q.ioc_type)))?;
     let ioc = Ioc::new(t, &q.value).map_err(unprocessable)?;
@@ -644,26 +650,31 @@ async fn ioc_lookup(
             .lookup(&ioc, &Tlp::visible_to(caller.tier))
             .map_err(internal)?;
         let now = (app.now)();
+        // Days are arrival days (#257): the earliest sighting is the least
+        // first_ts, not necessarily the first day's.
+        let first_ts = days.iter().map(|d| d.first_ts).min();
         let (rules, reporters, trend) = if days.is_empty() {
             (Vec::new(), 0, ex::trend(&[], now, TREND_DAYS))
         } else {
             let filter = format!(
                 "ioc_value = {} AND ts >= {} AND {}",
                 sql_quote(&ioc.value),
-                days[0].first_ts,
+                first_ts.unwrap_or_default(),
                 tlp_visible(caller.tier),
             );
             let r = app
                 .sightings
                 .query(&format!(
-                    "SELECT rule_id, count(*) AS n FROM sightings WHERE {filter} GROUP BY rule_id ORDER BY n DESC"
+                    "SELECT rule_id, count(*) AS n, count(DISTINCT reporter) AS r FROM sightings WHERE {filter} GROUP BY rule_id ORDER BY n DESC"
                 ))
                 .map_err(internal)?;
             let rules = r
                 .rows
                 .iter()
-                .filter_map(|row| match (&row[0], &row[1]) {
-                    (Cell::Text(k), Cell::Int(n)) => Some(json!({ "rule_id": k, "count": n })),
+                .filter_map(|row| match (&row[0], &row[1], &row[2]) {
+                    (Cell::Text(k), Cell::Int(n), Cell::Int(r)) if exact || *r >= MIN_CELL => {
+                        Some(json!({ "rule_id": k, "count": n }))
+                    }
                     _ => None,
                 })
                 .collect();
@@ -677,9 +688,9 @@ async fn ioc_lookup(
             let ts = times(&app.sightings, &filter)?;
             (rules, reporters, ex::trend(&ts, now, TREND_DAYS))
         };
-        let panels = match (window, days.first()) {
+        let panels = match (window, first_ts) {
             (Some((from, to)), _) => ioc_panels(&app.sightings, &ioc, from, Some(to), caller.tier)?,
-            (None, Some(d)) => ioc_panels(&app.sightings, &ioc, d.first_ts, None, caller.tier)?,
+            (None, Some(from)) => ioc_panels(&app.sightings, &ioc, from, None, caller.tier)?,
             (None, None) => Value::Null,
         };
         let geo = ioc
@@ -696,8 +707,9 @@ async fn ioc_lookup(
             "listed": listed,
             "known": !days.is_empty(),
             "count": days.iter().map(|d| d.count).sum::<i64>(),
-            "reporters": reporters,
-            "first_seen": days.first().map(|d| d.first_ts),
+            "reporters": (exact || reporters >= MIN_CELL).then_some(reporters),
+            "min_cell": if exact { 1 } else { MIN_CELL },
+            "first_seen": first_ts,
             "last_seen": days.iter().map(|d| d.last_ts).max(),
             "days": days,
             "rules": rules,
@@ -1284,7 +1296,7 @@ async fn summary(
 /// Per-day counts, for the rebuild: (day, ioc) totals over all sightings.
 pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String> {
     let r = sightings.query(
-        "SELECT ts, ioc_type, ioc_value, observations, tlp FROM sightings WHERE ioc_type IS NOT NULL",
+        "SELECT ts, ioc_type, ioc_value, observations, tlp, received FROM sightings WHERE ioc_type IS NOT NULL",
     )?;
     let mut rows = Vec::with_capacity(r.rows.len());
     let mut types: BTreeMap<String, IocType> = BTreeMap::new();
@@ -1293,6 +1305,11 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             (&row[0], &row[1], &row[2], &row[3], &row[4])
         else {
             continue;
+        };
+        // `received` is null before 0.13; `record` then falls back to `ts`.
+        let received = match row.get(5) {
+            Some(Cell::Int(r)) => *r,
+            _ => 0,
         };
         let Ok(tlp) = Tlp::parse(tlp) else {
             continue;
@@ -1318,7 +1335,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
             tlp,
             reporter: String::new(),
             digest: None,
-            received_ns: 0,
+            received_ns: received,
             seq: 0,
             detail: None,
         });

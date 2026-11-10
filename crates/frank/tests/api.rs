@@ -230,6 +230,16 @@ async fn submit_then_look_up() {
     assert_eq!(ioc["known"], true);
     assert_eq!(ioc["count"], 2);
     assert_eq!(ioc["days"][0]["day"], "2026-10-22");
+    // One reporter: below partner the rule falls under the threshold (#255).
+    assert_eq!(ioc["rules"], json!([]));
+    let (_, ioc) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=domain&value=EVIL.example",
+        Some("p"),
+        None,
+    )
+    .await;
     assert_eq!(ioc["rules"][0], json!({"rule_id": "r1", "count": 2}));
 
     let (_, unknown) = call(
@@ -379,19 +389,47 @@ async fn lookups_count_reporters() {
         )
         .await;
     }
-    let (_, ioc) = call(
-        &h.app,
-        "GET",
-        "/v1/iocs?type=ipv4&value=198.51.100.7",
-        Some("c"),
-        None,
-    )
-    .await;
+    let lookup = |tok: &'static str| {
+        let app = h.app.clone();
+        async move {
+            call(
+                &app,
+                "GET",
+                "/v1/iocs?type=ipv4&value=198.51.100.7",
+                Some(tok),
+                None,
+            )
+            .await
+            .1
+        }
+    };
+    // Two reporters: a partner sees them; below partner the IoC is known
+    // but its reporters and rules fall under the threshold (#148, #255).
+    let ioc = lookup("p").await;
     assert_eq!(
         (ioc["count"].as_i64(), ioc["reporters"].as_i64()),
         (Some(3), Some(2)),
         "{ioc}"
     );
+    assert_eq!(ioc["rules"][0]["rule_id"], "r1", "{ioc}");
+    let ioc = lookup("c").await;
+    assert_eq!(ioc["known"], true, "{ioc}");
+    assert_eq!(ioc["count"].as_i64(), Some(3), "{ioc}");
+    assert!(ioc["reporters"].is_null(), "{ioc}");
+    assert_eq!(ioc["rules"], json!([]), "{ioc}");
+    assert_eq!(ioc["min_cell"], 3, "{ioc}");
+    // A third reporter lifts both over the threshold.
+    call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c3"),
+        Some(sighting("energy", "198.51.100.7", "r1")),
+    )
+    .await;
+    let ioc = lookup("c").await;
+    assert_eq!(ioc["reporters"].as_i64(), Some(3), "{ioc}");
+    assert_eq!(ioc["rules"][0]["rule_id"], "r1", "{ioc}");
 }
 
 #[tokio::test]
@@ -2877,4 +2915,110 @@ async fn superadmins_list_files_inside_the_roots_only() {
         .unwrap()
         .iter()
         .any(|l| l["action"] == "files_listed" && l["path"] == "data"));
+}
+
+/// Without a token, `/v1/whoami` answers the public status (spec 010).
+#[tokio::test]
+async fn whoami_without_a_token_is_public() {
+    let h = harness("whoami-public");
+    let (status, me) = call(&h.app, "GET", "/v1/whoami", None, None).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        (me["tier"].as_str(), me["label"].as_str()),
+        (Some("public"), Some("public")),
+        "{me}"
+    );
+    assert!(me["user"].is_null() && me["participant"].is_null(), "{me}");
+}
+
+/// A body of more than 100 sightings, and one id twice in a batch with
+/// different content, are refused with 422 and store nothing (specs 001
+/// and 010).
+#[tokio::test]
+async fn oversized_batches_and_inner_conflicts_are_refused() {
+    let h = harness("batch-limits");
+    let count = || {
+        frank::store::sightings::scalar(
+            &h.sightings.query("SELECT count(*) FROM sightings").unwrap(),
+        )
+    };
+    let many: Vec<Value> = (0..101)
+        .map(|i| sighting("energy", &format!("10.1.0.{}", i % 250), "r1"))
+        .collect();
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(json!(many.clone())),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    let (status, body) = call(&h.app, "POST", "/v1/preview", Some("c"), Some(json!(many))).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "preview: {body}");
+    let a = sighting("energy", "10.2.0.1", "r1");
+    let mut b = sighting("energy", "10.2.0.2", "r1");
+    b["submission"]["sighting"]["sighting_id"] = a["submission"]["sighting"]["sighting_id"].clone();
+    let (status, body) = call(
+        &h.app,
+        "POST",
+        "/v1/sightings",
+        Some("c"),
+        Some(json!([a, b])),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+    assert!(
+        body.to_string().contains("appears twice in the batch"),
+        "{body}"
+    );
+    assert_eq!(count(), 0, "nothing of either batch is stored");
+}
+
+/// `/v1/preview` answers the rows a submission would add and stores none
+/// of them (spec 001).
+#[tokio::test]
+async fn a_preview_stores_nothing() {
+    let h = harness("preview-stores-nothing");
+    let s = sighting("energy", "10.3.0.1", "r1");
+    let (status, body) = call(&h.app, "POST", "/v1/preview", Some("c"), Some(s.clone())).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    assert_eq!(
+        frank::store::sightings::scalar(
+            &h.sightings.query("SELECT count(*) FROM sightings").unwrap()
+        ),
+        0
+    );
+    let (_, ioc) = call(
+        &h.app,
+        "GET",
+        "/v1/iocs?type=ipv4&value=10.3.0.1",
+        Some("c"),
+        None,
+    )
+    .await;
+    assert_eq!(ioc["known"], false, "{ioc}");
+    let (status, body) = call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s)).await;
+    assert_eq!(status, StatusCode::CREATED, "{body}");
+    assert_eq!(
+        body["receipts"][0]["status"], "created",
+        "not a duplicate: {body}"
+    );
+}
+
+/// `/v1/iocs/range` refuses a block that is not CIDR (spec 021).
+#[tokio::test]
+async fn a_malformed_block_is_refused() {
+    let h = harness("range-malformed");
+    for cidr in ["nonsense", "10.0.0.0/33", "10.0.0.0"] {
+        let (status, body) = call(
+            &h.app,
+            "GET",
+            &format!("/v1/iocs/range?cidr={cidr}"),
+            Some("c"),
+            None,
+        )
+        .await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{cidr}: {body}");
+    }
 }

@@ -1,10 +1,10 @@
-//! The `iocs` row table: one row per IoC per day it was seen, in a
+//! The `iocs` row table: one row per IoC per day it arrived, in a
 //! db-core row (SQLite-format) database with B-tree indexes, so "is this
 //! IoC known?" is an index seek instead of a scan of the sightings.
 //!
 //! The schema keeps to what db-core's row engine plans and enforces today
 //! (see db-core #694-#696): a rowid table, single-column keys
-//! (`k = type:value`, `kd = k|day`, a UNIQUE index as the upsert target),
+//! (`k = type:value`, `kd = k|day|tlp`, a UNIQUE index as the upsert target),
 //! IP addresses as 32 hex digits, and upsert as SELECT then UPDATE or
 //! INSERT.
 
@@ -31,7 +31,9 @@ const SCHEMA: [&str; 5] = [
     "CREATE INDEX ioc_day_day ON ioc_day (day)",
 ];
 
-/// What the `iocs` table knows of one IoC on one day.
+/// What the `iocs` table knows of one IoC on one day. `day` is the day the
+/// sightings arrived, so retention drops it with them (#257); `first_ts` and
+/// `last_ts` are the sightings' own times.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 pub struct IocDay {
     pub day: String,
@@ -74,7 +76,9 @@ impl Iocs {
 
     /// Counts `rows` into their IoCs' days, in one transaction. Each TLP
     /// level counts separately, so a lookup shows a tier only what it may
-    /// see (#149).
+    /// see (#149). The day is the arrival day (`received_ns`, else `ts_ns`),
+    /// the clock the sightings table's retention uses, so a back-dated
+    /// sighting keeps its IoC as long as its rows (#257).
     pub fn record(&self, rows: &[SightingRow]) -> Result<(), String> {
         // (key, day, tlp) -> (ioc, first, last, count): one upsert each.
         type Key = (String, i64, Tlp);
@@ -88,7 +92,7 @@ impl Iocs {
                 value: v,
             };
             let e = agg
-                .entry((ioc.key(), r.ts_ns.div_euclid(DAY_NS), r.tlp))
+                .entry((ioc.key(), arrival(r).div_euclid(DAY_NS), r.tlp))
                 .or_insert((ioc, r.ts_ns, r.ts_ns, 0));
             e.1 = e.1.min(r.ts_ns);
             e.2 = e.2.max(r.ts_ns);
@@ -105,7 +109,7 @@ impl Iocs {
         })
     }
 
-    /// Every retained day `ioc` was seen on at the `visible` TLP levels,
+    /// Every retained day `ioc` arrived on at the `visible` TLP levels,
     /// oldest first. The key is an index seek; TLP is filtered here, as
     /// the row engine plans one indexed predicate (db-core #695).
     pub fn lookup(&self, ioc: &Ioc, visible: &[Tlp]) -> Result<Vec<IocDay>, String> {
@@ -235,6 +239,15 @@ fn shown(tlp: &Cell, visible: &[&str]) -> bool {
 }
 
 /// Days since the epoch as `YYYY-MM-DD`.
+/// When a row arrived: `received_ns`, or `ts_ns` for a row without one.
+fn arrival(r: &SightingRow) -> i64 {
+    if r.received_ns > 0 {
+        r.received_ns
+    } else {
+        r.ts_ns
+    }
+}
+
 pub fn day_label(day: i64) -> String {
     time::OffsetDateTime::from_unix_timestamp(day * 86_400)
         .map(|t| t.date().to_string())
