@@ -32,7 +32,7 @@ Four things had to stay true:
 
 4. **The callback checks the ID token completely** before anything else happens: RS256 signature against the issuer's JWKS, `iss` equal to the configured issuer, `aud` containing the client id, `exp` in the future, `nonce` equal to the one sent, and the `state` of the redirect known and unexpired. Any failure is a refusal and an `sso_refused` audit line with the reason, never a partial login.
 
-5. **Users are provisioned on first login (JIT).** A person is identified by issuer and `sub`, kept in a new `sso_subjects` table (`issuer`, `subject`, `user`); the `email` claim is the user's name.
+5. **Users are provisioned on first login (JIT).** A person is identified by issuer and `sub`, kept in a new `sso_subjects` table (`subject`, `user`, `created`), where `subject` is the issuer and `sub` one space apart, because the row engine keys on one column; the `email` claim, in lower case, is the user's name.
    - A known subject signs in as its user.
    - An unknown subject whose `email` is verified (`email_verified`) and names an existing **human** user is linked to that user, which keeps its organisation and role: an operator made with the CLI keeps being superadmin when signing in with Okta.
    - Otherwise a new human user is created in `FRANK_SSO_ORGANISATION`, **with no role**. SSO never grants a role; admins do, as in ADR-017.

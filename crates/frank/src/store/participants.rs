@@ -57,8 +57,33 @@ const DISABLED: [&str; 2] = [
     "CREATE UNIQUE INDEX disabled_user ON disabled (user)",
 ];
 
+/// People signed in with SSO (#241, ADR-020): `subject` is the issuer and
+/// the ID token's `sub`, one space apart (an issuer is a URL, without
+/// spaces), so one column is the key.
+const SSO_SUBJECTS: [&str; 2] = [
+    "CREATE TABLE sso_subjects (subject TEXT NOT NULL, user TEXT NOT NULL, \
+     created INTEGER NOT NULL)",
+    "CREATE UNIQUE INDEX sso_subjects_subject ON sso_subjects (subject)",
+];
+
+/// SSO sessions (#241, ADR-020): the SHA-256 of the cookie's value, never
+/// the value itself.
+const SESSIONS: [&str; 2] = [
+    "CREATE TABLE sessions (hash TEXT NOT NULL, user TEXT NOT NULL, created INTEGER NOT NULL, \
+     expires INTEGER NOT NULL)",
+    "CREATE UNIQUE INDEX sessions_hash ON sessions (hash)",
+];
+
 /// The tables added after 0.16, each with the table to probe for.
-const ADDED: [(&str, &[&str]); 2] = [("roles", &ROLES), ("disabled", &DISABLED)];
+const ADDED: [(&str, &[&str]); 4] = [
+    ("roles", &ROLES),
+    ("disabled", &DISABLED),
+    ("sso_subjects", &SSO_SUBJECTS),
+    ("sessions", &SESSIONS),
+];
+
+/// How long an SSO session lasts (ADR-020).
+pub const SESSION_SECONDS: i64 = 8 * 3600;
 
 /// Organisation types (ADR-010).
 pub const KINDS: [&str; 2] = ["cyber_partner", "customer"];
@@ -113,6 +138,8 @@ pub struct Participants {
 struct Cache {
     stamp: Option<Stamp>,
     by_hash: HashMap<String, Caller>,
+    /// Session hash → the caller and when the session ends (Unix s).
+    by_session: HashMap<String, (Caller, i64)>,
 }
 
 /// What tells a changed file apart: size, modification time and the
@@ -154,6 +181,22 @@ impl Participants {
         Ok(cache.by_hash.get(&hash(token.trim())).cloned())
     }
 
+    /// The caller an SSO session cookie's value names at `now_s` (Unix
+    /// seconds): `None` for an unknown or expired session, or a disabled
+    /// user's.
+    pub fn session_caller(&self, value: &str, now_s: i64) -> Result<Option<Caller>, String> {
+        self.refresh()?;
+        let cache = self
+            .cache
+            .read()
+            .map_err(|_| "participants lock poisoned")?;
+        Ok(cache
+            .by_session
+            .get(&hash(value.trim()))
+            .filter(|(_, expires)| *expires > now_s)
+            .map(|(c, _)| c.clone()))
+    }
+
     /// Active tokens.
     pub fn active_tokens(&self) -> Result<usize, String> {
         self.refresh()?;
@@ -177,7 +220,7 @@ impl Participants {
         {
             return Ok(());
         }
-        let by_hash = with_db(&self.path, load_callers)?;
+        let (by_hash, by_session) = with_db(&self.path, load_callers)?;
         let mut cache = self
             .cache
             .write()
@@ -185,6 +228,7 @@ impl Participants {
         *cache = Cache {
             stamp: Some(stamp),
             by_hash,
+            by_session,
         };
         Ok(())
     }
@@ -231,45 +275,57 @@ fn with_db<T>(
     f(&mut db)
 }
 
-fn load_callers(db: &mut RowEngine) -> Result<HashMap<String, Caller>, String> {
+/// Token hash → caller, and session hash → (caller, expiry).
+type Callers = (HashMap<String, Caller>, HashMap<String, (Caller, i64)>);
+
+fn load_callers(db: &mut RowEngine) -> Result<Callers, String> {
     let orgs: HashMap<String, (String, Tier)> =
         query(db, "SELECT id, name, status FROM organisations")?
             .rows
             .iter()
             .filter_map(|r| Some((text(&r[0]), (text(&r[1]), Tier::parse(&text(&r[2]))?))))
             .collect();
-    let users: HashMap<String, (String, String)> =
-        query(db, "SELECT id, organisation, name FROM users")?
+    let users: HashMap<String, (String, String, String)> =
+        query(db, "SELECT id, organisation, name, kind FROM users")?
             .rows
             .iter()
-            .map(|r| (text(&r[0]), (text(&r[1]), text(&r[2]))))
+            .map(|r| (text(&r[0]), (text(&r[1]), text(&r[2]), text(&r[3]))))
             .collect();
     let roles = roles(db)?;
     let disabled = disabled(db)?;
+    // The working user with id `user_id` as a caller.
+    let caller = |user_id: &str| -> Option<Caller> {
+        if disabled.contains(user_id) {
+            return None;
+        }
+        let (org, user, _) = users.get(user_id)?;
+        let (name, status) = orgs.get(org)?;
+        Some(Caller {
+            tier: *status,
+            participant: org.clone(),
+            organisation: name.clone(),
+            user: user.clone(),
+            role: roles.get(user_id).copied(),
+        })
+    };
     let mut by_hash = HashMap::new();
     for r in query(db, "SELECT hash, user FROM tokens WHERE revoked IS NULL")?.rows {
+        if let Some(c) = caller(&text(&r[1])) {
+            by_hash.insert(text(&r[0]), c);
+        }
+    }
+    let mut by_session = HashMap::new();
+    for r in query(db, "SELECT hash, user, expires FROM sessions")?.rows {
         let user_id = text(&r[1]);
-        if disabled.contains(&user_id) {
+        // Only people sign in; a session of a machine user is never valid.
+        if users.get(&user_id).is_some_and(|u| u.2 != "human") {
             continue;
         }
-        let Some((org, user)) = users.get(&user_id) else {
-            continue;
-        };
-        let Some((name, status)) = orgs.get(org) else {
-            continue;
-        };
-        by_hash.insert(
-            text(&r[0]),
-            Caller {
-                tier: *status,
-                participant: org.clone(),
-                organisation: name.clone(),
-                user: user.clone(),
-                role: roles.get(&user_id).copied(),
-            },
-        );
+        if let Some(c) = caller(&user_id) {
+            by_session.insert(text(&r[0]), (c, int(&r[2])));
+        }
     }
-    Ok(by_hash)
+    Ok((by_hash, by_session))
 }
 
 /// User id → role.
@@ -645,7 +701,8 @@ pub fn set_disabled(path: &Path, user: &str, disable: bool) -> Result<(), String
     })
 }
 
-/// Removes a disabled user with its role and tokens; returns the
+/// Removes a disabled user with its role, tokens, SSO link and sessions;
+/// returns the
 /// prefixes of the tokens removed. Its sightings stay: they are stored
 /// under the organisation, never under a user.
 pub fn remove_user(path: &Path, user: &str) -> Result<Vec<String>, String> {
@@ -661,12 +718,194 @@ pub fn remove_user(path: &Path, user: &str) -> Result<Vec<String>, String> {
             .map(|r| text(&r[0])[..12].to_string())
             .collect();
         transaction(db, |db| {
-            for table in ["tokens", "roles", "disabled"] {
+            for table in ["tokens", "roles", "disabled", "sso_subjects", "sessions"] {
                 exec(db, &format!("DELETE FROM {table} WHERE user = {q}"))?;
             }
             exec(db, &format!("DELETE FROM users WHERE id = {q}"))
         })?;
         Ok(prefixes)
+    })
+}
+
+// --- SSO (#241, ADR-020) ---------------------------------------------------
+
+/// A person as the identity provider vouches for them, from a checked ID
+/// token.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Identity {
+    pub issuer: String,
+    /// The ID token's `sub`.
+    pub subject: String,
+    pub email: Option<String>,
+    pub email_verified: bool,
+}
+
+/// How a sign-in found its user.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SignedIn {
+    /// The identity was linked to the user before.
+    Known,
+    /// An existing human user with the identity's verified e-mail.
+    Linked,
+    /// A new human user, created in the default organisation, no role.
+    Provisioned,
+}
+
+impl SignedIn {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            SignedIn::Known => "known",
+            SignedIn::Linked => "linked",
+            SignedIn::Provisioned => "provisioned",
+        }
+    }
+}
+
+/// The user an identity signs in as (ADR-020, decision 5), creating it in
+/// `organisation` on first sign-in. The outer error is a failure of the
+/// store; the inner one a refusal, with the reason for the audit line.
+pub fn sign_in(
+    path: &Path,
+    id: &Identity,
+    organisation: &str,
+) -> Result<Result<(String, SignedIn), String>, String> {
+    if id.issuer.contains(' ') || id.subject.is_empty() {
+        return Ok(Err("malformed issuer or subject".into()));
+    }
+    let key = format!("{} {}", id.issuer, id.subject);
+    with_db(path, |db| {
+        let disabled = disabled(db)?;
+        let linked = query(
+            db,
+            &format!(
+                "SELECT user FROM sso_subjects WHERE subject = {}",
+                sql_quote(&key)
+            ),
+        )?;
+        if let Some(row) = linked.rows.first() {
+            let user_id = text(&row[0]);
+            let r = query(
+                db,
+                &format!(
+                    "SELECT name, kind FROM users WHERE id = {}",
+                    sql_quote(&user_id)
+                ),
+            )?;
+            let Some(u) = r.rows.first() else {
+                return Ok(Err("the linked user no longer exists".into()));
+            };
+            let name = text(&u[0]);
+            if text(&u[1]) != "human" {
+                return Ok(Err(format!("{name} is a machine user")));
+            }
+            if disabled.contains(&user_id) {
+                return Ok(Err(format!("{name} is disabled")));
+            }
+            return Ok(Ok((name, SignedIn::Known)));
+        }
+        let Some(name) = id.email.as_deref().map(|e| e.trim().to_ascii_lowercase()) else {
+            return Ok(Err("the ID token has no email claim".into()));
+        };
+        if check_name("user", &name).is_err() {
+            return Ok(Err(format!("{name:?} is not a valid user name")));
+        }
+        let link = |db: &mut RowEngine, user_id: &str| {
+            exec(
+                db,
+                &format!(
+                    "INSERT INTO sso_subjects (subject, user, created) VALUES ({}, {}, {})",
+                    sql_quote(&key),
+                    sql_quote(user_id),
+                    now_s()
+                ),
+            )
+        };
+        if let Ok((user_id, _, kind)) = find_user_row(db, &name) {
+            if kind != "human" {
+                return Ok(Err(format!("{name} is a machine user")));
+            }
+            if !id.email_verified {
+                return Ok(Err(format!(
+                    "{name} exists and the identity's e-mail is not verified"
+                )));
+            }
+            if disabled.contains(&user_id) {
+                return Ok(Err(format!("{name} is disabled")));
+            }
+            let other = query(
+                db,
+                &format!(
+                    "SELECT subject FROM sso_subjects WHERE user = {}",
+                    sql_quote(&user_id)
+                ),
+            )?;
+            if !other.rows.is_empty() {
+                return Ok(Err(format!("{name} is linked to another identity")));
+            }
+            link(db, &user_id)?;
+            return Ok(Ok((name, SignedIn::Linked)));
+        }
+        let (org, _) = find_org(db, organisation)?;
+        let user_id = uuid4()?;
+        transaction(db, |db| {
+            exec(
+                db,
+                &format!(
+                    "INSERT INTO users (id, organisation, name, kind, created) VALUES ({}, {}, {}, 'human', {})",
+                    sql_quote(&user_id),
+                    sql_quote(&org),
+                    sql_quote(&name),
+                    now_s()
+                ),
+            )?;
+            link(db, &user_id)
+        })?;
+        Ok(Ok((name, SignedIn::Provisioned)))
+    })
+}
+
+/// Starts an SSO session for the human user `user` and returns the value
+/// for its cookie; only the value's SHA-256 is stored. Drops expired
+/// sessions on the way.
+pub fn add_session(path: &Path, user: &str) -> Result<String, String> {
+    let value = hex(&random::<32>()?);
+    with_db(path, |db| {
+        let (user_id, _, kind) = find_user_row(db, user)?;
+        if kind != "human" {
+            return Err(format!("{user} is a machine user: only people sign in"));
+        }
+        if disabled(db)?.contains(&user_id) {
+            return Err(format!("{user} is disabled"));
+        }
+        let now = now_s();
+        transaction(db, |db| {
+            exec(db, &format!("DELETE FROM sessions WHERE expires <= {now}"))?;
+            exec(
+                db,
+                &format!(
+                    "INSERT INTO sessions (hash, user, created, expires) VALUES ({}, {}, {now}, {})",
+                    sql_quote(&hash(&value)),
+                    sql_quote(&user_id),
+                    now + SESSION_SECONDS
+                ),
+            )
+        })
+    })?;
+    Ok(value)
+}
+
+/// Ends the session a cookie's value names; returns whether there was one.
+pub fn end_session(path: &Path, value: &str) -> Result<bool, String> {
+    let q = sql_quote(&hash(value.trim()));
+    with_db(path, |db| {
+        let found = !query(db, &format!("SELECT user FROM sessions WHERE hash = {q}"))?
+            .rows
+            .is_empty();
+        if found {
+            exec(db, &format!("DELETE FROM sessions WHERE hash = {q}"))?;
+        }
+        Ok(found)
     })
 }
 
@@ -1086,5 +1325,162 @@ mod tests {
         );
         assert_eq!(server.active_tokens().unwrap(), 4);
         std::fs::remove_dir_all(&dir).ok();
+    }
+
+    fn identity(sub: &str, email: &str, verified: bool) -> Identity {
+        Identity {
+            issuer: "https://sso.example".into(),
+            subject: sub.into(),
+            email: Some(email.into()),
+            email_verified: verified,
+        }
+    }
+
+    fn sso_setup(name: &str) -> (PathBuf, PathBuf) {
+        let dir = temp(name);
+        let path = dir.join(FILE);
+        add_organisation(&path, "lab", Tier::Partner, "cyber_partner", None, None).unwrap();
+        add_organisation(&path, "core", Tier::Core, "cyber_partner", None, None).unwrap();
+        (dir, path)
+    }
+
+    #[test]
+    fn first_sign_in_provisions_a_human_without_a_role() {
+        let (dir, path) = sso_setup("sso-provision");
+        let id = identity("00u1", "Alice@Lab271.dev", false);
+        let (name, how) = sign_in(&path, &id, "lab").unwrap().unwrap();
+        assert_eq!(
+            (name.as_str(), how),
+            ("alice@lab271.dev", SignedIn::Provisioned)
+        );
+        let u = users(&path).unwrap();
+        assert_eq!(u.len(), 1);
+        assert_eq!(
+            (u[0].kind.as_str(), u[0].role, u[0].organisation.as_str()),
+            ("human", None, "lab")
+        );
+        // The second sign-in finds the same user, even with a new e-mail.
+        let id = identity("00u1", "alice.new@lab271.dev", false);
+        let (name, how) = sign_in(&path, &id, "lab").unwrap().unwrap();
+        assert_eq!((name.as_str(), how), ("alice@lab271.dev", SignedIn::Known));
+        assert_eq!(users(&path).unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn a_verified_email_links_an_existing_human_and_keeps_its_role() {
+        let (dir, path) = sso_setup("sso-link");
+        add_user(
+            &path,
+            "core",
+            "ops@lab271.dev",
+            "human",
+            Some(Role::Superadmin),
+        )
+        .unwrap();
+        let e = sign_in(&path, &identity("00u2", "ops@lab271.dev", false), "lab")
+            .unwrap()
+            .unwrap_err();
+        assert!(e.contains("not verified"), "{e}");
+        let (name, how) = sign_in(&path, &identity("00u2", "ops@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap();
+        assert_eq!((name.as_str(), how), ("ops@lab271.dev", SignedIn::Linked));
+        let u = users(&path).unwrap();
+        assert_eq!(
+            (u[0].role, u[0].organisation.as_str()),
+            (Some(Role::Superadmin), "core")
+        );
+        // Another identity with the same e-mail cannot take the user over.
+        let e = sign_in(&path, &identity("00u3", "ops@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap_err();
+        assert!(e.contains("another identity"), "{e}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn machines_disabled_users_and_bad_names_are_refused() {
+        let (dir, path) = sso_setup("sso-refuse");
+        add_user(&path, "lab", "feed@lab271.dev", "machine", None).unwrap();
+        let e = sign_in(&path, &identity("m", "feed@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap_err();
+        assert!(e.contains("machine"), "{e}");
+        sign_in(&path, &identity("b", "bob@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap();
+        set_disabled(&path, "bob@lab271.dev", true).unwrap();
+        let e = sign_in(&path, &identity("b", "bob@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap_err();
+        assert!(e.contains("disabled"), "{e}");
+        let e = sign_in(&path, &identity("x", "not an e-mail", true), "lab")
+            .unwrap()
+            .unwrap_err();
+        assert!(e.contains("not a valid user name"), "{e}");
+        let mut no_email = identity("y", "", true);
+        no_email.email = None;
+        let e = sign_in(&path, &no_email, "lab").unwrap().unwrap_err();
+        assert!(e.contains("no email"), "{e}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn sessions_name_their_user_until_they_end() {
+        let (dir, path) = sso_setup("sso-session");
+        let server = Participants::open(&dir).unwrap();
+        sign_in(&path, &identity("c", "carol@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap();
+        let value = add_session(&path, "carol@lab271.dev").unwrap();
+        assert_eq!(value.len(), 64);
+        let now = now_s();
+        let c = server.session_caller(&value, now).unwrap().unwrap();
+        assert_eq!(
+            (c.user.as_str(), c.tier),
+            ("carol@lab271.dev", Tier::Partner)
+        );
+        // Not a bearer token, and expired after SESSION_SECONDS.
+        assert_eq!(
+            server.caller(Some(&format!("Bearer {value}"))).unwrap(),
+            None
+        );
+        assert_eq!(
+            server
+                .session_caller(&value, now + SESSION_SECONDS + 1)
+                .unwrap(),
+            None
+        );
+        assert_eq!(server.session_caller("nope", now).unwrap(), None);
+        // Disabling stops it; enabling brings it back, as with tokens.
+        set_disabled(&path, "carol@lab271.dev", true).unwrap();
+        assert_eq!(server.session_caller(&value, now).unwrap(), None);
+        assert!(add_session(&path, "carol@lab271.dev").is_err());
+        set_disabled(&path, "carol@lab271.dev", false).unwrap();
+        assert!(server.session_caller(&value, now).unwrap().is_some());
+        assert!(end_session(&path, &value).unwrap());
+        assert!(!end_session(&path, &value).unwrap());
+        assert_eq!(server.session_caller(&value, now).unwrap(), None);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn machine_users_get_no_session_and_removal_clears_sso_rows() {
+        let (dir, path) = sso_setup("sso-remove");
+        add_user(&path, "lab", "feed", "machine", None).unwrap();
+        assert!(add_session(&path, "feed").is_err());
+        sign_in(&path, &identity("d", "dan@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap();
+        add_session(&path, "dan@lab271.dev").unwrap();
+        set_disabled(&path, "dan@lab271.dev", true).unwrap();
+        remove_user(&path, "dan@lab271.dev").unwrap();
+        // Signing in again provisions a fresh user: the old link is gone.
+        let (_, how) = sign_in(&path, &identity("d", "dan@lab271.dev", true), "lab")
+            .unwrap()
+            .unwrap();
+        assert_eq!(how, SignedIn::Provisioned);
+        let _ = std::fs::remove_dir_all(dir);
     }
 }
