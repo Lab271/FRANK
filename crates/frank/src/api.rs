@@ -15,6 +15,7 @@
 //! | `GET  /v1/participants`   | partner (ids and status), core (all details) |
 //! | `/v1/admin/…`             | a user with a role ([`crate::admin`]) |
 //! | `/v1/sso/…`               | sign in with OIDC ([`crate::sso`]) |
+//! | `POST /mcp`               | any; each tool as its `/v1` route ([`crate::mcp`]) |
 //!
 //! A caller is named by its bearer token; without an `Authorization`
 //! header, by its SSO session cookie, when SSO is on (ADR-020).
@@ -152,6 +153,7 @@ pub fn router(app: Shared) -> Router {
         .route("/v1/files/{*path}", get(file))
         .merge(crate::admin::routes())
         .merge(crate::sso::routes())
+        .merge(crate::mcp::routes())
         .layer(axum::middleware::from_fn_with_state(
             app.clone(),
             crate::sso::csrf,
@@ -209,7 +211,10 @@ async fn health(State(app): State<Shared>) -> Json<Value> {
     }))
 }
 
-async fn whoami(State(app): State<Shared>, headers: HeaderMap) -> Result<Json<Value>, ApiError> {
+pub(crate) async fn whoami(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+) -> Result<Json<Value>, ApiError> {
     let c = require(&app, &headers, Tier::Public)?;
     if c.user.is_empty() {
         return Ok(Json(json!({ "tier": c.tier, "label": c.label() })));
@@ -371,7 +376,7 @@ async fn submit(
 }
 
 #[derive(Deserialize)]
-struct StatsQuery {
+pub(crate) struct StatsQuery {
     days: Option<i64>,
 }
 
@@ -422,7 +427,7 @@ fn breakdown(
         .collect())
 }
 
-async fn statistics(
+pub(crate) async fn statistics(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(q): Query<StatsQuery>,
@@ -625,7 +630,7 @@ fn live_places(app: &App, rows: &[Vec<Cell>], common: bool, exact: bool) -> live
 }
 
 #[derive(Deserialize)]
-struct IocQuery {
+pub(crate) struct IocQuery {
     #[serde(rename = "type")]
     ioc_type: String,
     value: String,
@@ -683,7 +688,7 @@ fn ioc_panels(
 /// is left out of `rules`, and `reporters` is null when fewer than
 /// [`MIN_CELL`] reported the IoC, as Explore and `/v1/rules/{id}` do (#148,
 /// #255); `known`, `count` and `days` answer the lookup itself.
-async fn ioc_lookup(
+pub(crate) async fn ioc_lookup(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(q): Query<IocQuery>,
@@ -834,7 +839,7 @@ fn grouped(
 }
 
 /// `GET /v1/explore?group=rule&sector=energy&days=30` (#157).
-async fn explore(
+pub(crate) async fn explore(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(mut params): Query<BTreeMap<String, String>>,
@@ -912,7 +917,7 @@ async fn explore(
 /// `GET /v1/rules/{id}?days=30`: one rule's prevalence (#157). A rule seen
 /// by fewer than [`MIN_CELL`] reporters is reported as unknown below
 /// partner, as it would be in a list.
-async fn rule_detail(
+pub(crate) async fn rule_detail(
     State(app): State<Shared>,
     headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<String>,
@@ -966,7 +971,7 @@ async fn rule_detail(
 }
 
 #[derive(Deserialize)]
-struct RangeQuery {
+pub(crate) struct RangeQuery {
     cidr: String,
 }
 
@@ -992,7 +997,7 @@ pub(crate) fn cidr_bounds(cidr: &str) -> Option<(String, String)> {
     Some((format!("{lo:032x}"), format!("{:032x}", lo | mask)))
 }
 
-async fn ioc_range(
+pub(crate) async fn ioc_range(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(q): Query<RangeQuery>,
@@ -1175,7 +1180,7 @@ async fn openapi() -> Result<Json<Value>, ApiError> {
 /// `GET /v1/sightings` (#160): the records of the visible sightings, in
 /// time order, a page at a time. Partners and core list all; a
 /// contributor lists its own (`mine=true`).
-async fn list(
+pub(crate) async fn list(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(params): Query<BTreeMap<String, String>>,
@@ -1251,7 +1256,7 @@ async fn list(
 
 /// `GET /v1/sightings/{id}` (#160): one record. Below partner only the
 /// caller's own; anything else is not found.
-async fn sighting(
+pub(crate) async fn sighting(
     State(app): State<Shared>,
     headers: HeaderMap,
     axum::extract::Path(id): axum::extract::Path<String>,
@@ -1296,7 +1301,7 @@ async fn sighting(
 
 /// `GET /v1/summary?days=30` (#160): what the caller's participant sent in
 /// the window, and the sightings it can see from everyone.
-async fn summary(
+pub(crate) async fn summary(
     State(app): State<Shared>,
     headers: HeaderMap,
     Query(q): Query<StatsQuery>,
