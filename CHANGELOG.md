@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.41.0] - 2026-11-11
+
+### Added
+
+- An MCP server on `POST /mcp` (#263): the Model Context Protocol over Streamable HTTP, with nine read-only tools that answer as their `/v1` routes do for the caller's credentials. Each tool call is audited.
+
 ## [0.40.0] - 2026-11-10
 
 ### Added
