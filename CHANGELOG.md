@@ -4,10 +4,6 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
-### Added
-
-- An MCP server on `POST /mcp` (#263, spec 015): the Model Context Protocol over Streamable HTTP, stateless (JSON answers, no SSE stream, `GET` is 405). Read-only tools `whoami`, `statistics`, `summary`, `lookup_ioc`, `ioc_range`, `explore`, `rule_detail`, `list_sightings` and `get_sighting` call their `/v1` handlers with the request's credentials (bearer token, or the SSO session without one), so statuses, TLP and the reporter threshold apply unchanged; a refusal is a tool result with `isError`. An unknown or disabled token is 401. Each tool call is an `mcp_call` audit line. The README shows `claude mcp add` for `frank.local`.
-
 ## [0.40.0] - 2026-11-10
 
 ### Added
