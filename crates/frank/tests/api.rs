@@ -1433,6 +1433,7 @@ async fn every_route_is_in_the_openapi_document() {
         include_str!("../src/api.rs"),
         include_str!("../src/admin.rs"),
         include_str!("../src/sso.rs"),
+        include_str!("../src/mcp.rs"),
     ]
     .concat();
     let mut routes = 0;
@@ -3516,4 +3517,333 @@ async fn requests_wait_for_a_slot() {
     );
     let (a, b) = tokio::join!(headers_of(&app, "/slow"), headers_of(&app, "/slow"));
     assert_eq!([a.0, b.0], [StatusCode::OK, StatusCode::OK]);
+}
+
+// ---- MCP (#263) ----
+
+/// One JSON-RPC message to `/mcp`.
+async fn mcp(app: &axum::Router, token: Option<&str>, msg: Value) -> (StatusCode, Value) {
+    call(app, "POST", "/mcp", token, Some(msg)).await
+}
+
+async fn mcp_tool(app: &axum::Router, token: Option<&str>, name: &str, args: Value) -> Value {
+    let (code, r) = mcp(
+        app,
+        token,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+            "params": {"name": name, "arguments": args}}),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK, "{name}: {r}");
+    r
+}
+
+#[tokio::test]
+async fn mcp_initialises_and_lists_its_tools() {
+    let h = harness("mcp-init");
+    let (code, r) = mcp(
+        &h.app,
+        None,
+        json!({"jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": {"protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "test", "version": "0"}}}),
+    )
+    .await;
+    assert_eq!(code, StatusCode::OK);
+    assert_eq!(r["id"], 1);
+    assert_eq!(r["result"]["protocolVersion"], "2025-06-18", "{r}");
+    assert_eq!(r["result"]["serverInfo"]["name"], "frank");
+    assert!(r["result"]["capabilities"]["tools"].is_object());
+
+    let (_, r) = mcp(
+        &h.app,
+        Some("c"),
+        json!({"jsonrpc": "2.0", "id": "a", "method": "initialize",
+            "params": {"protocolVersion": "1999-01-01"}}),
+    )
+    .await;
+    assert_eq!(
+        r["result"]["protocolVersion"], "2025-11-25",
+        "an unknown version gets the newest"
+    );
+
+    let (code, r) = mcp(
+        &h.app,
+        None,
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+    )
+    .await;
+    assert_eq!((code, r), (StatusCode::ACCEPTED, Value::Null));
+    assert_eq!(
+        call(&h.app, "GET", "/mcp", None, None).await.0,
+        StatusCode::METHOD_NOT_ALLOWED,
+        "no SSE stream"
+    );
+    let (_, r) = mcp(
+        &h.app,
+        None,
+        json!({"jsonrpc": "2.0", "id": 2, "method": "ping"}),
+    )
+    .await;
+    assert_eq!(r["result"], json!({}));
+
+    for token in [None, Some("o"), Some("c"), Some("p")] {
+        let (_, r) = mcp(
+            &h.app,
+            token,
+            json!({"jsonrpc": "2.0", "id": 3, "method": "tools/list"}),
+        )
+        .await;
+        let tools = r["result"]["tools"].as_array().unwrap();
+        let names: Vec<&str> = tools.iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert_eq!(
+            names,
+            [
+                "whoami",
+                "statistics",
+                "summary",
+                "lookup_ioc",
+                "ioc_range",
+                "explore",
+                "rule_detail",
+                "list_sightings",
+                "get_sighting"
+            ]
+        );
+        for t in tools {
+            assert_eq!(t["inputSchema"]["type"], "object", "{t}");
+            assert_eq!(t["annotations"]["readOnlyHint"], true, "{t}");
+            assert!(t["description"].as_str().unwrap().len() > 20, "{t}");
+        }
+    }
+}
+
+/// Each tool answers as its `/v1` route does for the same caller: the
+/// same body, or a refusal where the route refuses.
+#[tokio::test]
+async fn mcp_tools_answer_as_their_routes() {
+    let h = harness("mcp-tools");
+    explore_fixture(&h).await;
+    let s = sighting("energy", "198.51.100.9", "r1");
+    let id = s["submission"]["sighting"]["sighting_id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    assert_eq!(
+        call(&h.app, "POST", "/v1/sightings", Some("c"), Some(s))
+            .await
+            .0,
+        StatusCode::CREATED
+    );
+    let cases = [
+        ("whoami", json!({}), "/v1/whoami".to_string()),
+        (
+            "statistics",
+            json!({"days": 7}),
+            "/v1/statistics?days=7".into(),
+        ),
+        ("summary", json!({}), "/v1/summary".into()),
+        (
+            "lookup_ioc",
+            json!({"type": "ipv4", "value": "198.51.100.0"}),
+            "/v1/iocs?type=ipv4&value=198.51.100.0".into(),
+        ),
+        (
+            "ioc_range",
+            json!({"cidr": "198.51.100.0/24"}),
+            "/v1/iocs/range?cidr=198.51.100.0/24".into(),
+        ),
+        (
+            "explore",
+            json!({"group": "sector"}),
+            "/v1/explore?group=sector".into(),
+        ),
+        (
+            "explore",
+            json!({"group": "rule", "days": 7}),
+            "/v1/explore?group=rule&days=7".into(),
+        ),
+        ("rule_detail", json!({"id": "r1"}), "/v1/rules/r1".into()),
+        (
+            "list_sightings",
+            json!({"limit": 2, "order": "desc"}),
+            "/v1/sightings?limit=2&order=desc".into(),
+        ),
+        (
+            "get_sighting",
+            json!({"id": id}),
+            format!("/v1/sightings/{id}"),
+        ),
+    ];
+    for token in [None, Some("o"), Some("c"), Some("p")] {
+        for (tool, args, uri) in &cases {
+            let (code, want) = call(&h.app, "GET", uri, token, None).await;
+            let r = mcp_tool(&h.app, token, tool, args.clone()).await;
+            let got = &r["result"];
+            if code == StatusCode::OK {
+                assert_eq!(got["isError"], false, "{tool} as {token:?}: {r}");
+                assert_eq!(got["structuredContent"], want, "{tool} as {token:?}");
+                let text: Value =
+                    serde_json::from_str(got["content"][0]["text"].as_str().unwrap()).unwrap();
+                assert_eq!(text, want, "{tool} as {token:?}: the text is the same JSON");
+            } else {
+                assert_eq!(got["isError"], true, "{tool} as {token:?}: {r}");
+                let text = got["content"][0]["text"].as_str().unwrap();
+                assert!(
+                    text.starts_with(&code.as_u16().to_string()),
+                    "{tool} as {token:?}: {text}"
+                );
+            }
+        }
+    }
+}
+
+/// k ≥ 3 holds through MCP: water (one reporter) is left out below partner.
+#[tokio::test]
+async fn mcp_suppresses_small_cells_below_partner() {
+    let h = harness("mcp-cells");
+    explore_fixture(&h).await;
+    let sectors = |r: &Value| keys(&r["result"]["structuredContent"]);
+    let c = mcp_tool(&h.app, Some("c"), "explore", json!({"group": "sector"})).await;
+    assert_eq!(sectors(&c), ["energy"]);
+    let p = mcp_tool(&h.app, Some("p"), "explore", json!({"group": "sector"})).await;
+    let mut p = sectors(&p);
+    p.sort();
+    assert_eq!(p, ["energy", "water"]);
+    let o = mcp_tool(&h.app, Some("o"), "explore", json!({"group": "rule"})).await;
+    assert_eq!(o["result"]["isError"], true, "rules need contributor: {o}");
+}
+
+#[tokio::test]
+async fn mcp_refuses_unknown_and_disabled_tokens() {
+    let h = harness("mcp-auth");
+    let init = json!({"jsonrpc": "2.0", "id": 1, "method": "tools/list"});
+    assert_eq!(
+        mcp(&h.app, Some("bogus"), init.clone()).await.0,
+        StatusCode::UNAUTHORIZED
+    );
+    assert_eq!(mcp(&h.app, Some("c"), init.clone()).await.0, StatusCode::OK);
+    parts::set_disabled(&h.db, "mdr", true).unwrap();
+    assert_eq!(
+        mcp(&h.app, Some("c"), init).await.0,
+        StatusCode::UNAUTHORIZED,
+        "a disabled user's token stops working"
+    );
+    let r = mcp(
+        &h.app,
+        Some("c"),
+        json!({"jsonrpc": "2.0", "method": "notifications/initialized"}),
+    )
+    .await;
+    assert_eq!(r.0, StatusCode::UNAUTHORIZED, "notifications too");
+}
+
+#[tokio::test]
+async fn mcp_malformed_messages_are_json_rpc_errors() {
+    let h = harness("mcp-errors");
+    let raw = |body: &'static str| {
+        let app = h.app.clone();
+        async move {
+            let req = Request::builder()
+                .method("POST")
+                .uri("/mcp")
+                .header("content-type", "application/json")
+                .body(Body::from(body))
+                .unwrap();
+            let resp = app.oneshot(req).await.unwrap();
+            let status = resp.status();
+            let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+            (status, serde_json::from_slice::<Value>(&bytes).unwrap())
+        }
+    };
+    let code = |r: &(StatusCode, Value)| (r.0, r.1["error"]["code"].as_i64());
+    assert_eq!(
+        code(&raw("{not json").await),
+        (StatusCode::OK, Some(-32700))
+    );
+    assert_eq!(
+        code(&raw(r#"[{"jsonrpc":"2.0","id":1,"method":"ping"}]"#).await),
+        (StatusCode::OK, Some(-32600)),
+        "no batches"
+    );
+    assert_eq!(
+        code(&raw(r#"{"jsonrpc":"1.0","id":1,"method":"ping"}"#).await),
+        (StatusCode::OK, Some(-32600))
+    );
+    assert_eq!(
+        code(&raw(r#"{"jsonrpc":"2.0","id":1}"#).await),
+        (StatusCode::OK, Some(-32600))
+    );
+    let rpc = |method: &str, params: Value| json!({"jsonrpc": "2.0", "id": 7, "method": method, "params": params});
+    let (_, r) = mcp(&h.app, Some("c"), rpc("resources/list", json!({}))).await;
+    assert_eq!(r["error"]["code"], -32601, "{r}");
+    assert_eq!(r["id"], 7);
+    let (_, r) = mcp(
+        &h.app,
+        Some("c"),
+        rpc("tools/call", json!({"name": "drop_table"})),
+    )
+    .await;
+    assert_eq!(r["error"]["code"], -32602, "unknown tool: {r}");
+    let (_, r) = mcp(
+        &h.app,
+        Some("c"),
+        rpc(
+            "tools/call",
+            json!({"name": "lookup_ioc", "arguments": {"type": "ipv4"}}),
+        ),
+    )
+    .await;
+    assert_eq!(r["error"]["code"], -32602, "missing value: {r}");
+    let (_, r) = mcp(
+        &h.app,
+        Some("c"),
+        rpc(
+            "tools/call",
+            json!({"name": "explore", "arguments": ["group"]}),
+        ),
+    )
+    .await;
+    assert_eq!(r["error"]["code"], -32602, "arguments not an object: {r}");
+    let (_, r) = mcp(
+        &h.app,
+        Some("c"),
+        rpc(
+            "tools/call",
+            json!({"name": "explore", "arguments": {"group": {"x": 1}}}),
+        ),
+    )
+    .await;
+    assert_eq!(r["error"]["code"], -32602, "a nested value: {r}");
+    // What the route refuses (422) is a tool error the model can read.
+    let r = mcp_tool(&h.app, Some("c"), "statistics", json!({"days": 0})).await;
+    assert_eq!(r["result"]["isError"], true, "{r}");
+    assert!(r["result"]["content"][0]["text"]
+        .as_str()
+        .unwrap()
+        .starts_with("422"));
+}
+
+#[tokio::test]
+async fn mcp_tool_calls_are_audited() {
+    let h = harness("mcp-audit");
+    mcp_tool(&h.app, Some("c"), "whoami", json!({})).await;
+    mcp_tool(&h.app, Some("o"), "rule_detail", json!({"id": "r1"})).await;
+    let dir = h._dir.0.join(frank::audit::DIR);
+    let mut lines = String::new();
+    for f in std::fs::read_dir(dir).unwrap() {
+        lines += &std::fs::read_to_string(f.unwrap().path()).unwrap();
+    }
+    let calls: Vec<Value> = lines
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|l| l["action"] == "mcp_call")
+        .collect();
+    assert_eq!(calls.len(), 2, "{lines}");
+    assert_eq!(calls[0]["by"], "mdr@mdr");
+    assert_eq!(calls[0]["tool"], "whoami");
+    assert_eq!(calls[0]["ok"], true);
+    assert_eq!(calls[1]["by"], "obs@obs");
+    assert_eq!(calls[1]["ok"], false, "observer may not see a rule");
+    assert!(!lines.contains("\"c\""), "no token in the audit");
 }

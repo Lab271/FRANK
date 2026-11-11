@@ -9,6 +9,7 @@ pub mod explore;
 pub mod geo;
 pub mod lists;
 pub mod live;
+pub mod mcp;
 pub mod mmdb;
 pub mod objects;
 pub mod records;

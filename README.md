@@ -161,8 +161,20 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `GET /v1/sso` | none | whether sign-in with SSO is on |
 | `GET /v1/sso/login`, `GET /v1/sso/callback` | none | the OIDC sign-in (browser redirects); 404 when SSO is off |
 | `POST /v1/sso/logout` | the session | ends the session; needs FRANK's own `Origin` |
+| `POST /mcp` | any; each tool as its route | the MCP server (see below) |
 
 Send tokens as `Authorization: Bearer <token>`. With SSO on, a request without that header is named by its `frank_session` cookie, if any.
+
+**MCP** (#263, [spec 015](.openspec/specs/015-mcp/spec.md)). `POST /mcp` speaks the Model Context Protocol (Streamable HTTP, stateless: JSON answers, no SSE stream), so Claude Code and other MCP clients can query FRANK. Its read-only tools `whoami`, `statistics`, `summary`, `lookup_ioc`, `ioc_range`, `explore`, `rule_detail`, `list_sightings` and `get_sighting` each call the `/v1` route of that name with the request's own token, so they see exactly what that token sees on `/v1`; a status too low for a tool is a tool error the model can read. Every tool call is an `mcp_call` audit line. To add it to Claude Code, against `make up` (after `make trust`), with the token in an environment variable from 1Password rather than pasted:
+
+```bash
+export FRANK_TOKEN=$(op read 'op://<vault>/<item>/token')
+claude mcp add --transport http frank https://frank.local:8443/mcp \
+  --header "Authorization: Bearer ${FRANK_TOKEN}"
+claude mcp list            # frank: … ✓ Connected
+```
+
+The token's user decides the status the tools answer with: a machine user in an observer or contributor organisation is a sensible one for an assistant. Over SSH, forward the port (`ssh -L 8443:127.0.0.1:8443 host`) and use the same command. A Claude.ai connector, signed in through Okta, is #264.
 
 Each submission may carry `tlp_level` (default GREEN). Every query shows a tier only the TLP levels it may see: CLEAR is public, GREEN observer, AMBER contributor, AMBER+STRICT partner. TLP:RED is refused.
 

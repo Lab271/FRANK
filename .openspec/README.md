@@ -24,6 +24,7 @@ What FRANK must do (specs) and why it is built the way it is (ADRs), for Phase 3
 | [011-management-api](specs/011-management-api/spec.md) | Organisations, users, roles, tokens, audit, files under `/v1/admin` |
 | [013-disclosure](specs/013-disclosure/spec.md) | Statuses, TLP per status, the reporter threshold, statistics, summary, participants |
 | [014-query-api](specs/014-query-api/spec.md) | Explore, rule detail, live, warning and reference lists, geo, Parquet files |
+| [015-mcp](specs/015-mcp/spec.md) | The MCP server on `/mcp`: protocol, read-only tools, credentials, audit |
 | [020-sightings-storage](specs/020-sightings-storage/spec.md) | Striped Parquet table, WAL, hour files, day merge, retention, S3, row databases |
 | [021-ioc-lookups](specs/021-ioc-lookups/spec.md) | `iocs.db`, IoC and CIDR lookups |
 | [030-browser-client](specs/030-browser-client/spec.md) | `frank-wasm` preview and Parquet queries, the web UI |

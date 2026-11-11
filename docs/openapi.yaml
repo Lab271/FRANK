@@ -43,6 +43,8 @@ tags:
     description: The sighting Parquet files, for local analysis.
   - name: platform
     description: Health, identity, participants and this document.
+  - name: mcp
+    description: The Model Context Protocol, for AI clients (#263).
   - name: admin
     description: Organisations, users and tokens, for users with a role. An admin manages its own organisation, a superadmin every one; to an admin, another organisation's objects are 404.
   - name: sso
@@ -819,6 +821,34 @@ paths:
               schema: { type: object, properties: { signed_out: { type: boolean } } }
         "403": { description: The cookie came without FRANK's own `Origin`. }
         "404": { description: SSO is not configured. }
+
+  /mcp:
+    post:
+      tags: [mcp]
+      summary: MCP server (Streamable HTTP, stateless)
+      description: |
+        One JSON-RPC 2.0 message per request, answered with one JSON body: `initialize`, `ping`, `tools/list` and `tools/call`. A notification gets 202 and no body; `GET /mcp` gets 405 (no SSE stream). The read-only tools `whoami`, `statistics`, `summary`, `lookup_ioc`, `ioc_range`, `explore`, `rule_detail`, `list_sightings` and `get_sighting` each call the `/v1` route of that name with this request's credentials, so each needs that route's status and answers as it does. A status too low for a tool is a tool result with `isError`; an unknown token is 401 for every message. Each `tools/call` is an `mcp_call` audit line.
+      x-min-status: public
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [jsonrpc, method]
+              properties:
+                jsonrpc: { const: "2.0" }
+                id: { type: [string, integer] }
+                method: { type: string, examples: ["tools/call"] }
+                params: { type: object }
+      responses:
+        "200":
+          description: The JSON-RPC response, `result` or `error`.
+          content:
+            application/json:
+              schema: { type: object }
+        "202": { description: A notification, accepted. }
+        "401": { $ref: "#/components/responses/Unauthorized" }
 
 components:
   securitySchemes:
