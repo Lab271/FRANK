@@ -112,6 +112,16 @@ def collect(root=ROOT):
     return specs, skipped, dead_md_links(root)
 
 
+def duplicate_numbers(root=ROOT):
+    """[(NNN, [folders])] for spec numbers used by more than one folder, outdated ones included:
+    "spec 013" must name one spec."""
+    by_number = {}
+    for d in sorted(p.parent for p in root.glob(".openspec/specs/*/spec.md")):
+        number = d.name.split("-", 1)[0]
+        by_number.setdefault(number, []).append(d.name)
+    return [(n, names) for n, names in by_number.items() if len(names) > 1]
+
+
 def tested(reqs):
     return max(0, sum(r["backed"] for r in reqs) - sum(len(r["dead"]) for r in reqs))
 
@@ -154,7 +164,7 @@ def boxed(lines):
     return "\n".join([top, *body, paint("╰" + "─" * (width + 2) + "╯", BOLD)])
 
 
-def report(specs, skipped, md_dead, verbose, floor=None):
+def report(specs, skipped, md_dead, verbose, floor=None, dupes=()):
     """Dashboard, then a bar per spec, then dead links. Returns (tested share, dead links)."""
     reqs = [r for rs in specs.values() for r in rs]
     scen = sum(r["scenarios"] for r in reqs)
@@ -165,7 +175,7 @@ def report(specs, skipped, md_dead, verbose, floor=None):
 
     head = []
     if floor is not None:
-        ok = total >= floor and not dead
+        ok = total >= floor and not dead and not dupes
         verdict = paint(" PASS ", BOLD, "42;30") if ok else paint(" FAIL ", BOLD, "41;97")
         if not COLOR:
             verdict = "PASS" if ok else "FAIL"
@@ -175,6 +185,7 @@ def report(specs, skipped, md_dead, verbose, floor=None):
         f"implemented  {cell(impl, len(reqs), f)}  requirements",
         f"tested       {cell(tested(reqs), scen, f)}  scenarios",
         "dead links   " + (paint(f"{dead}", RED, BOLD) if dead else paint("0", GREEN)),
+        "numbers      " + (paint(f"{len(dupes)} used twice", RED, BOLD) if dupes else paint("unique", GREEN)),
     ]
     print(boxed(head))
     print()
@@ -201,18 +212,23 @@ def report(specs, skipped, md_dead, verbose, floor=None):
                 print(paint("DEAD LINK", RED, BOLD) + f" {name} Req {r['num']}: {e} ({why})")
     for file, target in md_dead:
         print(paint("DEAD LINK", RED, BOLD) + f" {file}: {target}")
+    for number, names in dupes:
+        print(paint("DUPLICATE", RED, BOLD) + f" spec number {number}: {', '.join(names)}")
     return total, dead
 
 
 def main(argv=None):
     p = argparse.ArgumentParser(description="FRANK spec traceability")
     p.add_argument("-v", "--verbose", action="store_true", help="per requirement, with dead links")
-    p.add_argument("--min", type=float, help="fail if tested < MIN (0.0-1.0) or any link is dead")
+    p.add_argument("--min", type=float,
+                   help="fail if tested < MIN (0.0-1.0), any link is dead or two specs share a number")
     args = p.parse_args(argv)
-    total, dead = report(*collect(), args.verbose, args.min)
+    dupes = duplicate_numbers()
+    total, dead = report(*collect(), args.verbose, args.min, dupes)
     if args.min is not None:
-        ok = total >= args.min and not dead
-        print(f"{'PASS' if ok else 'FAIL'}: tested {total:.0%} (min {args.min:.0%}), {dead} dead links")
+        ok = total >= args.min and not dead and not dupes
+        print(f"{'PASS' if ok else 'FAIL'}: tested {total:.0%} (min {args.min:.0%}), {dead} dead links, "
+              f"{len(dupes)} duplicate spec numbers")
         return 0 if ok else 1
     return 0
 
