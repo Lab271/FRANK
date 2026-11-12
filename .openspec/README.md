@@ -22,14 +22,13 @@ What FRANK must do (specs) and why it is built the way it is (ADRs), for Phase 3
 | [001-data-model](specs/001-data-model/spec.md) | Submission formats and shapes, observables, TLP, sighting id and digest, rows, preview |
 | [010-sightings-api](specs/010-sightings-api/spec.md) | Bearer tokens, submitting, receipts and resends, listing, whoami, health, OpenAPI |
 | [011-management-api](specs/011-management-api/spec.md) | Organisations, users, roles, tokens, audit, files under `/v1/admin` |
+| [012-sso](specs/012-sso/spec.md) | Sign in with SSO over OpenID Connect: login, callback, logout, provisioning, the session cookie |
 | [013-disclosure](specs/013-disclosure/spec.md) | Statuses, TLP per status, the reporter threshold, statistics, summary, participants |
 | [014-query-api](specs/014-query-api/spec.md) | Explore, rule detail, live, warning and reference lists, geo, Parquet files |
 | [015-mcp](specs/015-mcp/spec.md) | The MCP server on `/mcp`: protocol, read-only tools, credentials, audit |
 | [020-sightings-storage](specs/020-sightings-storage/spec.md) | Striped Parquet table, WAL, hour files, day merge, retention, S3, row databases |
 | [021-ioc-lookups](specs/021-ioc-lookups/spec.md) | `iocs.db`, IoC and CIDR lookups |
 | [030-browser-client](specs/030-browser-client/spec.md) | `frank-wasm` preview and Parquet queries, the web UI |
-
-012 is kept for authentication over OIDC (#240).
 
 A spec is written in RFC 2119 terms, one requirement per heading, with its scenarios and links to the code and tests that carry it ([spec 011](specs/011-management-api/spec.md) is the model):
 

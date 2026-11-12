@@ -13,7 +13,7 @@
 
 ## Overview
 
-People sign in to FRANK's web UI with OpenID Connect (Okta in production, a local stub in development) instead of pasting a bearer token. SSO is optional; bearer tokens stay the API credential and behave exactly as before. It replaces the Cognito direction of the Phase 2 authentication spec (012, removed in #248), which the Rust server never implemented.
+People sign in to FRANK's web UI with OpenID Connect (Okta in production, a local stub in development) instead of pasting a bearer token. SSO is optional; bearer tokens stay the API credential and behave exactly as before. It replaces the Cognito direction of the Phase 2 authentication spec that held number 012 (removed in #248, at the tag `phase2-final`), which the Rust server never implemented.
 
 ### Philosophy
 

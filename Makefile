@@ -114,13 +114,13 @@ check-mvl-limit: ## Qualified-subset gate on frank-core (cargo-mvl-limit; MVL_LI
 
 # Spec traceability (ADR-021): every **Implementation:** and **Tests:** link in
 # .openspec/specs must resolve, and every relative Markdown link in the docs.
-# ASSURANCE_MIN is the floor on tested scenarios (172/180 = 96%; the rest are web UI, #254); raise it as tests land.
+# ASSURANCE_MIN is the floor on tested scenarios (195/203 = 96%; the rest are web UI, #254); raise it as tests land.
 ASSURANCE_MIN ?= 0.95
 assurance: ## Spec -> code -> test traceability per spec (V=1: per requirement, with dead links)
 	@python3 scripts/assurance.py $(if $(filter 1,$(V)),-v,)
 
-check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN; tests the checker first
-	@python3 -m unittest discover -q -s scripts -p 'test_assurance.py'
+check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN; tests the checker first, quietly unless it fails, so the dashboard comes first
+	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_assurance.py' 2>&1) || { echo "$$out"; exit 1; }
 	@python3 scripts/assurance.py --min $(ASSURANCE_MIN)
 
 fmt: ## Format the code

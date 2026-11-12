@@ -108,5 +108,29 @@ class Collect(Tree):
         self.assertEqual(md_dead, [(Path("docs/a.md"), "c.md")])
 
 
+class Dashboard(unittest.TestCase):
+    def setUp(self):
+        self.color, assurance.COLOR = assurance.COLOR, False
+
+    def tearDown(self):
+        assurance.COLOR = self.color
+
+    def test_bar_fills_its_share(self):
+        self.assertEqual(assurance.bar(0.5, 0.95, 10), "█" * 5 + "░" * 5)
+        self.assertEqual(assurance.bar(1.0, 0.95, 10), "█" * 10)
+
+    def test_a_full_bar_means_all(self):
+        self.assertEqual(assurance.bar(0.97, 0.95, 10), "█" * 9 + "░")
+
+    def test_grade_against_the_floor(self):
+        self.assertEqual(assurance.grade(0.96, 0.95), assurance.GREEN)
+        self.assertEqual(assurance.grade(0.85, 0.95), assurance.YELLOW)
+        self.assertEqual(assurance.grade(0.47, 0.95), assurance.RED)
+
+    def test_no_escape_codes_without_colour(self):
+        self.assertNotIn("\x1b", assurance.cell(7, 15, 0.95))
+        self.assertEqual(assurance.paint("x", assurance.RED), "x")
+
+
 if __name__ == "__main__":
     unittest.main()
