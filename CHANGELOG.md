@@ -4,6 +4,16 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.44.0] - 2026-11-12
+
+### Changed
+
+- Web UI: the eight spec 030 scenarios without tests now run in a browser (Obscura) in `make e2e BROWSER=1`, and in CI before the image is pushed.
+
+### Fixed
+
+- Web UI: the theme button works whatever the load timing; a stale startup sign-in check can no longer drop a signed-in user to public.
+
 ## [0.43.0] - 2026-11-12
 
 ### Added
