@@ -101,6 +101,13 @@ class Collect(Tree):
         self.assertEqual(skipped, ["002-old"])
         self.assertEqual(md_dead, [])
 
+    def test_duplicate_spec_numbers_are_found(self):
+        self.write(".openspec/specs/013-disclosure/spec.md", "**Status:** Implemented\n")
+        self.write(".openspec/specs/013-sso/spec.md", "**Status:** Outdated\n")
+        self.write(".openspec/specs/014-query/spec.md", "**Status:** Implemented\n")
+        self.assertEqual(assurance.duplicate_numbers(self.root),
+                         [("013", ["013-disclosure", "013-sso"])])
+
     def test_dead_markdown_link_is_reported(self):
         self.write("docs/a.md", "[ok](b.md) [web](https://example.org) [gone](c.md#x)\n")
         self.write("docs/b.md", "")

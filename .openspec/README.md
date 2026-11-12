@@ -53,7 +53,7 @@ A superadmin SHALL list, create and set the status of organisations. ...
 - `(planned)` on a line marks work not done yet: it counts as neither implemented nor tested, so the gap stays visible.
 - A spec whose `**Status:**` starts with `Outdated` is not counted either: it awaits a rewrite.
 
-`make assurance` shows per spec how many requirements link to existing code and how many scenarios to a test; `make assurance V=1` lists every requirement and each dead link. `make check-assurance` fails on a dead link, and CI runs it: a link to a renamed function or test is a false claim of coverage.
+`make assurance` shows per spec how many requirements link to existing code and how many scenarios to a test; `make assurance V=1` lists every requirement and each dead link. `make check-assurance` fails on a dead link or two spec folders with the same number, and CI runs it: a link to a renamed function or test is a false claim of coverage.
 
 ## Decisions
 
