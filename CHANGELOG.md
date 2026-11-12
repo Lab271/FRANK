@@ -4,6 +4,21 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.43.0] - 2026-11-12
+
+### Added
+
+- `deploy/stackit` (OpenTofu): SSH is off by default (`admin_cidr` and `ssh_public_key` optional); commands go through the STACKIT Server Agent (#266).
+- `deploy/stackit`: `store_bucket` puts the sightings and the audit log in a STACKIT Object Storage bucket (`FRANK_STORE`), with its credential in a 0600 env file (#266).
+
+### Changed
+
+- `deploy/stackit`: `image` has no `:latest` default; pin a commit (#266).
+
+### Fixed
+
+- `deploy/stackit`: the Debian image is picked by name, the x86 "Debian 13" (the filter also matched ARM64); the provider enables beta resources for the image lookup (#266).
+
 ## [0.42.0] - 2026-11-12
 
 ### Changed

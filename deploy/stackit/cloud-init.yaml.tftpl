@@ -3,7 +3,9 @@
 # volume at /srv/frank (plain files: data/ with sightings/, iocs.db and
 # registry.db; participants/participants.db). Nightly copies of
 # participants.db, the one database that cannot be rebuilt, go to
-# /srv/frank/backup.
+# /srv/frank/backup. With a bucket (store), the sightings and the audit log
+# live in Object Storage instead (FRANK_STORE, ADR-019); the WAL stays on
+# the volume.
 package_update: true
 packages:
   - podman
@@ -16,6 +18,14 @@ write_files:
     content: |
       FRANK_IMAGE=${image}
       FRANK_RETENTION_DAYS=${retention_days}
+%{ if store != "" ~}
+  - path: /etc/frank/store.env
+    permissions: "0600"
+    content: |
+      FRANK_STORE=${store}
+      AWS_ACCESS_KEY_ID=${store_key}
+      AWS_SECRET_ACCESS_KEY=${store_secret}
+%{ endif ~}
   - path: /etc/systemd/system/frank.service
     permissions: "0644"
     content: |
@@ -35,6 +45,9 @@ write_files:
         -v /srv/frank/participants:/participants:Z \
         -v /srv/frank/tokens:/etc/frank/tokens:ro,Z \
         -e FRANK_RETENTION_DAYS=$${FRANK_RETENTION_DAYS} \
+%{ if store != "" ~}
+        --env-file /etc/frank/store.env \
+%{ endif ~}
         $${FRANK_IMAGE}
       ExecStop=/usr/bin/podman stop -t 30 frank
       Restart=always

@@ -12,4 +12,6 @@ terraform {
 # see https://registry.terraform.io/providers/stackitcloud/stackit/latest/docs
 provider "stackit" {
   default_region = var.region
+  # stackit_image_v2 (Debian 13 by name, not by a fixed image ID) is beta.
+  enable_beta_resources = true
 }
