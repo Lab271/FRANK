@@ -12,6 +12,7 @@ Standard library only. Checks the whole flow and the rules of ADR-020:
 
     scripts/sso_check.py --url http://localhost:18080 [--user 00u-stub-alice]
     scripts/sso_check.py --url https://frank.local:8443 --ca target/frank-local-ca.crt
+    scripts/sso_check.py --url ... --user 00u-stub-superadmin --email superadmin@sbp.example --role superadmin
 
 The session and the codes are never printed.
 """
@@ -82,6 +83,7 @@ def main() -> None:
     ap.add_argument("--url", required=True, help="FRANK's public URL, as FRANK_SSO_REDIRECT_URL has it")
     ap.add_argument("--user", default="00u-stub-alice", help="the stub user to pick (its sub)")
     ap.add_argument("--email", default="alice@lab271.dev", help="the user name FRANK should show")
+    ap.add_argument("--role", help="the role the user must have (admin, superadmin)")
     ap.add_argument("--ca", help="a CA certificate for FRANK's HTTPS")
     a = ap.parse_args()
     frank = a.url.rstrip("/")
@@ -136,6 +138,8 @@ def main() -> None:
     me = json.loads(body)
     if status != 200 or me.get("user") != a.email:
         fail(f"whoami with the session: {status} {me}")
+    if a.role and me.get("role") != a.role:
+        fail(f"{a.email} signed in without the role {a.role}: {me}")
     status, _, _ = c.request("GET", f"{frank}/v1/whoami", headers={**cookie, "Authorization": "Bearer not-a-token"})
     if status != 401:
         fail("a bad bearer token did not win over the session cookie")
@@ -150,7 +154,8 @@ def main() -> None:
     if json.loads(body).get("tier") != "public":
         fail("the session still works after logout")
 
-    print(f"sso-check: OK, signed in as {a.email} ({me.get('tier')}) through the stub and out again")
+    role = f", {a.role}" if a.role else ""
+    print(f"sso-check: OK, signed in as {a.email} ({me.get('tier')}{role}) through the stub and out again")
 
 
 if __name__ == "__main__":

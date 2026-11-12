@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.42.0] - 2026-11-12
+
 ### Changed
 
 - Spec `013-sso` is `012-sso`, the number kept for OIDC authentication; 013 is disclosure only (#269).

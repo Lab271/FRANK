@@ -14,6 +14,20 @@
     "groups": ["frank-users"]
   },
   {
+    "sub": "00u-stub-admin",
+    "name": "Ada Admin",
+    "email": "admin@sbp.example",
+    "email_verified": true,
+    "groups": ["frank-admins"]
+  },
+  {
+    "sub": "00u-stub-superadmin",
+    "name": "Sam Superadmin",
+    "email": "superadmin@sbp.example",
+    "email_verified": true,
+    "groups": ["frank-admins"]
+  },
+  {
     "sub": "00u-stub-eve",
     "name": "Eve Unverified",
     "email": "eve@lab271.dev",

@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.41.0
+## Version: 0.42.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -119,7 +119,7 @@ The issuer and the redirect URL must be `https://`; only `localhost` may be `htt
 - **Audit lines:** `sso_login`, `user_provisioned`, `sso_refused` (with the reason; the browser only sees `/?sso=refused`) and `sso_logout`.
 - **Not (yet):** SCIM. A person removed in the provider keeps their FRANK user until an admin disables it; their session ends within eight hours. Signing out of FRANK leaves the provider's own session as it is.
 
-**Locally, against a stub** (#238, development only): `make up-sso` is `make up` plus a small Python stand-in for Okta's OIDC endpoints ([`deploy/podman/sso-stub/`](deploy/podman/sso-stub/)), at `http://localhost:9400/oauth2/default` (`SSO_STUB_PORT`). It shares the frank container's network, so that one address works for the browser and for FRANK. It signs in **anyone who picks a name** from `users.json`, with a signing key made at every start: never deploy it. `make up-sso` makes the client secret once in `./sso/client-secret` (git-ignored, never printed) and registers the organisation `sso-users` (contributor; `FRANK_SSO_ORGANISATION`) for new users. Open `https://frank.local:8443` (after `make trust`) and press "sign in with SSO". Its tests: `cd deploy/podman/sso-stub && uv run --group dev pytest`.
+**Locally, against a stub** (#238, development only): `make up-sso` is `make up` plus a small Python stand-in for Okta's OIDC endpoints ([`deploy/podman/sso-stub/`](deploy/podman/sso-stub/)), at `http://localhost:9400/oauth2/default` (`SSO_STUB_PORT`). It shares the frank container's network, so that one address works for the browser and for FRANK. It signs in **anyone who picks a name** from `users.json`, with a signing key made at every start: never deploy it. `make up-sso` makes the client secret once in `./sso/client-secret` (git-ignored, never printed) and registers the organisation `sso-users` (contributor; `FRANK_SSO_ORGANISATION`) for new users. It also registers `sbp`, the main company (core), with the users `admin@sbp.example` (admin) and `superadmin@sbp.example` (superadmin), without tokens: the stub's "Ada Admin" and "Sam Superadmin" are linked to them on sign-in and keep those roles. Open `https://frank.local:8443` (after `make trust`) and press "sign in with SSO". Its tests: `cd deploy/podman/sso-stub && uv run --group dev pytest`.
 
 **In production** the Okta application and its secret are set up outside this repository (GitLab `Labs/deployments/test-frank`); the secret is mounted as a file, as here.
 
