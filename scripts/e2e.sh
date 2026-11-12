@@ -70,6 +70,12 @@ token() { podman run --rm "${mounts[@]}" "$IMAGE" participant add "e2e-$1" --sta
 partner=$(token partner)
 contributor=$(token contributor)
 observer=$(token observer)
+if [ -n "${SSO:-}" ]; then
+  # sbp, the main company, with the stub's superadmin as a user without a
+  # token: the sign-in links to it and keeps the role.
+  podman run --rm "${mounts[@]}" "$IMAGE" participant add sbp --status core >/dev/null 2>&1
+  podman run --rm "${mounts[@]}" "$IMAGE" user add sbp superadmin@sbp.example --role superadmin 2>/dev/null
+fi
 
 podman rm -f "$NAME" >/dev/null 2>&1 || true
 run_args=()
@@ -135,4 +141,6 @@ if [ -n "${SSO:-}" ]; then
     sleep 0.5
   done
   "$PYTHON" "$here/sso_check.py" --url "http://localhost:$PORT"
+  "$PYTHON" "$here/sso_check.py" --url "http://localhost:$PORT" \
+    --user 00u-stub-superadmin --email superadmin@sbp.example --role superadmin
 fi

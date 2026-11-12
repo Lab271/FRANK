@@ -260,12 +260,22 @@ up-s3: image s3-env ## Like up-solo, the sightings' Parquet files in a Garage (S
 	@echo "FRANK: $(FRANK_URL_TLS) (http://$(FRANK_HOST) redirects there; once: make trust), API also at http://127.0.0.1:$${FRANK_PORT:-8080}"
 	@echo "Garage: S3 http://127.0.0.1:$${GARAGE_S3_PORT:-3900} and https://$(FRANK_HOST):$${GARAGE_TLS_PORT:-9443}, files in ./$(S3_DIR); make s3-ls lists the bucket"
 
-up-sso: image s3-env sso-env ## Like up-solo, with sign-in with SSO against a local OIDC stub at http://localhost:9400 (SSO_STUB_PORT; development only: it signs in anyone who picks a name); new users land in FRANK_SSO_ORGANISATION (sso-users, contributor)
+up-sso: image s3-env sso-env ## Like up-solo, with sign-in with SSO against a local OIDC stub at http://localhost:9400 (SSO_STUB_PORT; development only: it signs in anyone who picks a name); new users land in FRANK_SSO_ORGANISATION (sso-users, contributor); the stub's admin and superadmin are users of sbp (core)
 	mkdir -p data participants && touch $(TOKENS)
 	@podman run --rm -v $(CURDIR)/participants:/participants:Z $(IMAGE):$(VERSION) participant list 2>/dev/null \
 	  | awk '{print $$1}' | grep -qxF '$(FRANK_SSO_ORGANISATION)' \
 	  || podman run --rm -v $(CURDIR)/participants:/participants:Z $(IMAGE):$(VERSION) \
 	       participant add '$(FRANK_SSO_ORGANISATION)' --status contributor
+	@# The stub's admin and superadmin (users.json) are linked on sign-in to
+	@# these users of sbp, the main company (core), and keep their roles:
+	@# SSO never grants one. No tokens: they sign in with SSO.
+	@run="podman run --rm -v $(CURDIR)/participants:/participants:Z $(IMAGE):$(VERSION)"; \
+	  $$run participant list 2>/dev/null | awk '{print $$1}' | grep -qxF sbp \
+	    || $$run participant add sbp --status core; \
+	  users=$$($$run user list 2>/dev/null | awk '{print $$1}'); \
+	  for r in admin superadmin; do \
+	    echo "$$users" | grep -qxF "$$r@sbp.example" || $$run user add sbp "$$r@sbp.example" --role $$r; \
+	  done
 	FRANK_HOST=$(FRANK_HOST) FRANK_TLS_ADDR=$(FRANK_TLS_ADDR) FRANK_HTTPS_PORT=$(FRANK_HTTPS_PORT) \
 	  FRANK_HTTP_ADDR=$(FRANK_HTTP_ADDR) SSO_STUB_PORT=$(SSO_STUB_PORT) \
 	  FRANK_SSO_REDIRECT_URL=$(FRANK_URL_TLS)/v1/sso/callback FRANK_SSO_ORGANISATION=$(FRANK_SSO_ORGANISATION) \
