@@ -31,13 +31,15 @@ variable "data_volume_gb" {
 }
 
 variable "ssh_public_key" {
-  description = "Admin SSH public key."
+  description = "Admin SSH public key; empty for none."
   type        = string
+  default     = ""
 }
 
 variable "admin_cidr" {
-  description = "Source range allowed to SSH in."
+  description = "Source range allowed to SSH in; empty opens no SSH port (reach the VM with server commands)."
   type        = string
+  default     = ""
 }
 
 variable "domain" {
@@ -46,9 +48,8 @@ variable "domain" {
 }
 
 variable "image" {
-  description = "FRANK container image."
+  description = "FRANK container image, pinned by commit: ghcr.io/lab271/frank:<sha>."
   type        = string
-  default     = "ghcr.io/lab271/frank:latest"
 }
 
 variable "registry_user" {
@@ -67,4 +68,10 @@ variable "registry_token" {
 variable "retention_days" {
   type    = number
   default = 400
+}
+
+variable "store_bucket" {
+  description = "Object Storage bucket for the sightings and the audit log (FRANK_STORE); empty keeps them on the data volume."
+  type        = string
+  default     = ""
 }

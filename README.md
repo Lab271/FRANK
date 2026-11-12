@@ -123,9 +123,12 @@ The issuer and the redirect URL must be `https://`; only `localhost` may be `htt
 
 **In production** the Okta application and its secret are set up outside this repository (GitLab `Labs/deployments/test-frank`); the secret is mounted as a file, as here.
 
-**On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS.
+**On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image, pinned by commit, with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS. Options:
 
-Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`.
+- `store_bucket`: the sightings and the audit log go to that Object Storage bucket (`FRANK_STORE`, ADR-019); the WAL and the SQLite files stay on the volume. OpenTofu makes the bucket and a credential for it. The credential's keys reach the VM through its user data, which anyone who can read the project's servers can see. Turn on versioning once, as on AWS, with the credential's keys: `aws s3api put-bucket-versioning --endpoint-url https://object.storage.eu01.onstackit.cloud --bucket <bucket> --versioning-configuration Status=Enabled` (the provider has no resource for it).
+- `admin_cidr` and `ssh_public_key`: SSH from that range. Empty (the default) opens no port 22: the VM runs the STACKIT Server Agent, and commands go through `stackit server command create … --template-name RunShellScript`.
+
+Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`, over SSH or as a server command (`tofu output create_token` prints one).
 
 **Audit log.** `data/audit/YYYY-MM-DD.jsonl` (UTC) has one line per action: every submission and ingest (participant, user, sighting ids, digests, created/duplicate/refused) and every change to participants, users, roles and tokens, from the admin tab or the command line, with who did it (`user@organisation`, or `cli:<os user>`). A token appears only as the first 12 hex digits of its hash, as `frank token list` shows it. Days are dropped with the sightings' retention. With `FRANK_STORE` the lines are objects in the bucket instead (see Storage above).
 
@@ -135,7 +138,7 @@ Participants are managed on the VM through the running container: `sudo podman e
 cd deploy/stackit
 export STACKIT_SERVICE_ACCOUNT_KEY_PATH=…
 tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
-  -var ssh_public_key="$(cat ~/.ssh/id_ed25519.pub)" -var admin_cidr=203.0.113.4/32
+  -var image=ghcr.io/lab271/frank:<sha> -var store_bucket=frank-example-sightings
 ```
 
 ## API
