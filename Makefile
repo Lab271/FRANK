@@ -48,7 +48,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 up-sso sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance versionsmoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up up-solo up-s3 up-sso sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -119,8 +119,11 @@ ASSURANCE_MIN ?= 0.95
 assurance: ## Spec -> code -> test traceability per spec (V=1: per requirement, with dead links)
 	@python3 scripts/assurance.py $(if $(filter 1,$(V)),-v,)
 
+version: ## Show the version; fails if Cargo.toml, both Cargo.lock, README and CHANGELOG disagree. BUMP=major|minor|patch writes the next one everywhere and dates [Unreleased]
+	@python3 scripts/version.py $(if $(BUMP),--bump $(BUMP),)
+
 check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN; tests the checker first, quietly unless it fails, so the dashboard comes first
-	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_assurance.py' 2>&1) || { echo "$$out"; exit 1; }
+	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_*.py' 2>&1) || { echo "$$out"; exit 1; }
 	@python3 scripts/assurance.py --min $(ASSURANCE_MIN)
 
 fmt: ## Format the code
