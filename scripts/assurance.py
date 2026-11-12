@@ -20,12 +20,13 @@ Scores per spec:
                  subtracts one, because a stale link is a false claim of coverage
 
 Usage:
-    scripts/assurance.py            dashboard
+    scripts/assurance.py            dashboard, a bar per spec (colour on a terminal; NO_COLOR=1 turns it off)
     scripts/assurance.py -v         per requirement, with dead links
     scripts/assurance.py --min 0.5  exit 1 if tested < 50% or any link is dead
 """
 
 import argparse
+import os
 import re
 import sys
 from pathlib import Path
@@ -115,29 +116,91 @@ def tested(reqs):
     return max(0, sum(r["backed"] for r in reqs) - sum(len(r["dead"]) for r in reqs))
 
 
-def report(specs, skipped, md_dead, verbose):
+# Colour on a terminal, in GitHub Actions (its log shows it) or with
+# FORCE_COLOR; never with NO_COLOR set (https://no-color.org).
+COLOR = "NO_COLOR" not in os.environ and (
+    sys.stdout.isatty() or "GITHUB_ACTIONS" in os.environ or "FORCE_COLOR" in os.environ)
+GREEN, YELLOW, RED, BOLD, DIM = "32", "33", "31", "1", "2"
+BAR = 20
+ANSI = re.compile(r"\x1b\[[0-9;]*m")
+
+
+def paint(text, *codes):
+    return f"\x1b[{';'.join(codes)}m{text}\x1b[0m" if COLOR and codes and text else text
+
+
+def grade(share, floor):
+    """Green at or above the floor, yellow within 15 points of it, red below."""
+    return GREEN if share >= floor else YELLOW if share >= floor - 0.15 else RED
+
+
+def bar(share, floor, width=BAR):
+    """`width` cells, the filled share in its grade's colour."""
+    filled = round(share * width)
+    if share < 1 and filled == width:
+        filled -= 1  # a full bar means 100%
+    return paint("█" * filled, grade(share, floor)) + paint("░" * (width - filled), DIM)
+
+
+def cell(done, of, floor, width=BAR):
+    share = done / of if of else 0.0
+    return f"{bar(share, floor, width)} {done:>3}/{of:<3} {paint(f'{share:>4.0%}', grade(share, floor))}"
+
+
+def boxed(lines):
+    width = max(len(ANSI.sub("", l)) for l in lines)
+    top = paint("╭─ FRANK spec assurance " + "─" * (width - 21) + "╮", BOLD)
+    body = [paint("│ ", BOLD) + l + " " * (width - len(ANSI.sub("", l))) + paint(" │", BOLD) for l in lines]
+    return "\n".join([top, *body, paint("╰" + "─" * (width + 2) + "╯", BOLD)])
+
+
+def report(specs, skipped, md_dead, verbose, floor=None):
+    """Dashboard, then a bar per spec, then dead links. Returns (tested share, dead links)."""
     reqs = [r for rs in specs.values() for r in rs]
     scen = sum(r["scenarios"] for r in reqs)
-    print(f"{'spec':<28}{'implemented':>14}{'tested':>16}")
+    impl = sum(r["implemented"] for r in reqs)
+    total = tested(reqs) / scen if scen else 0.0
+    dead = sum(len(r["dead"]) for r in reqs) + len(md_dead)
+    f = 0.95 if floor is None else floor
+
+    head = []
+    if floor is not None:
+        ok = total >= floor and not dead
+        verdict = paint(" PASS ", BOLD, "42;30") if ok else paint(" FAIL ", BOLD, "41;97")
+        if not COLOR:
+            verdict = "PASS" if ok else "FAIL"
+        head.append(f"{verdict}  tested {total:.0%} against a floor of {floor:.0%}")
+    head += [
+        f"specs        {len(specs)} counted" + (f", {len(skipped)} outdated" if skipped else ""),
+        f"implemented  {cell(impl, len(reqs), f)}  requirements",
+        f"tested       {cell(tested(reqs), scen, f)}  scenarios",
+        "dead links   " + (paint(f"{dead}", RED, BOLD) if dead else paint("0", GREEN)),
+    ]
+    print(boxed(head))
+    print()
+
+    name_w = max(map(len, specs), default=4) + 2
+    print(paint(f"{'spec':<{name_w}}{'implemented':<27}tested", BOLD))
     for name, rs in specs.items():
         n = sum(r["scenarios"] for r in rs)
-        impl = sum(r["implemented"] for r in rs)
-        print(f"{name:<28}{impl:>7}/{len(rs):<3}{impl / len(rs) if rs else 0:>4.0%}"
-              f"{tested(rs):>9}/{n:<3}{tested(rs) / n if n else 0:>4.0%}")
-    total = tested(reqs) / scen if scen else 0.0
-    print(f"{'total':<28}{sum(r['implemented'] for r in reqs):>7}/{len(reqs):<8}{tested(reqs):>9}/{scen:<3}{total:>4.0%}")
+        d = sum(len(r["dead"]) for r in rs)
+        warn = paint(f"  {d} dead", RED, BOLD) if d else ""
+        print(f"{name:<{name_w}}{cell(sum(r['implemented'] for r in rs), len(rs), f, 10)}    "
+              f"{cell(tested(rs), n, f, 10)}{warn}")
     if skipped:
-        print(f"outdated, not counted: {', '.join(skipped)}")
-    dead = sum(len(r["dead"]) for r in reqs) + len(md_dead)
+        print(paint(f"outdated, not counted: {', '.join(skipped)}", DIM))
+
     for name, rs in specs.items():
         for r in rs:
             if verbose:
-                mark = ("I" if r["implemented"] else "-") + ("T" if r["backed"] >= r["scenarios"] else "t" if r["backed"] else "-")
+                full = r["backed"] >= r["scenarios"]
+                mark = (paint("I", GREEN) if r["implemented"] else paint("-", RED)) + \
+                       (paint("T", GREEN) if full else paint("t", YELLOW) if r["backed"] else paint("-", RED))
                 print(f"  [{mark}] {name} Req {r['num']}: {r['title']} ({r['backed']}/{r['scenarios']} scenarios)")
             for e, why in r["dead"]:
-                print(f"DEAD LINK {name} Req {r['num']}: {e} ({why})")
-    for f, target in md_dead:
-        print(f"DEAD LINK {f}: {target}")
+                print(paint("DEAD LINK", RED, BOLD) + f" {name} Req {r['num']}: {e} ({why})")
+    for file, target in md_dead:
+        print(paint("DEAD LINK", RED, BOLD) + f" {file}: {target}")
     return total, dead
 
 
@@ -146,7 +209,7 @@ def main(argv=None):
     p.add_argument("-v", "--verbose", action="store_true", help="per requirement, with dead links")
     p.add_argument("--min", type=float, help="fail if tested < MIN (0.0-1.0) or any link is dead")
     args = p.parse_args(argv)
-    total, dead = report(*collect(), args.verbose)
+    total, dead = report(*collect(), args.verbose, args.min)
     if args.min is not None:
         ok = total >= args.min and not dead
         print(f"{'PASS' if ok else 'FAIL'}: tested {total:.0%} (min {args.min:.0%}), {dead} dead links")
