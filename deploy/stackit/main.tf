@@ -2,12 +2,11 @@
 # podman, its data on a separate block volume that outlives the VM, and
 # Caddy in front for TLS. Same image and on-disk layout as `make up`.
 
+# By name: the distro/version filter also matches "Debian 13 ARM64", and
+# the image is amd64 only ("flavor and image architecture do not match").
 data "stackit_image_v2" "debian" {
   project_id = var.project_id
-  filter = {
-    distro  = "debian"
-    version = "13"
-  }
+  name       = "Debian 13"
 }
 
 resource "stackit_network" "frank" {
@@ -23,6 +22,7 @@ resource "stackit_security_group" "frank" {
 }
 
 resource "stackit_security_group_rule" "ssh" {
+  count             = var.admin_cidr == "" ? 0 : 1
   project_id        = var.project_id
   security_group_id = stackit_security_group.frank.security_group_id
   direction         = "ingress"
@@ -53,6 +53,7 @@ resource "stackit_public_ip" "frank" {
 }
 
 resource "stackit_key_pair" "admin" {
+  count      = var.ssh_public_key == "" ? 0 : 1
   name       = "${var.name}-admin"
   public_key = var.ssh_public_key
 }
@@ -74,8 +75,13 @@ resource "stackit_server" "frank" {
   name               = var.name
   machine_type       = var.machine_type
   availability_zone  = var.availability_zone
-  keypair_name       = stackit_key_pair.admin.name
+  keypair_name       = one(stackit_key_pair.admin[*].name)
   network_interfaces = [stackit_network_interface.frank.network_interface_id]
+  # The STACKIT Server Agent runs server commands (RunShellScript), the way
+  # in without SSH.
+  agent = {
+    provisioning_policy = "ALWAYS"
+  }
   boot_volume = {
     source_type           = "image"
     source_id             = data.stackit_image_v2.debian.image_id
@@ -89,6 +95,9 @@ resource "stackit_server" "frank" {
     registry_user  = var.registry_user
     registry_token = var.registry_token
     retention_days = var.retention_days
+    store          = local.store
+    store_key      = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].access_key
+    store_secret   = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].secret_access_key
     # OpenStack-style serial: the first 20 characters of the volume ID.
     data_disk = "/dev/disk/by-id/virtio-${substr(stackit_volume.data.volume_id, 0, 20)}"
   })
@@ -98,4 +107,29 @@ resource "stackit_server_volume_attach" "data" {
   project_id = var.project_id
   server_id  = stackit_server.frank.server_id
   volume_id  = stackit_volume.data.volume_id
+}
+
+# The sightings and the audit log in Object Storage (ADR-019): the WAL and
+# the SQLite files stay on the data volume. FRANK signs with the
+# credential's keys, which reach the VM through its user data.
+locals {
+  store = var.store_bucket == "" ? "" : "s3://${var.store_bucket}/sightings?endpoint=https://object.storage.${var.region}.onstackit.cloud&region=${var.region}"
+}
+
+resource "stackit_objectstorage_bucket" "frank" {
+  count      = var.store_bucket == "" ? 0 : 1
+  project_id = var.project_id
+  name       = var.store_bucket
+}
+
+resource "stackit_objectstorage_credentials_group" "frank" {
+  count      = var.store_bucket == "" ? 0 : 1
+  project_id = var.project_id
+  name       = var.name
+}
+
+resource "stackit_objectstorage_credential" "frank" {
+  count                = var.store_bucket == "" ? 0 : 1
+  project_id           = var.project_id
+  credentials_group_id = stackit_objectstorage_credentials_group.frank[0].credentials_group_id
 }
