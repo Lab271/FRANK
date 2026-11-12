@@ -2,12 +2,11 @@
 # podman, its data on a separate block volume that outlives the VM, and
 # Caddy in front for TLS. Same image and on-disk layout as `make up`.
 
+# By name: the distro/version filter also matches "Debian 13 ARM64", and
+# the image is amd64 only ("flavor and image architecture do not match").
 data "stackit_image_v2" "debian" {
   project_id = var.project_id
-  filter = {
-    distro  = "debian"
-    version = "13"
-  }
+  name       = "Debian 13"
 }
 
 resource "stackit_network" "frank" {
