@@ -100,8 +100,10 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
       - name: Build
         run: podman build -t "$IMAGE:${{ github.sha }}" -f Containerfile .
-      - name: End-to-end on the built image (make e2e), before it is pushed
-        run: IMAGE="$IMAGE:${{ github.sha }}" scripts/e2e.sh
+      - name: Playwright for the browser checks (spec 030, ADR-022)
+        run: python3 -m venv /tmp/pw && /tmp/pw/bin/pip install -q playwright==1.64.1
+      - name: End-to-end on the built image (make e2e), with the web UI in Obscura, before it is pushed
+        run: BROWSER=1 PLAYWRIGHT=/tmp/pw/bin/python IMAGE="$IMAGE:${{ github.sha }}" scripts/e2e.sh
       - name: Push (main only)
         id: push
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'

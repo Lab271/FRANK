@@ -7,6 +7,12 @@
 #   IMAGE=ghcr.io/lab271/frank:<sha> E2E_PORT=18080 KEEP=1 scripts/e2e.sh
 #   S3=1 scripts/e2e.sh                  # the sightings in a throwaway Garage (#220)
 #   SSO=1 scripts/e2e.sh                 # also sign in through the OIDC stub (#238)
+#   BROWSER=1 scripts/e2e.sh             # also the web UI in Obscura (spec 030, ADR-018)
+#
+# With BROWSER=1 Obscura, a headless browser, runs in the FRANK container's
+# network and reaches FRANK on http://localhost:8080; its CDP port is
+# published on loopback on the same port (Obscura checks the Host header),
+# behind a random token, for scripts/browser_test.py.
 #
 # With SSO=1 the stub (deploy/podman/sso-stub, development only) runs in the
 # FRANK container's network, so http://localhost:$E2E_SSO_PORT (19400) is the
@@ -26,6 +32,10 @@ GARAGE=frank-e2e-garage-$PORT
 NET=frank-e2e-$PORT
 STUB=frank-e2e-sso-$PORT
 SSO_PORT=${E2E_SSO_PORT:-19400}
+OBSCURA=frank-e2e-obscura-$PORT
+CDP_PORT=${E2E_CDP_PORT:-19222}
+OBSCURA_IMAGE=${OBSCURA_IMAGE:-docker.io/h4ckf0r0day/obscura:0.2.6@sha256:76522dd288b0c0186b360fd6e6133ef55908e1fc3b9c4b7ad6240bf8682d998c}
+PLAYWRIGHT=${PLAYWRIGHT:-uv run -q --no-project --with playwright==1.64.1 python}
 URL=http://127.0.0.1:$PORT
 here=$(cd "$(dirname "$0")" && pwd)
 tmp=$(mktemp -d "${TMPDIR:-/tmp}/frank-e2e.XXXXXX")
@@ -43,6 +53,12 @@ cleanup() {
     podman logs --tail 20 "$STUB" >&2 || true
     echo "---" >&2
   fi
+  if [ $rc -ne 0 ] && podman container exists "$OBSCURA" 2>/dev/null; then
+    echo "--- podman logs $OBSCURA (last 20 lines) ---" >&2
+    podman logs --tail 20 "$OBSCURA" >&2 || true
+    echo "---" >&2
+  fi
+  podman rm -f "$OBSCURA" >/dev/null 2>&1 || true
   podman rm -f "$STUB" >/dev/null 2>&1 || true
   podman rm -f "$NAME" >/dev/null 2>&1 || true
   if [ -n "${S3:-}" ]; then
@@ -70,6 +86,11 @@ token() { podman run --rm "${mounts[@]}" "$IMAGE" participant add "e2e-$1" --sta
 partner=$(token partner)
 contributor=$(token contributor)
 observer=$(token observer)
+if [ -n "${BROWSER:-}" ]; then
+  # An admin who is not a superadmin, for the admin tab (spec 030 Req 8).
+  podman run --rm "${mounts[@]}" "$IMAGE" user add e2e-contributor e2e-admin --role admin 2>/dev/null
+  admin=$(podman run --rm "${mounts[@]}" "$IMAGE" token new e2e-admin 2>/dev/null)
+fi
 if [ -n "${SSO:-}" ]; then
   # sbp, the main company, with the stub's superadmin as a user without a
   # token: the sign-in links to it and keeps the role.
@@ -109,6 +130,7 @@ if [ -n "${SSO:-}" ]; then
     -e FRANK_SSO_CLIENT_SECRET_FILE=/run/secrets/frank-sso-client-secret
     -e "FRANK_SSO_REDIRECT_URL=$redirect" -e FRANK_SSO_ORGANISATION=e2e-contributor)
 fi
+[ -z "${BROWSER:-}" ] || run_args+=(-p "127.0.0.1:$CDP_PORT:$CDP_PORT")
 podman run -d --name "$NAME" -p "127.0.0.1:$PORT:8080" "${run_args[@]}" "${mounts[@]}" "$IMAGE" >/dev/null
 echo "e2e: $IMAGE on $URL${S3:+ (sightings in Garage)}${SSO:+ (sign-in with SSO through the stub)}"
 if [ -n "${SSO:-}" ]; then
@@ -143,4 +165,19 @@ if [ -n "${SSO:-}" ]; then
   "$PYTHON" "$here/sso_check.py" --url "http://localhost:$PORT"
   "$PYTHON" "$here/sso_check.py" --url "http://localhost:$PORT" \
     --user 00u-stub-superadmin --email superadmin@sbp.example --role superadmin
+fi
+
+if [ -n "${BROWSER:-}" ]; then
+  OBSCURA_CDP_TOKEN=$(openssl rand -hex 32)
+  export OBSCURA_CDP_TOKEN
+  podman rm -f "$OBSCURA" >/dev/null 2>&1 || true
+  podman run -d --name "$OBSCURA" --network "container:$NAME" -e OBSCURA_CDP_TOKEN "$OBSCURA_IMAGE" \
+    serve --port "$CDP_PORT" --host 0.0.0.0 --allow-private-network >/dev/null
+  for _ in $(seq 1 60); do
+    curl -fsS -H "Authorization: Bearer $OBSCURA_CDP_TOKEN" "http://127.0.0.1:$CDP_PORT/json/version" >/dev/null 2>&1 && break
+    podman container exists "$OBSCURA" || { echo "e2e: Obscura exited at startup" >&2; exit 1; }
+    sleep 0.5
+  done
+  $PLAYWRIGHT "$here/browser_test.py" --url http://localhost:8080 --cdp "ws://127.0.0.1:$CDP_PORT" \
+    --contributor "$contributor" --admin "$admin"
 fi

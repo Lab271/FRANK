@@ -27,3 +27,4 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [019](019-sightings-in-s3-state-on-a-volume.md) | Sightings in S3, the rest of the state on a volume | Accepted | 2026-11-07 |
 | [020](020-sso-with-openid-connect.md) | Sign in with OpenID Connect, users provisioned on first login, bearer tokens unchanged | Accepted | 2026-11-10 |
 | [021](021-spec-links-checked-in-ci.md) | Spec links are checked in CI | Accepted | 2026-11-10 |
+| [022](022-browser-tests-in-obscura.md) | Browser tests in Obscura, from Playwright, in `make e2e` | Accepted | 2026-11-12 |

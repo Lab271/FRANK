@@ -6,7 +6,7 @@
 **Date:** 2026-11-10
 
 **Owner:** Platform Team
-- **Related ADR:** [ADR-016](../../architecture/decisions/016-phase3-rust-on-db-core.md) (§6, the browser runs FRANK code), [ADR-017](../../architecture/decisions/017-user-roles-for-identity-administration.md) (admin tab)
+- **Related ADR:** [ADR-016](../../architecture/decisions/016-phase3-rust-on-db-core.md) (§6, the browser runs FRANK code), [ADR-017](../../architecture/decisions/017-user-roles-for-identity-administration.md) (admin tab), [ADR-022](../../architecture/decisions/022-browser-tests-in-obscura.md) (browser tests)
 
 ## Overview
 
@@ -51,7 +51,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 - WHEN the user presses send
 - THEN the error is shown and no `POST /v1/sightings` is made
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_unparseable_submission_is_not_sent`
 
 ---
 
@@ -67,7 +67,7 @@ Before sending, the submit tab MUST give every sighting without a `sighting_id` 
 - WHEN it is sent twice
 - THEN the first send fills in an id and stores it; the second reports it as already registered
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_same_form_twice_is_a_resend`
 
 ---
 
@@ -155,7 +155,7 @@ The page MUST send the token as `Authorization: Bearer <token>` on every API cal
 - WHEN it is entered
 - THEN the page shows `rejected: <reason>` and behaves as the public tier
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_rejected_token_falls_back_to_public`
 
 ---
 
@@ -171,7 +171,7 @@ The URL hash SHOULD hold the view's state (`#explore?group=rule&sector=energy&pa
 - WHEN it opens `#admin`
 - THEN the statistics tab is shown instead
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_admin_tab_needs_a_role`
 
 #### Scenario: The live view stops when not seen
 
@@ -179,7 +179,7 @@ The URL hash SHOULD hold the view's state (`#explore?group=rule&sector=energy&pa
 - WHEN the browser tab is hidden
 - THEN polling stops, and resumes when it is shown again
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_live_view_stops_when_hidden`
 
 ---
 
@@ -195,7 +195,7 @@ For a user with a role (ADR-017) the admin tab MUST list the organisations it ma
 - WHEN it opens the admin tab
 - THEN the status control, the new-organisation form, the superadmin role and the file listing are hidden
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_admin_sees_no_superadmin_controls`
 
 ---
 
@@ -211,7 +211,7 @@ Every value from the API, a Parquet file or the submission MUST be written to th
 - WHEN it is shown in a table or the side pane
 - THEN the characters appear as written and nothing runs
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_markup_ioc_stays_text`
 
 ---
 
@@ -227,5 +227,5 @@ A header button SHOULD cycle the theme through auto, light and dark, keep the ch
 - WHEN the page is reloaded
 - THEN it opens dark; on auto it follows the OS
 
-**Tests:** (planned: no browser test tier yet, ADR-018)
+**Tests:** `scripts/browser_test.py::test_theme_survives_reload`
 
