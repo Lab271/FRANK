@@ -4,6 +4,11 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Changed
+
+- Spec `013-sso` is `012-sso`, the number kept for OIDC authentication; 013 is disclosure only (#269).
+- `make check-assurance` opens with a dashboard: the verdict, implemented and tested as bars, dead links, then a bar per spec in green, yellow or red against the floor. Colour on a terminal or in GitHub Actions; `NO_COLOR` turns it off (#269).
+
 ## [0.41.0] - 2026-11-11
 
 ### Added
