@@ -17,6 +17,7 @@ use time::format_description::well_known::Rfc3339;
 use time::OffsetDateTime;
 
 use crate::explore::Dimension;
+use crate::store::sightings::nanos;
 
 /// Records per page when the request names no `limit`.
 pub const DEFAULT_LIMIT: usize = 100;
@@ -189,16 +190,13 @@ impl List {
 /// normalised sighting. `None` for a row without a record.
 #[must_use]
 pub fn item(row: &[Cell]) -> Option<(String, Value)> {
-    let (Cell::Int(ts), Cell::Blob(id), Cell::Text(reporter), Cell::Text(detail)) =
-        (&row[0], &row[1], &row[2], &row[4])
+    let (Some(ts), Cell::Blob(id), Cell::Text(reporter), Cell::Text(detail)) =
+        (nanos(&row[0]), &row[1], &row[2], &row[4])
     else {
         return None;
     };
     let id = SightingId(id.as_slice().try_into().ok()?);
-    let received = match &row[3] {
-        Cell::Int(ns) => rfc3339(*ns),
-        _ => Value::Null,
-    };
+    let received = nanos(&row[3]).map_or(Value::Null, rfc3339);
     let record: Value = serde_json::from_str(detail).ok()?;
     Some((
         format!("{ts}.{id}"),

@@ -8,6 +8,7 @@ use std::sync::atomic::{AtomicI64, Ordering};
 
 use db_core::engine::{Cell, QueryResult};
 use frank::explore::{Dimension, BY_TECHNIQUE, FIRST_ROW, TECH_SET};
+use frank::store::sightings::nanos;
 use frank::store::Sightings;
 use frank_core::{IocType, SightingRow, Tlp};
 
@@ -73,7 +74,8 @@ fn rows(r: &QueryResult) -> Vec<String> {
         .map(|row| {
             row.iter()
                 .map(|c| match c {
-                    Cell::Text(t) => t.clone(),
+                    // `min(ts)`, `max(ts)` print as ISO text (db-core #1046).
+                    Cell::Text(t) => nanos(c).map_or_else(|| t.clone(), |n| n.to_string()),
                     Cell::Int(n) => n.to_string(),
                     Cell::Null => "NULL".into(),
                     other => format!("{other:?}"),

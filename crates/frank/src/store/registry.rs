@@ -21,7 +21,7 @@ use serde::Serialize;
 use sha2::{Digest as _, Sha256};
 
 use super::rowdb::{exec, int, query, text, transaction, RowDb};
-use super::sightings::Sightings;
+use super::sightings::{nanos, Sightings};
 
 pub const FILE: &str = "registry.db";
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -125,7 +125,12 @@ impl Registry {
             .iter()
             .filter_map(|row| {
                 let id = SightingId(bytes(&row[1])?);
-                Some((text(&row[0]), id, Digest(bytes(&row[2])?), int(&row[3])))
+                Some((
+                    text(&row[0]),
+                    id,
+                    Digest(bytes(&row[2])?),
+                    nanos(&row[3]).unwrap_or(0),
+                ))
             })
             .collect();
         let n = entries.len();
