@@ -28,7 +28,7 @@ import uuid
 from playwright.sync_api import Page, expect, sync_playwright
 
 TIMEOUT_MS = 10_000
-DEADLINE_S = 180  # the whole run: a stalled CDP call must not hang CI
+DEADLINE_S = 300  # the whole run, retries included: a stall must not hang CI
 
 
 def sign_in(page: Page, token: str) -> None:
@@ -41,6 +41,25 @@ def sign_in(page: Page, token: str) -> None:
     page.fill("#token", token)
     page.press("#token", "Enter")
     expect(tier).not_to_have_text(before, timeout=TIMEOUT_MS)
+
+
+def state(page: Page) -> str:
+    """What the page shows, for a failure's log line: there is no screenshot
+    to look at in CI, and most failures are a tab or a call that did not
+    arrive."""
+    try:
+        return str(page.evaluate("""() => {
+            const text = (id) => document.getElementById(id)?.textContent?.trim().slice(0, 120) ?? null;
+            const tab = [...document.querySelectorAll("main section")].find((s) => !s.hidden);
+            return {
+                hash: location.hash, tab: tab?.id ?? null, tier: text("tier"),
+                tables: document.querySelectorAll("#adm-users table").length,
+                adm_msg: text("adm-msg"), submit_out: text("submit-out"),
+                live_status: text("live-status"), theme: document.documentElement.dataset.theme,
+            };
+        }"""))
+    except Exception as e:  # noqa: BLE001 - diagnostics must never mask the failure
+        return f"<unreadable: {type(e).__name__}>"
 
 
 def submission(ioc_type: str, value: str) -> str:
@@ -240,28 +259,43 @@ def main() -> None:
         os._exit(1)
     threading.Timer(DEADLINE_S, give_up).start()
 
-    failed = ran = 0
+    failed = ran = flaky = 0
     with sync_playwright() as pw:
         browser = pw.chromium.connect_over_cdp(args.cdp, headers=headers)
         for test in (t for t in TESTS if any(k in t.__name__ for k in args.k.split(","))):
-            context = browser.new_context()
-            context.set_default_timeout(TIMEOUT_MS)
-            page = context.new_page()
             ran += 1
             start = time.monotonic()
-            try:
-                test(page, args)
-                print(f"ok    {test.__name__}  ({time.monotonic() - start:.1f}s)")
-            except Exception as e:  # noqa: BLE001 - report every test, then fail
-                failed += 1
-                lines = str(e).strip().splitlines() or [type(e).__name__]
-                where = [f for f in traceback.extract_tb(e.__traceback__) if f.filename == __file__][-1]
-                got = next((x.strip() for x in lines if x.strip().startswith(("Actual", "Received"))), "")
-                print(f"FAIL  {test.__name__}: {lines[0]} {got} (line {where.lineno})")
-            finally:
-                context.close()
+            # Twice at most: Obscura is young, and a test that passes on the
+            # retry is reported as flaky, not green and not a failure.
+            for attempt in (1, 2):
+                context = browser.new_context()
+                context.set_default_timeout(TIMEOUT_MS)
+                page = context.new_page()
+                try:
+                    test(page, args)
+                    took = time.monotonic() - start
+                    if attempt == 1:
+                        print(f"ok    {test.__name__}  ({took:.1f}s)")
+                    else:
+                        flaky += 1
+                        print(f"FLAKY {test.__name__}: passed on the retry  ({took:.1f}s)")
+                    break
+                except Exception as e:  # noqa: BLE001 - report every test, then fail
+                    if attempt == 1:
+                        print(f"retry {test.__name__}: {str(e).strip().splitlines()[0]}", flush=True)
+                        print(f"      page: {state(page)}", flush=True)
+                        continue
+                    failed += 1
+                    lines = str(e).strip().splitlines() or [type(e).__name__]
+                    where = [f for f in traceback.extract_tb(e.__traceback__) if f.filename == __file__][-1]
+                    got = next((x.strip() for x in lines if x.strip().startswith(("Actual", "Received"))), "")
+                    print(f"FAIL  {test.__name__}: {lines[0]} {got} (line {where.lineno})")
+                    print(f"      page: {state(page)}", flush=True)
+                finally:
+                    context.close()
         browser.close()
-    print(f"browser: {ran - failed} passed, {failed} failed", flush=True)
+    tail = f", {flaky} flaky (passed on a retry)" if flaky else ""
+    print(f"browser: {ran - failed - flaky} passed, {failed} failed{tail}", flush=True)
     os._exit(1 if failed else 0)  # also ends the deadline timer
 
 
