@@ -185,10 +185,9 @@ fn rewrite(
     old.close()?;
 
     let at = |name: &str| stored.iter().position(|c| c.name == name);
-    let int = |row: &[Cell], i: Option<usize>| match i.map(|i| &row[i]) {
-        Some(Cell::Int(n)) => Some(*n),
-        _ => None,
-    };
+    // `ts` and `received` read back as ISO text (db-core #1046), `seq` as
+    // an integer.
+    let int = |row: &[Cell], i: Option<usize>| i.and_then(|i| nanos(&row[i]));
     let (technique, received, ts) = (at("technique"), at("received"), at("ts"));
     let first = |row: &[Cell]| int(row, at("seq")).unwrap_or(0) == 0;
     let mut rows: Vec<(i64, Vec<RecordValue>)> = Vec::with_capacity(all.rows.len());
@@ -221,6 +220,11 @@ fn rewrite(
                     return id_bytes(v, c.name == "digest")
                         .map(RecordValue::Bytes)
                         .ok_or_else(|| corrupt(format!("{}: not an id or digest: {v:?}", c.name)));
+                }
+                if c.column_type == ColumnType::TimestampNanos {
+                    return Ok(cell
+                        .and_then(nanos)
+                        .map_or(RecordValue::Null, RecordValue::Int));
                 }
                 Ok(match cell {
                     None | Some(Cell::Null) => RecordValue::Null,
@@ -482,10 +486,46 @@ pub fn scalar(result: &QueryResult) -> i64 {
     }
 }
 
+/// A `ts` or `received` cell as nanoseconds since the epoch. db-core 0.238
+/// (#1046) prints a TIMESTAMP output column, and `min`/`max` of one, as
+/// ISO 8601 text (`2026-10-22 11:00:00.5`, UTC, trailing zeros trimmed),
+/// where it gave the stored integer before; this reads either.
+#[must_use]
+pub fn nanos(cell: &Cell) -> Option<i64> {
+    use time::format_description::FormatItem;
+    use time::macros::format_description;
+    const ISO: &[FormatItem<'_>] = format_description!(
+        "[year]-[month]-[day] [hour]:[minute]:[second][optional [.[subsecond]]]"
+    );
+    match cell {
+        Cell::Int(n) => Some(*n),
+        Cell::Text(t) => time::PrimitiveDateTime::parse(t, ISO)
+            .ok()
+            .and_then(|t| i64::try_from(t.assume_utc().unix_timestamp_nanos()).ok()),
+        _ => None,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use frank_core::Tlp;
+
+    #[test]
+    fn nanos_reads_an_integer_or_the_iso_text_db_core_prints() {
+        assert_eq!(nanos(&Cell::Int(T0)), Some(T0));
+        assert_eq!(nanos(&Cell::Text("2026-10-22 12:00:00".into())), Some(T0));
+        assert_eq!(
+            nanos(&Cell::Text("2026-10-22 12:00:00.000000007".into())),
+            Some(T0 + 7)
+        );
+        assert_eq!(
+            nanos(&Cell::Text("2026-10-22 12:00:00.5".into())),
+            Some(T0 + 500_000_000)
+        );
+        assert_eq!(nanos(&Cell::Text("yesterday".into())), None);
+        assert_eq!(nanos(&Cell::Null), None);
+    }
 
     /// 2026-10-22 12:00 UTC.
     const T0: i64 = 1_792_670_400_000_000_000;
@@ -618,6 +658,72 @@ mod tests {
             scalar(&s.query("SELECT count(*) FROM sightings").unwrap()),
             2
         );
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    static RANGE_CLOCK: AtomicI64 = AtomicI64::new(T0);
+    fn range_now() -> i64 {
+        RANGE_CLOCK.load(Ordering::SeqCst)
+    }
+
+    /// Three closed hours in a store, flushed.
+    fn three_hours_in_a_store(
+        label: &str,
+        s3: &std::sync::Arc<crate::store::fake_s3::FakeS3>,
+    ) -> (std::path::PathBuf, Sightings) {
+        let data = std::env::temp_dir().join(format!("frank-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&data);
+        RANGE_CLOCK.store(T0, Ordering::SeqCst);
+        let s = Sightings::open_in(&data, Some(s3.store(256 << 20)), None, range_now).unwrap();
+        for h in 0..3u8 {
+            let at = T0 + i64::from(h) * HOUR;
+            RANGE_CLOCK.store(at, Ordering::SeqCst);
+            s.append(&[row(h + 1, at, &["T1059"], 0), row(h + 1, at, &[], 1)])
+                .unwrap();
+        }
+        RANGE_CLOCK.store(T0 + 4 * HOUR, Ordering::SeqCst);
+        assert_eq!(s.flush().unwrap(), 3);
+        (data, s)
+    }
+
+    /// db-core 0.240 (#282, db-core#1051, #1052): a snapshot holds the
+    /// store's files without fetching them, a query reads footers and the
+    /// column chunks it needs by range, and the read cache answers the
+    /// same query again with no request at all.
+    #[test]
+    fn a_query_in_a_store_reads_by_range_and_once() {
+        let s3 = crate::store::fake_s3::FakeS3::new();
+        let (data, s) = three_hours_in_a_store("ranged", &s3);
+        let stored: u64 = s.files().unwrap().iter().map(|f| f.2).sum();
+
+        let before = s3.counts();
+        assert_eq!(s.files().unwrap().len(), 3);
+        assert_eq!(s.open_rows().unwrap(), 0);
+        assert_eq!(
+            s3.counts().gets,
+            before.gets,
+            "listing the files fetches none"
+        );
+
+        let q = "SELECT count(*) FROM sightings WHERE seq = 0";
+        assert_eq!(scalar(&s.query(q).unwrap()), 3);
+        let cold = s3.counts();
+        assert!(cold.gets > before.gets, "{cold:?}");
+        assert!(
+            cold.bytes - before.bytes < stored,
+            "read {} of {stored} bytes: only footers and the seq column",
+            cold.bytes - before.bytes
+        );
+        assert_eq!(cold.heads, before.heads, "sizes come from the manifest");
+
+        assert_eq!(scalar(&s.query(q).unwrap()), 3);
+        assert_eq!(s3.counts(), cold, "the same query again asks nothing");
+
+        // A partner download is the whole object, once.
+        let path = s.files().unwrap()[0].0.clone();
+        assert_eq!(&s.read_file(&path).unwrap()[..4], b"PAR1");
+        assert_eq!(s3.counts().gets, cold.gets + 1);
         s.close().unwrap();
         let _ = std::fs::remove_dir_all(&data);
     }

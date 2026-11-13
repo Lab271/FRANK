@@ -297,6 +297,17 @@ mod tests {
             Cell::Int(3)
         );
         assert_eq!(combine(&Cell::Null, Cell::Int(3), Merge::Max), Cell::Int(3));
+        // db-core prints min(ts)/max(ts) as ISO text (#1046), trailing zeros
+        // trimmed: in text order still the order in time.
+        let t = |s: &str| Cell::Text(s.into());
+        for (a, b) in [
+            ("2026-10-22 12:00:00", "2026-10-22 12:00:00.000000001"),
+            ("2026-10-22 12:00:00.123", "2026-10-22 12:00:00.5"),
+            ("2026-09-30 23:59:59.9", "2026-10-01 00:00:00"),
+        ] {
+            assert_eq!(combine(&t(a), t(b), Merge::Max), t(b), "{a} < {b}");
+            assert_eq!(combine(&t(b), t(a), Merge::Min), t(a), "{a} < {b}");
+        }
     }
 
     #[test]

@@ -181,9 +181,9 @@ On open, a local table stored with the comma-separated `technique` string (0.20 
 
 ### Requirement 7: Sightings in an object store [MUST]
 
-With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manifest and Parquet files MUST be kept in the store, while its WAL, writer lock and scratch space MUST stay on the local volume in `data/s3/sightings/`, apart from the local table's `data/sightings/`. Credentials MUST come from the AWS chain, never from the URI. An `https://` endpoint MUST go through the TLS transport (`--features tls`, built into the image); without it the store MUST be refused with a message saying why. Retention MUST delete the objects themselves, after db-core's delete grace.
+With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manifest and Parquet files MUST be kept in the store, while its WAL, writer lock and scratch space MUST stay on the local volume in `data/s3/sightings/`, apart from the local table's `data/sightings/`. Credentials MUST come from the AWS chain, never from the URI. An `https://` endpoint MUST go through the TLS transport (`--features tls`, built into the image); without it the store MUST be refused with a message saying why. Retention MUST delete the objects themselves, after db-core's delete grace. A query MUST read the store's files by range (footers, then the column chunks it loads) through db-core's read cache, and listing the files MUST fetch none (#282).
 
-**Implementation:** `crates/frank/src/objects.rs::open`, `crates/frank/src/store/sightings.rs::open_in`, `crates/frank/src/store/sightings.rs::read_file`
+**Implementation:** `crates/frank/src/objects.rs::open`, `crates/frank/src/store/sightings.rs::open_in`, `crates/frank/src/store/sightings.rs::read_file`, `crates/frank/src/store/sightings.rs::nanos`
 
 #### Scenario: Files in the store, the WAL apart
 
@@ -192,6 +192,14 @@ With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manife
 - THEN the hour file and `manifest.json` are in the store, the WAL is local with no Parquet beside it, and the new process reads both rows
 
 **Tests:** `crates/frank/src/store/sightings.rs::a_table_in_a_store_keeps_its_files_there_and_its_wal_apart`
+
+#### Scenario: Queries read by range, once
+
+- GIVEN three closed hours flushed to a store
+- WHEN the files are listed, a query runs, and the same query runs again
+- THEN the listing fetches no file, the query reads fewer bytes than the files hold and sends no HEAD, and the second run sends no request
+
+**Tests:** `crates/frank/src/store/sightings.rs::a_query_in_a_store_reads_by_range_and_once`, `crates/frank/src/store/sightings.rs::nanos_reads_an_integer_or_the_iso_text_db_core_prints`
 
 #### Scenario: Retention deletes objects
 

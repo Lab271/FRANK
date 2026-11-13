@@ -4,6 +4,11 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Changed
+
+- db-core v0.240.0 (#282): in S3 mode a query reads each Parquet file's footer once and then only the column chunks it needs, by ranged GET, through a 256 MiB read cache; it used to download every listed file whole on every query, inside the writer's lock. Listing `/v1/files` fetches no file.
+- db-core prints TIMESTAMP results as ISO text since 0.238; FRANK reads `ts` and `received` through `store::sightings::nanos`, which takes either form.
+
 ## [0.45.0] - 2026-11-13
 
 ### Added

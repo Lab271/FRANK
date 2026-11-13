@@ -14,6 +14,8 @@
 //!
 //! The participants sit apart from the data: wiping the data keeps them.
 
+#[cfg(test)]
+pub(crate) mod fake_s3;
 pub mod geo;
 pub mod iocs;
 pub mod lists;

@@ -16,6 +16,7 @@ use serde::Serialize;
 use crate::explore::FIRST_ROW;
 use crate::geo::UNKNOWN;
 use crate::store::geo::IpGeo;
+use crate::store::sightings::nanos;
 
 const MINUTE_NS: i64 = 60 * 1_000_000_000;
 /// IoCs per `IN (...)` query.
@@ -140,7 +141,8 @@ pub fn reporters_sql(since: i64, visible: &str) -> String {
 pub fn iocs(rows: &[Vec<Cell>]) -> Vec<LiveIoc> {
     rows.iter()
         .filter_map(|row| match row.as_slice() {
-            [Cell::Text(t), Cell::Text(v), Cell::Int(last), Cell::Int(n), Cell::Int(r), rule] => {
+            [Cell::Text(t), Cell::Text(v), last, Cell::Int(n), Cell::Int(r), rule] => {
+                let last = nanos(last)?;
                 Some(LiveIoc {
                     ioc_type: t.clone(),
                     value: v.clone(),
@@ -148,7 +150,7 @@ pub fn iocs(rows: &[Vec<Cell>]) -> Vec<LiveIoc> {
                         Cell::Text(r) => Some(r.clone()),
                         _ => None,
                     },
-                    last_received: *last,
+                    last_received: last,
                     sightings: *n,
                     reporters: *r,
                     seen_since: None,
@@ -176,7 +178,7 @@ pub fn mark_seen(iocs: &mut [LiveIoc], rows: &[Vec<Cell>]) {
     let seen: BTreeMap<(&str, &str), i64> = rows
         .iter()
         .filter_map(|row| match row.as_slice() {
-            [Cell::Text(t), Cell::Text(v), Cell::Int(ts)] => Some(((t.as_str(), v.as_str()), *ts)),
+            [Cell::Text(t), Cell::Text(v), ts] => Some(((t.as_str(), v.as_str()), nanos(ts)?)),
             _ => None,
         })
         .collect();

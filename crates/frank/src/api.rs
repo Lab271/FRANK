@@ -43,7 +43,7 @@ use crate::explore::{self as ex, Dimension, BY_TECHNIQUE, FIRST_ROW, TECH, TECH_
 use crate::live::{self, Window};
 use crate::records;
 use crate::store::registry::{self, Receipt};
-use crate::store::sightings::{scalar, NAME as SIGHTINGS};
+use crate::store::sightings::{nanos, scalar, NAME as SIGHTINGS};
 use crate::store::{Iocs, Participants, Registry, Sightings};
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
@@ -521,10 +521,7 @@ async fn live_view(
         live::mark_seen(&mut iocs, &before);
         let arrivals: Vec<i64> = rows(&live::arrivals_sql(since, v))?
             .iter()
-            .filter_map(|r| match r.first() {
-                Some(Cell::Int(t)) => Some(*t),
-                _ => None,
-            })
+            .filter_map(|r| r.first().and_then(nanos))
             .collect();
         let participants = s
             .query(&live::reporters_sql(since, v))
@@ -788,10 +785,7 @@ fn times(s: &Sightings, filter: &str) -> Result<Vec<i64>, ApiError> {
         .map_err(internal)?;
     Ok(r.rows
         .iter()
-        .filter_map(|row| match row.first() {
-            Some(Cell::Int(t)) => Some(*t),
-            _ => None,
-        })
+        .filter_map(|row| row.first().and_then(nanos))
         .collect())
 }
 
@@ -819,8 +813,14 @@ fn grouped(
                     _ => None,
                 })
                 .collect();
-            match (key, &row[k], &row[k + 1], &row[k + 2], &row[k + 3]) {
-                (Some(key), Cell::Int(n), Cell::Int(r), Cell::Int(first), Cell::Int(last))
+            match (
+                key,
+                &row[k],
+                &row[k + 1],
+                nanos(&row[k + 2]),
+                nanos(&row[k + 3]),
+            ) {
+                (Some(key), Cell::Int(n), Cell::Int(r), Some(first), Some(last))
                     if exact || *r >= MIN_CELL =>
                 {
                     Some(json!({
@@ -1222,8 +1222,8 @@ pub(crate) async fn list(
             .rows
             .into_iter()
             .filter_map(|row| match (row.first(), row.get(1)) {
-                (Some(Cell::Int(ts)), Some(Cell::Blob(id))) => {
-                    Some((*ts, SightingId(id.as_slice().try_into().ok()?)))
+                (Some(ts), Some(Cell::Blob(id))) => {
+                    Some((nanos(ts)?, SightingId(id.as_slice().try_into().ok()?)))
                 }
                 _ => None,
             })
@@ -1347,7 +1347,7 @@ pub(crate) async fn summary(
             "sightings": int(0).unwrap_or(0),
             "observations": int(1).unwrap_or(0),
             "iocs": iocs,
-            "last_received": int(2).map_or(Value::Null, records::rfc3339),
+            "last_received": row.and_then(|r| nanos(&r[2])).map_or(Value::Null, records::rfc3339),
             "network": { "sightings": network },
         })))
     })
@@ -1362,16 +1362,13 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
     let mut rows = Vec::with_capacity(r.rows.len());
     let mut types: BTreeMap<String, IocType> = BTreeMap::new();
     for row in &r.rows {
-        let (Cell::Int(ts), Cell::Text(t), Cell::Text(v), Cell::Int(n), Cell::Text(tlp)) =
-            (&row[0], &row[1], &row[2], &row[3], &row[4])
+        let (Some(ts), Cell::Text(t), Cell::Text(v), Cell::Int(n), Cell::Text(tlp)) =
+            (nanos(&row[0]), &row[1], &row[2], &row[3], &row[4])
         else {
             continue;
         };
         // `received` is null before 0.13; `record` then falls back to `ts`.
-        let received = match row.get(5) {
-            Some(Cell::Int(r)) => *r,
-            _ => 0,
-        };
+        let received = row.get(5).and_then(nanos).unwrap_or(0);
         let Ok(tlp) = Tlp::parse(tlp) else {
             continue;
         };
@@ -1380,7 +1377,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
         };
         types.insert(t.as_str().to_string(), t);
         rows.push(frank_core::SightingRow {
-            ts_ns: *ts,
+            ts_ns: ts,
             sighting_id: SightingId::default(),
             rule_id: None,
             techniques: Vec::new(),
