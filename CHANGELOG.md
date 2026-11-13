@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.45.0] - 2026-11-13
+
 ### Added
 
 - `deploy/stackit`: the VM fetches the DB-IP Lite GeoIP databases monthly and the IoC lists daily (systemd timers `frank-geoip`, `frank-lists`), first right after boot; `abuse_key` adds URLhaus and ThreatFox (#276).
