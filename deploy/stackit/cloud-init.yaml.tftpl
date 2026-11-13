@@ -11,6 +11,7 @@ packages:
   - podman
   - caddy
   - sqlite3
+  - curl
 
 write_files:
   - path: /etc/frank/frank.env
@@ -94,6 +95,56 @@ write_files:
 
       [Install]
       WantedBy=timers.target
+  # GeoIP (monthly) and the IoC lists (daily) into /srv/frank/data (#276):
+  # scripts/fetch-geoip.sh and scripts/fetch-lists.sh, as `make geoip` and
+  # `make lists` run them. As FRANK's user, so the files are its own; a failed
+  # download keeps the previous files, and FRANK picks up new ones itself.
+  - path: /usr/local/bin/frank-fetch-geoip
+    permissions: "0755"
+    content: |
+      ${indent(6, chomp(fetch_geoip))}
+  - path: /usr/local/bin/frank-fetch-lists
+    permissions: "0755"
+    content: |
+      ${indent(6, chomp(fetch_lists))}
+%{ if abuse_key != "" ~}
+  - path: /etc/frank/lists.env
+    permissions: "0600"
+    content: |
+      ABUSE_KEY=${abuse_key}
+%{ endif ~}
+%{ for job, spec in { geoip = ["DB-IP Lite GeoIP databases", "*-*-03 04:00:00"], lists = ["IoC lists", "*-*-* 04:30:00"] } ~}
+  - path: /etc/systemd/system/frank-${job}.service
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Fetch FRANK's ${spec[0]}
+      Wants=network-online.target
+      After=network-online.target srv-frank.mount
+      Requires=srv-frank.mount
+
+      [Service]
+      Type=oneshot
+      User=65532
+      Group=65532
+%{ if job == "lists" ~}
+      EnvironmentFile=-/etc/frank/lists.env
+%{ endif ~}
+      ExecStart=/usr/local/bin/frank-fetch-${job} /srv/frank/data
+  - path: /etc/systemd/system/frank-${job}.timer
+    permissions: "0644"
+    content: |
+      [Unit]
+      Description=Fetch FRANK's ${spec[0]}
+
+      [Timer]
+      OnCalendar=${spec[1]}
+      RandomizedDelaySec=30m
+      Persistent=true
+
+      [Install]
+      WantedBy=timers.target
+%{ endfor ~}
   - path: /etc/caddy/Caddyfile
     permissions: "0644"
     content: |
@@ -127,4 +178,7 @@ runcmd:
   - systemctl daemon-reload
   - systemctl enable --now frank.service
   - systemctl enable --now frank-backup.timer
+  - systemctl enable --now frank-geoip.timer frank-lists.timer
+  # The first fetch now rather than at the first timer.
+  - systemctl start --no-block frank-geoip.service frank-lists.service
   - systemctl restart caddy

@@ -4,6 +4,14 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- `deploy/stackit`: the VM fetches the DB-IP Lite GeoIP databases monthly and the IoC lists daily (systemd timers `frank-geoip`, `frank-lists`), first right after boot; `abuse_key` adds URLhaus and ThreatFox (#276).
+
+### Changed
+
+- `make geoip` and `make lists` run `scripts/fetch-geoip.sh` and `scripts/fetch-lists.sh`, the scripts the STACKIT VM runs (#276).
+
 ## [0.44.0] - 2026-11-12
 
 ### Changed

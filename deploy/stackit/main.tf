@@ -98,6 +98,10 @@ resource "stackit_server" "frank" {
     store          = local.store
     store_key      = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].access_key
     store_secret   = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].secret_access_key
+    abuse_key      = var.abuse_key
+    # The same scripts as `make geoip` and `make lists` (#276).
+    fetch_geoip = file("${path.module}/../../scripts/fetch-geoip.sh")
+    fetch_lists = file("${path.module}/../../scripts/fetch-lists.sh")
     # OpenStack-style serial: the first 20 characters of the volume ID.
     data_disk = "/dev/disk/by-id/virtio-${substr(stackit_volume.data.volume_id, 0, 20)}"
   })
