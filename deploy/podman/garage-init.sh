@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Prepares the Garage of `make up-s3` (#220): the one-node layout, the bucket
+# Prepares the Garage of `make up` (#220): the one-node layout, the bucket
 # `frank` and a key for FRANK. Safe to run again:
 # it only adds what is missing. The key goes to s3/frank.env (created once;
 # if Garage's files are wiped, the same key is imported again).

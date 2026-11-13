@@ -1,4 +1,4 @@
-# `make up-s3` (#224): Caddyfile plus Garage's S3 API over HTTPS at
+# `make up` with S3 (#224): Caddyfile plus Garage's S3 API over HTTPS at
 # https://frank.local:9443 (FRANK_HOST, GARAGE_TLS_PORT), a certificate from
 # the same local CA as FRANK's, so `make trust` covers it. An S3 client
 # signs the Host header, port included; Caddy passes it to Garage unchanged,

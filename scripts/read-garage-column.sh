@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# column-rs on FRANK's sightings in the Garage bucket of `make up-s3` (#220).
+# column-rs on FRANK's sightings in the Garage bucket of `make up` (#220).
 #
 #   scripts/read-garage-column.sh                  an interactive column-rs shell
 #   scripts/read-garage-column.sh "SELECT …"       one query, then exit (or SQL="SELECT …")
@@ -45,7 +45,7 @@ version=$("$COLUMN_RS" --version | awk '{print $2}')
   || { echo "read-garage-column: column-rs $version cannot open this s3:// location; $MIN or later (https: built with --features s3-tls)" >&2; exit 1; }
 
 if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
-  [ -s "$ENV_FILE" ] || { echo "read-garage-column: no $ENV_FILE; run make up-s3 first (or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)" >&2; exit 1; }
+  [ -s "$ENV_FILE" ] || { echo "read-garage-column: no $ENV_FILE; run make up first (or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)" >&2; exit 1; }
   set -a
   # shellcheck disable=SC1090
   . "$ENV_FILE"
