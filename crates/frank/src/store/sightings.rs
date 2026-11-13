@@ -295,6 +295,10 @@ fn options(
             sort_key: sort_key.iter().map(|k| (*k).to_string()).collect(),
             row_group_max_rows: 64 * 1024,
             retention_days,
+            // Each file's `ts` range in the manifest (#283): the API's
+            // `ts >= since` skips a file outside the window without a read
+            // (a GET in a store). Files written before have no range.
+            stat_columns: vec!["ts".to_string()],
             ..TierOptions::default()
         }),
         parquet: WriterOptions {
@@ -724,6 +728,29 @@ mod tests {
         let path = s.files().unwrap()[0].0.clone();
         assert_eq!(&s.read_file(&path).unwrap()[..4], b"PAR1");
         assert_eq!(s3.counts().gets, cold.gets + 1);
+        s.close().unwrap();
+        let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// A `ts` window opens only the files whose manifest range meets it
+    /// (#283): three hours with `ts` an hour before each arrival, and a
+    /// query from the last hour's `ts` opens one file.
+    #[test]
+    fn a_ts_window_skips_the_files_outside_it() {
+        use db_core::engine::column::table::query_snapshot_files;
+        let s3 = crate::store::fake_s3::FakeS3::new();
+        let (data, s) = three_hours_in_a_store("ts-range", &s3);
+        let snap = s.table.snapshot().unwrap();
+        let files = |sql: &str| query_snapshot_files(&snap, NAME, sql).unwrap();
+        let last = T0 + HOUR; // the third hour's `ts`
+        assert_eq!(files("SELECT count(*) FROM sightings"), 3);
+        let window = format!("SELECT count(*) FROM sightings WHERE ts >= {last} AND seq = 0");
+        assert_eq!(files(&window), 1);
+        assert_eq!(scalar(&s.query(&window).unwrap()), 1);
+        let past = format!("SELECT count(*) FROM sightings WHERE ts > {last}");
+        assert_eq!(files(&past), 0, "after every row: no file at all");
+        assert_eq!(scalar(&s.query(&past).unwrap()), 0);
+        drop(snap);
         s.close().unwrap();
         let _ = std::fs::remove_dir_all(&data);
     }

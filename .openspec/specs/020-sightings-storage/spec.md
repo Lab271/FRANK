@@ -77,9 +77,9 @@ An append MUST return only once its rows are on disk (the WAL fsynced on the las
 
 ### Requirement 3: Hour files [MUST]
 
-Every minute the server MUST write each closed hour to `live/date=…/hour=…/` as one Parquet file (zstd, sorted by `rule_id`, `ioc_value`). On shutdown it MUST flush before closing. Rows of the open hour MUST still be readable as one Parquet file written on request.
+Every minute the server MUST write each closed hour to `live/date=…/hour=…/` as one Parquet file (zstd, sorted by `rule_id`, `ioc_value`), whose `ts` range the manifest MUST record so a `ts` window skips the files outside it without reading them (#283). On shutdown it MUST flush before closing. Rows of the open hour MUST still be readable as one Parquet file written on request.
 
-**Implementation:** `crates/frank/src/store/sightings.rs::flush`, `crates/frank/src/store/sightings.rs::open_rows_parquet`, `crates/frank/src/main.rs::maintain`
+**Implementation:** `crates/frank/src/store/sightings.rs::flush`, `crates/frank/src/store/sightings.rs::options`, `crates/frank/src/store/sightings.rs::open_rows_parquet`, `crates/frank/src/main.rs::maintain`
 
 #### Scenario: A closed hour becomes one file
 
@@ -96,6 +96,14 @@ Every minute the server MUST write each closed hour to `live/date=…/hour=…/`
 - THEN it gets a Parquet file with those rows
 
 **Tests:** `crates/frank/tests/api.rs::the_open_hour_is_a_file_too`
+
+#### Scenario: A ts window skips the files outside it
+
+- GIVEN three hour files with `ts` an hour apart
+- WHEN a query asks for `ts` from the last hour's on, or after every row
+- THEN it opens one file, or none, and counts the same rows as before
+
+**Tests:** `crates/frank/src/store/sightings.rs::a_ts_window_skips_the_files_outside_it`
 
 ---
 
