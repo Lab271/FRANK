@@ -13,7 +13,9 @@ const theme = () => {
   if (b) b.textContent = "theme: " + mode;
 };
 theme(); dark.addEventListener("change", theme);
-addEventListener("DOMContentLoaded", () => {
+// On document, not window: Obscura (the browser tests) does not always
+// pass DOMContentLoaded on to window.
+document.addEventListener("DOMContentLoaded", () => {
   theme();
   document.getElementById("theme").addEventListener("click", () => {
     mode = modes[(modes.indexOf(mode) + 1) % modes.length];

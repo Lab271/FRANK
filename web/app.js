@@ -105,15 +105,21 @@ async function ssoStatus() {
   try { sso = (await (await fetch("/v1/sso")).json()).enabled === true; } catch { sso = false; }
 }
 
+// A newer call supersedes an older one still in flight: the startup call,
+// sent without a token, must not answer after the user's own.
+let whoamiCalls = 0;
 async function whoami() {
+  const call = ++whoamiCalls;
   let user = "";
   try {
     const me = await (await api("/v1/whoami")).json();
+    if (call !== whoamiCalls) return;
     tier = me.tier;
     role = me.role || null;
     user = me.user || "";
     $("tier").textContent = (me.label ? `${me.tier} · ${me.label}` : me.tier) + (role ? ` · ${role}` : "");
   } catch (e) {
+    if (call !== whoamiCalls) return;
     tier = "public";
     role = null;
     $("tier").textContent = `rejected: ${e.message}`;
