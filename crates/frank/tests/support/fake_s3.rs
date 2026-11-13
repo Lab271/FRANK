@@ -1,11 +1,14 @@
 //! An in-memory S3 bucket behind db-core's `Transport`, for tests that
-//! count what a table in a store asks of it (#282, #283, #284). Path-style
+//! count what a table in a store asks of it (#282, #283, #284). Used by
+//! the unit tests (`store::fake_s3`) and `tests/s3_requests.rs`. Path-style
 //! (`/bkt/key`), no signature checks, no conditional puts: the subset
 //! `S3Store` in `CommitMode::SingleWriter` uses.
 
 use std::collections::BTreeMap;
 use std::io;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
+use std::time::Duration;
 
 use db_core::storage::ingest::store::s3::{
     CommitMode, Credentials, HttpRequest, HttpResponse, S3Config, S3Store, Transport,
@@ -20,12 +23,18 @@ pub struct Counts {
     pub bytes: u64,
     pub lists: u64,
     pub heads: u64,
+    /// The most object GETs in flight at once: 1 if they go one by one.
+    pub max_in_flight: u64,
 }
 
 #[derive(Default)]
 pub struct FakeS3 {
     objects: Mutex<BTreeMap<String, Vec<u8>>>,
     counts: Mutex<Counts>,
+    /// Added to every object GET, outside the locks, so concurrent GETs
+    /// overlap as they would against a real store.
+    latency_us: AtomicU64,
+    in_flight: AtomicU64,
 }
 
 impl FakeS3 {
@@ -45,6 +54,19 @@ impl FakeS3 {
         cfg.read_cache_bytes = cache;
         let transport: Arc<dyn Transport> = self.clone();
         Store::S3(S3Store::with_transport(cfg, transport).expect("fake store"))
+    }
+
+    /// Every object GET takes `latency` from now on.
+    #[allow(dead_code, reason = "used by tests/s3_requests.rs only")]
+    pub fn set_latency(&self, latency: Duration) {
+        let us = u64::try_from(latency.as_micros()).unwrap_or(u64::MAX);
+        self.latency_us.store(us, Ordering::SeqCst);
+    }
+
+    /// Starts [`Counts::max_in_flight`] over.
+    #[allow(dead_code, reason = "used by tests/s3_requests.rs only")]
+    pub fn reset_peak(&self) {
+        self.counts.lock().expect("counts").max_in_flight = 0;
     }
 
     pub fn counts(&self) -> Counts {
@@ -103,6 +125,17 @@ impl Transport for FakeS3 {
                 .find(|(k, _)| k.eq_ignore_ascii_case(name))
                 .map(|(_, v)| v.as_str())
         };
+        let object_get = req.method == "GET" && !key.is_empty();
+        if object_get {
+            let now = self.in_flight.fetch_add(1, Ordering::SeqCst) + 1;
+            let mut counts = self.counts.lock().expect("counts");
+            counts.max_in_flight = counts.max_in_flight.max(now);
+            drop(counts);
+            std::thread::sleep(Duration::from_micros(
+                self.latency_us.load(Ordering::SeqCst),
+            ));
+            self.in_flight.fetch_sub(1, Ordering::SeqCst);
+        }
         let mut objects = self.objects.lock().expect("objects");
         let mut counts = self.counts.lock().expect("counts");
         let etag = |b: &[u8]| {

@@ -295,10 +295,11 @@ fn options(
             sort_key: sort_key.iter().map(|k| (*k).to_string()).collect(),
             row_group_max_rows: 64 * 1024,
             retention_days,
-            // Each file's `ts` range in the manifest (#283): the API's
-            // `ts >= since` skips a file outside the window without a read
-            // (a GET in a store). Files written before have no range.
-            stat_columns: vec!["ts".to_string()],
+            // Each file's `ts` and `received` ranges in the manifest (#283,
+            // #284): the API's `ts >= since` and live's `received >= since`
+            // skip a file outside the window without a read (a GET in a
+            // store). Files written before have no range.
+            stat_columns: vec!["ts".to_string(), "received".to_string()],
             ..TierOptions::default()
         }),
         parquet: WriterOptions {

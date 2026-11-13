@@ -14,7 +14,9 @@
 //!
 //! The participants sit apart from the data: wiping the data keeps them.
 
+// Shared with the integration tests (tests/s3_requests.rs).
 #[cfg(test)]
+#[path = "../tests/support/fake_s3.rs"]
 pub(crate) mod fake_s3;
 pub mod geo;
 pub mod iocs;

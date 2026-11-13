@@ -77,7 +77,7 @@ An append MUST return only once its rows are on disk (the WAL fsynced on the las
 
 ### Requirement 3: Hour files [MUST]
 
-Every minute the server MUST write each closed hour to `live/date=…/hour=…/` as one Parquet file (zstd, sorted by `rule_id`, `ioc_value`), whose `ts` range the manifest MUST record so a `ts` window skips the files outside it without reading them (#283). On shutdown it MUST flush before closing. Rows of the open hour MUST still be readable as one Parquet file written on request.
+Every minute the server MUST write each closed hour to `live/date=…/hour=…/` as one Parquet file (zstd, sorted by `rule_id`, `ioc_value`), whose `ts` and `received` ranges the manifest MUST record so a `ts` or `received` window skips the files outside it without reading them (#283, #284). On shutdown it MUST flush before closing. Rows of the open hour MUST still be readable as one Parquet file written on request.
 
 **Implementation:** `crates/frank/src/store/sightings.rs::flush`, `crates/frank/src/store/sightings.rs::options`, `crates/frank/src/store/sightings.rs::open_rows_parquet`, `crates/frank/src/main.rs::maintain`
 
@@ -208,6 +208,14 @@ With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manife
 - THEN the listing fetches no file, the query reads fewer bytes than the files hold and sends no HEAD, and the second run sends no request
 
 **Tests:** `crates/frank/src/store/sightings.rs::a_query_in_a_store_reads_by_range_and_once`, `crates/frank/src/store/sightings.rs::nanos_reads_an_integer_or_the_iso_text_db_core_prints`
+
+#### Scenario: Every endpoint is answered from the cache when warm
+
+- GIVEN 30 days of sightings in a store, and a server started on it with an empty cache
+- WHEN a partner calls statistics (30 and 7 days), explore, live, the records list and the file list, each twice
+- THEN the second call of each sends no request, no call sends a HEAD or reads as many bytes as the files hold, a 7-day window sends fewer requests than a 30-day one, and the file list fetches nothing
+
+**Tests:** `crates/frank/tests/s3_requests.rs::requests_per_endpoint_cold_and_warm`
 
 #### Scenario: Retention deletes objects
 

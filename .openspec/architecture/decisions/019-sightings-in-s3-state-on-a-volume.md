@@ -25,3 +25,15 @@ The target is an AWS deployment with S3 (#220). FRANK has run on a local filesys
 - The AWS design needs a volume for the WAL and the row databases next to the bucket; a task replaced without its volume loses the WAL's unflushed hour.
 - Garage's single-writer limit makes it a trial store, not a production one.
 - *Revised 2026-11-13 (#282):* up to db-core 0.239.0 every query downloaded every listed Parquet file whole, inside the writer's lock, so each request cost the table's size in transfer and memory, and a partner fetching N files cost about N full downloads. Since db-core 0.240.0 (ADR 0045 there) a query reads a file's footer once and then only the column chunks it loads, by ranged GET, through a read cache (256 MiB, least recently used out first; listed files never change, so a cached range is never stale). Listing the files fetches none. The cache does not survive a restart: the first queries after one fetch every footer again.
+- *Measured 2026-11-13 (#284)* with `crates/frank/tests/s3_requests.rs`: 30 days of sightings (33 files, 300 KB) in a counting in-memory bucket that adds 1 ms to every GET, each endpoint first in a new process (empty cache), release build. Each file's manifest records its `ts` and `received` ranges (#283, #284), so time windows skip files without a GET.
+
+  | Endpoint (partner) | Cold GETs | Cold bytes | Peak in flight | GET latencies end to end | Warm GETs |
+  |---|---:|---:|---:|---:|---:|
+  | `/v1/statistics?days=30` | 1506 | 253 KB | 24 | ~560 | 0 |
+  | `/v1/statistics?days=7` | 356 | 60 KB | 24 | ~140 | 0 |
+  | `/v1/explore?group=rule` | 666 | 198 KB | 36 | ~450 | 0 |
+  | `/v1/live?window=24h` | 40 | 9 KB | 20 | ~32 | 0 |
+  | `/v1/sightings?limit=50` | 906 | 216 KB | 12 | ~490 | 0 |
+  | `/v1/files` | 0 | 0 | 0 | 0 | 0 |
+
+  The cost is the request count, not the bytes: a GET per footer and per column chunk, with up to one file's GETs in flight at a time. At AWS's 20-100 ms before the first byte, a cold 30-day statistics call takes about 11-56 s, close to `FRANK_REQUEST_TIMEOUT` (60 s); warm, every endpoint sends nothing. **Decision:** keep db-core's 256 MiB read cache, which holds the whole table at today's size, and ask db-core to coalesce adjacent ranges and fetch a file's chunks in parallel (t-rust-db/db-core#1059). The run against AWS itself, for real latencies, is #228.
