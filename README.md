@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.44.0
+## Version: 0.45.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -126,6 +126,7 @@ The issuer and the redirect URL must be `https://`; only `localhost` may be `htt
 **On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image, pinned by commit, with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS. Options:
 
 - `store_bucket`: the sightings and the audit log go to that Object Storage bucket (`FRANK_STORE`, ADR-019); the WAL and the SQLite files stay on the volume. OpenTofu makes the bucket and a credential for it. The credential's keys reach the VM through its user data, which anyone who can read the project's servers can see. Turn on versioning once, as on AWS, with the credential's keys: `aws s3api put-bucket-versioning --endpoint-url https://object.storage.eu01.onstackit.cloud --bucket <bucket> --versioning-configuration Status=Enabled` (the provider has no resource for it), and let old versions expire with `put-bucket-lifecycle-configuration` (`NoncurrentVersionExpiration`; STACKIT refuses an `AbortIncompleteMultipartUpload` rule). The writer lease leaves an old version every few seconds.
+- `abuse_key`: the abuse.ch Auth-Key for the URLhaus and ThreatFox lists. The VM fetches the GeoIP databases monthly and the IoC lists daily (#276), first right after boot, with the same scripts as `make geoip` and `make lists` (`scripts/fetch-geoip.sh`, `scripts/fetch-lists.sh`; systemd timers `frank-geoip` and `frank-lists`). Without the key the other lists are still fetched. It reaches the VM through its user data, like the bucket's keys; it is kept in `/etc/frank/lists.env` (0600). A failed download keeps the previous files; `journalctl -u frank-geoip -u frank-lists` shows the runs.
 - `admin_cidr` and `ssh_public_key`: SSH from that range. Empty (the default) opens no port 22: the VM runs the STACKIT Server Agent, and commands go through `stackit server command create … --template-name RunShellScript`. The project needs the run-command service (`cloud.stackit.run-command`) enabled first, through the service-enablement API or the portal.
 
 Participants are managed on the VM through the running container: `sudo podman exec frank frank participant add acme-mdr --status contributor --with-token`, over SSH or as a server command (`tofu output create_token` prints one).

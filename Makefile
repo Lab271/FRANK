@@ -39,9 +39,9 @@ CA_CERT := target/frank-local-ca.crt
 N ?= 60
 RATE ?= 60
 DURATION ?= 1h
-# DB-IP's free country and ASN databases, CC BY 4.0, no account needed (#191).
-GEOIP_DIR := $(DATA)/geoip/dbip-lite
-DBIP_URL := https://download.db-ip.com/free
+# DB-IP's free country and ASN databases (#191) and the IoC lists (#192, #193)
+# are fetched by scripts/fetch-geoip.sh and scripts/fetch-lists.sh, which the
+# STACKIT VM runs on timers too (#276).
 # The abuse.ch Auth-Key for URLhaus and ThreatFox, read from 1Password by
 # `make lists` (#193). The item is named by id: "abuse.ch" matches more than one.
 ABUSE_KEY_REF ?= op://Private/ghrds67j2aclbtl2v2dbsodqiu/auth key
@@ -202,48 +202,11 @@ stream: ## Stream sightings through the API and watch the table: make stream RAT
 	python3 scripts/stream_sightings.py --rate $(RATE) --duration $(DURATION) --lists $(DATA)/lists
 
 geoip: ## Download DB-IP Lite Country + ASN into data/geoip/dbip-lite (this month's, else last month's)
-	@install -d -m 700 $(DATA)/geoip $(GEOIP_DIR)
-	@set -euo pipefail; \
-	tmp=$$(mktemp -d $(DATA)/geoip/.download.XXXXXX); trap 'rm -rf "$$tmp"' EXIT; \
-	months="$$(date -u +%Y-%m) $$(date -u -v-1m +%Y-%m 2>/dev/null || date -u -d '1 month ago' +%Y-%m)"; \
-	for db in country asn; do \
-	  for m in $$months; do \
-	    curl -fsSL "$(DBIP_URL)/dbip-$$db-lite-$$m.mmdb.gz" -o "$$tmp/$$db.gz" && break; \
-	  done; \
-	  gunzip -c "$$tmp/$$db.gz" > "$$tmp/dbip-$$db-lite.mmdb"; \
-	done; \
-	chmod 600 "$$tmp"/*.mmdb; mv -f "$$tmp"/*.mmdb $(GEOIP_DIR)/
-	@ls -l $(GEOIP_DIR)
-
-MISP_LISTS := https://raw.githubusercontent.com/MISP/misp-warninglists/main/lists
-# Public DNS resolvers, and the special-purpose ranges: private, documentation
-# (RFC 5737, RFC 3849), shared, link-local and multicast addresses.
-MISP_WARNING := public-dns-v4 public-dns-v6 public-dns-hostname \
-	rfc5735 rfc1918 rfc3849 rfc6598 ipv6-linklocal multicast
-ABUSE_API := https://%s-api.abuse.ch/v2/files/exports/%s/%s
-# name=host:export, the key going in between.
-ABUSE_KEYED := urlhaus=urlhaus:online.csv threatfox_recent=threatfox:recent.csv
-FEODO := https://feodotracker.abuse.ch/downloads/ipblocklist.csv
+	@scripts/fetch-geoip.sh $(DATA)
 
 lists: ## Download the warning (MISP, CC0) and reference (abuse.ch, CC0; Auth-Key from 1Password, ABUSE_KEY_REF) lists into data/lists; the server imports them within a minute
-	@install -d $(DATA)/lists/warning $(DATA)/lists/reference
-	@set -euo pipefail; for l in $(MISP_WARNING); do \
-	  curl -fsS -o $(DATA)/lists/warning/.$$l.json "$(MISP_LISTS)/$$l/list.json" \
-	    || { echo "lists: MISP $$l failed" >&2; exit 1; }; \
-	  mv -f $(DATA)/lists/warning/.$$l.json $(DATA)/lists/warning/$$l.json; \
-	done
-	@set -euo pipefail; d=$(DATA)/lists/reference; \
-	curl -fsS -o $$d/.feodo_ipblocklist.csv "$(FEODO)" || { echo "lists: Feodo Tracker failed" >&2; exit 1; }; \
-	mv -f $$d/.feodo_ipblocklist.csv $$d/feodo_ipblocklist.csv; \
-	if ! KEY=$$(op read --account "$(OP_ACCOUNT)" "$(ABUSE_KEY_REF)" 2>/dev/null) || [ -z "$$KEY" ]; then \
-	  echo "lists: no abuse.ch Auth-Key ($(ABUSE_KEY_REF)): URLhaus and ThreatFox skipped" >&2; exit 0; \
-	fi; \
-	for kv in $(ABUSE_KEYED); do n=$${kv%%=*}; he=$${kv#*=}; \
-	  printf 'url = "$(ABUSE_API)"\noutput = "%s"\n' "$${he%%:*}" "$$KEY" "$${he#*:}" "$$d/.$$n.csv" \
-	    | curl -fsS --config - || { echo "lists: abuse.ch $$n failed" >&2; exit 1; }; \
-	  mv -f $$d/.$$n.csv $$d/$$n.csv; \
-	done
-	@ls -l $(DATA)/lists/warning $(DATA)/lists/reference
+	@KEY=$$(op read --account "$(OP_ACCOUNT)" "$(ABUSE_KEY_REF)" 2>/dev/null) || KEY=; \
+	ABUSE_KEY="$$KEY" scripts/fetch-lists.sh $(DATA)
 
 ##@ Container (podman)
 

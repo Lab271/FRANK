@@ -75,3 +75,10 @@ variable "store_bucket" {
   type        = string
   default     = ""
 }
+
+variable "abuse_key" {
+  description = "abuse.ch Auth-Key for the URLhaus and ThreatFox lists; empty skips them (the other lists are fetched without it)."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
