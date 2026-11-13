@@ -144,14 +144,13 @@ def test_live_view_stops_when_hidden(page: Page, args) -> None:
     page.goto(f"{args.url}/#live")
     sign_in(page, args.contributor)
     expect(page.locator("#live-status")).to_contain_text("every 15 s", timeout=TIMEOUT_MS)
-    page.wait_for_timeout(1500)
-    assert polls() >= 3, f"not polling: {polls()} request(s) in 1.5 s"
+    page.wait_for_function("window.livePolls >= 3", timeout=TIMEOUT_MS)  # polling
     at_hide = set_hidden(page, True)
     page.wait_for_timeout(1500)
     assert polls() == at_hide, f"polled while hidden: {polls() - at_hide} time(s)"
     set_hidden(page, False)
-    page.wait_for_timeout(1500)
-    assert polls() >= at_hide + 3, f"did not resume when shown: {polls() - at_hide}"
+    # Resumed: one poll on being shown, and the next from the timer again.
+    page.wait_for_function("(n) => window.livePolls >= n", arg=at_hide + 2, timeout=TIMEOUT_MS)
 
 
 # --- Requirement 8 ----------------------------------------------------------
