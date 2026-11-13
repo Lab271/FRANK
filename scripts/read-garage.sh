@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# DuckDB on FRANK's sightings in the Garage bucket of `make up-s3` (#220).
+# DuckDB on FRANK's sightings in the Garage bucket of `make up` (#220).
 #
 #   scripts/read-garage.sh                    an interactive DuckDB shell
 #   scripts/read-garage.sh "SELECT …"         one query, then exit (or SQL="SELECT …")
@@ -16,7 +16,7 @@ ENV_FILE=${FRANK_S3_ENV:-s3/frank.env}
 PORT=${GARAGE_S3_PORT:-3900}
 
 command -v duckdb >/dev/null || { echo "read-garage: duckdb is not installed (brew install duckdb)" >&2; exit 1; }
-[ -s "$ENV_FILE" ] || { echo "read-garage: no $ENV_FILE; run make up-s3 first" >&2; exit 1; }
+[ -s "$ENV_FILE" ] || { echo "read-garage: no $ENV_FILE; run make up first" >&2; exit 1; }
 
 set -a
 # shellcheck disable=SC1090

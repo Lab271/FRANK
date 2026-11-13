@@ -1,10 +1,9 @@
-# `make up-s3` (#220): the compose.yaml stack with the sightings' Parquet files
+# `make up` with S3, the default (#220): the compose.yaml stack with the sightings' Parquet files
 # in a Garage bucket instead of ./data/sightings. Layered on compose.yaml
 # (podman compose -f compose.yaml -f compose.s3.yaml): same Caddy, same URLs.
 # The WAL stays in ./data/s3/sightings; the other state stays in ./data and
-# ./participants as in `make up-solo`. Garage keeps its files in ./s3.
-# Run one of the two modes at a time: `make up-solo` and `make up-s3` replace
-# each other.
+# ./participants as with `make up S3=0`. Garage keeps its files in ./s3.
+# `make up` and `make up S3=0` replace each other.
 # Host ports, all on 127.0.0.1: GARAGE_S3_PORT (3900, the S3 API, for the aws
 # CLI or an S3 browser), GARAGE_ADMIN_PORT (3903, the admin API), and
 # GARAGE_TLS_PORT (9443, the S3 API over HTTPS through Caddy:

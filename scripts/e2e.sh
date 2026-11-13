@@ -102,7 +102,7 @@ podman rm -f "$NAME" >/dev/null 2>&1 || true
 run_args=()
 if [ -n "${S3:-}" ]; then
   # A one-node Garage on its own network, the bucket and key made by the
-  # same script as `make up-s3`; FRANK gets the key in its environment.
+  # same script as `make up`; FRANK gets the key in its environment.
   podman rm -f "$GARAGE" >/dev/null 2>&1 || true
   podman network exists "$NET" 2>/dev/null || podman network create "$NET" >/dev/null
   mkdir -p "$tmp/s3/meta" "$tmp/s3/data"

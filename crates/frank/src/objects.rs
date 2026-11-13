@@ -169,7 +169,7 @@ mod tests {
     }
 
     /// A real TLS handshake against the platform's certificate store:
-    /// FRANK_TLS_TEST_URL=https://frank.local:9443 (after `make up-s3` and
+    /// FRANK_TLS_TEST_URL=https://frank.local:9443 (after `make up` and
     /// `make trust`), or any HTTPS endpoint. An unsigned request gets a
     /// status (403 from Garage), which is all this checks.
     #[test]

@@ -165,7 +165,7 @@ A `POST`, `PUT`, `PATCH` or `DELETE` that carries the session cookie MUST have a
 
 ### Requirement 8: A local stand-in for the provider [SHOULD]
 
-Development SHOULD use a stub of the provider's OIDC endpoints that runs only through `make up-sso` or `SSO=1 scripts/e2e.sh`, is never deployed, and signs with a key made at every start.
+Development SHOULD use a stub of the provider's OIDC endpoints that runs only through `make up` (unless `SSO=0`) or `SSO=1 scripts/e2e.sh`, is never deployed, and signs with a key made at every start.
 
 **Implementation:** `deploy/podman/sso-stub/stub.py`, `deploy/podman/compose.sso.yaml`
 

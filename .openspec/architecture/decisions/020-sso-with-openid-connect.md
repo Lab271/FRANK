@@ -49,4 +49,4 @@ Four things had to stay true:
 - **Okta's view of a person is not pushed to FRANK.** A person removed from Okta keeps their FRANK user until an admin disables it; their session ends within eight hours. SCIM, which would push those changes, is a separate story.
 - **The server writes `participants.db` on every login** (a session row, and the user on the first). Each is one transaction through the store functions the CLI uses.
 - **HTTP calls to the identity provider** go through `ureq` with rustls, now a regular dependency rather than only the `tls` feature's.
-- **Local development** gets a Python stand-in for Okta (#238), started only by `make up-sso`, never deployed; production setup of the Okta application is tracked in GitLab (`Labs/deployments/test-frank`).
+- **Local development** gets a Python stand-in for Okta (#238), started only by `make up` (unless `SSO=0`), never deployed; production setup of the Okta application is tracked in GitLab (`Labs/deployments/test-frank`).

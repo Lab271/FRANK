@@ -1,4 +1,4 @@
-# The SSO stub (#238): a stand-in for Okta's OIDC endpoints, for `make up-sso`
+# The SSO stub (#238): a stand-in for Okta's OIDC endpoints, for `make up`
 # and `SSO=1 scripts/e2e.sh`. DEVELOPMENT ONLY: it signs in anyone who picks a
 # name. It is never pushed and never part of a deployment.
 FROM docker.io/library/python:3.13-slim

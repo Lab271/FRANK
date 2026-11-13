@@ -1,4 +1,4 @@
-# `make up-sso` (#238, ADR-020): the compose.yaml stack with sign-in with SSO
+# `make up` with SSO, the default (#238, ADR-020): the compose.yaml stack with sign-in with SSO
 # against a local OIDC stub (deploy/podman/sso-stub). DEVELOPMENT ONLY: the
 # stub signs in anyone who picks a name. Layered on compose.yaml (podman
 # compose -f compose.yaml -f compose.sso.yaml): same Caddy, same URLs.
@@ -7,11 +7,11 @@
 # http://localhost:9400 (SSO_STUB_PORT) is the issuer for the browser on the
 # host and for FRANK in its container alike: no extra name in /etc/hosts.
 #
-# The one secret is the OIDC client secret, made once by `make up-sso` in
+# The one secret is the OIDC client secret, made once by `make up` in
 # ./sso/client-secret (git-ignored, in a 700 directory) and mounted read-only into both
 # containers. FRANK reads it from the file, never from the environment.
 # FRANK_SSO_ORGANISATION (default sso-users, contributor) is where users
-# signing in for the first time are created; `make up-sso` registers it.
+# signing in for the first time are created; `make up` registers it.
 services:
   frank:
     ports:
