@@ -47,6 +47,8 @@ struct Idp {
     /// From the last authorize URL.
     challenge: Mutex<String>,
     nonce: Mutex<String>,
+    /// Every `GET` fails: the identity provider is not available.
+    down: Mutex<bool>,
 }
 
 impl Idp {
@@ -59,6 +61,7 @@ impl Idp {
             tamper: Mutex::new(false),
             challenge: Mutex::new(String::new()),
             nonce: Mutex::new(String::new()),
+            down: Mutex::new(false),
         })
     }
 
@@ -110,6 +113,9 @@ fn merge(v: &mut Value, changes: &Value) {
 
 impl Http for Idp {
     fn get(&self, url: &str) -> Result<String, String> {
+        if *self.down.lock().unwrap() {
+            return Err(format!("GET {url}: connection refused"));
+        }
         if url == format!("{ISSUER}/.well-known/openid-configuration") {
             return Ok(json!({
                 "issuer": ISSUER,
@@ -170,6 +176,11 @@ impl Drop for Harness {
 /// An organisation `lab` (partner) with a machine user `feed` and its
 /// token `t-feed`; SSO on unless `off`.
 fn harness(name: &str, off: bool) -> Harness {
+    harness_in(name, off, "lab")
+}
+
+/// As [`harness`], with new users created in `organisation`.
+fn harness_in(name: &str, off: bool, organisation: &str) -> Harness {
     let dir = std::env::temp_dir().join(format!("frank-sso-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -185,7 +196,7 @@ fn harness(name: &str, off: bool) -> Harness {
                 client_id: CLIENT.into(),
                 client_secret: Secret::new(SECRET),
                 redirect_url: format!("{ORIGIN}/v1/sso/callback"),
-                organisation: "lab".into(),
+                organisation: organisation.into(),
                 origin: ORIGIN.into(),
             },
             idp.clone(),
@@ -550,4 +561,86 @@ async fn writes_with_a_session_cookie_need_frank_s_origin() {
         .body(Body::from("{}"))
         .unwrap();
     assert_ne!(send(&h.app, req).await.status, StatusCode::FORBIDDEN);
+}
+
+fn refusals(h: &Harness) -> Vec<String> {
+    Audit::open(&h.dir)
+        .unwrap()
+        .read_from(0)
+        .unwrap()
+        .into_iter()
+        .filter(|l| l["action"] == "sso_refused")
+        .map(|l| l["reason"].as_str().unwrap_or_default().to_string())
+        .collect()
+}
+
+#[tokio::test]
+async fn an_unavailable_identity_provider_is_a_bad_gateway() {
+    let h = harness("down", false);
+    *h.idp.down.lock().unwrap() = true;
+    let r = send(&h.app, get("/v1/sso/login").body(Body::empty()).unwrap()).await;
+    assert_eq!(r.status, StatusCode::BAD_GATEWAY);
+    assert_eq!(
+        r.body,
+        json!({ "error": "the identity provider is not available" })
+    );
+    assert_eq!(r.cookie("frank_sso_state"), None);
+}
+
+#[tokio::test]
+async fn the_store_s_refusals_and_failures_are_refusals() {
+    // The e-mail names the machine user `feed`.
+    let h = harness("store-refusal", false);
+    *h.idp.claims.lock().unwrap() = json!({ "email": "feed" });
+    let (state, cookie) = login(&h).await;
+    let r = callback(&h, &format!("code=c1&state={state}"), &cookie).await;
+    assert_eq!(r.location, "/?sso=refused");
+    assert_eq!(r.cookie("frank_session"), None);
+    assert_eq!(refusals(&h), ["feed is a machine user"]);
+    // The organisation for new users does not exist.
+    let h = harness_in("store-failure", false, "nowhere");
+    let (state, cookie) = login(&h).await;
+    let r = callback(&h, &format!("code=c1&state={state}"), &cookie).await;
+    assert_eq!(r.location, "/?sso=refused");
+    assert_eq!(r.cookie("frank_session"), None);
+    assert_eq!(refusals(&h), ["store: no participant \"nowhere\""]);
+}
+
+fn logout_request(cookie: Option<&str>) -> Request<Body> {
+    let mut req = Request::builder()
+        .method("POST")
+        .uri("/v1/sso/logout")
+        .header(header::ORIGIN, ORIGIN);
+    if let Some(c) = cookie {
+        req = req.header(header::COOKIE, format!("frank_session={c}"));
+    }
+    req.body(Body::empty()).unwrap()
+}
+
+#[tokio::test]
+async fn logout_without_sso_or_a_session() {
+    let h = harness("logout-off", true);
+    let r = send(&h.app, logout_request(Some("abc"))).await;
+    assert_eq!(r.status, StatusCode::NOT_FOUND);
+    let h = harness("logout-unknown", false);
+    for cookie in [None, Some("not-a-session")] {
+        let r = send(&h.app, logout_request(cookie)).await;
+        assert_eq!(r.status, StatusCode::OK, "{cookie:?}");
+        assert_eq!(r.body, json!({ "signed_out": true }));
+        assert!(r.set_cookie("frank_session").contains("Max-Age=0"));
+    }
+    assert!(!audit_actions(&h).iter().any(|a| a == "sso_logout"));
+}
+
+#[tokio::test]
+async fn logout_still_clears_the_cookie_when_the_store_fails() {
+    let h = harness("logout-store", false);
+    let session = sign_in(&h).await;
+    // The store can no longer be opened.
+    std::fs::remove_file(&h.db).unwrap();
+    std::fs::create_dir(&h.db).unwrap();
+    let r = send(&h.app, logout_request(Some(&session))).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.set_cookie("frank_session").contains("Max-Age=0"));
+    assert!(!audit_actions(&h).iter().any(|a| a == "sso_logout"));
 }
