@@ -4,6 +4,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- STACKIT: SSO settings for the module (`sso_issuer`, `sso_client_id`, `sso_client_secret`, `sso_organisation`), all four or none; the client secret reaches FRANK as a mounted file (ADR-020, test-frank#2).
+
 ## [0.54.0] - 2026-11-14
 
 ### Changed

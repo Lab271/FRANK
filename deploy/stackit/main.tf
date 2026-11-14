@@ -82,6 +82,12 @@ resource "stackit_server" "frank" {
   agent = {
     provisioning_policy = "ALWAYS"
   }
+  lifecycle {
+    precondition {
+      condition     = length(distinct([for v in [var.sso_issuer, var.sso_client_id, var.sso_client_secret, var.sso_organisation] : v == ""])) == 1
+      error_message = "SSO is partly configured: set sso_issuer, sso_client_id, sso_client_secret and sso_organisation together, or none of them."
+    }
+  }
   boot_volume = {
     source_type           = "image"
     source_id             = data.stackit_image_v2.debian.image_id
@@ -99,6 +105,10 @@ resource "stackit_server" "frank" {
     store_key      = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].access_key
     store_secret   = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].secret_access_key
     abuse_key      = var.abuse_key
+    sso_issuer     = var.sso_issuer
+    sso_client_id  = var.sso_client_id
+    sso_secret     = var.sso_client_secret
+    sso_org        = var.sso_organisation
     # The same scripts as `make geoip` and `make lists` (#276).
     fetch_geoip = file("${path.module}/../../scripts/fetch-geoip.sh")
     fetch_lists = file("${path.module}/../../scripts/fetch-lists.sh")
