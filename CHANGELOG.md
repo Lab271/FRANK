@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.47.0] - 2026-11-14
+
+### Changed
+
+- `deploy/stackit`: the sightings bucket has `prevent_destroy`, like the data volume: a plan that would replace or remove it fails. The README says how to remove it on purpose (`tofu state rm`) and what a rebuilt VM, a lost volume and a lost bucket each keep and lose (#286).
+
 ## [0.46.0] - 2026-11-13
 
 ### Changed
