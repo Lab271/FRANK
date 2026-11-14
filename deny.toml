@@ -29,7 +29,11 @@ unknown-registry = "deny"
 unknown-git = "deny"
 allow-registry = ["https://github.com/rust-lang/crates.io-index"]
 # db-core is pinned by tag; see Cargo.toml.
-allow-git = ["https://github.com/t-rust-db/db-core"]
+# mvl-manifest (#315) from mvl-rust, pinned by tag as well.
+allow-git = [
+    "https://github.com/t-rust-db/db-core",
+    "https://github.com/mvl-lang/mvl-rust",
+]
 
 [advisories]
 # `cargo deny check advisories` needs the advisory DB; CI fetches it.

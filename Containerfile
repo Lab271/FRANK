@@ -20,13 +20,22 @@ RUN apt-get update && apt-get install -y --no-install-recommends git ca-certific
  && cargo install wasm-bindgen-cli --version ${WASM_BINDGEN_VERSION} --locked \
  && cargo install cargo-auditable --version ${CARGO_AUDITABLE_VERSION} --locked
 WORKDIR /src
+# The runtime manifest (#315): the build date from the commit, not the clock
+# (`--build-arg SOURCE_DATE_EPOCH=$(git log -1 --format=%ct)`, as `make
+# image` and CI pass it), and no build directory in the binary's paths, so
+# the manifest says `reproducible`. `.git` stays out of the context
+# (.containerignore): the manifest's VCS fields are empty in the image.
+ARG SOURCE_DATE_EPOCH
+ENV RUSTFLAGS="--remap-path-prefix=/src=/build"
 COPY Cargo.toml Cargo.lock ./
 COPY crates crates
 COPY examples examples
 COPY docs/openapi.yaml docs/openapi.yaml
 COPY web web
 # ring's assembly and C are built by the glibc gcc for the musl target.
-RUN target="$(uname -m)-unknown-linux-musl" \
+# An empty SOURCE_DATE_EPOCH would read as set; without the build arg, unset.
+RUN if [ -z "${SOURCE_DATE_EPOCH:-}" ]; then unset SOURCE_DATE_EPOCH; fi \
+ && target="$(uname -m)-unknown-linux-musl" \
  && export "CC_$(uname -m)_unknown_linux_musl=gcc" \
  && cargo auditable build --release --locked -p frank --features tls --target "$target" \
  && cargo build --release --locked -p frank-wasm --target wasm32-unknown-unknown \

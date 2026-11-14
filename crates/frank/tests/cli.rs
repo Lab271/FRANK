@@ -335,16 +335,9 @@ fn healthy(port: u16) -> bool {
         && answer.starts_with("HTTP/1.1 200")
 }
 
-#[test]
-fn serve_imports_a_tokens_file_answers_and_stops() {
-    let d = dir("serve-run");
-    // A Phase 3 tokens file, imported while participants.db holds no tokens.
-    let tokens = d.0.join("tokens");
-    std::fs::write(
-        &tokens,
-        format!("{} partner legacy-feed\n", "cd".repeat(32)),
-    )
-    .unwrap();
+/// Runs `frank serve` on a free port with `tokens`, until `/health`
+/// answers (or ten seconds pass), then stops it.
+fn serve_until_healthy(d: &Dir, tokens: &Path) {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
@@ -387,6 +380,19 @@ fn serve_imports_a_tokens_file_answers_and_stops() {
         answered.load(Ordering::SeqCst),
         "GET /health never answered 200"
     );
+}
+
+#[test]
+fn serve_imports_a_tokens_file_answers_and_stops() {
+    let d = dir("serve-run");
+    // A Phase 3 tokens file, imported while participants.db holds no tokens.
+    let tokens = d.0.join("tokens");
+    std::fs::write(
+        &tokens,
+        format!("{} partner legacy-feed\n", "cd".repeat(32)),
+    )
+    .unwrap();
+    serve_until_healthy(&d, &tokens);
     assert_eq!(actions(&d.0), ["tokens_imported"]);
     let imported = parts::tokens(&db(&d.0)).unwrap();
     assert_eq!(imported.len(), 1);
@@ -469,4 +475,16 @@ fn mcdc__cli_ingest_file_adc096cb__v3_a_repeat_in_the_same_file_is_a_duplicate()
         ],
     );
     assert_eq!(r.err, "ingested 1 sightings (1 already registered)\n");
+}
+
+#[test]
+fn serve_with_an_empty_tokens_file_imports_and_audits_nothing() {
+    let d = dir("serve-empty-tokens");
+    // Present but empty, or comments only: nothing to import, so no
+    // `tokens_imported` line on every start.
+    let tokens = d.0.join("tokens");
+    std::fs::write(&tokens, "# no tokens yet\n").unwrap();
+    serve_until_healthy(&d, &tokens);
+    assert!(actions(&d.0).is_empty(), "{:?}", actions(&d.0));
+    assert!(parts::tokens(&db(&d.0)).unwrap().is_empty());
 }

@@ -22,12 +22,16 @@ clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.10"
 getrandom = "0.3"
 tracing = "0.1"
+mvl-manifest = { workspace = true, features = ["log"] }
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # HTTPS calls: the identity provider for SSO (#241) and, with `tls`, S3.
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 # RS256 signatures of OIDC ID tokens (#241); already linked through rustls.
 ring = "0.17"
 base64 = "0.23"
+
+[build-dependencies]
+mvl-manifest = { workspace = true, features = ["build"] }
 
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
