@@ -21,6 +21,6 @@
 ## Consequences
 
 - The dashboard can show numbers from an older tree; the age next to each box says so. Run `make coverage quality` before reading them.
-- Without `COVERAGE_MIN` or `CCN_MAX`, nothing stops coverage or complexity from getting worse; setting them, in the Makefile or in CI, is a later decision once the numbers have settled. On 2026-11-14: 90% of lines, 18 functions over CCN 15 (`main.rs::main` 77).
+- Without `COVERAGE_MIN` or `CCN_MAX`, nothing stops coverage or complexity from getting worse. Since #299 CI runs the tests under `make coverage` (once: no separate `cargo test`), runs `make quality`, and gates on `COVERAGE_MIN=0.90`, which held on 2026-11-14 with 90.3% (8681/9618 lines); the two files are kept as the `assurance-metrics` artifact. `CCN_MAX` waits for a baseline (#301): 18 functions were over CCN 15 (`main.rs::main` 77). llvm-cov does not run doc tests; the workspace has none.
 - `crates/frank/src/main.rs` shows 0%: the integration tests call the library, not the binary.
 - Evidence: `scripts/coverage_metrics.py`, `scripts/quality_metrics.py` and their tests, `scripts/test_assurance.py::Gates`, `Makefile` targets `coverage`, `quality` and `check-assurance`.
