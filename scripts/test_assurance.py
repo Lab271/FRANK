@@ -68,6 +68,33 @@ class DeadReason(Tree):
         # "a" occurs in the file, but there is no `fn a`
         self.assertEqual(assurance.dead_reason("src/lib.rs::a", self.root), "no fn a")
 
+    def test_a_tests_link_must_name_a_test_fn(self):
+        self.write("tests/api.rs", "\n".join([
+            "fn harness() -> u8 { 1 }",
+            "#[test]",
+            "fn plain() {}",
+            "#[tokio::test(flavor = \"multi_thread\")]",
+            "async fn on_tokio() {}",
+            "#[test]",
+            "#[ignore = \"slow\"] // run by make test-slow",
+            "// pages through thousands",
+            "fn slow() {}",
+            "mod inner { pub fn twice() {} }",
+            "#[test]",
+            "fn twice() {}",
+        ]) + "\n")
+        for name in ("plain", "on_tokio", "slow", "twice"):
+            self.assertIsNone(assurance.dead_reason(f"tests/api.rs::{name}", self.root, test=True), name)
+        self.assertEqual(assurance.dead_reason("tests/api.rs::harness", self.root, test=True),
+                         "fn harness is not a test")
+        # an Implementation link may name any fn
+        self.assertIsNone(assurance.dead_reason("tests/api.rs::harness", self.root))
+
+    def test_a_helper_linked_as_a_test_counts_against_coverage(self):
+        self.write("tests/t.rs", "fn adds() {}\n")
+        reqs = assurance.parse_spec(SPEC, self.root)
+        self.assertEqual(reqs[0]["dead"], [("tests/t.rs::adds", "fn adds is not a test")])
+
     def test_non_rust_symbol_is_a_substring(self):
         self.write("web/app.js", "function render() {}\n")
         self.assertIsNone(assurance.dead_reason("web/app.js::render", self.root))
@@ -160,7 +187,7 @@ class Gates(unittest.TestCase):
         lines = lambda c, n: {k: {"count": n, "covered": c, "percent": 0} for k in ("lines", "functions", "regions")}
         self.cov.write_text(json.dumps({"type": "llvm.coverage.json.export", "data": [
             {"files": [{"filename": "/x/a.rs", "summary": lines(8, 10)}], "totals": lines(8, 10)}]}))
-        self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95,1,12,30\n')
+        self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95\n')
 
     def tearDown(self):
         assurance.COLOR = self.color

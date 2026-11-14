@@ -13,10 +13,10 @@
 
 ## Decision
 
-1. **Each measurement runs on its own and leaves a file.** `make coverage` runs `cargo llvm-cov --summary-only --json` into `target/assurance/coverage.json`; `make quality` runs lizard (pinned, `-l rust -Eio --csv crates/*/src`) into `target/assurance/lizard.csv`. `target/` is not committed: the numbers belong to a build, not to the tree.
+1. **Each measurement runs on its own and leaves a file.** `make coverage` runs `cargo llvm-cov --summary-only --json` into `target/assurance/coverage.json`; `make quality` runs lizard (pinned, `-l rust --csv crates/*/src`) into `target/assurance/lizard.csv`. `target/` is not committed: the numbers belong to a build, not to the tree.
 2. **`scripts/assurance.py` reads them** (`scripts/coverage_metrics.py`, `scripts/quality_metrics.py`, standard library only) and shows a coverage box and a code-quality box after the spec box, with how long ago each was measured. A missing file shows `not measured`, not a failure, so `check-assurance` stays fast and works in CI as before.
 3. **Gates on request.** `COVERAGE_MIN` (lines, 0.0–1.0) and `CCN_MAX` make `check-assurance` fail below or above them, and when the measurement is missing. Unset, they are shown against display limits (80% lines, CCN 15, 80 lines a function) and never fail.
-4. **Fan-in and fan-out are shown as approximate and never gated**, for the name matching above. Tests are not scanned: they would swamp it.
+4. **Only what lizard measures right for Rust is read**: CCN and length. Fan-in and fan-out were shown as approximate at first and are left out since #298: `participants.rs::path` showed a fan-in of 249, any variable `path` counting; the parameter count is left out too (`iocs.rs::upsert` showed 13 for 3 tuple parameters). Tests are not scanned.
 
 ## Consequences
 

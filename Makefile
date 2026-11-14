@@ -143,9 +143,9 @@ coverage: ## Test coverage with cargo llvm-cov into target/assurance/coverage.js
 	@mkdir -p target/assurance
 	$(CARGO) llvm-cov --workspace --locked --json --summary-only --output-path target/assurance/coverage.json
 
-quality: ## Code quality with lizard (CCN, function and file length, fan-in/out) into target/assurance/lizard.csv
+quality: ## Code quality with lizard (CCN, function and file length) into target/assurance/lizard.csv
 	@mkdir -p target/assurance
-	$(LIZARD) -l rust -Eio --csv crates/*/src > target/assurance/lizard.csv.tmp
+	$(LIZARD) -l rust --csv crates/*/src > target/assurance/lizard.csv.tmp
 	@mv target/assurance/lizard.csv.tmp target/assurance/lizard.csv
 
 fmt: ## Format the code

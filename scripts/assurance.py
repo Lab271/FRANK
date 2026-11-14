@@ -56,17 +56,37 @@ def links(block, label):
     return LINK.findall(m.group(1))
 
 
-def dead_reason(entry, root=ROOT):
-    """None when the link resolves, else why it does not."""
+RUST_TEST = re.compile(r"#\[(?:tokio::)?test\b")
+
+
+def is_rust_test(text, at):
+    """Whether the fn starting at offset `at` carries #[test] or #[tokio::test]: the
+    attribute and comment lines right above it, up to the first other line."""
+    for line in reversed(text[:text.rfind("\n", 0, at) + 1].splitlines()):
+        line = line.strip()
+        if RUST_TEST.match(line):
+            return True
+        if not line.startswith(("#[", "//")):
+            return False
+    return False
+
+
+def dead_reason(entry, root=ROOT, test=False):
+    """None when the link resolves, else why it does not. With test=True (a **Tests:**
+    link) a Rust symbol must be a #[test] or #[tokio::test] fn, not a helper (#298)."""
     path, _, symbol = (s.strip() for s in entry.partition("::"))
     file = (root / path).resolve()
     if not (file.is_relative_to(root) and file.is_file()):
         return "file missing"
     if symbol:
         text = file.read_text(errors="replace")
-        pattern = rf"\bfn\s+{re.escape(symbol)}\b" if file.suffix == ".rs" else re.escape(symbol)
-        if not re.search(pattern, text):
-            return f"no {'fn ' if file.suffix == '.rs' else ''}{symbol}"
+        if file.suffix != ".rs":
+            return None if symbol in text else f"no {symbol}"
+        fns = [m.start() for m in re.finditer(rf"\bfn\s+{re.escape(symbol)}\b", text)]
+        if not fns:
+            return f"no fn {symbol}"
+        if test and not any(is_rust_test(text, at) for at in fns):
+            return f"fn {symbol} is not a test"
     return None
 
 
@@ -87,7 +107,7 @@ def parse_spec(text, root=ROOT):
         dead = [(e, r) for e in impl if (r := dead_reason(e, root))]
         backed = 0
         for chunk in scenarios or [block]:
-            results = [(e, dead_reason(e, root)) for e in links(chunk, "Tests")]
+            results = [(e, dead_reason(e, root, test=True)) for e in links(chunk, "Tests")]
             dead += [(e, r) for e, r in results if r]
             backed += any(r is None for _, r in results)
         reqs.append({
@@ -286,11 +306,7 @@ def report_quality(path, ccn_max=None):
     if q["longest_files"]:
         name, n = q["longest_files"][0]
         lines.append(f"longest file {n} lines {name.removeprefix('crates/')}")
-    for key, label in (("by_fan_in", "fan-in"), ("by_fan_out", "fan-out")):
-        if q[key]:
-            f = q[key][0]
-            lines.append(f"{label:<8} ≈   max {f[key[3:]]} {short(f)}")
-    lines.append(paint(f"lizard, crates/*/src, {age(path)}; fan-in/out by name, approximate", DIM))
+    lines.append(paint(f"lizard, crates/*/src, {age(path)}", DIM))
     print(boxed(lines, "FRANK code quality"))
     tables = (("CCN", "by_ccn", "ccn"), ("function lines", "by_length", "length"))
     for title, key, field in tables:

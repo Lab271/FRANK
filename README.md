@@ -189,7 +189,7 @@ make test        # cargo test --workspace
 make lint        # fmt, clippy (native and wasm32)
 make check-assurance   # spec links and scores; the coverage and quality boxes; the checker's tests first
 make coverage    # test coverage (cargo llvm-cov) into target/assurance/, read by check-assurance
-make quality     # code quality (lizard: CCN, function and file length, approximate fan-in/out)
+make quality     # code quality (lizard: CCN, function and file length)
 ```
 
 `check-assurance` shows a coverage box and a code-quality box once `make coverage` and `make quality` have written their files, and says `not measured` until then. `COVERAGE_MIN=0.85` or `CCN_MAX=15` make them gates. See [spec 002](.openspec/specs/002-assurance/spec.md) and [ADR-023](.openspec/architecture/decisions/023-coverage-and-code-quality-next-to-spec-assurance.md).

@@ -26,7 +26,7 @@ What FRANK needs to know about itself before it is trusted, in three parts, each
 - **A stale claim is worse than none**: a link to a renamed test counts against coverage, not for it.
 - **Measure apart, read together**: coverage runs every test instrumented and takes minutes; the spec check takes a second. Each slow measurement runs on its own and leaves a file; the dashboard reads the files and says how old they are.
 - **Show first, gate on request**: a number becomes a gate only when a floor or ceiling is set for it, so a gate is a decision, not a side effect.
-- **Say what is approximate**: a number the tool cannot measure exactly is shown as such and never gated.
+- **Leave out what cannot be measured**: a number the tool gets wrong is not shown, rather than shown with a caveat (#298).
 
 ---
 
@@ -40,9 +40,9 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 ### Requirement 1: Spec links resolve [MUST]
 
-Every `**Implementation:**` and `**Tests:**` link in a spec MUST name a file in the tree; a `path::symbol` link to a `.rs` file MUST name a `fn` in it, to another file a text it contains. A link outside the tree is dead. Every relative Markdown link in `.openspec/`, `docs/`, `README.md` and `CONTRIBUTING.md` MUST resolve.
+Every `**Implementation:**` and `**Tests:**` link in a spec MUST name a file in the tree; a `path::symbol` link to a `.rs` file MUST name a `fn` in it, to another file a text it contains. A `**Tests:**` link to a `.rs` file MUST name a `#[test]` or `#[tokio::test]` function, other attributes and comments between allowed, not a helper. A link outside the tree is dead. Every relative Markdown link in `.openspec/`, `docs/`, `README.md` and `CONTRIBUTING.md` MUST resolve.
 
-**Implementation:** `scripts/assurance.py::dead_reason`, `scripts/assurance.py::dead_md_links`
+**Implementation:** `scripts/assurance.py::dead_reason`, `scripts/assurance.py::is_rust_test`, `scripts/assurance.py::dead_md_links`
 
 #### Scenario: A Rust symbol must be a function
 
@@ -59,6 +59,14 @@ Every `**Implementation:**` and `**Tests:**` link in a spec MUST name a file in 
 - THEN it is dead
 
 **Tests:** `scripts/test_assurance.py::test_missing_file`, `scripts/test_assurance.py::test_path_outside_the_tree_is_dead`
+
+#### Scenario: A helper is not a test
+
+- GIVEN a `**Tests:**` link to `tests/api.rs::harness`, a fn without `#[test]`
+- WHEN the link is checked
+- THEN it is dead: `fn harness is not a test`, and the scenario counts against the tested total; a test under `#[ignore]`, on tokio, or behind a comment resolves
+
+**Tests:** `scripts/test_assurance.py::test_a_tests_link_must_name_a_test_fn`, `scripts/test_assurance.py::test_a_helper_linked_as_a_test_counts_against_coverage`
 
 #### Scenario: A dead Markdown link
 
@@ -186,7 +194,7 @@ With `COVERAGE_MIN` set, `make check-assurance` SHOULD fail when lines covered f
 
 ### Requirement 8: Code quality is measured on its own [MUST]
 
-`make quality` MUST run a pinned lizard over the Rust sources (`crates/*/src`, not the tests) with fan-in and fan-out, and write its CSV to `target/assurance/lizard.csv`. The reader MUST take per function the file, name, CCN, length and fan-in and fan-out, and MUST refuse a CSV without the fan-in and fan-out columns.
+`make quality` MUST run a pinned lizard over the Rust sources (`crates/*/src`, not the tests) and write its CSV to `target/assurance/lizard.csv`. The reader MUST take per function the file, name, CCN and length, and MUST refuse a CSV with other columns. Fan-in, fan-out and the parameter count MUST NOT be read: lizard gets them wrong for Rust (fan-in matches any token with a function's name; a tuple pattern counts each name as a parameter).
 
 **Implementation:** `Makefile::quality:`, `scripts/quality_metrics.py::read`
 
@@ -198,17 +206,17 @@ With `COVERAGE_MIN` set, `make check-assurance` SHOULD fail when lines covered f
 
 **Tests:** `scripts/test_quality_metrics.py::test_rows_with_commas_in_the_signature`
 
-#### Scenario: Without fan-in and fan-out
+#### Scenario: Other columns
 
-- GIVEN a CSV written without `-Eio`
+- GIVEN a CSV written with `-Eio`, three columns more
 - WHEN it is read
 - THEN it is refused with a pointer to `make quality`
 
-**Tests:** `scripts/test_quality_metrics.py::test_a_csv_without_fan_in_out_is_refused`
+**Tests:** `scripts/test_quality_metrics.py::test_a_csv_with_other_columns_is_refused`
 
 ### Requirement 9: Code quality in the dashboard [MUST]
 
-The dashboard MUST show a code-quality box: the number of functions and files, average and maximum CCN, the functions over the CCN and length limits, the longest file, and the highest fan-in and fan-out marked as approximate, with how long ago it was measured; then the highest CCN, the longest functions and the longest files. File lengths come from the files on disk; a file gone since is left out. Without the CSV it MUST say `not measured (make quality)` and not fail.
+The dashboard MUST show a code-quality box: the number of functions and files, average and maximum CCN, the functions over the CCN and length limits and the longest file, with how long ago it was measured; then the highest CCN, the longest functions and the longest files. File lengths come from the files on disk; a file gone since is left out. Without the CSV it MUST say `not measured (make quality)` and not fail.
 
 **Implementation:** `scripts/assurance.py::report_quality`, `scripts/quality_metrics.py::summary`, `scripts/quality_metrics.py::file_lengths`
 
@@ -230,7 +238,7 @@ The dashboard MUST show a code-quality box: the number of functions and files, a
 
 ### Requirement 10: The quality gate [SHOULD]
 
-With `CCN_MAX` set, `make check-assurance` SHOULD fail when a function's CCN is above it, naming each such function, or when quality was not measured. Fan-in and fan-out MUST NOT be gated: lizard matches calls by bare name, so they are approximate. A measurement file that cannot be read MUST fail the check.
+With `CCN_MAX` set, `make check-assurance` SHOULD fail when a function's CCN is above it, naming each such function, or when quality was not measured. A measurement file that cannot be read MUST fail the check.
 
 **Implementation:** `Makefile::CCN_MAX`, `scripts/assurance.py::main`
 

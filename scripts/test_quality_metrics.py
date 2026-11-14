@@ -6,11 +6,11 @@ from pathlib import Path
 
 import quality_metrics
 
-# lizard 1.25.1 -l rust -Eio --csv: nloc, ccn, token, param, length, location, file,
-# name, long_name (quoted, may hold commas), start, end, fan_in, fan_out, general_fan_out
-CSV = '''6,2,61,2,6,"fmt@46-51@src/a.rs","src/a.rs","fmt","fmt & self , f : & mut Formatter",46,51,0,0,0
-90,20,900,3,95,"big@60-154@src/a.rs","src/a.rs","big","big a , b , c",60,154,1,12,30
-3,1,18,1,3,"new@1-3@src/b.rs","src/b.rs","new","new",1,3,40,0,0
+# lizard 1.25.1 -l rust --csv: nloc, ccn, token, param, length, location, file,
+# name, long_name (quoted, may hold commas), start, end
+CSV = '''6,2,61,2,6,"fmt@46-51@src/a.rs","src/a.rs","fmt","fmt & self , f : & mut Formatter",46,51
+90,20,900,3,95,"big@60-154@src/a.rs","src/a.rs","big","big a , b , c",60,154
+3,1,18,1,3,"new@1-3@src/b.rs","src/b.rs","new","new",1,3
 '''
 
 
@@ -28,10 +28,11 @@ class Read(unittest.TestCase):
         funcs = quality_metrics.read(self.path)
         self.assertEqual(len(funcs), 3)
         self.assertEqual(funcs[1], {"file": "src/a.rs", "name": "big", "start": 60, "nloc": 90, "ccn": 20,
-                                    "length": 95, "fan_in": 1, "fan_out": 12})
+                                    "length": 95})
 
-    def test_a_csv_without_fan_in_out_is_refused(self):
-        self.path.write_text('6,2,61,2,6,"fmt@46-51@src/a.rs","src/a.rs","fmt","fmt",46,51\n')
+    def test_a_csv_with_other_columns_is_refused(self):
+        # lizard -Eio adds fan_in, fan_out, general_fan_out: not read (#298)
+        self.path.write_text('6,2,61,2,6,"fmt@46-51@src/a.rs","src/a.rs","fmt","fmt",46,51,0,0,0\n')
         with self.assertRaisesRegex(ValueError, "make quality"):
             quality_metrics.read(self.path)
 
@@ -58,7 +59,6 @@ class Summary(unittest.TestCase):
         self.assertEqual([f["name"] for f in q["over_ccn"]], ["big"])
         self.assertEqual([f["name"] for f in q["over_length"]], ["big"])
         self.assertEqual([f["name"] for f in q["by_ccn"]], ["big", "fmt"])
-        self.assertEqual([f["name"] for f in q["by_fan_in"]], ["new", "big"])
         self.assertEqual(q["longest_files"], [("src/b.rs", 300), ("src/a.rs", 200)])
 
     def test_nothing_scanned(self):
