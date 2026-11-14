@@ -10,6 +10,11 @@ output "server_id" {
   value = stackit_server.frank.server_id
 }
 
+output "data_volume_id" {
+  description = "The data volume (/srv/frank), for a backup schedule outside the module."
+  value       = stackit_volume.data.volume_id
+}
+
 output "store" {
   description = "FRANK_STORE, empty when the sightings stay on the volume."
   value       = local.store
