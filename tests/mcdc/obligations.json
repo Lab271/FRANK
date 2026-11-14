@@ -4632,7 +4632,7 @@
   {
     "id": "store_participants_add_organisation_7edfecb9",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 504,
+    "line": 510,
     "decision": "!KINDS.contains(&kind)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4642,7 +4642,7 @@
   {
     "id": "store_participants_add_organisation_634810a7",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 511,
+    "line": 517,
     "decision": "find_org(db, name).is_ok()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4652,7 +4652,7 @@
   {
     "id": "store_participants_set_status_9732a27e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 552,
+    "line": 558,
     "decision": "let Some(role) = roles.get(&text(&r[0]))",
     "conditions": 1,
     "vectors_required": 2,
@@ -4662,7 +4662,7 @@
   {
     "id": "store_participants_add_user_4d341e1e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 613,
+    "line": 619,
     "decision": "!USER_KINDS.contains(&kind)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4672,7 +4672,7 @@
   {
     "id": "store_participants_add_user_50d13271",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 618,
+    "line": 624,
     "decision": "find_user(db, name).is_ok()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4682,7 +4682,7 @@
   {
     "id": "store_participants_add_user_752dc085",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 621,
+    "line": 627,
     "decision": "let Some(role) = role",
     "conditions": 1,
     "vectors_required": 2,
@@ -4692,7 +4692,7 @@
   {
     "id": "store_participants_add_user_92880446",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 637,
+    "line": 643,
     "decision": "match role {\n                Some(role) => insert_role(db, &id, role),\n                None => Ok(()),\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4702,7 +4702,7 @@
   {
     "id": "store_participants_set_role_752dc085",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 660,
+    "line": 666,
     "decision": "let Some(role) = role",
     "conditions": 1,
     "vectors_required": 2,
@@ -4712,7 +4712,7 @@
   {
     "id": "store_participants_set_role_92880446",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 668,
+    "line": 674,
     "decision": "match role {\n                Some(role) => insert_role(db, &id, role),\n                None => Ok(()),\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4722,7 +4722,7 @@
   {
     "id": "store_participants_set_disabled_a3c464c6",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 714,
+    "line": 720,
     "decision": "disable",
     "conditions": 1,
     "vectors_required": 2,
@@ -4732,7 +4732,7 @@
   {
     "id": "store_participants_remove_user_0f7c9733",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 732,
+    "line": 738,
     "decision": "!disabled(db)?.contains(&id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4742,7 +4742,7 @@
   {
     "id": "store_participants_as_str_08a4dd46",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 778,
+    "line": 784,
     "decision": "match self {\n            SignedIn::Known => \"known\",\n            SignedIn::Linked => \"linked\",\n            SignedIn::Provisioned => \"provisioned\",\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4752,7 +4752,7 @@
   {
     "id": "store_participants_sign_in_ca24ef4a",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 794,
+    "line": 800,
     "decision": "id.issuer.contains(' ') || id.subject.is_empty()",
     "conditions": 2,
     "vectors_required": 3,
@@ -4762,7 +4762,7 @@
   {
     "id": "store_participants_sign_in_24654591",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 807,
+    "line": 813,
     "decision": "let Some(row) = linked.rows.first()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4772,7 +4772,7 @@
   {
     "id": "store_participants_sign_in_bad8a3ef",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 813,
+    "line": 819,
     "decision": "check_name(\"user\", &name).is_err()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4780,10 +4780,10 @@
     "wildcard_risk": false
   },
   {
-    "id": "store_participants_sign_in_5d292f36",
+    "id": "store_participants_sign_in_fa92d341",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 816,
-    "decision": "let Ok((user_id, _, kind)) = find_user_row(db, &name)",
+    "line": 824,
+    "decision": "let Some((user_id, _, kind)) = user_row(db, &name)?",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -4792,7 +4792,7 @@
   {
     "id": "store_participants_sign_in_known_2210aefe",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 841,
+    "line": 849,
     "decision": "text(&u[1]) != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4802,7 +4802,7 @@
   {
     "id": "store_participants_sign_in_known_11c48099",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 844,
+    "line": 852,
     "decision": "disabled.contains(user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4812,7 +4812,7 @@
   {
     "id": "store_participants_link_existing_0244f806",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 859,
+    "line": 867,
     "decision": "kind != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4822,7 +4822,7 @@
   {
     "id": "store_participants_link_existing_c3e684c2",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 862,
+    "line": 870,
     "decision": "!email_verified",
     "conditions": 1,
     "vectors_required": 2,
@@ -4832,7 +4832,7 @@
   {
     "id": "store_participants_link_existing_cbe769ca",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 867,
+    "line": 875,
     "decision": "disabled.contains(&user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4842,7 +4842,7 @@
   {
     "id": "store_participants_link_existing_fb9f588d",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 877,
+    "line": 885,
     "decision": "!other.rows.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4852,7 +4852,7 @@
   {
     "id": "store_participants_add_session_0244f806",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 925,
+    "line": 933,
     "decision": "kind != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4862,7 +4862,7 @@
   {
     "id": "store_participants_add_session_b829447e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 928,
+    "line": 936,
     "decision": "disabled(db)?.contains(&user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4872,7 +4872,7 @@
   {
     "id": "store_participants_end_session_f55fc650",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 955,
+    "line": 963,
     "decision": "found",
     "conditions": 1,
     "vectors_required": 2,
@@ -4882,7 +4882,7 @@
   {
     "id": "store_participants_add_token_hash_71dd7312",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 972,
+    "line": 980,
     "decision": "token_hash.len() != 64 || !token_hash.bytes().all(|b| b.is_ascii_hexdigit())",
     "conditions": 2,
     "vectors_required": 3,
@@ -4892,7 +4892,7 @@
   {
     "id": "store_participants_add_token_hash_55fcb79b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 978,
+    "line": 986,
     "decision": "disabled(db)?.contains(&user)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4902,7 +4902,7 @@
   {
     "id": "store_participants_revoke_a7b4364b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1030,
+    "line": 1038,
     "decision": "prefix.len() < 8 || !prefix.bytes().all(|b| b.is_ascii_hexdigit())",
     "conditions": 2,
     "vectors_required": 3,
@@ -4912,7 +4912,7 @@
   {
     "id": "store_participants_revoke_8f2e8d89",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1041,
+    "line": 1049,
     "decision": "match matches.as_slice() {\n            [one] => exec(\n                db,\n                &format!(\n                    \"UPDATE tokens SET revoked = {} WHERE hash = {}\",\n                    now_s(),\n                    sql_quote(one)\n                ),\n            ),\n            [] => Err(format!(\"no active token {prefix}…\")),\n            _ => Err(format!(\n                \"{prefix}… matches several tokens: give more digits\"\n            )),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4922,7 +4922,7 @@
   {
     "id": "store_participants_import_tokens_file_e06a2edc",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1067,
+    "line": 1075,
     "decision": "line.is_empty() || line.starts_with('#')",
     "conditions": 2,
     "vectors_required": 3,
@@ -4932,7 +4932,7 @@
   {
     "id": "store_participants_import_tokens_file_c08636ae",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1086,
+    "line": 1094,
     "decision": "c.is_ascii_alphanumeric() || \"._@-\".contains(c)",
     "conditions": 2,
     "vectors_required": 3,
@@ -4942,7 +4942,7 @@
   {
     "id": "store_participants_import_tokens_file_6a4cfd7b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1094,
+    "line": 1102,
     "decision": "label.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4952,7 +4952,7 @@
   {
     "id": "store_participants_import_tokens_file_b2f27bf2",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1102,
+    "line": 1110,
     "decision": "existing.contains(&name)",
     "conditions": 1,
     "vectors_required": 2,
