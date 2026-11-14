@@ -45,7 +45,7 @@ write_files:
       # name, not by the distro's default, kept 30 days (journald.conf.d).
       ExecStart=/usr/bin/podman run --name frank --rm \
         --log-driver journald \
-        -e RUST_LOG=frank=info \
+        -e RUST_LOG=frank=info,mvl_manifest=info \
         -e FRANK_LOG_FORMAT=json \
         -p 127.0.0.1:8080:8080 \
         -v /srv/frank/data:/data:Z \

@@ -233,7 +233,7 @@ lists: ## Download the warning (MISP, CC0) and reference (abuse.ch, CC0; Auth-Ke
 ##@ Container (podman)
 
 image: ## Build the container image with podman
-	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
+	podman build --build-arg SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
 up: image s3-env $(if $(UP_SSO),sso-env) ## Run in podman: http://127.0.0.1:8080 and https://frank.local:8443, the sightings in a Garage (S3) bucket (files in ./s3; S3 API on 127.0.0.1:3900, admin :3903, https://frank.local:9443) and sign-in with SSO against a local OIDC stub at http://localhost:9400 (development only: it signs in anyone who picks a name). S3=0: the table on disk in ./data; SSO=0: tokens only
 	mkdir -p data participants && touch $(TOKENS)

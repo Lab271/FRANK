@@ -14,7 +14,7 @@ fn main() -> Result<(), String> {
         std::env::var("FRANK_LOG_FORMAT").is_ok_and(|f| f == "json"),
         std::io::stdout().is_terminal(),
         tracing_subscriber::EnvFilter::try_from_default_env()
-            .unwrap_or_else(|_| "frank=info".into()),
+            .unwrap_or_else(|_| "frank=info,mvl_manifest=info".into()),
         std::io::stdout,
     )
     .init();

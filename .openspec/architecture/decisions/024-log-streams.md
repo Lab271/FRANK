@@ -22,7 +22,7 @@ ADR-019 point 3 put the audit in S3 as one object per line, for "tens of lines a
 | Stream | Holds | Where | Retention | Readers |
 |---|---|---|---|---|
 | Web (Caddy) | client IP, TLS, user agent, bytes, status, the response's `X-Request-Id`; requests FRANK never sees | Caddy's access log, JSON, to stdout / journald | 30 days | FRANK admins |
-| App (`frank`, `frank::access`) | application lines; one line per request with caller, tier, path and query (#287) | stdout / journald, `FRANK_LOG_FORMAT=json` | 30 days | FRANK admins |
+| App (`frank`, `frank::access`, `mvl_manifest`) | application lines; one line per request with caller, tier, path and query (#287); at server start, the runtime manifest: version, toolchain, build provenance, every package (#315) | stdout / journald, `FRANK_LOG_FORMAT=json` | 30 days | FRANK admins |
 | Audit | one record per state-changing action | a striped db-core table (`audit`) in the data directory or `FRANK_STORE` | its own, `FRANK_AUDIT_RETENTION_DAYS`, default 400 days | admins in the admin tab (their scope), superadmins all |
 
 1. **Web and app stay two streams, joined by the request id.** Neither alone answers both "from where" and "who". FRANK returns a ULID as `X-Request-Id`; Caddy's JSON access log carries the response headers, so the id is on both lines with no extra configuration (#307). Caddy keeps `log_credentials` off, so `Authorization`, `Cookie` and `Set-Cookie` are redacted in its lines.
@@ -40,3 +40,4 @@ ADR-019 point 3 put the audit in S3 as one object per line, for "tens of lines a
 - The audit table brings db-core's WAL, flush and compaction to the audit, and one more table to rebuild or move between a filesystem and a store; the existing JSONL days (files and `audit/YYYY-MM-DD/` objects) are imported once (#309).
 - Compaction rewrites audit files, so the process that writes the record can rewrite it. Bucket versioning (README) keeps earlier versions; S3 Object Lock is the stronger option if the audit has to be tamper-evident.
 - Until #309 lands, the audit stays as ADR-019 point 3 describes, and `mcp_call` stays in it.
+- The runtime manifest (#315, mvl-manifest) logs its packages as one record of tens of kilobytes. A log path that cuts long lines breaks it: podman's journald driver stores a line in 8 KiB partial entries, so the STACKIT unit uses `--log-driver passthrough` instead (#308).

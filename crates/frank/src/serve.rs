@@ -18,6 +18,21 @@ use crate::store::Participants;
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 
+/// This build's runtime manifest (#315), made by `build.rs`.
+pub const MANIFEST: mvl_manifest::Manifest = mvl_manifest::manifest!();
+
+/// Logs [`MANIFEST`] under the target `mvl_manifest` (ADR-024's app stream),
+/// when the filter lets INFO through for it; `false` when it does not.
+/// mvl-manifest itself would write to stderr instead, past
+/// `FRANK_LOG_FORMAT=json`; here `mvl_manifest=off` turns it off.
+pub fn log_manifest() -> bool {
+    if !tracing::enabled!(target: "mvl_manifest", tracing::Level::INFO) {
+        return false;
+    }
+    mvl_manifest::log_manifest(&MANIFEST);
+    true
+}
+
 /// Opens everything the server needs and runs it until SIGINT or SIGTERM.
 pub fn start(ctx: &Ctx, args: ServeArgs) -> Result<(), String> {
     start_until(ctx, args, shutdown())
@@ -29,6 +44,8 @@ pub fn start_until(
     args: ServeArgs,
     stop: impl Future<Output = ()> + Send + 'static,
 ) -> Result<(), String> {
+    // Which build this is, before anything else is logged (#315).
+    log_manifest();
     let sso = sso_config(ctx, &args)?;
     let limits = limits(&args)?;
     let participants = Participants::open(&ctx.participants)?;
