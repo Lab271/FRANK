@@ -3,6 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-07
 - **Decision Makers:** Ilja Heitlager
+- **Explained:** [docs/sightings-storage.md](../../../docs/sightings-storage.md) (write and read paths, caching, restart)
 - **Related:** [ADR-016](016-phase3-rust-on-db-core.md), [ADR-018](018-container-is-the-reference-and-test-tiers.md), #220, db-core#1015 (ADR 0044 there)
 
 ## Context
