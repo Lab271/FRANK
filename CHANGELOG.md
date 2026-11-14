@@ -4,6 +4,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+### Added
+
+- `deploy/stackit` outputs `data_volume_id`, so a deployment can put a backup schedule on the data volume (test-frank#7).
+
 ### Changed
 
 - db-core v0.241.0 (#290): in S3 mode a cold query reads each footer in one GET (a file up to 64 KiB whole), fetches nearby column chunks together, and reads footers and chunks in parallel. Over 30 days, a cold `/v1/statistics?days=30` sends 33 GETs instead of 1,506, about 41 one after another instead of 560; warm calls still send none. `tests/s3_requests.rs` now bounds a cold call at one GET per kept file; ADR-019 and `docs/sightings-storage.md` hold the new numbers.
@@ -12,7 +16,7 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ### Added
 
-- `deploy/stackit` outputs `data_volume_id`, so a deployment can put a backup schedule on the data volume (test-frank#7).
+- `make coverage` (cargo llvm-cov) and `make quality` (lizard: CCN, function and file length, approximate fan-in/out) measure on their own into `target/assurance/`; `make check-assurance` shows both and can gate on `COVERAGE_MIN` and `CCN_MAX` (#293, #294).
 
 ## [0.47.0] - 2026-11-14
 
