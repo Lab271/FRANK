@@ -4,6 +4,17 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.57.0] - 2026-11-14
+
+### Added
+
+- The audit log is a database table of its own (#309, ADR-024), with its own retention: `FRANK_AUDIT_RETENTION_DAYS` (400 days), apart from the sightings'. A command run beside the server spools its audit line, which the server moves into the table; the existing JSONL audit days are imported once on start. `make s3-column TABLE=audit` reads it.
+
+### Changed
+
+- MCP tool calls are no longer audit lines; the access log carries the tool's name (`tool`).
+- `rust-version` is 1.89 (the spool uses `File::lock`).
+
 ## [0.56.0] - 2026-11-14
 
 ### Added
