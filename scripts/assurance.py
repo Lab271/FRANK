@@ -364,8 +364,9 @@ def main(argv=None):
             failures.append("specs")
     if args.coverage_min is not None:
         ok = lines is not None and lines >= args.coverage_min
-        got = "not measured" if lines is None else f"{lines:.0%}"
-        print(f"{'PASS' if ok else 'FAIL'}: lines covered {got} (min {args.coverage_min:.0%})")
+        # One decimal: 93.9% against 94% must not read "94% (min 94%)".
+        got = "not measured" if lines is None else f"{lines:.1%}"
+        print(f"{'PASS' if ok else 'FAIL'}: lines covered {got} (min {args.coverage_min:.1%})")
         if not ok:
             failures.append("coverage")
     if args.ccn_max is not None:

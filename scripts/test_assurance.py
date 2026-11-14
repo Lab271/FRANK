@@ -216,6 +216,12 @@ class Gates(unittest.TestCase):
         self.assertEqual(self.run_main("--coverage-min", "0.8")[0], 0)
         self.assertEqual(self.run_main("--coverage-min", "0.9")[0], 1)
 
+    def test_a_near_miss_shows_a_decimal(self):
+        # 8/10 lines: 80.0% against 80.5% must not read "80% (min 80%)"
+        code, out = self.run_main("--coverage-min", "0.805")
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL: lines covered 80.0% (min 80.5%)", out)
+
     def test_a_gate_without_its_measurement_fails(self):
         self.cov.unlink()
         self.assertEqual(self.run_main("--coverage-min", "0.5")[0], 1)
