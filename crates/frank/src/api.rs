@@ -32,7 +32,8 @@ use axum::routing::{get, post};
 use axum::{Json, Router};
 use db_core::engine::Cell;
 use frank_core::{
-    sql_blob, sql_quote, Digest, Format, Ioc, IocType, Sighting, SightingId, Tier, Tlp, MIN_CELL,
+    sql_blob, sql_quote, Digest, Format, Ioc, IocType, Sighting, SightingId, SightingRow, Tier,
+    Tlp, MIN_CELL,
 };
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -280,7 +281,31 @@ async fn submit(
 ) -> Result<Response, ApiError> {
     let caller = require(&app, &headers, Tier::Contributor)?;
     let subs = submissions(&headers, &body, (app.now)())?;
-    let mut items: Vec<(SightingId, Digest, Sighting)> = Vec::with_capacity(subs.len());
+    let items = batch_items(subs)?;
+    let app2 = app.clone();
+    let caller2 = caller.clone();
+    let (receipts, rows) = blocking(move || store_batch(&app2, &caller2, items)).await?;
+    let created = receipts.iter().filter(|r| r.status == "created").count();
+    tracing::info!(caller = %caller.label(), created, duplicates = receipts.len() - created, rows, "accepted");
+    let status = if created > 0 {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(json!({ "receipts": receipts, "rows": rows }))).into_response())
+}
+
+/// One submission of a batch: its id, its digest and the sighting.
+type BatchItem = (SightingId, Digest, Sighting);
+
+/// The registered `(digest, received)` of the batch's ids.
+type Known = HashMap<SightingId, (Digest, i64)>;
+
+/// The batch's submissions, each with its required `sighting_id` and its
+/// digest; one sent twice with the same content is kept once, with other
+/// content it is an error.
+fn batch_items(subs: Vec<Sighting>) -> Result<Vec<BatchItem>, ApiError> {
+    let mut items: Vec<BatchItem> = Vec::with_capacity(subs.len());
     for (i, s) in subs.into_iter().enumerate() {
         let id = s.sighting_id.ok_or_else(|| {
             unprocessable(format!(
@@ -298,82 +323,114 @@ async fn submit(
             None => items.push((id, digest, s)),
         }
     }
-    let app2 = app.clone();
-    let caller2 = caller.clone();
-    let (receipts, rows) = blocking(move || {
-        let app = app2;
-        let _one_at_a_time = app.submit_lock.lock().map_err(internal)?;
-        let ids = items.iter().map(|(id, _, _)| *id).collect();
-        let known = app.registry.find(&caller2.participant, ids).map_err(internal)?;
-        let conflicts: Vec<String> = items
-            .iter()
-            .filter(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
-            .map(|(id, _, _)| id.to_string())
-            .collect();
-        if !conflicts.is_empty() {
-            app.audit
-                .record(
-                    (app.now)(),
-                    &caller2.label(),
-                    "submit_refused",
-                    json!({ "participant": caller2.participant, "conflicts": conflicts }),
-                )
-                .map_err(internal)?;
-            return Err(ApiError(
-                StatusCode::CONFLICT,
-                format!(
-                    "already registered with other content: {}; nothing was stored (corrections: #161)",
-                    conflicts.join(", ")
-                ),
-            ));
+    Ok(items)
+}
+
+/// Stores the batch's new sightings and registers them, one batch at a
+/// time; the receipts and the number of rows stored.
+fn store_batch(
+    app: &App,
+    caller: &Caller,
+    items: Vec<BatchItem>,
+) -> Result<(Vec<Receipt>, usize), ApiError> {
+    let _one_at_a_time = app.submit_lock.lock().map_err(internal)?;
+    let ids = items.iter().map(|(id, _, _)| *id).collect();
+    let known = app
+        .registry
+        .find(&caller.participant, ids)
+        .map_err(internal)?;
+    refuse_conflicts(app, caller, &items, &known)?;
+    let now = (app.now)();
+    let (rows, fresh, receipts) = stage(caller, items, &known, now);
+    if !fresh.is_empty() {
+        // Rows first: they hold the registration. Both indexes can be
+        // rebuilt from them (`frank rebuild`).
+        app.sightings.append(&rows).map_err(internal)?;
+        app.iocs.record(&rows).map_err(internal)?;
+        app.registry.register(fresh).map_err(internal)?;
+        app.geo.fill(&rows, now);
+    }
+    app.audit
+        .record(
+            now,
+            &caller.label(),
+            "submit",
+            json!({ "participant": caller.participant, "receipts": receipts }),
+        )
+        .map_err(internal)?;
+    Ok((receipts, rows.len()))
+}
+
+/// A 409, audited, when any of the batch is registered with other content.
+fn refuse_conflicts(
+    app: &App,
+    caller: &Caller,
+    items: &[BatchItem],
+    known: &Known,
+) -> Result<(), ApiError> {
+    let conflicts: Vec<String> = items
+        .iter()
+        .filter(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))
+        .map(|(id, _, _)| id.to_string())
+        .collect();
+    if conflicts.is_empty() {
+        return Ok(());
+    }
+    app.audit
+        .record(
+            (app.now)(),
+            &caller.label(),
+            "submit_refused",
+            json!({ "participant": caller.participant, "conflicts": conflicts }),
+        )
+        .map_err(internal)?;
+    Err(ApiError(
+        StatusCode::CONFLICT,
+        format!(
+            "already registered with other content: {}; nothing was stored (corrections: #161)",
+            conflicts.join(", ")
+        ),
+    ))
+}
+
+/// The rows, registrations and receipts of the batch: a sighting `known`
+/// registered before is a duplicate and adds nothing.
+fn stage(
+    caller: &Caller,
+    items: Vec<BatchItem>,
+    known: &Known,
+    now: i64,
+) -> (Vec<SightingRow>, Vec<registry::Registration>, Vec<Receipt>) {
+    let mut rows = Vec::new();
+    let mut fresh = Vec::new();
+    let mut receipts = Vec::with_capacity(items.len());
+    for (id, digest, s) in items {
+        if let Some((_, received)) = known.get(&id) {
+            receipts.push(Receipt {
+                sighting_id: id,
+                digest,
+                received: *received,
+                status: "duplicate",
+            });
+            continue;
         }
-        let now = (app.now)();
-        let mut rows = Vec::new();
-        let mut fresh = Vec::new();
-        let mut receipts = Vec::with_capacity(items.len());
-        for (id, digest, s) in items {
-            if let Some((_, received)) = known.get(&id) {
-                receipts.push(Receipt { sighting_id: id, digest, received: *received, status: "duplicate" });
-                continue;
-            }
-            // Sightings are stored under the organisation, never the user,
-            // and carry their registration.
-            rows.extend(s.rows(id).into_iter().map(|mut r| {
-                r.reporter.clone_from(&caller2.participant);
-                r.digest = (r.seq == 0).then_some(digest);
-                r.received_ns = now;
-                r
-            }));
-            fresh.push((caller2.participant.clone(), id, digest, now));
-            receipts.push(Receipt { sighting_id: id, digest, received: now, status: "created" });
-        }
-        if !fresh.is_empty() {
-            // Rows first: they hold the registration. Both indexes can be
-            // rebuilt from them (`frank rebuild`).
-            app.sightings.append(&rows).map_err(internal)?;
-            app.iocs.record(&rows).map_err(internal)?;
-            app.registry.register(fresh).map_err(internal)?;
-            app.geo.fill(&rows, now);
-        }
-        app.audit
-            .record(
-                now,
-                &caller2.label(),
-                "submit",
-                json!({ "participant": caller2.participant, "receipts": receipts }),
-            )
-            .map_err(internal)?;
-        Ok((receipts, rows.len()))
-    })
-    .await?;
-    let created = receipts.iter().filter(|r| r.status == "created").count();
-    tracing::info!(caller = %caller.label(), created, duplicates = receipts.len() - created, rows, "accepted");
-    let status = if created > 0 {
-        StatusCode::CREATED
-    } else {
-        StatusCode::OK
-    };
-    Ok((status, Json(json!({ "receipts": receipts, "rows": rows }))).into_response())
+        // Sightings are stored under the organisation, never the user,
+        // and carry their registration.
+        rows.extend(s.rows(id).into_iter().map(|mut r| {
+            r.reporter.clone_from(&caller.participant);
+            r.digest = (r.seq == 0).then_some(digest);
+            r.received_ns = now;
+            r
+        }));
+        fresh.push((caller.participant.clone(), id, digest, now));
+        receipts.push(Receipt {
+            sighting_id: id,
+            digest,
+            received: now,
+            status: "created",
+        });
+    }
+    (rows, fresh, receipts)
 }
 
 #[derive(Deserialize)]
@@ -514,12 +571,7 @@ async fn live_view(
         let s = &app.sightings;
         let v = visible.as_str();
         let rows = |sql: &str| s.query(sql).map(|r| r.rows).map_err(internal);
-        let mut iocs = live::iocs(&rows(&live::window_sql(since, v))?);
-        let mut before = Vec::new();
-        for values in live::chunks(&iocs) {
-            before.extend(rows(&live::before_sql(since, v, &values))?);
-        }
-        live::mark_seen(&mut iocs, &before);
+        let mut iocs = live_iocs(s, since, v)?;
         let arrivals: Vec<i64> = rows(&live::arrivals_sql(since, v))?
             .iter()
             .filter_map(|r| r.first().and_then(nanos))
@@ -534,49 +586,11 @@ async fn live_view(
             iocs.retain(|i| i.reporters >= MIN_CELL);
         }
         if !common {
-            // Converging candidates marked as common infrastructure stay in
-            // the feed, marked, but do not converge.
-            let candidates: Vec<(String, String)> = iocs
-                .iter()
-                .filter(|i| i.reporters >= 2)
-                .map(|i| (i.ioc_type.clone(), i.value.clone()))
-                .collect();
-            let warned: std::collections::BTreeSet<(String, String)> = candidates
-                .iter()
-                .zip(app.lists.annotate(&candidates))
-                .filter(|(_, l)| crate::lists::warned(l))
-                .map(|(k, _)| k.clone())
-                .collect();
-            for i in &mut iocs {
-                if warned.contains(&(i.ioc_type.clone(), i.value.clone())) {
-                    i.common = true;
-                }
-            }
+            mark_common(&app, &mut iocs);
         }
         let places = live_places(&app, &rows(&live::addresses_sql(since, v))?, common, exact);
         let (mut feed, mut converging) = live::lists(&iocs, LIVE_LIMIT);
-        let shown: Vec<(String, String)> = feed
-            .iter()
-            .chain(&converging)
-            .map(|i| (i.ioc_type.clone(), i.value.clone()))
-            .collect();
-        for (i, l) in feed
-            .iter_mut()
-            .chain(converging.iter_mut())
-            .zip(app.lists.annotate(&shown))
-        {
-            i.listed = l;
-        }
-        let ips: Vec<String> = feed
-            .iter()
-            .chain(&converging)
-            .filter(|i| matches!(i.ioc_type.as_str(), "ipv4" | "ipv6"))
-            .map(|i| i.value.clone())
-            .collect();
-        let geo = app.geo.answers(ips);
-        for i in feed.iter_mut().chain(converging.iter_mut()) {
-            i.geo = geo.get(&i.value).cloned();
-        }
+        annotate_live(&app, &mut feed, &mut converging);
         Ok(Json(json!({
             "window": window.label(),
             "since": since,
@@ -598,6 +612,67 @@ async fn live_view(
         })))
     })
     .await
+}
+
+/// The window's IoCs, each marked with when it was seen before the window.
+fn live_iocs(s: &Sightings, since: i64, v: &str) -> Result<Vec<live::LiveIoc>, ApiError> {
+    let rows = |sql: &str| s.query(sql).map(|r| r.rows).map_err(internal);
+    let mut iocs = live::iocs(&rows(&live::window_sql(since, v))?);
+    let mut before = Vec::new();
+    for values in live::chunks(&iocs) {
+        before.extend(rows(&live::before_sql(since, v, &values))?);
+    }
+    live::mark_seen(&mut iocs, &before);
+    Ok(iocs)
+}
+
+/// Marks the converging candidates a warning list holds as common
+/// infrastructure (#192): they stay in the feed, marked, but do not
+/// converge.
+fn mark_common(app: &App, iocs: &mut [live::LiveIoc]) {
+    let candidates: Vec<(String, String)> = iocs
+        .iter()
+        .filter(|i| i.reporters >= 2)
+        .map(|i| (i.ioc_type.clone(), i.value.clone()))
+        .collect();
+    let warned: std::collections::BTreeSet<(String, String)> = candidates
+        .iter()
+        .zip(app.lists.annotate(&candidates))
+        .filter(|(_, l)| crate::lists::warned(l))
+        .map(|(k, _)| k.clone())
+        .collect();
+    for i in iocs {
+        if warned.contains(&(i.ioc_type.clone(), i.value.clone())) {
+            i.common = true;
+        }
+    }
+}
+
+/// What the lists say about each shown IoC (#192, #193), and the country
+/// and network of each IP address among them (#191).
+fn annotate_live(app: &App, feed: &mut [live::LiveIoc], converging: &mut [live::LiveIoc]) {
+    let shown: Vec<(String, String)> = feed
+        .iter()
+        .chain(converging.iter())
+        .map(|i| (i.ioc_type.clone(), i.value.clone()))
+        .collect();
+    for (i, l) in feed
+        .iter_mut()
+        .chain(converging.iter_mut())
+        .zip(app.lists.annotate(&shown))
+    {
+        i.listed = l;
+    }
+    let ips: Vec<String> = feed
+        .iter()
+        .chain(converging.iter())
+        .filter(|i| matches!(i.ioc_type.as_str(), "ipv4" | "ipv6"))
+        .map(|i| i.value.clone())
+        .collect();
+    let geo = app.geo.answers(ips);
+    for i in feed.iter_mut().chain(converging.iter_mut()) {
+        i.geo = geo.get(&i.value).cloned();
+    }
 }
 
 /// The countries and networks of the window's addresses (#195), from the
@@ -696,13 +771,7 @@ pub(crate) async fn ioc_lookup(
     let t = IocType::parse(&q.ioc_type)
         .ok_or_else(|| unprocessable(format!("unknown IoC type {:?}", q.ioc_type)))?;
     let ioc = Ioc::new(t, &q.value).map_err(unprocessable)?;
-    let window = match q.day.as_deref() {
-        Some(d) => Some(
-            day_bounds(d)
-                .ok_or_else(|| unprocessable(format!("day: expected YYYY-MM-DD, got {d:?}")))?,
-        ),
-        None => None,
-    };
+    let window = q.day.as_deref().map(day_window).transpose()?;
     blocking(move || {
         let days = app
             .iocs
@@ -715,37 +784,8 @@ pub(crate) async fn ioc_lookup(
         let (rules, reporters, trend) = if days.is_empty() {
             (Vec::new(), 0, ex::trend(&[], now, TREND_DAYS))
         } else {
-            let filter = format!(
-                "ioc_value = {} AND ts >= {} AND {}",
-                sql_quote(&ioc.value),
-                first_ts.unwrap_or_default(),
-                tlp_visible(caller.tier),
-            );
-            let r = app
-                .sightings
-                .query(&format!(
-                    "SELECT rule_id, count(*) AS n, count(DISTINCT reporter) AS r FROM sightings WHERE {filter} GROUP BY rule_id ORDER BY n DESC"
-                ))
-                .map_err(internal)?;
-            let rules = r
-                .rows
-                .iter()
-                .filter_map(|row| match (&row[0], &row[1], &row[2]) {
-                    (Cell::Text(k), Cell::Int(n), Cell::Int(r)) if exact || *r >= MIN_CELL => {
-                        Some(json!({ "rule_id": k, "count": n }))
-                    }
-                    _ => None,
-                })
-                .collect();
-            let reporters = app
-                .sightings
-                .query(&format!(
-                    "SELECT count(DISTINCT reporter) FROM sightings WHERE {filter}"
-                ))
-                .map(|r| scalar(&r))
-                .map_err(internal)?;
-            let ts = times(&app.sightings, &filter)?;
-            (rules, reporters, ex::trend(&ts, now, TREND_DAYS))
+            let from = first_ts.unwrap_or_default();
+            ioc_history(&app.sightings, &ioc, from, caller.tier, now)?
         };
         let panels = match (window, first_ts) {
             (Some((from, to)), _) => ioc_panels(&app.sightings, &ioc, from, Some(to), caller.tier)?,
@@ -777,6 +817,56 @@ pub(crate) async fn ioc_lookup(
         })))
     })
     .await
+}
+
+/// `day=YYYY-MM-DD` as `[start, end)` in nanoseconds, or a 422.
+fn day_window(d: &str) -> Result<(i64, i64), ApiError> {
+    day_bounds(d).ok_or_else(|| unprocessable(format!("day: expected YYYY-MM-DD, got {d:?}")))
+}
+
+/// An IoC's rules, distinct reporters and trend.
+type IocHistory = (Vec<Value>, i64, Vec<(String, i64)>);
+
+/// What the visible sightings since `first_ts` say about a known IoC: its
+/// rules (below partner, those of at least [`MIN_CELL`] reporters), its
+/// distinct reporters and its trend.
+fn ioc_history(
+    s: &Sightings,
+    ioc: &Ioc,
+    first_ts: i64,
+    tier: Tier,
+    now: i64,
+) -> Result<IocHistory, ApiError> {
+    let exact = tier >= Tier::Partner;
+    let filter = format!(
+        "ioc_value = {} AND ts >= {} AND {}",
+        sql_quote(&ioc.value),
+        first_ts,
+        tlp_visible(tier),
+    );
+    let r = s
+        .query(&format!(
+            "SELECT rule_id, count(*) AS n, count(DISTINCT reporter) AS r FROM sightings WHERE {filter} GROUP BY rule_id ORDER BY n DESC"
+        ))
+        .map_err(internal)?;
+    let rules = r
+        .rows
+        .iter()
+        .filter_map(|row| match (&row[0], &row[1], &row[2]) {
+            (Cell::Text(k), Cell::Int(n), Cell::Int(r)) if exact || *r >= MIN_CELL => {
+                Some(json!({ "rule_id": k, "count": n }))
+            }
+            _ => None,
+        })
+        .collect();
+    let reporters = s
+        .query(&format!(
+            "SELECT count(DISTINCT reporter) FROM sightings WHERE {filter}"
+        ))
+        .map(|r| scalar(&r))
+        .map_err(internal)?;
+    let ts = times(s, &filter)?;
+    Ok((rules, reporters, ex::trend(&ts, now, TREND_DAYS)))
 }
 
 /// The `ts` of every row `filter` selects, for a trend.
@@ -845,20 +935,7 @@ pub(crate) async fn explore(
     headers: HeaderMap,
     Query(mut params): Query<BTreeMap<String, String>>,
 ) -> Result<Json<Value>, ApiError> {
-    let common = include_common(params.remove("common").as_deref())?;
-    // `listed=any|none|<list>` (#193): IoCs a reference list has, has not,
-    // or a given one has; with group=ioc.
-    let listed_by = params.remove("listed");
-    let q = ex::Query::parse(&params).map_err(unprocessable)?;
-    if listed_by.is_some() && q.group != Dimension::Ioc {
-        return Err(unprocessable("listed: only with group=ioc"));
-    }
-    if listed_by
-        .as_deref()
-        .is_some_and(|l| l.is_empty() || l.len() > 200)
-    {
-        return Err(unprocessable("listed: any, none or a list name"));
-    }
+    let (common, listed_by, q) = explore_params(&mut params)?;
     let caller = require(&app, &headers, q.min_tier())?;
     let since = (app.now)() - q.days * DAY_NS;
     let visible = tlp_visible(caller.tier);
@@ -874,34 +951,7 @@ pub(crate) async fn explore(
             if by_ioc { 200 } else { 100 },
         )?;
         if by_ioc {
-            // What the lists say about each IoC (#192, #193); common
-            // infrastructure is left out unless asked for.
-            let keys: Vec<(String, String)> = rows
-                .iter()
-                .filter_map(|r| r["key"].as_str()?.split_once(':'))
-                .map(|(t, v)| (t.to_string(), v.to_string()))
-                .collect();
-            let listed = app.lists.annotate(&keys);
-            let mut keep = Vec::with_capacity(rows.len());
-            for (r, l) in rows.iter_mut().zip(listed) {
-                let refs: Vec<&str> = l
-                    .iter()
-                    .filter(|x| x.kind == "reference")
-                    .map(|x| x.list.as_str())
-                    .collect();
-                keep.push(match listed_by.as_deref() {
-                    None => true,
-                    Some("any") => !refs.is_empty(),
-                    Some("none") => refs.is_empty(),
-                    Some(name) => refs.contains(&name),
-                });
-                r["common"] = json!(crate::lists::warned(&l));
-                r["listed"] = json!(l);
-            }
-            let mut keep = keep.into_iter();
-            rows.retain(|_| keep.next().unwrap_or(false));
-            rows.retain(|r| common || r["common"] != true);
-            rows.truncate(100);
+            annotate_ioc_rows(&app, &mut rows, listed_by.as_deref(), common);
         }
         Ok(Json(json!({
             "group": q.group.name(),
@@ -913,6 +963,60 @@ pub(crate) async fn explore(
         })))
     })
     .await
+}
+
+/// Explore's parameters: `common` ([`include_common`]), `listed` and the
+/// query itself.
+fn explore_params(
+    params: &mut BTreeMap<String, String>,
+) -> Result<(bool, Option<String>, ex::Query), ApiError> {
+    let common = include_common(params.remove("common").as_deref())?;
+    // `listed=any|none|<list>` (#193): IoCs a reference list has, has not,
+    // or a given one has; with group=ioc.
+    let listed_by = params.remove("listed");
+    let q = ex::Query::parse(params).map_err(unprocessable)?;
+    if listed_by.is_some() && q.group != Dimension::Ioc {
+        return Err(unprocessable("listed: only with group=ioc"));
+    }
+    if listed_by
+        .as_deref()
+        .is_some_and(|l| l.is_empty() || l.len() > 200)
+    {
+        return Err(unprocessable("listed: any, none or a list name"));
+    }
+    Ok((common, listed_by, q))
+}
+
+/// What the lists say about each IoC row (#192, #193); rows `listed_by`
+/// does not select are dropped, as is common infrastructure unless
+/// `common`; at most 100 are kept.
+fn annotate_ioc_rows(app: &App, rows: &mut Vec<Value>, listed_by: Option<&str>, common: bool) {
+    let keys: Vec<(String, String)> = rows
+        .iter()
+        .filter_map(|r| r["key"].as_str()?.split_once(':'))
+        .map(|(t, v)| (t.to_string(), v.to_string()))
+        .collect();
+    let listed = app.lists.annotate(&keys);
+    let mut keep = Vec::with_capacity(rows.len());
+    for (r, l) in rows.iter_mut().zip(listed) {
+        let refs: Vec<&str> = l
+            .iter()
+            .filter(|x| x.kind == "reference")
+            .map(|x| x.list.as_str())
+            .collect();
+        keep.push(match listed_by {
+            None => true,
+            Some("any") => !refs.is_empty(),
+            Some("none") => refs.is_empty(),
+            Some(name) => refs.contains(&name),
+        });
+        r["common"] = json!(crate::lists::warned(&l));
+        r["listed"] = json!(l);
+    }
+    let mut keep = keep.into_iter();
+    rows.retain(|_| keep.next().unwrap_or(false));
+    rows.retain(|r| common || r["common"] != true);
+    rows.truncate(100);
 }
 
 /// `GET /v1/rules/{id}?days=30`: one rule's prevalence (#157). A rule seen
@@ -1199,60 +1303,95 @@ pub(crate) async fn list(
     blocking(move || {
         let s = &app.sightings;
         let r = reporter.as_deref();
-        let Some(ids_sql) = q.ioc_sql(&visible, r) else {
-            let rows = s.query(&q.sql(&visible, r, None)).map_err(internal)?.rows;
-            let more = rows.len() > q.limit;
-            let mut items: Vec<(String, Value)> = rows
-                .iter()
-                .take(q.limit)
-                .filter_map(|row| records::item(row))
-                .collect();
-            let next = if more {
-                items.last().map(|(c, _)| c.clone())
-            } else {
-                None
-            };
-            let items: Vec<Value> = items.drain(..).map(|(_, v)| v).collect();
-            return Ok(Json(json!({ "sightings": items, "next_cursor": next })));
+        let (items, next) = match q.ioc_sql(&visible, r) {
+            None => list_page(s, &q, &visible, r)?,
+            Some(ids_sql) => list_by_ioc(s, &q, &visible, r, &ids_sql)?,
         };
-        // An IoC filter (#201): one page of ids, then their records in
-        // chunks, so no query holds more than `IDS_PER_QUERY` literals.
-        let mut page: Vec<(i64, SightingId)> = s
-            .query(&ids_sql)
-            .map_err(internal)?
-            .rows
-            .into_iter()
-            .filter_map(|row| match (row.first(), row.get(1)) {
-                (Some(ts), Some(Cell::Blob(id))) => {
-                    Some((nanos(ts)?, SightingId(id.as_slice().try_into().ok()?)))
-                }
-                _ => None,
-            })
-            .collect();
-        let more = page.len() > q.limit;
-        page.truncate(q.limit);
-        let mut found: HashMap<String, Vec<Value>> = HashMap::new();
-        let ids: Vec<SightingId> = page.iter().map(|(_, id)| *id).collect();
-        for chunk in ids.chunks(IDS_PER_QUERY) {
-            for row in s
-                .query(&q.sql(&visible, r, Some(chunk)))
-                .map_err(internal)?
-                .rows
-            {
-                if let Some((cursor, v)) = records::item(&row) {
-                    found.entry(cursor).or_default().push(v);
-                }
-            }
-        }
-        let cursors: Vec<String> = page.iter().map(|(ts, id)| format!("{ts}.{id}")).collect();
-        let items: Vec<Value> = cursors
-            .iter()
-            .flat_map(|c| found.remove(c).unwrap_or_default())
-            .collect();
-        let next = if more { cursors.last().cloned() } else { None };
         Ok(Json(json!({ "sightings": items, "next_cursor": next })))
     })
     .await
+}
+
+/// One page of `GET /v1/sightings` without an IoC filter: the records and
+/// the next cursor.
+fn list_page(
+    s: &Sightings,
+    q: &records::List,
+    visible: &str,
+    r: Option<&str>,
+) -> Result<(Vec<Value>, Option<String>), ApiError> {
+    let rows = s.query(&q.sql(visible, r, None)).map_err(internal)?.rows;
+    let more = rows.len() > q.limit;
+    let mut items: Vec<(String, Value)> = rows
+        .iter()
+        .take(q.limit)
+        .filter_map(|row| records::item(row))
+        .collect();
+    let next = if more {
+        items.last().map(|(c, _)| c.clone())
+    } else {
+        None
+    };
+    let items: Vec<Value> = items.drain(..).map(|(_, v)| v).collect();
+    Ok((items, next))
+}
+
+/// One page of `GET /v1/sightings` with an IoC filter (#201): one page of
+/// ids from `ids_sql`, then their records in chunks, so no query holds
+/// more than `IDS_PER_QUERY` literals.
+fn list_by_ioc(
+    s: &Sightings,
+    q: &records::List,
+    visible: &str,
+    r: Option<&str>,
+    ids_sql: &str,
+) -> Result<(Vec<Value>, Option<String>), ApiError> {
+    let mut page: Vec<(i64, SightingId)> = s
+        .query(ids_sql)
+        .map_err(internal)?
+        .rows
+        .into_iter()
+        .filter_map(|row| match (row.first(), row.get(1)) {
+            (Some(ts), Some(Cell::Blob(id))) => {
+                Some((nanos(ts)?, SightingId(id.as_slice().try_into().ok()?)))
+            }
+            _ => None,
+        })
+        .collect();
+    let more = page.len() > q.limit;
+    page.truncate(q.limit);
+    let ids: Vec<SightingId> = page.iter().map(|(_, id)| *id).collect();
+    let mut found = records_of(s, q, visible, r, &ids)?;
+    let cursors: Vec<String> = page.iter().map(|(ts, id)| format!("{ts}.{id}")).collect();
+    let items: Vec<Value> = cursors
+        .iter()
+        .flat_map(|c| found.remove(c).unwrap_or_default())
+        .collect();
+    let next = if more { cursors.last().cloned() } else { None };
+    Ok((items, next))
+}
+
+/// The records of `ids` by cursor, `IDS_PER_QUERY` ids per query.
+fn records_of(
+    s: &Sightings,
+    q: &records::List,
+    visible: &str,
+    r: Option<&str>,
+    ids: &[SightingId],
+) -> Result<HashMap<String, Vec<Value>>, ApiError> {
+    let mut found: HashMap<String, Vec<Value>> = HashMap::new();
+    for chunk in ids.chunks(IDS_PER_QUERY) {
+        for row in s
+            .query(&q.sql(visible, r, Some(chunk)))
+            .map_err(internal)?
+            .rows
+        {
+            if let Some((cursor, v)) = records::item(&row) {
+                found.entry(cursor).or_default().push(v);
+            }
+        }
+    }
+    Ok(found)
 }
 
 /// `GET /v1/sightings/{id}` (#160): one record. Below partner only the

@@ -603,60 +603,23 @@ fn phase2(root: &Value) -> Result<SightingBuilder, Error> {
     if let Some(id) = present(sighting, "sighting_id")? {
         b.sighting_id(id);
     }
-    let first = time_field(sighting, "first_observed")?;
-    let last = time_field(sighting, "last_observed")?;
-    first.map(|t| b.first_seen(t));
-    last.map(|t| b.last_seen(t));
-    // The sighting's own time, else last or first observed, else the
-    // submission's metadata.
     let meta = root.get("metadata").unwrap_or(&Value::Null);
-    let ts = match time_field(sighting, "timestamp")? {
-        None if last.is_none() && first.is_none() => time_field(meta, "timestamp")?,
-        ts => ts,
-    };
-    ts.map(|t| b.timestamp(t));
+    phase2_times(&mut b, sighting, meta)?;
     common(&mut b, sighting)?;
     b.tlp(tlp_level(&[sighting, root, meta])?);
 
     if let Some(sigma) = sighting.get("sigma_detection") {
-        text_of(sigma, "rule_id").map(|v| b.rule_id(v));
-        text_of(sigma, "rule_name")
-            .or_else(|| text_of(sigma, "title"))
-            .map(|v| b.rule_title(v));
-        text_of(sigma, "level")
-            .map(str::to_string)
-            .or_else(|| sigma_yaml_level(sigma))
-            .map(|v| b.rule_level(&v));
+        phase2_sigma(&mut b, sigma);
     }
     if let Some(context) = sighting.get("threat_context") {
-        context
-            .get("campaign")
-            .and_then(|c| text_of(c, "name"))
-            .map(|v| b.campaign(v));
-        if let Some(ts) = context
-            .pointer("/mitre_attack/techniques")
-            .and_then(Value::as_array)
-        {
-            for t in ts {
-                if let Some(t) = t.get("technique").or(Some(t)).and_then(Value::as_str) {
-                    b.technique(t);
-                }
-            }
-        }
+        phase2_threat_context(&mut b, context);
     }
     text_of(sighting, "description").map(|v| b.description(v));
     if let Some(s) = root.get("submitter").and_then(|s| text_of(s, "sector")) {
         b.reporter_sector(s);
     }
     if let Some(t) = root.get("hit_target") {
-        text_of(t, "sector").map(|v| b.target_sector(v));
-        text_of(t, "organisation_size")
-            .or_else(|| text_of(t, "organization_size"))
-            .map(|v| b.target_size(v));
-        text_of(t, "region").map(|v| b.target_region(v));
-        text_of(t, "organisation_id")
-            .or_else(|| text_of(t, "organization_id"))
-            .map(|v| b.target_id(v));
+        phase2_hit_target(&mut b, t);
     }
     if let Some(obs) = sighting.get("observables").and_then(Value::as_object) {
         for (section, entries) in obs {
@@ -666,6 +629,64 @@ fn phase2(root: &Value) -> Result<SightingBuilder, Error> {
         }
     }
     Ok(b)
+}
+
+/// The times of a Phase 2 sighting: first and last observed, and the
+/// sighting's own time, else last or first observed, else the
+/// submission's metadata.
+fn phase2_times(b: &mut SightingBuilder, sighting: &Value, meta: &Value) -> Result<(), Error> {
+    let first = time_field(sighting, "first_observed")?;
+    let last = time_field(sighting, "last_observed")?;
+    first.map(|t| b.first_seen(t));
+    last.map(|t| b.last_seen(t));
+    let ts = match time_field(sighting, "timestamp")? {
+        None if last.is_none() && first.is_none() => time_field(meta, "timestamp")?,
+        ts => ts,
+    };
+    ts.map(|t| b.timestamp(t));
+    Ok(())
+}
+
+/// The rule of a Phase 2 `sigma_detection`.
+fn phase2_sigma(b: &mut SightingBuilder, sigma: &Value) {
+    text_of(sigma, "rule_id").map(|v| b.rule_id(v));
+    text_of(sigma, "rule_name")
+        .or_else(|| text_of(sigma, "title"))
+        .map(|v| b.rule_title(v));
+    text_of(sigma, "level")
+        .map(str::to_string)
+        .or_else(|| sigma_yaml_level(sigma))
+        .map(|v| b.rule_level(&v));
+}
+
+/// The campaign and MITRE ATT&CK techniques of a Phase 2 `threat_context`.
+fn phase2_threat_context(b: &mut SightingBuilder, context: &Value) {
+    context
+        .get("campaign")
+        .and_then(|c| text_of(c, "name"))
+        .map(|v| b.campaign(v));
+    if let Some(ts) = context
+        .pointer("/mitre_attack/techniques")
+        .and_then(Value::as_array)
+    {
+        for t in ts {
+            if let Some(t) = t.get("technique").or(Some(t)).and_then(Value::as_str) {
+                b.technique(t);
+            }
+        }
+    }
+}
+
+/// The target of a Phase 2 `hit_target`, in either spelling.
+fn phase2_hit_target(b: &mut SightingBuilder, t: &Value) {
+    text_of(t, "sector").map(|v| b.target_sector(v));
+    text_of(t, "organisation_size")
+        .or_else(|| text_of(t, "organization_size"))
+        .map(|v| b.target_size(v));
+    text_of(t, "region").map(|v| b.target_region(v));
+    text_of(t, "organisation_id")
+        .or_else(|| text_of(t, "organization_id"))
+        .map(|v| b.target_id(v));
 }
 
 /// The observables of one Phase 2 entry: a typed `{"type", "value"}` in
@@ -735,20 +756,7 @@ fn frank1(root: &Value) -> Result<SightingBuilder, Error> {
     common(&mut b, root)?;
     b.tlp(tlp_level(&[root])?);
     if let Some(of) = root.get("sighting_of") {
-        if let Some(rule) = of.get("rule") {
-            text_of(rule, "id").map(|v| b.rule_id(v));
-            text_of(rule, "title").map(|v| b.rule_title(v));
-            text_of(rule, "level").map(|v| b.rule_level(v));
-        }
-        text_of(of, "campaign").map(|v| b.campaign(v));
-        for t in of
-            .get("techniques")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            t.as_str().map(|t| b.technique(t));
-        }
+        frank1_sighting_of(&mut b, of);
     }
     text_of(root, "description").map(|v| b.description(v));
     text_of(root, "reporter_sector").map(|v| b.reporter_sector(v));
@@ -758,6 +766,31 @@ fn frank1(root: &Value) -> Result<SightingBuilder, Error> {
         text_of(t, "region").map(|v| b.target_region(v));
         text_of(t, "id").map(|v| b.target_id(v));
     }
+    frank1_evidence(&mut b, root)?;
+    Ok(b)
+}
+
+/// The rule, campaign and techniques of a `frank/1` `sighting_of`.
+fn frank1_sighting_of(b: &mut SightingBuilder, of: &Value) {
+    if let Some(rule) = of.get("rule") {
+        text_of(rule, "id").map(|v| b.rule_id(v));
+        text_of(rule, "title").map(|v| b.rule_title(v));
+        text_of(rule, "level").map(|v| b.rule_level(v));
+    }
+    text_of(of, "campaign").map(|v| b.campaign(v));
+    for t in of
+        .get("techniques")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        t.as_str().map(|t| b.technique(t));
+    }
+}
+
+/// The observables of a `frank/1` `evidence` list. An entry without a
+/// type is skipped; an unknown type is an error.
+fn frank1_evidence(b: &mut SightingBuilder, root: &Value) -> Result<(), Error> {
     let empty = serde_json::Map::new();
     for e in root
         .get("evidence")
@@ -778,7 +811,7 @@ fn frank1(root: &Value) -> Result<SightingBuilder, Error> {
             b.observable(t, v, text_of(e, "role"), context);
         }
     }
-    Ok(b)
+    Ok(())
 }
 
 /// The fields Phase 2 and `frank/1` name alike.

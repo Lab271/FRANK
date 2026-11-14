@@ -552,7 +552,8 @@ impl Sso {
         })
     }
 
-    /// The claims of a valid ID token.
+    /// The claims of a valid ID token: its form, then its signature, then
+    /// its claims, in that order.
     fn check(
         &self,
         provider: &Provider,
@@ -560,19 +561,23 @@ impl Sso {
         nonce: &str,
         now_ns: i64,
     ) -> Result<Value, String> {
-        let mut parts = token.split('.');
-        let (Some(h), Some(p), Some(sig), None) =
-            (parts.next(), parts.next(), parts.next(), parts.next())
-        else {
-            return Err("the ID token is not a JWS".into());
-        };
-        let json = |part: &str, what: &str| -> Result<Value, String> {
-            let bytes = B64
-                .decode(part)
-                .map_err(|_| format!("the ID token's {what} is not base64url"))?;
-            serde_json::from_slice(&bytes).map_err(|_| format!("the ID token's {what} is not JSON"))
-        };
-        let header = json(h, "header")?;
+        let (h, p, sig) = jws_parts(token)?;
+        self.verify(provider, h, p, sig, now_ns)?;
+        let claims = jws_json(p, "claims")?;
+        self.check_claims(&claims, nonce, now_ns)?;
+        Ok(claims)
+    }
+
+    /// Whether the JWS `h.p.sig` is RS256, signed by the provider's key.
+    fn verify(
+        &self,
+        provider: &Provider,
+        h: &str,
+        p: &str,
+        sig: &str,
+        now_ns: i64,
+    ) -> Result<(), String> {
+        let header = jws_json(h, "header")?;
         if header["alg"] != "RS256" {
             return Err(format!("ID token algorithm {}: only RS256", header["alg"]));
         }
@@ -587,17 +592,17 @@ impl Sso {
                 &sig,
             )
             .map_err(|_| "the ID token's signature does not verify")?;
-        let claims = json(p, "claims")?;
+        Ok(())
+    }
+
+    /// Whether a signed ID token's claims are for us, now and this login:
+    /// issuer, audience, azp, expiry, nonce, in that order.
+    fn check_claims(&self, claims: &Value, nonce: &str, now_ns: i64) -> Result<(), String> {
         if claims["iss"].as_str() != Some(self.config.issuer.as_str()) {
             return Err(format!("ID token issuer {}", claims["iss"]));
         }
         let client_id = self.config.client_id.as_str();
-        let audience_ok = match &claims["aud"] {
-            Value::String(a) => a == client_id,
-            Value::Array(a) => a.iter().any(|a| a.as_str() == Some(client_id)),
-            _ => false,
-        };
-        if !audience_ok {
+        if !audience_names(&claims["aud"], client_id) {
             return Err(format!("ID token audience {}", claims["aud"]));
         }
         if claims
@@ -613,7 +618,35 @@ impl Sso {
         if claims["nonce"].as_str() != Some(nonce) {
             return Err("the ID token's nonce does not match".into());
         }
-        Ok(claims)
+        Ok(())
+    }
+}
+
+/// The three parts of a compact JWS: header, payload, signature.
+fn jws_parts(token: &str) -> Result<(&str, &str, &str), String> {
+    let mut parts = token.split('.');
+    let (Some(h), Some(p), Some(sig), None) =
+        (parts.next(), parts.next(), parts.next(), parts.next())
+    else {
+        return Err("the ID token is not a JWS".into());
+    };
+    Ok((h, p, sig))
+}
+
+/// A JWS part (`what`: header or claims) as JSON.
+fn jws_json(part: &str, what: &str) -> Result<Value, String> {
+    let bytes = B64
+        .decode(part)
+        .map_err(|_| format!("the ID token's {what} is not base64url"))?;
+    serde_json::from_slice(&bytes).map_err(|_| format!("the ID token's {what} is not JSON"))
+}
+
+/// Whether an `aud` claim, one string or a list, names `client_id`.
+fn audience_names(aud: &Value, client_id: &str) -> bool {
+    match aud {
+        Value::String(a) => a == client_id,
+        Value::Array(a) => a.iter().any(|a| a.as_str() == Some(client_id)),
+        _ => false,
     }
 }
 
@@ -773,6 +806,20 @@ fn tidy(s: &str) -> String {
         .collect()
 }
 
+/// Why a callback is refused before the identity provider is asked: its
+/// error, a missing code or state, or a state from another browser.
+fn early_refusal(q: &HashMap<String, String>, state: &str, headers: &HeaderMap) -> Option<String> {
+    if let Some(e) = q.get("error") {
+        Some(format!("the identity provider answered {}", tidy(e)))
+    } else if state.is_empty() || !q.contains_key("code") {
+        Some("the callback has no code or state".to_string())
+    } else if cookie(headers, STATE_COOKIE).as_deref() != Some(state) {
+        Some("the state is not this browser's".to_string())
+    } else {
+        None
+    }
+}
+
 async fn callback(
     State(app): State<Shared>,
     headers: HeaderMap,
@@ -782,16 +829,7 @@ async fn callback(
         return not_configured();
     };
     let state = q.get("state").cloned().unwrap_or_default();
-    let early = if let Some(e) = q.get("error") {
-        Some(format!("the identity provider answered {}", tidy(e)))
-    } else if state.is_empty() || !q.contains_key("code") {
-        Some("the callback has no code or state".to_string())
-    } else if cookie(&headers, STATE_COOKIE).as_deref() != Some(state.as_str()) {
-        Some("the state is not this browser's".to_string())
-    } else {
-        None
-    };
-    let outcome = match early {
+    let outcome = match early_refusal(&q, &state, &headers) {
         Some(reason) => Outcome::Refused(reason),
         None => {
             let a = app.clone();
@@ -1064,5 +1102,500 @@ mod tests {
         assert!(Url::parse("https://a:x").is_err());
         assert!(Url::parse("https://a/#f").is_err());
         assert!(Url::parse("a.example").is_err());
+    }
+
+    #[test]
+    fn empty_names_and_hosts_are_refused() {
+        let f = secret_file("empty-names", "x");
+        let mut s = full(&f);
+        s.client_id = Some("  ".into());
+        assert_eq!(
+            Config::from_settings(s).unwrap_err(),
+            "FRANK_SSO_CLIENT_ID is empty"
+        );
+        let mut s = full(&f);
+        s.organisation = Some(" ".into());
+        assert_eq!(
+            Config::from_settings(s).unwrap_err(),
+            "FRANK_SSO_ORGANISATION is empty"
+        );
+        let mut s = full(&f);
+        s.redirect_url = Some("http://frank.example/v1/sso/callback".into());
+        let e = Config::from_settings(s).unwrap_err();
+        assert!(e.starts_with("FRANK_SSO_REDIRECT_URL: "), "{e}");
+        assert_eq!(
+            Url::parse("https://:443/x").unwrap_err(),
+            "\"https://:443/x\": no host"
+        );
+    }
+
+    #[test]
+    fn cookies_are_secure_on_https_only() {
+        let (sso, _) = stub_sso(json!([]));
+        let c = set_cookie(&sso.config, "a", "b", "/", 5);
+        assert_eq!(c, "a=b; Path=/; HttpOnly; SameSite=Lax; Max-Age=5; Secure");
+        let mut config = sso.config.clone();
+        config.origin = "http://localhost:9400".into();
+        let c = set_cookie(&config, "a", "b", "/", 5);
+        assert_eq!(c, "a=b; Path=/; HttpOnly; SameSite=Lax; Max-Age=5");
+    }
+
+    // --- the identity provider, stubbed --------------------------------------
+
+    const ISSUER: &str = "https://idp.example";
+    const CLIENT: &str = "frank-client";
+    /// 2026-10-22 12:00 UTC.
+    const NOW: i64 = 1_792_670_400_000_000_000;
+    const NOW_S: i64 = NOW / 1_000_000_000;
+
+    /// Answers `GET`s from a table and counts them; a `POST` answers `token`.
+    #[derive(Default)]
+    struct Stub {
+        gets: Mutex<HashMap<String, String>>,
+        calls: Mutex<usize>,
+        token: Mutex<String>,
+    }
+
+    impl Http for Stub {
+        fn get(&self, url: &str) -> Result<String, String> {
+            *self.calls.lock().unwrap() += 1;
+            self.gets
+                .lock()
+                .unwrap()
+                .get(url)
+                .cloned()
+                .ok_or_else(|| format!("GET {url}: 404"))
+        }
+
+        fn post_form(
+            &self,
+            _: &str,
+            _: (&str, &Secret),
+            _: &[(&str, &str)],
+        ) -> Result<String, String> {
+            Ok(self.token.lock().unwrap().clone())
+        }
+    }
+
+    impl Stub {
+        fn calls(&self) -> usize {
+            *self.calls.lock().unwrap()
+        }
+    }
+
+    /// The test-only key of `tests/data` (never used anywhere else).
+    fn key_pair() -> ring::signature::RsaKeyPair {
+        ring::signature::RsaKeyPair::from_pkcs8(include_bytes!("../tests/data/sso-test-key.pk8"))
+            .unwrap()
+    }
+
+    /// The test key as a JWK, with `kid` if given.
+    fn jwk(kid: Option<&str>) -> Value {
+        let k = ring::rsa::PublicKeyComponents::<Vec<u8>>::from(key_pair().public());
+        let mut v =
+            json!({ "kty": "RSA", "use": "sig", "n": B64.encode(&k.n), "e": B64.encode(&k.e) });
+        if let Some(kid) = kid {
+            v["kid"] = json!(kid);
+        }
+        v
+    }
+
+    fn discovery(issuer: &str, authorize: &str) -> String {
+        json!({
+            "issuer": issuer,
+            "authorization_endpoint": authorize,
+            "token_endpoint": format!("{ISSUER}/token"),
+            "jwks_uri": format!("{ISSUER}/keys"),
+        })
+        .to_string()
+    }
+
+    /// SSO against a stub whose JWKS holds `keys`.
+    fn stub_sso(keys: Value) -> (Sso, Arc<Stub>) {
+        let stub = Arc::new(Stub::default());
+        {
+            let mut gets = stub.gets.lock().unwrap();
+            gets.insert(
+                format!("{ISSUER}/.well-known/openid-configuration"),
+                discovery(ISSUER, &format!("{ISSUER}/authorize")),
+            );
+            gets.insert(
+                format!("{ISSUER}/keys"),
+                json!({ "keys": keys }).to_string(),
+            );
+        }
+        let config = Config {
+            issuer: ISSUER.into(),
+            client_id: CLIENT.into(),
+            client_secret: Secret::new("s"),
+            redirect_url: "https://frank.example/v1/sso/callback".into(),
+            organisation: "lab".into(),
+            origin: "https://frank.example".into(),
+        };
+        (Sso::new(config, stub.clone()), stub)
+    }
+
+    /// `h.p.signature`, signed with the test key over `h.p` as given.
+    fn sign_raw(h: &str, p: &str) -> String {
+        let key = key_pair();
+        let mut sig = vec![0; key.public().modulus_len()];
+        key.sign(
+            &ring::signature::RSA_PKCS1_SHA256,
+            &ring::rand::SystemRandom::new(),
+            format!("{h}.{p}").as_bytes(),
+            &mut sig,
+        )
+        .unwrap();
+        format!("{h}.{p}.{}", B64.encode(sig))
+    }
+
+    fn sign(header: &Value, claims: &Value) -> String {
+        sign_raw(
+            &B64.encode(header.to_string()),
+            &B64.encode(claims.to_string()),
+        )
+    }
+
+    fn rs256() -> Value {
+        json!({ "alg": "RS256", "kid": "k1" })
+    }
+
+    fn claims() -> Value {
+        json!({ "iss": ISSUER, "aud": CLIENT, "sub": "u1", "exp": NOW_S + 300, "nonce": "n1" })
+    }
+
+    /// `claims()` with `changes`; `null` removes a claim.
+    fn claims_with(changes: Value) -> Value {
+        let mut c = claims();
+        for (k, v) in changes.as_object().unwrap() {
+            if v.is_null() {
+                c.as_object_mut().unwrap().remove(k);
+            } else {
+                c[k] = v.clone();
+            }
+        }
+        c
+    }
+
+    /// Tokens of the wrong form or signature, each with its refusal.
+    fn bad_form_or_signature() -> Vec<(String, String)> {
+        let good_h = B64.encode(rs256().to_string());
+        let good_p = B64.encode(claims().to_string());
+        let good = sign(&rs256(), &claims());
+        let good_sig = good.rsplit('.').next().unwrap();
+        let tampered = format!(
+            "{good_h}.{}.{good_sig}",
+            B64.encode(claims_with(json!({ "sub": "u2" })).to_string())
+        );
+        vec![
+            ("a.b".into(), "the ID token is not a JWS".into()),
+            ("a.b.c.d".into(), "the ID token is not a JWS".into()),
+            (
+                format!("!!.{good_p}.x"),
+                "the ID token's header is not base64url".into(),
+            ),
+            (
+                format!("{}.{good_p}.x", B64.encode("not json")),
+                "the ID token's header is not JSON".into(),
+            ),
+            (
+                sign(&json!({ "alg": "HS256" }), &claims()),
+                "ID token algorithm \"HS256\": only RS256".into(),
+            ),
+            (
+                format!("{good_h}.{good_p}.!!"),
+                "the ID token's signature is not base64url".into(),
+            ),
+            (tampered, "the ID token's signature does not verify".into()),
+            (
+                sign_raw(&good_h, "!!"),
+                "the ID token's claims is not base64url".into(),
+            ),
+            (
+                sign_raw(&good_h, &B64.encode("[")),
+                "the ID token's claims is not JSON".into(),
+            ),
+        ]
+    }
+
+    /// Signed tokens with a wrong claim, each with its refusal.
+    fn bad_claims() -> Vec<(String, String)> {
+        vec![
+            (
+                sign(&rs256(), &claims_with(json!({ "iss": "https://evil" }))),
+                "ID token issuer \"https://evil\"".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "iss": null }))),
+                "ID token issuer null".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "aud": 42 }))),
+                "ID token audience 42".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "aud": ["x", "y"] }))),
+                "ID token audience [\"x\",\"y\"]".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "aud": "x" }))),
+                "ID token audience \"x\"".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "azp": "x" }))),
+                "ID token azp \"x\"".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "azp": null, "exp": null }))),
+                "the ID token has no exp".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "exp": NOW_S }))),
+                "the ID token has expired".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "nonce": "n2" }))),
+                "the ID token's nonce does not match".into(),
+            ),
+            (
+                sign(&rs256(), &claims_with(json!({ "nonce": null }))),
+                "the ID token's nonce does not match".into(),
+            ),
+        ]
+    }
+
+    #[test]
+    fn check_refuses_each_bad_token_with_its_reason() {
+        let (sso, _) = stub_sso(json!([jwk(Some("k1"))]));
+        let provider = sso.provider().unwrap();
+        let check = |token: &str| sso.check(&provider, token, "n1", NOW);
+        let cases = bad_form_or_signature().into_iter().chain(bad_claims());
+        for (token, reason) in cases {
+            assert_eq!(check(&token).unwrap_err(), reason, "{token}");
+        }
+        assert_eq!(check(&sign(&rs256(), &claims())).unwrap(), claims());
+        // A list audience with the client, and an azp that names it.
+        let c = claims_with(json!({ "aud": ["x", CLIENT], "azp": CLIENT }));
+        assert_eq!(check(&sign(&rs256(), &c)).unwrap(), c);
+    }
+
+    #[test]
+    fn unknown_keys_are_fetched_at_most_once_a_minute() {
+        let (sso, stub) = stub_sso(json!([jwk(Some("k1"))]));
+        let provider = sso.provider().unwrap();
+        let token = sign(&json!({ "alg": "RS256", "kid": "k9" }), &claims());
+        assert_eq!(
+            sso.check(&provider, &token, "n1", NOW).unwrap_err(),
+            "no signing key Some(\"k9\")"
+        );
+        let calls = stub.calls();
+        // Within the minute: refused without asking the provider again.
+        assert_eq!(
+            sso.check(&provider, &token, "n1", NOW + JWKS_REFETCH_NS - 1)
+                .unwrap_err(),
+            "no signing key Some(\"k9\")"
+        );
+        assert_eq!(stub.calls(), calls);
+        // A known key needs no fetch at all.
+        let good = sign(&rs256(), &claims());
+        sso.check(&provider, &good, "n1", NOW).unwrap();
+        assert_eq!(stub.calls(), calls);
+        // After it, the JWKS is fetched again.
+        let _ = sso.check(&provider, &token, "n1", NOW + JWKS_REFETCH_NS);
+        assert_eq!(stub.calls(), calls + 1);
+    }
+
+    #[test]
+    fn a_token_without_kid_needs_exactly_one_usable_key() {
+        // Only the last key is usable: the others are skipped.
+        let keys = json!([
+            { "kty": "EC", "kid": "ec" },
+            { "kty": "RSA", "kid": "enc", "use": "enc", "n": "AQAB", "e": "AQAB" },
+            { "kty": "RSA", "kid": "no-n", "e": "AQAB" },
+            { "kty": "RSA", "kid": "bad-n", "n": "!!", "e": "AQAB" },
+            jwk(None),
+        ]);
+        let (sso, _) = stub_sso(keys);
+        let provider = sso.provider().unwrap();
+        let token = sign(&json!({ "alg": "RS256" }), &claims());
+        assert_eq!(sso.check(&provider, &token, "n1", NOW).unwrap(), claims());
+        // Two usable keys: a token without kid names neither.
+        let (sso, _) = stub_sso(json!([jwk(Some("k1")), jwk(Some("k2"))]));
+        let provider = sso.provider().unwrap();
+        assert_eq!(
+            sso.check(&provider, &token, "n1", NOW).unwrap_err(),
+            "no signing key None"
+        );
+    }
+
+    #[test]
+    fn discovery_must_name_the_issuer_and_secure_endpoints() {
+        let (sso, stub) = stub_sso(json!([]));
+        let url = format!("{ISSUER}/.well-known/openid-configuration");
+        stub.gets
+            .lock()
+            .unwrap()
+            .insert(url.clone(), discovery("https://other.example", "x"));
+        assert_eq!(
+            sso.provider().unwrap_err(),
+            "discovery names issuer \"https://other.example\", not \"https://idp.example\""
+        );
+        stub.gets.lock().unwrap().insert(
+            url.clone(),
+            discovery(ISSUER, "http://idp.example/authorize"),
+        );
+        let e = sso.provider().unwrap_err();
+        assert!(e.starts_with("discovery authorization_endpoint: "), "{e}");
+        stub.gets.lock().unwrap().insert(url.clone(), "{".into());
+        let e = sso.provider().unwrap_err();
+        assert!(e.starts_with(&format!("{url}: ")), "{e}");
+        stub.gets.lock().unwrap().remove(&url);
+        assert_eq!(sso.provider().unwrap_err(), format!("GET {url}: 404"));
+    }
+
+    #[test]
+    fn an_authorize_url_with_a_query_keeps_it() {
+        let (sso, stub) = stub_sso(json!([]));
+        stub.gets.lock().unwrap().insert(
+            format!("{ISSUER}/.well-known/openid-configuration"),
+            discovery(ISSUER, &format!("{ISSUER}/authorize?tenant=a")),
+        );
+        let (url, state) = sso.begin(NOW).unwrap();
+        assert!(
+            url.starts_with(&format!("{ISSUER}/authorize?tenant=a&response_type=code&")),
+            "{url}"
+        );
+        assert!(url.contains(&format!("&state={state}&")), "{url}");
+    }
+
+    #[test]
+    fn logins_in_progress_are_bounded_and_expire() {
+        let (sso, _) = stub_sso(json!([]));
+        for _ in 0..MAX_PENDING {
+            sso.begin(NOW).unwrap();
+        }
+        assert_eq!(sso.begin(NOW).unwrap_err(), "too many logins in progress");
+        // Once they have expired, there is room again.
+        sso.begin(NOW + LOGIN_NS).unwrap();
+        assert_eq!(sso.pending.lock().unwrap().len(), 1);
+    }
+
+    #[test]
+    fn finish_refuses_unknown_late_and_bad_answers() {
+        let (sso, stub) = stub_sso(json!([jwk(Some("k1"))]));
+        assert_eq!(
+            sso.finish("nope", "c", NOW).unwrap_err(),
+            "unknown or used state"
+        );
+        let (_, state) = sso.begin(NOW).unwrap();
+        assert_eq!(
+            sso.finish(&state, "c", NOW + LOGIN_NS).unwrap_err(),
+            "the login took too long"
+        );
+        // The state is used up, even by a late login.
+        assert_eq!(
+            sso.finish(&state, "c", NOW).unwrap_err(),
+            "unknown or used state"
+        );
+        *stub.token.lock().unwrap() = "not json".into();
+        let (_, state) = sso.begin(NOW).unwrap();
+        let e = sso.finish(&state, "c", NOW).unwrap_err();
+        assert!(e.starts_with("token response: "), "{e}");
+        *stub.token.lock().unwrap() = json!({ "access_token": "at" }).to_string();
+        let (_, state) = sso.begin(NOW).unwrap();
+        assert_eq!(
+            sso.finish(&state, "c", NOW).unwrap_err(),
+            "the token response has no id_token"
+        );
+    }
+
+    #[test]
+    fn finish_names_who_the_token_vouches_for() {
+        let (sso, stub) = stub_sso(json!([jwk(Some("k1"))]));
+        let (url, state) = sso.begin(NOW).unwrap();
+        let nonce = url
+            .split('&')
+            .find_map(|kv| kv.strip_prefix("nonce="))
+            .unwrap()
+            .to_string();
+        let c = claims_with(json!({ "nonce": nonce, "email": "a@b.c" }));
+        *stub.token.lock().unwrap() = json!({ "id_token": sign(&rs256(), &c) }).to_string();
+        let id = sso.finish(&state, "c", NOW).unwrap();
+        assert_eq!(
+            id,
+            Identity {
+                issuer: ISSUER.into(),
+                subject: "u1".into(),
+                email: Some("a@b.c".into()),
+                email_verified: false,
+            }
+        );
+    }
+
+    // --- Ureq, against a one-request server on localhost ---------------------
+
+    /// Answers one request with `status` and the body `ok`; the thread
+    /// returns the request as it came.
+    fn serve_once(status: &'static str) -> (String, std::thread::JoinHandle<String>) {
+        use std::io::{BufRead, BufReader, Read as _, Write as _};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}/x", listener.local_addr().unwrap());
+        let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            let mut reader = BufReader::new(stream.try_clone().unwrap());
+            let mut request = String::new();
+            let mut length = 0;
+            loop {
+                let mut line = String::new();
+                reader.read_line(&mut line).unwrap();
+                let lower = line.to_ascii_lowercase();
+                if let Some(v) = lower.strip_prefix("content-length:") {
+                    length = v.trim().parse().unwrap();
+                }
+                request.push_str(&line);
+                if line == "\r\n" || line.is_empty() {
+                    break;
+                }
+            }
+            let mut body = vec![0; length];
+            reader.read_exact(&mut body).unwrap();
+            request.push_str(&String::from_utf8_lossy(&body));
+            write!(
+                stream,
+                "HTTP/1.1 {status}\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok"
+            )
+            .unwrap();
+            request
+        });
+        (url, server)
+    }
+
+    #[test]
+    fn ureq_gets_and_posts_with_basic_authentication() {
+        let http = Ureq::default();
+        let (url, server) = serve_once("200 OK");
+        assert_eq!(http.get(&url).unwrap(), "ok");
+        let request = server.join().unwrap();
+        assert!(request.starts_with("GET /x "), "{request}");
+        let (url, server) = serve_once("200 OK");
+        let secret = Secret::new("p:w");
+        let body = http
+            .post_form(&url, ("a b", &secret), &[("code", "c1")])
+            .unwrap();
+        assert_eq!(body, "ok");
+        let request = server.join().unwrap();
+        // RFC 6749 2.3.1: form-encoded, then base64.
+        let basic = STANDARD.encode("a%20b:p%3Aw");
+        assert!(request.contains(&format!("Basic {basic}\r\n")), "{request}");
+        assert!(request.ends_with("code=c1"), "{request}");
+        let (url, server) = serve_once("404 Not Found");
+        let e = http.get(&url).unwrap_err();
+        assert!(e.starts_with(&format!("GET {url}: ")), "{e}");
+        server.join().unwrap();
+        let (url, server) = serve_once("401 Unauthorized");
+        let e = http.post_form(&url, ("a", &secret), &[]).unwrap_err();
+        assert!(e.starts_with(&format!("POST {url}: ")), "{e}");
+        assert!(!e.contains("p:w") && !e.contains(&basic), "{e}");
+        server.join().unwrap();
     }
 }

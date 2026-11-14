@@ -115,7 +115,7 @@ The callback MUST refuse, with a redirect to `/?sso=refused` and an `sso_refused
 
 ### Requirement 5: Users provisioned on first sign-in [MUST]
 
-A person MUST be identified by the issuer and `sub`. On first sign-in, a human user whose name is the lower-cased `email` MUST be created in `FRANK_SSO_ORGANISATION` with no role, unless an existing human user has that name and the e-mail is verified, which MUST be linked and keep its organisation and role. A user linked to another identity MUST NOT be linked again. Machine users and disabled users MUST be refused. Each outcome MUST write an audit line (`user_provisioned`, `sso_login`, `sso_refused`).
+A person MUST be identified by the issuer and `sub`. On first sign-in, a human user whose name is the lower-cased `email` MUST be created in `FRANK_SSO_ORGANISATION` with no role, unless an existing human user has that name and the e-mail is verified, which MUST be linked and keep its organisation and role. A user linked to another identity MUST NOT be linked again. Machine users and disabled users MUST be refused. A store failure while looking up the e-mail's user MUST refuse the sign-in with that failure, never provision as if there were no such user (#312). Each outcome MUST write an audit line (`user_provisioned`, `sso_login`, `sso_refused`).
 
 **Implementation:** `crates/frank/src/store/participants.rs::sign_in`
 
@@ -134,6 +134,14 @@ A person MUST be identified by the issuer and `sub`. On first sign-in, a human u
 - THEN the identity is linked and the user keeps its organisation and role; an unverified e-mail or a second identity is refused
 
 **Tests:** `crates/frank/src/store/participants.rs::a_verified_email_links_an_existing_human_and_keeps_its_role`, `crates/frank/src/store/participants.rs::machines_disabled_users_and_bad_names_are_refused`
+
+#### Scenario: A store failure in the lookup is not a new user
+
+- GIVEN a store in which looking up the e-mail's user fails
+- WHEN a new identity signs in
+- THEN sign-in fails with that lookup error, and nothing is provisioned
+
+**Tests:** `crates/frank/src/store/participants.rs::a_store_error_in_the_sign_in_lookup_is_not_a_new_user`, `crates/frank/src/store/participants.rs::a_user_row_is_found_missing_or_an_error`
 
 ### Requirement 6: Sessions after the bearer token [MUST]
 

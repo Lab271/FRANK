@@ -168,6 +168,18 @@ class Dashboard(unittest.TestCase):
         self.assertNotIn("\x1b", assurance.cell(7, 15, 0.95))
         self.assertEqual(assurance.paint("x", assurance.RED), "x")
 
+    def test_the_version_row_shows_agreement_or_drift(self):
+        specs = {"001-x": []}
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            assurance.report(specs, [], [], False, 0.0, (), ("1.2.3", []))
+        self.assertIn("version      1.2.3 in all 5 places", out.getvalue())
+        self.assertIn("PASS  tested", out.getvalue())
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            assurance.report(specs, [], [], False, 0.0, (), ("1.2.3", ["README.md: 1.2.2 (Cargo.toml says 1.2.3)"]))
+        self.assertIn("version      1.2.3, 1 place disagrees", out.getvalue())
+        self.assertIn("FAIL  tested", out.getvalue())
+        self.assertIn("VERSION DRIFT README.md: 1.2.2 (Cargo.toml says 1.2.3)", out.getvalue())
+
     def test_box_fits_a_title_longer_than_its_lines(self):
         top, body, bottom = assurance.boxed(["x"], "FRANK code quality").split("\n")
         self.assertEqual(len(top), len(body))
@@ -253,6 +265,17 @@ class Gates(unittest.TestCase):
         code, out = self.run_main("--min", "1.01")
         self.assertEqual(code, 1)
         self.assertIn("FAIL: tested", out)
+
+    def test_version_drift_fails_the_spec_gate(self):
+        real = assurance.version.drift
+        try:
+            assurance.version.drift = lambda: ("9.9.9", ["README.md: 9.9.8 (Cargo.toml says 9.9.9)"])
+            code, out = self.run_main("--min", "0.0")
+        finally:
+            assurance.version.drift = real
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL: tested", out)
+        self.assertIn("version 9.9.9 (1 place disagrees)", out)
 
     def test_an_unreadable_measurement_fails(self):
         self.lizard.write_text("1,2,3\n")
