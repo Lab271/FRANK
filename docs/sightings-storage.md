@@ -16,7 +16,7 @@ FRANK turns a submission into rows and hands them to db-core; db-core makes them
 
 ![Read path: FRANK runs fixed SQL through Sightings::query; db-core takes a snapshot without any request, skips files whose manifest ranges exclude the query, reads each kept file's footer once and the needed column chunks through a 256 MiB range cache, and sends a ranged GET only on a cache miss. A partner download is one whole-object GET.](images/sightings-read.svg)
 
-FRANK only writes SQL and reads the answer; it never touches a file. Inside db-core, taking the snapshot sends nothing (file sizes come from the manifest), each file's manifest ranges on `rule_id`, `ioc_value`, `ts` and `received` decide whether the query touches it at all, a kept file costs two ranged GETs for its footer the first time and then one per column chunk it loads, and whatever comes back stays in the cache, so the same query again sends no request. Rows of the open hour come from memory. On the way out db-core prints timestamps as ISO text, FRANK's [`nanos()`](../crates/frank/src/store/sightings.rs) reads them, and FRANK applies TLP and the reporter threshold. A partner's file download (`/v1/files/{path}`) is one whole-object GET with no cache in FRANK; the browser caches it.
+FRANK only writes SQL and reads the answer; it never touches a file. Inside db-core, taking the snapshot sends nothing (file sizes come from the manifest), each file's manifest ranges on `rule_id`, `ioc_value`, `ts` and `received` decide whether the query touches it at all, a kept file costs one ranged GET for its footer the first time (the last 64 KiB, which takes a smaller file whole), then one GET per span of column chunks it loads (chunks less than 1 MiB apart share a span; up to 8 spans per file at once, 64 GETs per store), and whatever comes back stays in the cache, so the same query again sends no request. Rows of the open hour come from memory. On the way out db-core prints timestamps as ISO text, FRANK's [`nanos()`](../crates/frank/src/store/sightings.rs) reads them, and FRANK applies TLP and the reporter threshold. A partner's file download (`/v1/files/{path}`) is one whole-object GET with no cache in FRANK; the browser caches it.
 
 ## The open hour: the WAL for durability, pages for reading
 
@@ -50,7 +50,7 @@ Not to scale. A row is readable from the moment it is appended. Until its hour i
 |---|---|---|---|---|
 | Pages | db-core | Rows of the open hour (and any closed hour not yet flushed) | Writer, in memory; rebuilt from the WAL on restart | Every query reads the newest rows without a file |
 | Held files | db-core | One handle per listed file, with its parsed footer | Writer; kept while the manifest lists the file (db-core #1051, #1052) | No re-fetch or re-parse of footers between queries |
-| RangeCache | db-core | Footer and column-chunk bytes, keyed by object, offset and length | One per S3 store client, 256 MiB, least recently used out first; empty after a restart. Flush and compaction bypass it | A repeated read sends nothing. Listed files never change, so a cached range is never stale |
+| RangeCache | db-core | Footer and column-chunk bytes, keyed by object and offset; a held range answers any read inside it | One per S3 store client, 256 MiB, least recently used out first; empty after a restart. Flush and compaction bypass it | A repeated read sends nothing. Listed files never change, so a cached range is never stale |
 | Manifest ranges | FRANK picks, db-core keeps | Min and max of `rule_id`, `ioc_value`, `ts`, `received` per file | FRANK names the columns (sort key, `stat_columns`); db-core records them in `manifest.json`. Files written before v0.46.0 have no `ts`/`received` range | A file outside a query's window costs no request at all |
 | Browser | FRANK | Downloaded Parquet files (`/v1/files/{path}`) | `Cache-Control: private, max-age=3600, immutable`; the open hour is `no-store` | Partners re-query in the browser (frank-wasm) without downloading again |
 
@@ -62,14 +62,16 @@ Measured by [`crates/frank/tests/s3_requests.rs`](../crates/frank/tests/s3_reque
 
 | Endpoint (partner) | Cold GETs | Cold bytes | GETs end to end | Warm GETs |
 |---|---:|---:|---:|---:|
-| `/v1/statistics?days=30` | 1,506 | 253 KB | ~560 | 0 |
-| `/v1/statistics?days=7` | 356 | 60 KB | ~140 | 0 |
-| `/v1/explore?group=rule` | 666 | 198 KB | ~450 | 0 |
-| `/v1/live?window=24h` | 40 | 9 KB | ~32 | 0 |
-| `/v1/sightings?limit=50` | 906 | 216 KB | ~490 | 0 |
+| `/v1/statistics?days=30` | 33 | 306 KB | ~41 | 0 |
+| `/v1/statistics?days=7` | 10 | 73 KB | ~12 | 0 |
+| `/v1/explore?group=rule` | 33 | 306 KB | ~9 | 0 |
+| `/v1/live?window=24h` | 4 | 12 KB | ~5 | 0 |
+| `/v1/sightings?limit=50` | 33 | 306 KB | ~8 | 0 |
 | `/v1/files` | 0 | 0 | 0 | 0 |
 
-"GETs end to end" is how many requests ran one after another: files are read in parallel, but a file's own chunks are not. At AWS's 20–100 ms per request, a cold 30-day statistics call takes about 11–56 s, close to the 60 s request timeout; warm it sends nothing. Coalescing those chunk reads is asked of db-core in t-rust-db/db-core#1059; the run against AWS itself is #228.
+"GETs end to end" is the cold call's wall time over the 1 ms the fake adds per GET: about how many requests ran one after another (the queries' own work is in it too). At AWS's 20–100 ms per request, a cold 30-day statistics call takes about 1–4 s; warm it sends nothing. With db-core v0.240 the same call took 1,506 GETs, about 560 end to end (11–56 s on AWS); v0.241 (t-rust-db/db-core#1059) reads a footer in one GET and fetches nearby chunks together and in parallel (#290).
+
+Every test file is under 64 KiB, so each is read whole by its footer GET: one GET per kept file, and slightly more bytes than the chunks alone. Day files larger than that go through the span fetches instead, which this table does not measure. The run against AWS itself is #228.
 
 ## Rules the design rests on
 
