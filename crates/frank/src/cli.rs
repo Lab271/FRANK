@@ -160,6 +160,16 @@ pub enum ParticipantCmd {
     List,
     /// Change an organisation's status; its users have it on their next request.
     SetStatus { name: String, status: String },
+    /// Remove an organisation without users, unless an SSO setting names it.
+    Remove {
+        name: String,
+        /// Kept: `serve` needs the organisation SSO creates users in.
+        #[arg(long, env = "FRANK_SSO_ORGANISATION")]
+        sso_organisation: Option<String>,
+        /// Kept: `serve` needs the organisation of the SSO admin group.
+        #[arg(long, env = "FRANK_SSO_ADMIN_ORGANISATION")]
+        sso_admin_organisation: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -375,6 +385,19 @@ fn participant(ctx: &Ctx, cmd: ParticipantCmd, io: &mut Io) -> Result<(), String
         ParticipantCmd::SetStatus { name, status: st } => {
             participant_set_status(ctx, &name, &st, io)
         }
+        ParticipantCmd::Remove {
+            name,
+            sso_organisation,
+            sso_admin_organisation,
+        } => {
+            let kept: Vec<String> = [sso_organisation, sso_admin_organisation]
+                .into_iter()
+                .flatten()
+                .map(|v| v.trim().to_string())
+                .filter(|v| !v.is_empty())
+                .collect();
+            participant_remove(ctx, &name, &kept, io)
+        }
     }
 }
 
@@ -438,6 +461,17 @@ fn participant_set_status(ctx: &Ctx, name: &str, st: &str, io: &mut Io) -> Resul
         json!({ "participant": parts::organisation_id(&ctx.db, name)?, "status": st.as_str() }),
     )?;
     io.err(format!("{name:?} is now {st}"))
+}
+
+/// `serve` refuses to start without the organisations its SSO settings
+/// name (`kept`), so they stay.
+fn participant_remove(ctx: &Ctx, name: &str, kept: &[String], io: &mut Io) -> Result<(), String> {
+    let (id, name) = parts::remove_organisation(&ctx.db, name, kept)?;
+    ctx.log(
+        "participant_removed",
+        json!({ "participant": id, "name": name }),
+    )?;
+    io.err(format!("removed {name:?} ({id})"))
 }
 
 // Users.

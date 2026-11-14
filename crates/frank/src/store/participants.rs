@@ -580,6 +580,36 @@ pub fn set_status(path: &Path, name_or_id: &str, status: Tier) -> Result<(), Str
     })
 }
 
+/// Removes an organisation without users (#324); returns its `(id, name)`.
+/// Refused while it has users, disabled ones too, and when `kept` (the
+/// SSO settings, by name or id) names it: the server would not start
+/// without it. Its sightings keep its id as their reporter.
+pub fn remove_organisation(
+    path: &Path,
+    name_or_id: &str,
+    kept: &[String],
+) -> Result<(String, String), String> {
+    with_db(path, |db| {
+        let (id, name) = find_org(db, name_or_id)?;
+        let q = sql_quote(&id);
+        let users = query(
+            db,
+            &format!("SELECT name FROM users WHERE organisation = {q}"),
+        )?;
+        if !users.rows.is_empty() {
+            return Err(format!(
+                "{name} has {} user(s): remove them first",
+                users.rows.len()
+            ));
+        }
+        if kept.iter().any(|k| *k == id || *k == name) {
+            return Err(format!("{name} is named by an SSO setting"));
+        }
+        exec(db, &format!("DELETE FROM organisations WHERE id = {q}"))?;
+        Ok((id, name))
+    })
+}
+
 /// Every organisation, by name, with its users.
 pub fn organisations(path: &Path) -> Result<Vec<Organisation>, String> {
     with_db(path, |db| {
@@ -1280,6 +1310,38 @@ mod tests {
         with_db(&path, |db| exec(db, "DROP TABLE users")).unwrap();
         let e = with_db(&path, |db| user_row(db, "alice")).unwrap_err();
         assert!(e.contains("users"), "{e}");
+    }
+
+    #[test]
+    fn only_an_organisation_without_users_and_not_kept_is_removed() {
+        // #324: disabled users count; the SSO settings name by name or id.
+        let dir = temp("remove-org");
+        let path = dir.join(FILE);
+        for name in ["acme", "landing", "empty"] {
+            add_organisation(&path, name, Tier::Observer, "cyber_partner", None, None).unwrap();
+        }
+        add_user(&path, "acme", "alice", "human", None).unwrap();
+        set_disabled(&path, "alice", true).unwrap();
+        let e = remove_organisation(&path, "acme", &[]).unwrap_err();
+        assert!(e.contains("1 user(s)"), "{e}");
+
+        let landing = organisation_id(&path, "landing").unwrap();
+        for kept in ["landing".to_string(), landing.clone()] {
+            let e = remove_organisation(&path, "landing", &[kept]).unwrap_err();
+            assert!(e.contains("SSO setting"), "{e}");
+        }
+
+        let empty = organisation_id(&path, "empty").unwrap();
+        let removed = remove_organisation(&path, &empty, &["landing".into()]).unwrap();
+        assert_eq!(removed, (empty, "empty".to_string()));
+        let left: Vec<String> = organisations(&path)
+            .unwrap()
+            .into_iter()
+            .map(|o| o.name)
+            .collect();
+        assert_eq!(left, ["acme", "landing"]);
+        let e = remove_organisation(&path, "empty", &[]).unwrap_err();
+        assert!(e.contains("no participant"), "{e}");
     }
 
     #[test]

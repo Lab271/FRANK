@@ -11,7 +11,7 @@ use base64::engine::general_purpose::URL_SAFE_NO_PAD as B64;
 use base64::Engine as _;
 use frank::api::{router, App};
 use frank::audit::Audit;
-use frank::auth::hash;
+use frank::auth::{hash, Role};
 use frank::sso::{Config, Http, Secret, Sso};
 use frank::store::participants::{self as parts, AdminGroup, FILE};
 use frank::store::{Iocs, Participants, Registry, Sightings};
@@ -475,6 +475,38 @@ async fn the_admin_group_in_the_id_token_makes_its_members_admins() {
         "sso_login",
     ] {
         assert!(actions.iter().any(|x| x == a), "{a} in {actions:?}");
+    }
+}
+
+/// #324: an organisation an SSO setting names is not removed, even
+/// without users: `serve` would not start without it.
+#[tokio::test]
+async fn an_organisation_an_sso_setting_names_is_not_removed() {
+    let admin = AdminGroup {
+        group: "frank-admins".into(),
+        organisation: "sbp".into(),
+    };
+    let h = harness_with("remove-org", false, "landing", Some(admin));
+    for (name, status) in [
+        ("landing", Tier::Observer),
+        ("sbp", Tier::Core),
+        ("ops", Tier::Core),
+    ] {
+        parts::add_organisation(&h.db, name, status, "cyber_partner", None, None).unwrap();
+    }
+    parts::add_user(&h.db, "ops", "root", "human", Some(Role::Superadmin)).unwrap();
+    parts::add_token_hash(&h.db, "root", &hash("t-root")).unwrap();
+    for name in ["landing", "sbp"] {
+        let id = parts::organisation_id(&h.db, name).unwrap();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/v1/admin/organisations/{id}"))
+            .header(header::AUTHORIZATION, "Bearer t-root")
+            .body(Body::empty())
+            .unwrap();
+        let r = send(&h.app, req).await;
+        assert_eq!(r.status, StatusCode::CONFLICT, "{name}: {}", r.body);
+        assert!(r.body.to_string().contains("SSO setting"), "{}", r.body);
     }
 }
 

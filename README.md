@@ -86,6 +86,7 @@ make user PARTICIPANT=acme-mdr NAME=acme-feed MACHINE=1   # another user (an API
 make token NAME=acme-feed                           # another token for a user
 make participants                                   # organisations, users, token prefixes
 target/release/frank participant set-status acme-mdr partner   # all its users, next request
+target/release/frank participant remove acme-mdr       # without users, and not named by FRANK_SSO_*ORGANISATION
 target/release/frank token revoke 1a2b3c4d          # by hash prefix, from `make participants`
 target/release/frank user disable acme-feed         # its tokens stop working; `enable` brings them back
 target/release/frank user remove acme-feed          # a disabled user only, with its role and tokens
@@ -166,7 +167,7 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 | `GET /v1/rules/{id}?days=30` | contributor | one rule's prevalence: trend, sectors, severities, techniques, campaigns, IoCs |
 | `GET /v1/files`, `GET /v1/files/{path}` | partner | the table's Parquet files |
 | `GET /v1/participants` | partner | ids and status; core: names, type, sector, users |
-| `GET, POST /v1/admin/organisations`, `PATCH …/{id}` | admin (own organisation); adding and status: superadmin | organisations |
+| `GET, POST /v1/admin/organisations`, `PATCH, DELETE …/{id}` | admin (own organisation); adding, status and removing: superadmin | organisations; remove one without users |
 | `GET, POST /v1/admin/users`, `PATCH, DELETE …/{name}`, `POST …/{name}/disable`, `…/enable` | admin | users, roles; remove a disabled user |
 | `GET, POST /v1/admin/tokens`, `DELETE …/{prefix}` | admin | token prefixes; a new token is in its one response |
 | `GET /v1/admin/audit?days=7` | admin | audit lines about the organisation; superadmin: all |

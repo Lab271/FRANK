@@ -146,6 +146,54 @@ fn participant_add_list_and_set_status() {
     );
 }
 
+/// #324: `participant remove` takes an organisation without users, and
+/// keeps the ones the SSO settings name.
+#[test]
+fn participant_remove_needs_no_users_and_no_sso_setting() {
+    let d = dir("participant-remove");
+    for name in ["acme", "landing", "empty"] {
+        ok(&d.0, &["participant", "add", name, "--status", "observer"]);
+    }
+    ok(&d.0, &["user", "add", "acme", "alice"]);
+    let e = failed(&d.0, &["participant", "remove", "acme"]);
+    assert!(e.contains("1 user(s)"), "{e}");
+    let e = failed(
+        &d.0,
+        &[
+            "participant",
+            "remove",
+            "landing",
+            "--sso-organisation",
+            "landing",
+        ],
+    );
+    assert!(e.contains("SSO setting"), "{e}");
+    let e = failed(
+        &d.0,
+        &[
+            "participant",
+            "remove",
+            "landing",
+            "--sso-admin-organisation",
+            " landing ",
+        ],
+    );
+    assert!(e.contains("SSO setting"), "{e}");
+
+    let ran = ok(&d.0, &["participant", "remove", "empty"]);
+    assert!(
+        ran.err.starts_with("removed \"empty\" (identity--"),
+        "{}",
+        ran.err
+    );
+    let list = ok(&d.0, &["participant", "list"]).out;
+    assert!(!list.contains("empty"), "{list}");
+    assert_eq!(
+        actions(&d.0).last().map(String::as_str),
+        Some("participant_removed")
+    );
+}
+
 #[test]
 fn users_are_added_listed_given_roles_disabled_and_removed() {
     let d = dir("user");

@@ -1026,6 +1026,9 @@ async function loadAdmin(clearMessage = true) {
     const org = organisations.find((o) => o.id === adminOrg);
     $("adm-org-status").textContent = org?.status || "";
     $("adm-status").value = org?.status || "contributor";
+    // #324: only an organisation without users; the server also keeps the SSO ones.
+    $("adm-org-remove").disabled = !org || org.users.length > 0;
+    $("adm-org-remove").title = org?.users.length ? "remove its users first" : "";
     const q = `?participant=${encodeURIComponent(adminOrg)}`;
     const [{ users }, { tokens }, { lines }] = await Promise.all([
       api(`/v1/admin/users${q}`).then((r) => r.json()),
@@ -1072,6 +1075,15 @@ $("adm-org").addEventListener("change", () => { adminOrg = $("adm-org").value; l
 $("adm-days").addEventListener("change", () => loadAdmin(false));
 $("adm-status-set").addEventListener("click", () => adminAct(() =>
   sendJson(`/v1/admin/organisations/${encodeURIComponent(adminOrg)}`, "PATCH", { status: $("adm-status").value })));
+$("adm-org-remove").addEventListener("click", () => {
+  const name = $("adm-org").selectedOptions[0]?.textContent || adminOrg;
+  if (!confirm(`Remove the organisation ${name}? Its sightings keep its id. This cannot be undone.`)) return;
+  adminAct(async () => {
+    await api(`/v1/admin/organisations/${encodeURIComponent(adminOrg)}`, { method: "DELETE" });
+    adminOrg = "";
+    return el("p", { class: "note" }, `removed ${name}`);
+  });
+});
 $("adm-user-add").addEventListener("submit", (ev) => {
   ev.preventDefault();
   adminAct(async () => {

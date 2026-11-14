@@ -2072,6 +2072,56 @@ async fn superadmins_and_the_guards() {
     );
 }
 
+/// #324: a superadmin removes an organisation without users; one with
+/// users is refused, and so is an unknown one.
+#[tokio::test]
+async fn superadmins_remove_an_organisation_without_users() {
+    let h = harness("admin-remove-org");
+    admins(&h);
+    let app = &h.app;
+    let (_, new) = call(
+        app,
+        "POST",
+        "/v1/admin/organisations",
+        Some("s"),
+        Some(json!({"name": "landing", "status": "observer"})),
+    )
+    .await;
+    let landing = new["id"].as_str().unwrap().to_string();
+    let uri = format!("/v1/admin/organisations/{landing}");
+
+    let (st, _) = call(app, "DELETE", &uri, Some("a"), None).await;
+    assert_eq!(st, StatusCode::FORBIDDEN, "an admin");
+    let mdr = parts::organisation_id(&h.db, "mdr").unwrap();
+    let (st, body) = call(
+        app,
+        "DELETE",
+        &format!("/v1/admin/organisations/{mdr}"),
+        Some("s"),
+        None,
+    )
+    .await;
+    assert_eq!(st, StatusCode::CONFLICT, "mdr has users: {body}");
+
+    let (st, body) = call(app, "DELETE", &uri, Some("s"), None).await;
+    assert_eq!(st, StatusCode::OK, "{body}");
+    assert_eq!(body, json!({"removed": landing, "name": "landing"}));
+    let (_, orgs) = call(app, "GET", "/v1/admin/organisations", Some("s"), None).await;
+    assert!(!names(&orgs, "organisations").contains(&"landing".to_string()));
+    let line = h
+        .audit
+        .read_from(0)
+        .unwrap()
+        .into_iter()
+        .find(|l| l["action"] == "participant_removed")
+        .expect("no participant_removed line");
+    assert_eq!(line["participant"], json!(landing), "{line}");
+    assert_eq!(line["by"], json!("root@ops"), "{line}");
+
+    let (st, _) = call(app, "DELETE", &uri, Some("s"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND, "removed twice");
+}
+
 /// #242: a plain admin in a core organisation manages that organisation,
 /// but cannot issue or revoke a superadmin's token there.
 #[tokio::test]
@@ -3385,6 +3435,12 @@ async fn admin_organisation_writes_and_reads_follow_the_matrix() {
             let (got, _) = call(app, "PATCH", &uri, token, Some(json!({ "status": status }))).await;
             check(format!("{who:?} set {org} {status}"), got, superadmin_only);
         }
+        // Removing the organisation added above (#324): a superadmin only.
+        let id = parts::organisation_id(&h.db, &format!("org-{i}"))
+            .unwrap_or_else(|_| "identity--none".into());
+        let uri = format!("/v1/admin/organisations/{id}");
+        let (got, _) = call(app, "DELETE", &uri, token, None).await;
+        check(format!("{who:?} remove org-{i}"), got, superadmin_only);
         let (got, _) = call(app, "GET", "/v1/admin/files", token, None).await;
         check(format!("{who:?} files"), got, superadmin_only);
 

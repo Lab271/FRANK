@@ -23,7 +23,7 @@ The management API lets organisations and their users be administered over HTTP 
 
 ### Key Capabilities
 
-- **Organisations**: list, create and set the status of an organisation.
+- **Organisations**: list, create, set the status of and remove an organisation.
 - **Users**: list, add, change role, disable, enable and remove.
 - **Tokens**: list, issue and revoke bearer tokens.
 - **Audit**: read the audit lines of a time window.
@@ -73,9 +73,9 @@ Every `/v1/admin/` route MUST require a caller that holds a role. A caller witho
 
 ### Requirement 2: Organisations [MUST]
 
-A superadmin MUST be able to create an organisation and set its status (`observer`, `contributor`, `partner`, `core`). An admin MUST see its own organisation only.
+A superadmin MUST be able to create an organisation and set its status (`observer`, `contributor`, `partner`, `core`). An admin MUST see its own organisation only. A superadmin MUST be able to remove an organisation without users (#324), from the API, the web UI and the CLI (`frank participant remove`); an organisation with users, disabled ones too, or one that `FRANK_SSO_ORGANISATION` or `FRANK_SSO_ADMIN_ORGANISATION` names MUST be refused with 409. The removal MUST be audited as `participant_removed`; its sightings keep its id as their reporter.
 
-**Implementation:** `crates/frank/src/admin.rs::organisations`, `crates/frank/src/admin.rs::add_organisation`, `crates/frank/src/admin.rs::set_status`
+**Implementation:** `crates/frank/src/admin.rs::organisations`, `crates/frank/src/admin.rs::add_organisation`, `crates/frank/src/admin.rs::set_status`, `crates/frank/src/admin.rs::remove_organisation`, `crates/frank/src/store/participants.rs::remove_organisation`, `crates/frank/src/cli.rs::participant_remove`
 
 #### Scenario: Only a superadmin creates or re-statuses an organisation
 
@@ -84,6 +84,22 @@ A superadmin MUST be able to create an organisation and set its status (`observe
 - THEN the admin is refused with 403; the superadmin succeeds
 
 **Tests:** `crates/frank/tests/api.rs::superadmins_and_the_guards`
+
+#### Scenario: A superadmin removes an organisation without users
+
+- GIVEN an organisation without users, one with users, and an admin
+- WHEN the superadmin deletes each, and the admin deletes the first
+- THEN the empty one is removed and audited; the one with users answers 409; the admin is refused with 403
+
+**Tests:** `crates/frank/tests/api.rs::superadmins_remove_an_organisation_without_users`, `crates/frank/src/store/participants.rs::only_an_organisation_without_users_and_not_kept_is_removed`
+
+#### Scenario: An organisation an SSO setting names stays
+
+- GIVEN `FRANK_SSO_ORGANISATION` and `FRANK_SSO_ADMIN_ORGANISATION` naming two organisations without users
+- WHEN a superadmin deletes them, over the API or with `frank participant remove`
+- THEN both are refused with 409
+
+**Tests:** `crates/frank/tests/sso.rs::an_organisation_an_sso_setting_names_is_not_removed`, `crates/frank/tests/cli.rs::participant_remove_needs_no_users_and_no_sso_setting`
 
 ---
 

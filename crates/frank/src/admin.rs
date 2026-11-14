@@ -9,6 +9,7 @@
 //! | `GET    /v1/admin/organisations`      | admin (its own), superadmin (all) |
 //! | `POST   /v1/admin/organisations`      | superadmin |
 //! | `PATCH  /v1/admin/organisations/{id}` | superadmin |
+//! | `DELETE /v1/admin/organisations/{id}` | superadmin (an organisation without users) |
 //! | `GET    /v1/admin/users`              | admin      |
 //! | `POST   /v1/admin/users`              | admin      |
 //! | `PATCH  /v1/admin/users/{name}`       | admin (superadmin to grant or take superadmin) |
@@ -60,7 +61,10 @@ pub fn routes() -> Router<Shared> {
             "/v1/admin/organisations",
             get(organisations).post(add_organisation),
         )
-        .route("/v1/admin/organisations/{id}", patch(set_status))
+        .route(
+            "/v1/admin/organisations/{id}",
+            patch(set_status).delete(remove_organisation),
+        )
         .route("/v1/admin/users", get(users).post(add_user))
         .route(
             "/v1/admin/users/{name}",
@@ -247,6 +251,48 @@ async fn set_status(
             json!({ "participant": id, "status": status.as_str() }),
         )?;
         Ok(Json(json!({ "id": id, "status": status })))
+    })
+    .await
+}
+
+/// The organisations the SSO settings name; they can't be removed.
+fn sso_organisations(app: &App) -> Vec<String> {
+    app.sso
+        .iter()
+        .flat_map(|s| {
+            std::iter::once(s.config.organisation.clone())
+                .chain(s.config.admin.iter().map(|a| a.organisation.clone()))
+        })
+        .collect()
+}
+
+/// Removes an organisation without users (#324). Its sightings keep its
+/// id as their reporter.
+async fn remove_organisation(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let c = superadmin(&app, &headers)?;
+    blocking(move || {
+        let _w = WRITE.lock().map_err(internal)?;
+        let path = app.participants.path();
+        if !parts::organisations(path)
+            .map_err(internal)?
+            .iter()
+            .any(|o| o.id == id)
+        {
+            return Err(not_found("participant"));
+        }
+        let (id, name) =
+            parts::remove_organisation(path, &id, &sso_organisations(&app)).map_err(conflict)?;
+        record(
+            &app,
+            &c,
+            "participant_removed",
+            json!({ "participant": id, "name": name }),
+        )?;
+        Ok(Json(json!({ "removed": id, "name": name })))
     })
     .await
 }
