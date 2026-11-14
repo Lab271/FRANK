@@ -54,7 +54,7 @@ A superadmin SHALL list, create and set the status of organisations. ...
 - `(planned)` on a line marks work not done yet: it counts as neither implemented nor tested, so the gap stays visible.
 - A spec whose `**Status:**` starts with `Outdated` is not counted either: it awaits a rewrite.
 
-`make assurance` shows per spec how many requirements link to existing code and how many scenarios to a test; `make assurance V=1` lists every requirement and each dead link. `make check-assurance` fails on a dead link or two spec folders with the same number, and CI runs it: a link to a renamed function or test is a false claim of coverage. `make coverage` (cargo llvm-cov) and `make quality` (lizard: CCN, function and file length) measure on their own into `target/assurance/`; both dashboards show what they left, and `COVERAGE_MIN` or `CCN_MAX` turn them into gates ([ADR-023](architecture/decisions/023-coverage-and-code-quality-next-to-spec-assurance.md)).
+`make assurance` shows per spec how many requirements link to existing code and how many scenarios to a test; `make assurance V=1` lists every requirement and each dead link. `make check-assurance` fails on a dead link or two spec folders with the same number, and CI runs it: a link to a renamed function or test is a false claim of coverage. `make coverage` (cargo llvm-cov) and `make quality` (lizard: CCN, function and file length) measure on their own into `target/assurance/`; both dashboards show what they left, and `COVERAGE_MIN` or `CCN_MAX` turn them into gates, `CCN_MAX` against the baseline `quality-baseline.csv` here ([ADR-023](architecture/decisions/023-coverage-and-code-quality-next-to-spec-assurance.md)).
 
 ## Decisions
 

@@ -283,13 +283,26 @@ def report_coverage(path, floor=None):
     return covered / count if count else 0.0
 
 
-def report_quality(path, ccn_max=None):
-    """The quality box. Returns the functions over --ccn-max ([] without it), None when not measured."""
+def ccn_problems(funcs, ccn_max, baseline=None):
+    """What --ccn-max (and the baseline, when given) does not allow, one line each."""
+    if baseline is None:
+        over = sorted((f for f in funcs if f["ccn"] > ccn_max), key=lambda f: -f["ccn"])
+        return [paint("OVER CCN", RED, BOLD) + f" {f['ccn']} {short(f)}" for f in over]
+    new, grew, stale = quality_metrics.ratchet(funcs, baseline, ccn_max)
+    return ([paint("OVER CCN", RED, BOLD) + f" {f['ccn']} {short(f)} (not in the baseline)" for f in new]
+            + [paint("GREW CCN", RED, BOLD) + f" {f['ccn']} {short(f)} (baseline {b})" for f, b in grew]
+            + [paint("STALE", RED, BOLD) + f" {file.removeprefix('crates/')}::{name} (baseline {b}, now at or under "
+               f"{ccn_max} or gone): take it off the baseline" for file, name, b in stale])
+
+
+def report_quality(path, ccn_max=None, baseline_path=None):
+    """The quality box. Returns what --ccn-max does not allow ([] without it), None when not measured."""
     print()
     if not Path(path).is_file():
         print(boxed([paint("not measured (make quality)", DIM)], "FRANK code quality"))
         return None
     funcs = quality_metrics.read(path)
+    baseline = quality_metrics.read_baseline(baseline_path) if baseline_path else None
     limit = CCN_SHOWN if ccn_max is None else ccn_max
     q = quality_metrics.summary(funcs, quality_metrics.file_lengths(funcs, ROOT), limit, LENGTH_SHOWN)
 
@@ -300,7 +313,8 @@ def report_quality(path, ccn_max=None):
     lines = [
         f"functions    {q['functions']} in {q['files']} files",
         f"CCN          avg {q['ccn_avg']:.1f}" + (f", max {top['ccn']} {short(top)}" if top else ""),
-        f"{f'CCN > {limit}':<13}{count(q['over_ccn'], 'functions')}",
+        f"{f'CCN > {limit}':<13}{count(q['over_ccn'], 'functions')}"
+        + (f" (baseline {len(baseline)})" if baseline is not None else ""),
         f"{f'length > {LENGTH_SHOWN}':<13}{count(q['over_length'], 'functions')}",
     ]
     if q["longest_files"]:
@@ -316,7 +330,7 @@ def report_quality(path, ccn_max=None):
     print(paint("longest files", BOLD))
     for name, n in q["longest_files"]:
         print(f"  {n:>4}  {name.removeprefix('crates/')}")
-    return q["over_ccn"] if ccn_max is not None else []
+    return ccn_problems(funcs, ccn_max, baseline) if ccn_max is not None else []
 
 
 def main(argv=None):
@@ -330,12 +344,14 @@ def main(argv=None):
                    help="fail if lines covered < MIN (0.0-1.0) or coverage was not measured")
     p.add_argument("--ccn-max", type=int,
                    help="fail if a function's CCN > MAX or quality was not measured")
+    p.add_argument("--ccn-baseline", type=Path,
+                   help="with --ccn-max: the functions allowed over it, at most at their CCN (make quality-baseline)")
     args = p.parse_args(argv)
     dupes = duplicate_numbers()
     total, dead = report(*collect(), args.verbose, args.min, dupes)
     try:
         lines = report_coverage(args.coverage, args.coverage_min)
-        over = report_quality(args.quality, args.ccn_max)
+        over = report_quality(args.quality, args.ccn_max, args.ccn_baseline)
     except (ValueError, KeyError, OSError) as e:
         print(paint("UNREADABLE", RED, BOLD) + f" {e}")
         return 1
@@ -354,10 +370,11 @@ def main(argv=None):
             failures.append("coverage")
     if args.ccn_max is not None:
         ok = over is not None and not over
-        got = "not measured" if over is None else f"{len(over)} functions over"
-        print(f"{'PASS' if ok else 'FAIL'}: CCN {got} (max {args.ccn_max})")
-        for f in over or []:
-            print(paint("OVER CCN", RED, BOLD) + f" {f['ccn']} {short(f)}")
+        got = "not measured" if over is None else f"{len(over)} problems"
+        against = f"max {args.ccn_max}" + (f", baseline {args.ccn_baseline}" if args.ccn_baseline else "")
+        print(f"{'PASS' if ok else 'FAIL'}: CCN {got} ({against})")
+        for line in over or []:
+            print(line)
         if not ok:
             failures.append("quality")
     return 1 if failures else 0

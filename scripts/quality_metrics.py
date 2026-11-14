@@ -55,3 +55,68 @@ def summary(funcs, files, ccn_max, length_max, top=5):
         "by_length": worst("length"),
         "longest_files": sorted(files.items(), key=lambda kv: (-kv[1], kv[0]))[:top],
     }
+
+
+# The CCN baseline (#301): the functions over the limit when the gate was switched
+# on, each with its CCN then. `file::name` is not unique (a `new` or `fmt` per impl
+# block), so a key stands for every function of that name in the file, at the
+# highest CCN among them.
+BASELINE_HEADER = ["file", "function", "ccn"]
+
+
+def worst_per_name(funcs):
+    """{(file, name): the function of that name in the file with the highest CCN}."""
+    out = {}
+    for f in funcs:
+        key = (f["file"], f["name"])
+        if key not in out or f["ccn"] > out[key]["ccn"]:
+            out[key] = f
+    return out
+
+
+def read_baseline(path):
+    """{(file, name): ccn} from the baseline CSV."""
+    with open(path, newline="") as f:
+        rows = list(csv.DictReader(f))
+    if rows and list(rows[0]) != BASELINE_HEADER:
+        raise ValueError(f"{path}: expected the columns {','.join(BASELINE_HEADER)}; run make quality-baseline")
+    return {(r["file"], r["function"]): int(r["ccn"]) for r in rows}
+
+
+def write_baseline(funcs, ccn_max, out):
+    """The baseline for these functions: every name over ccn_max, worst first."""
+    over = [f for f in worst_per_name(funcs).values() if f["ccn"] > ccn_max]
+    w = csv.writer(out, lineterminator="\n")
+    w.writerow(BASELINE_HEADER)
+    for f in sorted(over, key=lambda f: (-f["ccn"], f["file"], f["name"])):
+        w.writerow([f["file"], f["name"], f["ccn"]])
+
+
+def ratchet(funcs, baseline, ccn_max):
+    """What the baseline does not allow: (new, grew, stale), each a list.
+
+    new    functions over ccn_max that the baseline does not list
+    grew   listed functions above their recorded CCN, as (function, recorded)
+    stale  listed (file, name, recorded) now at or under ccn_max, or gone:
+           take them off, so the list only shrinks
+    """
+    now = worst_per_name(funcs)
+    new = sorted((f for k, f in now.items() if f["ccn"] > ccn_max and k not in baseline), key=lambda f: -f["ccn"])
+    grew = [(now[k], b) for k, b in sorted(baseline.items()) if k in now and now[k]["ccn"] > b]
+    stale = [(*k, b) for k, b in sorted(baseline.items()) if k not in now or now[k]["ccn"] <= ccn_max]
+    return new, grew, stale
+
+
+def main(argv=None):
+    import argparse
+    import sys
+    p = argparse.ArgumentParser(description="FRANK code quality: write the CCN baseline (make quality-baseline)")
+    p.add_argument("csv", help="lizard CSV (make quality)")
+    p.add_argument("--ccn-max", type=int, required=True)
+    args = p.parse_args(argv)
+    write_baseline(read(args.csv), args.ccn_max, sys.stdout)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

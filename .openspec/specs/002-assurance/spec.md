@@ -240,7 +240,9 @@ The dashboard MUST show a code-quality box: the number of functions and files, a
 
 With `CCN_MAX` set, `make check-assurance` SHOULD fail when a function's CCN is above it, naming each such function, or when quality was not measured. A measurement file that cannot be read MUST fail the check.
 
-**Implementation:** `Makefile::CCN_MAX`, `scripts/assurance.py::main`
+With a baseline (`CCN_BASELINE`, `.openspec/quality-baseline.csv`: file, function, CCN), a listed function MAY stay over `CCN_MAX` up to its recorded CCN; a function over it and not listed, one above its recorded CCN, and a listed one now at or under `CCN_MAX` or gone MUST fail, so the list only shrinks. A name that repeats in a file (a `new` per `impl` block) MUST count at its highest CCN. `make quality-baseline` SHALL rewrite the baseline from the current code. CI runs the gate with `CCN_MAX=15` (#301).
+
+**Implementation:** `Makefile::CCN_MAX`, `Makefile::quality-baseline:`, `scripts/assurance.py::main`, `scripts/assurance.py::ccn_problems`, `scripts/quality_metrics.py::ratchet`, `scripts/quality_metrics.py::write_baseline`, `scripts/quality_metrics.py::read_baseline`
 
 #### Scenario: Over the maximum
 
@@ -249,6 +251,22 @@ With `CCN_MAX` set, `make check-assurance` SHOULD fail when a function's CCN is 
 - THEN the check passes, or fails with `OVER CCN 20` and the function's name
 
 **Tests:** `scripts/test_assurance.py::test_a_function_over_ccn_max_fails_and_is_named`
+
+#### Scenario: The baseline only shrinks
+
+- GIVEN a baseline that lists `big` at CCN 20
+- WHEN `big` is at 20, at 17, or at 21; a new function is at 16; or a listed function is fixed or removed
+- THEN the check passes, passes, fails with `GREW CCN`; fails with `OVER CCN … (not in the baseline)`; or fails with `STALE`
+
+**Tests:** `scripts/test_quality_metrics.py::test_the_same_code_passes`, `scripts/test_quality_metrics.py::test_new_grew_and_stale`, `scripts/test_quality_metrics.py::test_better_but_still_over_passes`, `scripts/test_assurance.py::test_the_ccn_baseline_allows_what_it_lists`
+
+#### Scenario: A name that repeats
+
+- GIVEN two functions `new` in one file, at CCN 16 and 3
+- WHEN the baseline is written and checked
+- THEN it lists `new` once, at 16, and the same code passes
+
+**Tests:** `scripts/test_quality_metrics.py::test_a_repeated_name_counts_at_its_worst`, `scripts/test_quality_metrics.py::test_written_and_read_back`
 
 #### Scenario: Unreadable
 

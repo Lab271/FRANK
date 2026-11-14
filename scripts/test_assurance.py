@@ -228,6 +228,20 @@ class Gates(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("OVER CCN 20 src/a.rs::big", out)
 
+    def test_the_ccn_baseline_allows_what_it_lists(self):
+        baseline = self.dir / "baseline.csv"
+        baseline.write_text("file,function,ccn\nsrc/a.rs,big,20\n")
+        self.assertEqual(self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))[0], 0)
+        baseline.write_text("file,function,ccn\nsrc/a.rs,big,19\nsrc/a.rs,gone,30\n")
+        code, out = self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))
+        self.assertEqual(code, 1)
+        self.assertIn("GREW CCN 20 src/a.rs::big (baseline 19)", out)
+        self.assertIn("STALE src/a.rs::gone", out)
+        baseline.write_text("file,function,ccn\n")
+        code, out = self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))
+        self.assertEqual(code, 1)
+        self.assertIn("OVER CCN 20 src/a.rs::big (not in the baseline)", out)
+
     def test_tested_scenarios_below_the_floor_fail(self):
         self.assertEqual(self.run_main("--min", "0.0")[0], 0)
         code, out = self.run_main("--min", "1.01")

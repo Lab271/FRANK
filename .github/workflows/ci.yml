@@ -43,8 +43,8 @@ jobs:
         run: |
           pipx install uv==0.13.5
           make quality
-      - name: Coverage gate (make check-assurance COVERAGE_MIN=0.90)
-        run: make check-assurance COVERAGE_MIN=0.90
+      - name: Coverage and CCN gates (make check-assurance COVERAGE_MIN=0.90 CCN_MAX=15)
+        run: make check-assurance COVERAGE_MIN=0.90 CCN_MAX=15
       - name: Upload coverage and quality
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
