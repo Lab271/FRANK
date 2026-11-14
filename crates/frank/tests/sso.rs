@@ -162,6 +162,8 @@ impl Http for Idp {
 
 struct Harness {
     app: axum::Router,
+    /// The server's audit table (the one writer, so read through it).
+    audit: Audit,
     idp: Arc<Idp>,
     db: std::path::PathBuf,
     dir: std::path::PathBuf,
@@ -209,6 +211,7 @@ fn harness_with(name: &str, off: bool, organisation: &str, admin: Option<AdminGr
         )
     });
     let sightings = Sightings::open(&dir, None, now).unwrap();
+    let audit = Audit::open(&dir).unwrap();
     let app = router(Arc::new(App {
         data: dir.clone(),
         iocs: Iocs::open(&dir).unwrap(),
@@ -217,12 +220,18 @@ fn harness_with(name: &str, off: bool, organisation: &str, admin: Option<AdminGr
         geo: frank::geo::Geo::open(&dir, now()).unwrap(),
         lists: frank::lists::Lists::open(&dir).unwrap(),
         participants: Participants::open(&dir).unwrap(),
-        audit: Audit::open(&dir).unwrap(),
+        audit: audit.clone(),
         sso,
         submit_lock: std::sync::Mutex::new(()),
         now,
     }));
-    Harness { app, idp, db, dir }
+    Harness {
+        app,
+        audit,
+        idp,
+        db,
+        dir,
+    }
 }
 
 struct Reply {
@@ -326,8 +335,7 @@ async fn whoami(h: &Harness, session: Option<&str>, token: Option<&str>) -> Repl
 }
 
 fn audit_actions(h: &Harness) -> Vec<String> {
-    Audit::open(&h.dir)
-        .unwrap()
+    h.audit
         .read_from(0)
         .unwrap()
         .iter()
@@ -533,8 +541,8 @@ async fn the_callback_refuses_a_foreign_state_and_a_wrong_verifier() {
     *h.idp.challenge.lock().unwrap() = "not-the-challenge".into();
     let r = callback(&h, &format!("code=c1&state={state}"), &cookie).await;
     assert_eq!(r.location, "/?sso=refused", "PKCE");
-    let reasons: Vec<Value> = Audit::open(&h.dir)
-        .unwrap()
+    let reasons: Vec<Value> = h
+        .audit
         .read_from(0)
         .unwrap()
         .into_iter()
@@ -609,8 +617,7 @@ async fn writes_with_a_session_cookie_need_frank_s_origin() {
 }
 
 fn refusals(h: &Harness) -> Vec<String> {
-    Audit::open(&h.dir)
-        .unwrap()
+    h.audit
         .read_from(0)
         .unwrap()
         .into_iter()

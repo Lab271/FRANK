@@ -327,9 +327,9 @@ Submissions MUST be stored one batch at a time: checking the registrations, stor
 
 ### Requirement 13: Submissions are audited [MUST]
 
-Each `POST /v1/sightings` that passes authentication and parsing MUST write one audit line: `submit` with the participant and the receipts, or `submit_refused` with the conflicting ids, by `user@organisation`. The audit log, not the sightings, records which user sent what. A request refused before that (no or an unknown token, a malformed `Authorization` header, a body that does not parse or is not a valid batch) MUST NOT be audited: it names no user, or changes nothing. Lines MUST be appended per UTC day and MUST be dropped by whole days with the sightings' retention.
+Each `POST /v1/sightings` that passes authentication and parsing MUST write one audit line: `submit` with the participant and the receipts, or `submit_refused` with the conflicting ids, by `user@organisation`. The audit log, not the sightings, records which user sent what. A request refused before that (no or an unknown token, a malformed `Authorization` header, a body that does not parse or is not a valid batch) MUST NOT be audited: it names no user, or changes nothing. Lines MUST go to the audit table and MUST be dropped by whole days with the audit's own retention (spec 020, Requirement 9).
 
-**Implementation:** `crates/frank/src/api.rs::submit`, `crates/frank/src/audit.rs::record`, `crates/frank/src/audit.rs::retain_from`
+**Implementation:** `crates/frank/src/api.rs::submit`, `crates/frank/src/audit.rs::record`, `crates/frank/src/audit.rs::compact`
 
 #### Scenario: One line per POST, naming the user
 
@@ -339,13 +339,13 @@ Each `POST /v1/sightings` that passes authentication and parsing MUST write one 
 
 **Tests:** `crates/frank/tests/api.rs::a_resend_is_recognised`
 
-#### Scenario: Lines append per day and expire
+#### Scenario: Lines expire by whole days
 
-- GIVEN audit lines on several days
-- WHEN retention keeps from a later day
-- THEN the earlier days' lines are gone
+- GIVEN audit lines on two days, with a retention of 2 days
+- WHEN the table is compacted a day after the later one
+- THEN the earlier day's line is gone
 
-**Tests:** `crates/frank/src/audit.rs::lines_append_per_day_and_expire`
+**Tests:** `crates/frank/src/audit.rs::retention_drops_whole_days_at_compaction`
 
 ---
 

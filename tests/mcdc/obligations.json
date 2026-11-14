@@ -70,10 +70,10 @@
     "wildcard_risk": false
   },
   {
-    "id": "lib_unhex_72fb6839",
+    "id": "lib_unhex_86af38cf",
     "file": "crates/frank-core/src/lib.rs",
     "line": 52,
-    "decision": "s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit())",
+    "decision": "!s.len().is_multiple_of(2) || !s.bytes().all(|b| b.is_ascii_hexdigit())",
     "conditions": 2,
     "vectors_required": 3,
     "compiler_void": false,
@@ -1272,7 +1272,7 @@
   {
     "id": "access_log_68372860",
     "file": "crates/frank/src/access.rs",
-    "line": 43,
+    "line": 60,
     "decision": "match req.uri().path() {\n        \"/v1/sso/callback\" => req.uri().path().to_string(),\n        _ => req.uri().to_string(),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1282,7 +1282,7 @@
   {
     "id": "access_log_2a9d4276",
     "file": "crates/frank/src/access.rs",
-    "line": 67,
+    "line": 87,
     "decision": "let Ok(v) = HeaderValue::from_str(&id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -1292,7 +1292,7 @@
   {
     "id": "access_subscriber_37b256dd",
     "file": "crates/frank/src/access.rs",
-    "line": 105,
+    "line": 125,
     "decision": "json",
     "conditions": 1,
     "vectors_required": 2,
@@ -1502,7 +1502,7 @@
   {
     "id": "admin_resolve_c768c969",
     "file": "crates/frank/src/admin.rs",
-    "line": 661,
+    "line": 657,
     "decision": "match parts.next() {\n        Some(\"data\") => app.data.clone(),\n        Some(\"participants\") => app\n            .participants\n            .path()\n            .parent()\n            .map(std::path::Path::to_path_buf)\n            .ok_or_else(|| internal(\"participants.db has no directory\"))?,\n        _ => return Err(not_found(\"directory\")),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1512,7 +1512,7 @@
   {
     "id": "admin_resolve_d808f945",
     "file": "crates/frank/src/admin.rs",
-    "line": 674,
+    "line": 670,
     "decision": "p == \"..\" || p == \".\" || p.contains(['\\\\', '\\0'])",
     "conditions": 3,
     "vectors_required": 4,
@@ -1522,7 +1522,7 @@
   {
     "id": "admin_resolve_1f3507a7",
     "file": "crates/frank/src/admin.rs",
-    "line": 680,
+    "line": 676,
     "decision": "!dir.starts_with(&root)",
     "conditions": 1,
     "vectors_required": 2,
@@ -1532,7 +1532,7 @@
   {
     "id": "admin_files_2223cfe1",
     "file": "crates/frank/src/admin.rs",
-    "line": 697,
+    "line": 693,
     "decision": "path.trim_matches('/').is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1542,7 +1542,7 @@
   {
     "id": "admin_files_28667bfa",
     "file": "crates/frank/src/admin.rs",
-    "line": 708,
+    "line": 704,
     "decision": "match e.file_type().map_err(internal)? {\n                    t if t.is_symlink() => \"link\",\n                    t if t.is_dir() => \"dir\",\n                    _ => \"file\",\n                }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1552,7 +1552,7 @@
   {
     "id": "admin_files_4c1fe3e1",
     "file": "crates/frank/src/admin.rs",
-    "line": 709,
+    "line": 705,
     "decision": "t.is_symlink()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1562,7 +1562,7 @@
   {
     "id": "admin_files_fcaae54a",
     "file": "crates/frank/src/admin.rs",
-    "line": 710,
+    "line": 706,
     "decision": "t.is_dir()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1572,7 +1572,7 @@
   {
     "id": "admin_fixture_cd7a7625",
     "file": "crates/frank/src/admin.rs",
-    "line": 794,
+    "line": 790,
     "decision": "let Some(t) = token",
     "conditions": 1,
     "vectors_required": 2,
@@ -2170,19 +2170,49 @@
     "wildcard_risk": false
   },
   {
-    "id": "audit_open_in_71a853e9",
+    "id": "audit_condition_536b0e6d",
     "file": "crates/frank/src/audit.rs",
-    "line": 49,
-    "decision": "let Some(store) = store",
+    "line": 110,
+    "decision": "!values.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
     "wildcard_risk": false
   },
   {
+    "id": "audit_open_with_2385ccde",
+    "file": "crates/frank/src/audit.rs",
+    "line": 157,
+    "decision": "match location {\n            None => {\n                set_aside_local(data)?;\n                Table::open(data.join(NAME), options(retention_days, clock))\n            }\n            Some(location) => {\n                let local = data.join(LOCAL_WITH_STORE).join(NAME);\n                std::fs::create_dir_all(&local).map_err(|e| e.to_string())?;\n                let store = crate::objects::open(&sub_location(location, NAME))\n                    .map_err(|e| format!(\"FRANK_STORE: {e}\"))?;\n                Table::open_in(local, store, options(retention_days, clock))\n            }\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_open_with_b226dc98",
+    "file": "crates/frank/src/audit.rs",
+    "line": 170,
+    "decision": "match opened {\n            Ok(t) => t,\n            Err(IngestError::Wal(WalError::Locked)) => {\n                return Ok(Audit {\n                    backend: Backend::Spool(data.join(SPOOL)),\n                    data: data.to_path_buf(),\n                })\n            }\n            Err(e) => return Err(format!(\"audit: {e}\")),\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_open_with_6af6a34c",
+    "file": "crates/frank/src/audit.rs",
+    "line": 184,
+    "decision": "match location {\n            None => audit.import_local()?,\n            Some(location) => {\n                let root =\n                    crate::objects::open(location).map_err(|e| format!(\"FRANK_STORE: {e}\"))?;\n                audit.import_store(&root)?;\n            }\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
     "id": "audit_record_20d28c65",
     "file": "crates/frank/src/audit.rs",
-    "line": 71,
+    "line": 205,
     "decision": "let (Some(line), Value::Object(fields)) = (line.as_object_mut(), fields)",
     "conditions": 1,
     "vectors_required": 2,
@@ -2190,60 +2220,270 @@
     "wildcard_risk": false
   },
   {
-    "id": "audit_record_126b1971",
+    "id": "audit_record_0d16eb73",
     "file": "crates/frank/src/audit.rs",
-    "line": 76,
-    "decision": "match &self.backend {\n            Backend::Dir(dir) => {\n                let path = dir.join(format!(\"{}.jsonl\", at.date()));\n                let mut f = std::fs::OpenOptions::new()\n                    .create(true)\n                    .append(true)\n                    .open(&path)\n                    .map_err(|e| format!(\"{}: {e}\", path.display()))?;\n                f.write_all(&bytes)\n                    .and_then(|()| f.sync_data())\n                    .map_err(|e| format!(\"{}: {e}\", path.display()))\n            }\n            Backend::Store(store, n) => {\n                let key = format!(\n                    \"{DIR}/{}/{now_ns:019}-{}-{}.jsonl\",\n                    at.date(),\n                    std::process::id(),\n                    n.fetch_add(1, Ordering::Relaxed)\n                );\n                store.put(&key, &bytes).map_err(|e| format!(\"{key}: {e}\"))\n            }\n        }",
+    "line": 208,
+    "decision": "match &self.backend {\n            Backend::Table(table) => append(table, vec![row(&line)?]),\n            Backend::Spool(path) => spool(path, &line),\n        }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
     "wildcard_risk": false
   },
   {
-    "id": "audit_read_from_4bd68bc3",
+    "id": "audit_drain_spool_4e07a05e",
     "file": "crates/frank/src/audit.rs",
-    "line": 104,
-    "decision": "match &self.backend {\n            Backend::Dir(dir) => {\n                let mut days: Vec<(i64, PathBuf)> = std::fs::read_dir(dir)\n                    .map_err(|e| e.to_string())?\n                    .flatten()\n                    .filter_map(|e| Some((day_of(e.file_name().to_str()?)?, e.path())))\n                    .filter(|(d, _)| *d >= from_day)\n                    .collect();\n                days.sort();\n                for (_, path) in days {\n                    let text = std::fs::read_to_string(&path)\n                        .map_err(|e| format!(\"{}: {e}\", path.display()))?;\n                    out.extend(text.lines().filter_map(|l| serde_json::from_str(l).ok()));\n                }\n            }\n            Backend::Store(store, _) => {\n                for key in keys(store)? {\n                    if key_day(&key).is_some_and(|d| d >= from_day) {\n                        // Gone since the listing: dropped by retention.\n                        let Some(bytes) = store.get(&key).map_err(|e| format!(\"{key}: {e}\"))?\n                        else {\n                            continue;\n                        };\n                        out.extend(\n                            String::from_utf8_lossy(&bytes)\n                                .lines()\n                                .filter_map(|l| serde_json::from_str(l).ok()),\n                        );\n                    }\n                }\n            }\n        }",
-    "conditions": 0,
-    "vectors_required": 0,
-    "compiler_void": true,
-    "wildcard_risk": false
-  },
-  {
-    "id": "audit_read_from_6247b90e",
-    "file": "crates/frank/src/audit.rs",
-    "line": 121,
-    "decision": "key_day(&key).is_some_and(|d| d >= from_day)",
+    "line": 259,
+    "decision": "!draining.exists()",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
     "wildcard_risk": false
   },
   {
-    "id": "audit_retain_from_054ace09",
+    "id": "audit_drain_spool_1466dc93",
     "file": "crates/frank/src/audit.rs",
-    "line": 141,
-    "decision": "match &self.backend {\n            Backend::Dir(dir) => {\n                let entries = std::fs::read_dir(dir).map_err(|e| e.to_string())?;\n                for entry in entries.flatten() {\n                    if entry\n                        .file_name()\n                        .to_str()\n                        .and_then(day_of)\n                        .is_some_and(|d| d < keep_from_day)\n                    {\n                        std::fs::remove_file(entry.path()).map_err(|e| e.to_string())?;\n                    }\n                }\n            }\n            Backend::Store(store, _) => {\n                for key in keys(store)? {\n                    if key_day(&key).is_some_and(|d| d < keep_from_day) {\n                        store.delete(&key).map_err(|e| format!(\"{key}: {e}\"))?;\n                    }\n                }\n            }\n        }",
+    "line": 260,
+    "decision": "match std::fs::rename(self.data.join(SPOOL), &draining) {\n                Ok(()) => {}\n                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),\n                Err(e) => return Err(format!(\"{SPOOL}: {e}\")),\n            }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
     "wildcard_risk": false
   },
   {
-    "id": "audit_retain_from_1ba5ef86",
+    "id": "audit_drain_spool_c89b1440",
     "file": "crates/frank/src/audit.rs",
-    "line": 145,
-    "decision": "entry\n                        .file_name()\n                        .to_str()\n                        .and_then(day_of)\n                        .is_some_and(|d| d < keep_from_day)",
+    "line": 262,
+    "decision": "e.kind() == std::io::ErrorKind::NotFound",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
     "wildcard_risk": false
   },
   {
-    "id": "audit_retain_from_b9ef5b7c",
+    "id": "audit_drain_spool_48fa7593",
     "file": "crates/frank/src/audit.rs",
-    "line": 157,
-    "decision": "key_day(&key).is_some_and(|d| d < keep_from_day)",
+    "line": 272,
+    "decision": "n > 0",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_flush_cf8a3650",
+    "file": "crates/frank/src/audit.rs",
+    "line": 281,
+    "decision": "match &self.backend {\n            Backend::Table(t) => Ok(t.flush().map_err(|e| e.to_string())?.len()),\n            Backend::Spool(_) => Ok(0),\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_compact_d1996c84",
+    "file": "crates/frank/src/audit.rs",
+    "line": 290,
+    "decision": "match &self.backend {\n            Backend::Table(t) => Ok(t.compact().map_err(|e| e.to_string())?.len()),\n            Backend::Spool(_) => Ok(0),\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_close_2e0e5371",
+    "file": "crates/frank/src/audit.rs",
+    "line": 297,
+    "decision": "match &self.backend {\n            Backend::Table(t) => t.close().map_err(|e| e.to_string()),\n            Backend::Spool(_) => Ok(()),\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_import_48fa7593",
+    "file": "crates/frank/src/audit.rs",
+    "line": 313,
+    "decision": "n > 0",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_import_local_9e75df27",
+    "file": "crates/frank/src/audit.rs",
+    "line": 335,
+    "decision": "old.join(IMPORTED).exists()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_import_local_4c3781dc",
+    "file": "crates/frank/src/audit.rs",
+    "line": 339,
+    "decision": "!old.is_dir()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_import_store_20df7039",
+    "file": "crates/frank/src/audit.rs",
+    "line": 371,
+    "decision": "root\n            .get(&marker)\n            .map_err(|e| store_err(&marker, e))?\n            .is_some()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_import_store_48fa7593",
+    "file": "crates/frank/src/audit.rs",
+    "line": 381,
+    "decision": "n > 0",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_move_day_objects_f96d3f81",
+    "file": "crates/frank/src/audit.rs",
+    "line": 401,
+    "decision": "key_day(&key).is_none()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_store_text_849ba8d2",
+    "file": "crates/frank/src/audit.rs",
+    "line": 419,
+    "decision": "let Some(bytes) = root.get(&key).map_err(|e| store_err(&key, e))?",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_set_aside_local_1019358b",
+    "file": "crates/frank/src/audit.rs",
+    "line": 433,
+    "decision": "!jsonl",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_set_aside_local_3ffa82f6",
+    "file": "crates/frank/src/audit.rs",
+    "line": 437,
+    "decision": "old.exists()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_sub_location_eee21ffe",
+    "file": "crates/frank/src/audit.rs",
+    "line": 451,
+    "decision": "match location.split_once('?') {\n        Some((path, query)) => format!(\"{}/{name}?{query}\", path.trim_end_matches('/')),\n        None => format!(\"{}/{name}\", location.trim_end_matches('/')),\n    }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_spool_89463cf5",
+    "file": "crates/frank/src/audit.rs",
+    "line": 476,
+    "decision": "![at(path), at(&path.with_file_name(DRAINING))].contains(&Some(ino))",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_row_00b4aa23",
+    "file": "crates/frank/src/audit.rs",
+    "line": 494,
+    "decision": "let Some(fields) = line.as_object()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_row_fd605bd4",
+    "file": "crates/frank/src/audit.rs",
+    "line": 497,
+    "decision": "match k.as_str() {\n                \"at\" | \"by\" | \"action\" => true,\n                k if PROMOTED.contains(&k) => v.is_string(),\n                _ => false,\n            }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": true
+  },
+  {
+    "id": "audit_row_441de682",
+    "file": "crates/frank/src/audit.rs",
+    "line": 499,
+    "decision": "PROMOTED.contains(&k)",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_row_2003fe68",
+    "file": "crates/frank/src/audit.rs",
+    "line": 502,
+    "decision": "!own_column",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_line_b0565605",
+    "file": "crates/frank/src/audit.rs",
+    "line": 524,
+    "decision": "match cells.get(i) {\n        Some(Cell::Text(t)) => Some(t.clone()),\n        _ => None,\n    }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": true
+  },
+  {
+    "id": "audit_line_2815fd15",
+    "file": "crates/frank/src/audit.rs",
+    "line": 537,
+    "decision": "let Some(v) = text(3 + i)",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_line_f8908d4e",
+    "file": "crates/frank/src/audit.rs",
+    "line": 541,
+    "decision": "let Some(Value::Object(rest)) = text(6).and_then(|f| serde_json::from_str(&f).ok())",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_append_0d81b45f",
+    "file": "crates/frank/src/audit.rs",
+    "line": 559,
+    "decision": "i + 1 == n",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -2282,7 +2522,7 @@
   {
     "id": "cli_role_4039463d",
     "file": "crates/frank/src/cli.rs",
-    "line": 246,
+    "line": 255,
     "decision": "s.eq_ignore_ascii_case(\"none\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -2292,7 +2532,7 @@
   {
     "id": "cli_run_dcdb3cf8",
     "file": "crates/frank/src/cli.rs",
-    "line": 257,
+    "line": 266,
     "decision": "match cli.command {\n        Command::Serve(args) => crate::serve::start(&ctx, args),\n        Command::Participant(cmd) => participant(&ctx, cmd, io),\n        Command::User(cmd) => user(&ctx, cmd, io),\n        Command::Token(cmd) => token(&ctx, cmd, io),\n        Command::Ingest {\n            files,\n            participant,\n            create,\n        } => ingest_as(&ctx, &files, &participant, create, io),\n        Command::Rebuild => rebuild(&ctx, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2302,7 +2542,7 @@
   {
     "id": "cli_setup_6ffe4d30",
     "file": "crates/frank/src/cli.rs",
-    "line": 279,
+    "line": 288,
     "decision": "old.exists() && !db.exists()",
     "conditions": 2,
     "vectors_required": 3,
@@ -2312,7 +2552,7 @@
   {
     "id": "cli_open_ca7be090",
     "file": "crates/frank/src/cli.rs",
-    "line": 313,
+    "line": 325,
     "decision": "match e {\n            // 0.13 added `digest` and `received`; `Sightings::open` refuses a\n            // table without them.\n            IngestError::SchemaMismatch => format!(\n                \"{}: written by FRANK 0.12 or older (no digest column, pseudonymous \\\n             reporters): move it aside and reload the sightings\",\n                data.join(crate::store::sightings::NAME).display()\n            ),\n            e => format!(\"sightings: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2322,7 +2562,7 @@
   {
     "id": "cli_open_1b1b018d",
     "file": "crates/frank/src/cli.rs",
-    "line": 323,
+    "line": 335,
     "decision": "let Some(location) = location",
     "conditions": 1,
     "vectors_required": 2,
@@ -2332,7 +2572,7 @@
   {
     "id": "cli_participant_76a80e33",
     "file": "crates/frank/src/cli.rs",
-    "line": 339,
+    "line": 351,
     "decision": "match cmd {\n        ParticipantCmd::Add {\n            name,\n            status: st,\n            kind,\n            sector,\n            region,\n            with_token,\n        } => {\n            let id = participant_add(\n                ctx,\n                &name,\n                &st,\n                &kind,\n                sector.as_deref(),\n                region.as_deref(),\n                io,\n            )?;\n            if with_token {\n                first_user_with_token(ctx, &id, &name, io)?;\n            }\n            Ok(())\n        }\n        ParticipantCmd::List => participant_list(ctx, io),\n        ParticipantCmd::SetStatus { name, status: st } => {\n            participant_set_status(ctx, &name, &st, io)\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2342,7 +2582,7 @@
   {
     "id": "cli_participant_2a99c2bd",
     "file": "crates/frank/src/cli.rs",
-    "line": 357,
+    "line": 369,
     "decision": "with_token",
     "conditions": 1,
     "vectors_required": 2,
@@ -2352,7 +2592,7 @@
   {
     "id": "cli_user_06469e69",
     "file": "crates/frank/src/cli.rs",
-    "line": 434,
+    "line": 446,
     "decision": "match cmd {\n        UserCmd::Add {\n            participant,\n            name,\n            machine,\n            role: r,\n        } => user_add(ctx, &participant, &name, machine, r.as_deref(), io),\n        UserCmd::List => user_list(ctx, io),\n        UserCmd::Disable { name } => user_set_disabled(ctx, &name, true, io),\n        UserCmd::Enable { name } => user_set_disabled(ctx, &name, false, io),\n        UserCmd::Remove { name } => user_remove(ctx, &name, io),\n        UserCmd::SetRole { name, role: r } => user_set_role(ctx, &name, &r, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2362,7 +2602,7 @@
   {
     "id": "cli_user_add_a086e9a5",
     "file": "crates/frank/src/cli.rs",
-    "line": 457,
+    "line": 469,
     "decision": "machine",
     "conditions": 1,
     "vectors_required": 2,
@@ -2372,7 +2612,7 @@
   {
     "id": "cli_user_list_1d027061",
     "file": "crates/frank/src/cli.rs",
-    "line": 472,
+    "line": 484,
     "decision": "u.disabled",
     "conditions": 1,
     "vectors_required": 2,
@@ -2382,7 +2622,7 @@
   {
     "id": "cli_user_set_disabled_b92d7d38",
     "file": "crates/frank/src/cli.rs",
-    "line": 483,
+    "line": 495,
     "decision": "disabled",
     "conditions": 1,
     "vectors_required": 2,
@@ -2392,7 +2632,7 @@
   {
     "id": "cli_token_b179090c",
     "file": "crates/frank/src/cli.rs",
-    "line": 513,
+    "line": 525,
     "decision": "match cmd {\n        TokenCmd::New { user } => token_new(ctx, &user, io),\n        TokenCmd::Add { user, hash: h } => token_add(ctx, &user, &h, io),\n        TokenCmd::List => token_list(ctx, io),\n        TokenCmd::Revoke { prefix } => token_revoke(ctx, &prefix, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2402,7 +2642,7 @@
   {
     "id": "cli_token_list_703c733f",
     "file": "crates/frank/src/cli.rs",
-    "line": 540,
+    "line": 552,
     "decision": "t.revoked",
     "conditions": 1,
     "vectors_required": 2,
@@ -2412,7 +2652,7 @@
   {
     "id": "cli_ingest_as_106edf7f",
     "file": "crates/frank/src/cli.rs",
-    "line": 569,
+    "line": 580,
     "decision": "match parts::organisation_id(&ctx.db, participant) {\n        Ok(id) => id,\n        Err(_) if create => {\n            let id = parts::add_organisation(\n                &ctx.db,\n                participant,\n                Tier::Contributor,\n                \"cyber_partner\",\n                None,\n                None,\n            )?;\n            ctx.log(\n                \"participant_added\",\n                json!({ \"participant\": id, \"name\": participant, \"status\": Tier::Contributor.as_str() }),\n            )?;\n            id\n        }\n        Err(e) => return Err(format!(\"{e} (register it, or pass --create)\")),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2422,7 +2662,7 @@
   {
     "id": "cli_ingest_as_29e92c17",
     "file": "crates/frank/src/cli.rs",
-    "line": 571,
+    "line": 582,
     "decision": "create",
     "conditions": 1,
     "vectors_required": 2,
@@ -2432,7 +2672,7 @@
   {
     "id": "cli_ingest_file_8049078c",
     "file": "crates/frank/src/cli.rs",
-    "line": 642,
+    "line": 653,
     "decision": "let Some((id, _, _)) = subs\n        .iter()\n        .find(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))",
     "conditions": 1,
     "vectors_required": 2,
@@ -2442,7 +2682,7 @@
   {
     "id": "cli_ingest_file_adc096cb",
     "file": "crates/frank/src/cli.rs",
-    "line": 657,
+    "line": 668,
     "decision": "known.contains_key(&id) || fresh.iter().any(|f| f.1 == id)",
     "conditions": 2,
     "vectors_required": 3,
@@ -2452,7 +2692,7 @@
   {
     "id": "cli_ingest_file_e96014b5",
     "file": "crates/frank/src/cli.rs",
-    "line": 672,
+    "line": 683,
     "decision": "!fresh.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3150,13 +3390,13 @@
     "wildcard_risk": false
   },
   {
-    "id": "mcp_mcp_e9db5f69",
+    "id": "mcp_mcp_e827a0ed",
     "file": "crates/frank/src/mcp.rs",
-    "line": 41,
-    "decision": "match require(&app, &headers, Tier::Public) {\n        Ok(c) => c,\n        Err(e) => return e.into_response(),\n    }",
-    "conditions": 0,
-    "vectors_required": 0,
-    "compiler_void": true,
+    "line": 42,
+    "decision": "let Err(e) = require(&app, &headers, Tier::Public)",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
     "wildcard_risk": false
   },
   {
@@ -3180,39 +3420,19 @@
     "wildcard_risk": false
   },
   {
-    "id": "mcp_mcp_32f46c20",
+    "id": "mcp_mcp_a30abbd6",
     "file": "crates/frank/src/mcp.rs",
     "line": 67,
-    "decision": "match method {\n        \"initialize\" => Ok(initialize(&params)),\n        \"ping\" => Ok(json!({})),\n        \"tools/list\" => Ok(json!({ \"tools\": tools() })),\n        \"tools/call\" => {\n            let name = params[\"name\"].as_str().unwrap_or_default().to_string();\n            let args = params.get(\"arguments\").cloned().unwrap_or(json!({}));\n            let r = call(app.clone(), headers, &name, args).await;\n            let ok = matches!(r, Ok(Ok(_)));\n            if r.is_ok() {\n                if let Err(e) = app.audit.record(\n                    (app.now)(),\n                    &caller.label(),\n                    \"mcp_call\",\n                    json!({ \"tool\": name, \"ok\": ok }),\n                ) {\n                    tracing::error!(\"audit mcp_call: {e}\");\n                }\n            }\n            r.map(tool_result)\n        }\n        other => Err((METHOD_NOT_FOUND, format!(\"unknown method {other:?}\"))),\n    }",
+    "decision": "match method {\n        \"initialize\" => Ok(initialize(&params)),\n        \"ping\" => Ok(json!({})),\n        \"tools/list\" => Ok(json!({ \"tools\": tools() })),\n        \"tools/call\" => {\n            let name = params[\"name\"].as_str().unwrap_or_default().to_string();\n            let args = params.get(\"arguments\").cloned().unwrap_or(json!({}));\n            // A read: in the access log, not the audit (ADR-024).\n            crate::access::tool(&name);\n            call(app.clone(), headers, &name, args)\n                .await\n                .map(tool_result)\n        }\n        other => Err((METHOD_NOT_FOUND, format!(\"unknown method {other:?}\"))),\n    }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
     "wildcard_risk": false
   },
   {
-    "id": "mcp_mcp_419f7a65",
-    "file": "crates/frank/src/mcp.rs",
-    "line": 76,
-    "decision": "r.is_ok()",
-    "conditions": 1,
-    "vectors_required": 2,
-    "compiler_void": false,
-    "wildcard_risk": false
-  },
-  {
-    "id": "mcp_mcp_d2b5c518",
-    "file": "crates/frank/src/mcp.rs",
-    "line": 77,
-    "decision": "let Err(e) = app.audit.record(\n                    (app.now)(),\n                    &caller.label(),\n                    \"mcp_call\",\n                    json!({ \"tool\": name, \"ok\": ok }),\n                )",
-    "conditions": 1,
-    "vectors_required": 2,
-    "compiler_void": false,
-    "wildcard_risk": false
-  },
-  {
     "id": "mcp_reply_d5cdc831",
     "file": "crates/frank/src/mcp.rs",
-    "line": 94,
+    "line": 86,
     "decision": "match result {\n        Ok(r) => json!({ \"jsonrpc\": \"2.0\", \"id\": id, \"result\": r }),\n        Err((code, message)) => {\n            json!({ \"jsonrpc\": \"2.0\", \"id\": id, \"error\": { \"code\": code, \"message\": message } })\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3222,7 +3442,7 @@
   {
     "id": "mcp_tool_result_be724a46",
     "file": "crates/frank/src/mcp.rs",
-    "line": 123,
+    "line": 115,
     "decision": "match r {\n        Ok(Json(v)) => json!({\n            \"content\": [{ \"type\": \"text\", \"text\": v.to_string() }],\n            \"structuredContent\": v,\n            \"isError\": false,\n        }),\n        Err(ApiError(status, message)) => json!({\n            \"content\": [{ \"type\": \"text\", \"text\": format!(\"{}: {message}\", status.as_u16()) }],\n            \"isError\": true,\n        }),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3232,7 +3452,7 @@
   {
     "id": "mcp_params_f0249db0",
     "file": "crates/frank/src/mcp.rs",
-    "line": 150,
+    "line": 142,
     "decision": "match args {\n        Value::Null => &empty,\n        Value::Object(o) => o,\n        _ => return Err((INVALID_PARAMS, \"arguments: an object\".into())),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3242,7 +3462,7 @@
   {
     "id": "mcp_params_56b7faf1",
     "file": "crates/frank/src/mcp.rs",
-    "line": 156,
+    "line": 148,
     "decision": "match v {\n            Value::String(s) => Ok((k.clone(), s.clone())),\n            Value::Number(_) | Value::Bool(_) => Ok((k.clone(), v.to_string())),\n            _ => Err((INVALID_PARAMS, format!(\"arguments: {k} is not a value\"))),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3252,7 +3472,7 @@
   {
     "id": "mcp_call_71bf155e",
     "file": "crates/frank/src/mcp.rs",
-    "line": 173,
+    "line": 165,
     "decision": "match name {\n        \"whoami\" => api::whoami(s, headers).await,\n        \"explore\" => api::explore(s, headers, Query(params(&a)?)).await,\n        \"list_sightings\" => api::list(s, headers, Query(params(&a)?)).await,\n        \"rule_detail\" | \"get_sighting\" => call_by_id(s, headers, name, &a).await?,\n        _ => call_with_args(s, headers, name, &a).await?,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3262,7 +3482,7 @@
   {
     "id": "mcp_call_by_id_c0932bde",
     "file": "crates/frank/src/mcp.rs",
-    "line": 190,
+    "line": 182,
     "decision": "match name {\n        \"rule_detail\" => api::rule_detail(s, headers, Path(id), Query(args(a)?)).await,\n        _ => api::sighting(s, headers, Path(id)).await,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3272,7 +3492,7 @@
   {
     "id": "mcp_call_with_args_410e94c7",
     "file": "crates/frank/src/mcp.rs",
-    "line": 204,
+    "line": 196,
     "decision": "match name {\n        \"statistics\" => api::statistics(s, headers, Query(args(a)?)).await,\n        \"summary\" => api::summary(s, headers, Query(args(a)?)).await,\n        \"lookup_ioc\" => api::ioc_lookup(s, headers, Query(args(a)?)).await,\n        \"ioc_range\" => api::ioc_range(s, headers, Query(args(a)?)).await,\n        other => return Err((INVALID_PARAMS, format!(\"unknown tool {other:?}\"))),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3640,9 +3860,19 @@
     "wildcard_risk": false
   },
   {
+    "id": "serve_start_until_9d8d89ad",
+    "file": "crates/frank/src/serve.rs",
+    "line": 51,
+    "decision": "ctx.audit.is_spool()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
     "id": "serve_sso_config_18b03b41",
     "file": "crates/frank/src/serve.rs",
-    "line": 90,
+    "line": 98,
     "decision": "let Some(sso) = &sso",
     "conditions": 1,
     "vectors_required": 2,
@@ -3652,7 +3882,7 @@
   {
     "id": "serve_sso_config_6b1e882a",
     "file": "crates/frank/src/serve.rs",
-    "line": 93,
+    "line": 101,
     "decision": "let Some(admin) = &sso.admin",
     "conditions": 1,
     "vectors_required": 2,
@@ -3662,7 +3892,7 @@
   {
     "id": "serve_limits_cb1ba987",
     "file": "crates/frank/src/serve.rs",
-    "line": 114,
+    "line": 122,
     "decision": "args.request_timeout == 0 || args.max_concurrency == 0",
     "conditions": 2,
     "vectors_required": 3,
@@ -3672,7 +3902,7 @@
   {
     "id": "serve_import_tokens_400d7164",
     "file": "crates/frank/src/serve.rs",
-    "line": 126,
+    "line": 134,
     "decision": "participants.active_tokens()? == 0 && tokens.exists()",
     "conditions": 2,
     "vectors_required": 3,
@@ -3682,7 +3912,7 @@
   {
     "id": "serve_import_tokens_454975ca",
     "file": "crates/frank/src/serve.rs",
-    "line": 130,
+    "line": 138,
     "decision": "!created.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3692,7 +3922,7 @@
   {
     "id": "serve_import_tokens_e4a772de",
     "file": "crates/frank/src/serve.rs",
-    "line": 143,
+    "line": 151,
     "decision": "participants.active_tokens()? == 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3702,7 +3932,7 @@
   {
     "id": "serve_maintain_17a5a747",
     "file": "crates/frank/src/serve.rs",
-    "line": 212,
+    "line": 226,
     "decision": "let Err(e) = app.geo.backfill(&app.sightings, now_ns())",
     "conditions": 1,
     "vectors_required": 2,
@@ -3712,7 +3942,7 @@
   {
     "id": "serve_maintain_2f261125",
     "file": "crates/frank/src/serve.rs",
-    "line": 216,
+    "line": 230,
     "decision": "flushed > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3722,7 +3952,7 @@
   {
     "id": "serve_maintain_f768d81b",
     "file": "crates/frank/src/serve.rs",
-    "line": 219,
+    "line": 234,
     "decision": "n % 60 == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3732,7 +3962,7 @@
   {
     "id": "serve_maintain_8aaeab4c",
     "file": "crates/frank/src/serve.rs",
-    "line": 225,
+    "line": 239,
     "decision": "merged > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3742,7 +3972,7 @@
   {
     "id": "serve_maintain_01b7c705",
     "file": "crates/frank/src/serve.rs",
-    "line": 232,
+    "line": 245,
     "decision": "n == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3750,20 +3980,40 @@
     "wildcard_risk": false
   },
   {
-    "id": "serve_maintain_47910d58",
+    "id": "serve_maintain_9a822e22",
     "file": "crates/frank/src/serve.rs",
-    "line": 234,
-    "decision": "match app.sightings.warm() {\n                    Ok(Some(files)) => {\n                        let ms = started.elapsed().as_millis();\n                        tracing::info!(files, ms, \"read cache warmed\");\n                    }\n                    Ok(None) => {}\n                    Err(e) => tracing::warn!(\"read cache warm-up: {e}\"),\n                }",
+    "line": 251,
+    "decision": "match result {\n            Ok(Ok(())) => {}\n            Ok(Err(e)) => tracing::error!(\"maintenance: {e}\"),\n            Err(e) => tracing::error!(\"maintenance task: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
     "wildcard_risk": false
   },
   {
-    "id": "serve_maintain_9a822e22",
+    "id": "serve_maintain_audit_16f811c3",
     "file": "crates/frank/src/serve.rs",
-    "line": 246,
-    "decision": "match result {\n            Ok(Ok(())) => {}\n            Ok(Err(e)) => tracing::error!(\"maintenance: {e}\"),\n            Err(e) => tracing::error!(\"maintenance task: {e}\"),\n        }",
+    "line": 264,
+    "decision": "spooled > 0",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "serve_maintain_audit_d1567926",
+    "file": "crates/frank/src/serve.rs",
+    "line": 268,
+    "decision": "compact",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "serve_warm_cache_c1998cdd",
+    "file": "crates/frank/src/serve.rs",
+    "line": 278,
+    "decision": "match sightings.warm() {\n        Ok(Some(files)) => {\n            let ms = started.elapsed().as_millis();\n            tracing::info!(files, ms, \"read cache warmed\");\n        }\n        Ok(None) => {}\n        Err(e) => tracing::warn!(\"read cache warm-up: {e}\"),\n    }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
@@ -3772,7 +4022,7 @@
   {
     "id": "serve_shutdown_642a0cd3",
     "file": "crates/frank/src/serve.rs",
-    "line": 260,
+    "line": 294,
     "decision": "let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())",
     "conditions": 1,
     "vectors_required": 2,
@@ -3782,7 +4032,7 @@
   {
     "id": "serve_serve_args_8574ccac",
     "file": "crates/frank/src/serve.rs",
-    "line": 280,
+    "line": 314,
     "decision": "match cli.command {\n            Command::Serve(a) => a,\n            _ => unreachable!(),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3792,7 +4042,7 @@
   {
     "id": "serve_tokens_after_import_6d884e63",
     "file": "crates/frank/src/serve.rs",
-    "line": 338,
+    "line": 372,
     "decision": "existing",
     "conditions": 1,
     "vectors_required": 2,
@@ -3802,7 +4052,7 @@
   {
     "id": "serve_tokens_after_import_5afa7b5b",
     "file": "crates/frank/src/serve.rs",
-    "line": 345,
+    "line": 379,
     "decision": "file",
     "conditions": 1,
     "vectors_required": 2,
@@ -5030,10 +5280,10 @@
     "wildcard_risk": false
   },
   {
-    "id": "store_participants_revoke_8f2e8d89",
+    "id": "store_participants_revoke_c76c6826",
     "file": "crates/frank/src/store/participants.rs",
     "line": 1184,
-    "decision": "match matches.as_slice() {\n            [one] => exec(\n                db,\n                &format!(\n                    \"UPDATE tokens SET revoked = {} WHERE hash = {}\",\n                    now_s(),\n                    sql_quote(one)\n                ),\n            ),\n            [] => Err(format!(\"no active token {prefix}…\")),\n            _ => Err(format!(\n                \"{prefix}… matches several tokens: give more digits\"\n            )),\n        }",
+    "decision": "match matches.as_slice() {\n            [one] => exec(\n                db,\n                &format!(\n                    \"UPDATE tokens SET revoked = {} WHERE hash = {}\",\n                    now_s(),\n                    sql_quote(one)\n                ),\n            )\n            .map(|()| one[..12].to_string()),\n            [] => Err(format!(\"no active token {prefix}…\")),\n            _ => Err(format!(\n                \"{prefix}… matches several tokens: give more digits\"\n            )),\n        }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
@@ -5042,7 +5292,7 @@
   {
     "id": "store_participants_import_tokens_file_e06a2edc",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1210,
+    "line": 1211,
     "decision": "line.is_empty() || line.starts_with('#')",
     "conditions": 2,
     "vectors_required": 3,
@@ -5052,7 +5302,7 @@
   {
     "id": "store_participants_import_tokens_file_c08636ae",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1229,
+    "line": 1230,
     "decision": "c.is_ascii_alphanumeric() || \"._@-\".contains(c)",
     "conditions": 2,
     "vectors_required": 3,
@@ -5062,7 +5312,7 @@
   {
     "id": "store_participants_import_tokens_file_6a4cfd7b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1237,
+    "line": 1238,
     "decision": "label.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -5072,7 +5322,7 @@
   {
     "id": "store_participants_import_tokens_file_b2f27bf2",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1245,
+    "line": 1246,
     "decision": "existing.contains(&name)",
     "conditions": 1,
     "vectors_required": 2,

@@ -101,16 +101,16 @@ A message that is not JSON MUST get a JSON-RPC parse error (-32700); a batch, a 
 
 **Tests:** `crates/frank/tests/api.rs::mcp_malformed_messages_are_json_rpc_errors`
 
-### Requirement 6: Audit [MUST]
+### Requirement 6: Logged as a read [MUST]
 
-Each `tools/call` of a known tool MUST write an `mcp_call` audit line with the tool and whether it answered, `by` the caller. A token MUST NOT appear in it.
+A tool call is a read, like `GET /v1/iocs` (ADR-024, point 6): it MUST NOT be audited, and its `frank::access` line MUST carry `tool`, the name of the tool, next to the caller. Until 0.55 each call wrote an `mcp_call` audit line.
 
-**Implementation:** `crates/frank/src/mcp.rs::mcp`
+**Implementation:** `crates/frank/src/mcp.rs::mcp`, `crates/frank/src/access.rs::tool`
 
-#### Scenario: Calls are audited
+#### Scenario: Calls are on the access line
 
-- GIVEN a contributor and an observer
-- WHEN they call `whoami` and `rule_detail`
-- THEN there are two `mcp_call` lines, by `mdr@mdr` (ok) and `obs@obs` (not ok)
+- GIVEN a contributor calling `whoami` over MCP, then `GET /v1/whoami`
+- WHEN the access log is read
+- THEN the first line names the tool and `mdr@mdr`, the second has no tool, and the audit holds no line
 
-**Tests:** `crates/frank/tests/api.rs::mcp_tool_calls_are_audited`
+**Tests:** `crates/frank/tests/api.rs::the_access_log_names_the_mcp_tool`, `crates/frank/tests/api.rs::mcp_tool_calls_are_not_audited`

@@ -86,7 +86,7 @@ fn db(d: &Path) -> PathBuf {
 
 /// The audit actions written so far, oldest first.
 fn actions(d: &Path) -> Vec<String> {
-    Audit::open_in(&d.join("data"), None)
+    Audit::open(&d.join("data"))
         .unwrap()
         .read_from(0)
         .unwrap()
@@ -338,6 +338,12 @@ fn healthy(port: u16) -> bool {
 /// Runs `frank serve` on a free port with `tokens`, until `/health`
 /// answers (or ten seconds pass), then stops it.
 fn serve_until_healthy(d: &Dir, tokens: &Path) {
+    serve_and(d, tokens, || {});
+}
+
+/// [`serve_until_healthy`], running `during` once `/health` answered and
+/// before the server stops.
+fn serve_and(d: &Dir, tokens: &Path, during: impl FnOnce() + Send + 'static) {
     let port = std::net::TcpListener::bind("127.0.0.1:0")
         .unwrap()
         .local_addr()
@@ -370,6 +376,7 @@ fn serve_until_healthy(d: &Dir, tokens: &Path) {
                 .unwrap_or(false)
             {
                 seen.store(true, Ordering::SeqCst);
+                tokio::task::spawn_blocking(during).await.unwrap();
                 return;
             }
             tokio::time::sleep(Duration::from_millis(50)).await;
@@ -475,6 +482,37 @@ fn mcdc__cli_ingest_file_adc096cb__v3_a_repeat_in_the_same_file_is_a_duplicate()
         ],
     );
     assert_eq!(r.err, "ingested 1 sightings (1 already registered)\n");
+}
+
+/// ADR-024 point 4: a command run while the server holds the audit table
+/// spools its line; the server moves it into the table.
+#[test]
+fn a_command_next_to_the_server_spools_its_audit_line() {
+    let d = dir("serve-spool");
+    let root = d.0.clone();
+    serve_and(&d, &d.0.join("tokens"), move || {
+        ok(
+            &root,
+            &["participant", "add", "acme", "--status", "contributor"],
+        );
+        assert!(root.join("data").join(frank::audit::SPOOL).exists());
+    });
+    assert_eq!(actions(&d.0), ["participant_added"]);
+    assert!(!d.0.join("data").join(frank::audit::SPOOL).exists());
+}
+
+/// The table has one writer: a second server refuses to start.
+#[test]
+fn serve_refuses_an_audit_table_held_by_another_process() {
+    let d = dir("serve-held");
+    let _held = Audit::open(&d.0.join("data")).unwrap();
+    let cli = parse(&d.0, &["serve"]);
+    let ctx = cli::setup(&cli).unwrap();
+    let Command::Serve(args) = cli.command else {
+        unreachable!("parsed as serve")
+    };
+    let e = frank::serve::start_until(&ctx, args, async {}).unwrap_err();
+    assert!(e.contains("held by another process"), "{e}");
 }
 
 #[test]

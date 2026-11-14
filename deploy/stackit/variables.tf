@@ -70,6 +70,12 @@ variable "retention_days" {
   default = 400
 }
 
+variable "audit_retention_days" {
+  description = "Days the audit log keeps (FRANK_AUDIT_RETENTION_DAYS, ADR-024), apart from the sightings' retention_days."
+  type        = number
+  default     = 400
+}
+
 variable "store_bucket" {
   description = "Object Storage bucket for the sightings and the audit log (FRANK_STORE); empty keeps them on the data volume."
   type        = string

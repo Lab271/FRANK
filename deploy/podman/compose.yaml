@@ -4,7 +4,8 @@
 #   data/sightings/                Parquet table (live/, archive/, wal/)
 #   data/iocs.db                   row table
 #   data/registry.db               resend index, rebuilt from the sightings
-#   data/audit/                    who did what, one JSON line per action
+#   data/audit/                    who did what, a table like the sightings
+#   data/audit.spool               audit lines of commands run next to the server
 #   participants/participants.db   organisations, users, tokens (#159)
 # Participants and tokens apply on the next request: `make participant
 # NAME=me STATUS=partner` works with the container running.
@@ -34,6 +35,7 @@ services:
       - ../../tokens:/etc/frank/tokens:ro,Z
     environment:
       FRANK_RETENTION_DAYS: "400"
+      FRANK_AUDIT_RETENTION_DAYS: "400"
       RUST_LOG: "frank=info,mvl_manifest=info"
     restart: unless-stopped
     stop_signal: SIGTERM

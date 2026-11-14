@@ -8,7 +8,7 @@ This page is for users. The requirements are in [spec 015](../.openspec/specs/01
 
 - **Read only.** The assistant can query statistics, IoCs, rules and sightings. It cannot submit sightings, change anything, or download the Parquet files.
 - **Your access, no more.** Every tool calls the `/v1` route of the same name with your token, so it sees exactly what that token sees in the API and the web app: the same tier, the same TLP levels, the same suppression of small groups.
-- **Audited.** Every tool call is written to the audit log as `mcp_call`, with the tool, whether it answered, and who called. Your token is never logged.
+- **Logged as a read.** Every tool call is logged like any API request, with who called and the tool's name, and kept 30 days for FRANK's admins ([ADR-024](../.openspec/architecture/decisions/024-log-streams.md)). Reads are not in the audit log, which records changes. Your token is never logged.
 
 ## Connect Claude Code
 
