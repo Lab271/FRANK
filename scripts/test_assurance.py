@@ -151,6 +151,8 @@ class Gates(unittest.TestCase):
     """Coverage and quality (ADR-023): shown when measured, gated only on request."""
 
     def setUp(self):
+        # Colour is on in CI (GITHUB_ACTIONS): the assertions match plain text.
+        self.color, assurance.COLOR = assurance.COLOR, False
         self.tmp = tempfile.TemporaryDirectory()
         self.dir = Path(self.tmp.name)
         self.cov = self.dir / "coverage.json"
@@ -161,6 +163,7 @@ class Gates(unittest.TestCase):
         self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95,1,12,30\n')
 
     def tearDown(self):
+        assurance.COLOR = self.color
         self.tmp.cleanup()
 
     def run_main(self, *args):
