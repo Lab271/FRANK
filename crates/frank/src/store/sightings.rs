@@ -695,7 +695,9 @@ mod tests {
     /// db-core 0.240 (#282, db-core#1051, #1052): a snapshot holds the
     /// store's files without fetching them, a query reads footers and the
     /// column chunks it needs by range, and the read cache answers the
-    /// same query again with no request at all.
+    /// same query again with no request at all. Since 0.241 (#290,
+    /// db-core#1059) a footer is one GET of the last 64 KiB, which takes
+    /// these small files whole: one GET per file.
     #[test]
     fn a_query_in_a_store_reads_by_range_and_once() {
         let s3 = crate::store::fake_s3::FakeS3::new();
@@ -716,8 +718,13 @@ mod tests {
         let cold = s3.counts();
         assert!(cold.gets > before.gets, "{cold:?}");
         assert!(
-            cold.bytes - before.bytes < stored,
-            "read {} of {stored} bytes: only footers and the seq column",
+            cold.gets - before.gets <= 3,
+            "{} GETs for 3 small files: at most one each",
+            cold.gets - before.gets
+        );
+        assert!(
+            cold.bytes - before.bytes <= stored,
+            "read {} of {stored} bytes: nothing twice",
             cold.bytes - before.bytes
         );
         assert_eq!(cold.heads, before.heads, "sizes come from the manifest");
