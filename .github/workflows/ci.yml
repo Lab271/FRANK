@@ -73,8 +73,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+      # Also fails when the version disagrees between its five places (make version).
       - run: make check-assurance
-      - run: make version
 
   fuzz:
     name: fuzz the parsers (make fuzz, 60 s)

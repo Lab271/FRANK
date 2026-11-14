@@ -122,9 +122,9 @@ Two spec folders MUST NOT share a number, outdated ones included. A spec whose `
 
 ### Requirement 4: The spec gate [MUST]
 
-`make check-assurance` MUST first run the checker's own tests, then fail on a dead link, a duplicate spec number, or tested scenarios below `ASSURANCE_MIN`. CI MUST run it.
+`make check-assurance` MUST first run the checker's own tests, then fail on a dead link, a duplicate spec number, tested scenarios below `ASSURANCE_MIN`, or a version that disagrees between `Cargo.toml`, both `Cargo.lock`, the README and the CHANGELOG (`scripts/version.py`, `make version`). The spec box SHALL show the version, or the places that disagree. CI MUST run it.
 
-**Implementation:** `Makefile::check-assurance:`, `scripts/assurance.py::main`
+**Implementation:** `Makefile::check-assurance:`, `scripts/assurance.py::main`, `scripts/assurance.py::report`, `scripts/version.py::drift`
 
 #### Scenario: Below the floor
 
@@ -133,6 +133,14 @@ Two spec folders MUST NOT share a number, outdated ones included. A spec whose `
 - THEN the check fails and says `FAIL: tested`
 
 **Tests:** `scripts/test_assurance.py::test_tested_scenarios_below_the_floor_fail`
+
+#### Scenario: The version disagrees
+
+- GIVEN the README at another version than `Cargo.toml`
+- WHEN the gate runs
+- THEN the box shows the version with "1 place disagrees", the place is listed as `VERSION DRIFT`, and the check fails; when all places agree, the box shows the version "in all 5 places"
+
+**Tests:** `scripts/test_assurance.py::test_the_version_row_shows_agreement_or_drift`, `scripts/test_assurance.py::test_version_drift_fails_the_spec_gate`
 
 ### Requirement 5: Test coverage is measured on its own [MUST]
 

@@ -38,6 +38,7 @@ from pathlib import Path
 
 import coverage_metrics
 import quality_metrics
+import version
 
 ROOT = Path(__file__).resolve().parent.parent
 COVERAGE = ROOT / "target/assurance/coverage.json"   # make coverage
@@ -196,8 +197,13 @@ def boxed(lines, title="FRANK spec assurance"):
     return "\n".join([top, *body, paint("╰" + "─" * (width + 2) + "╯", BOLD)])
 
 
-def report(specs, skipped, md_dead, verbose, floor=None, dupes=()):
-    """Dashboard, then a bar per spec, then dead links. Returns (tested share, dead links)."""
+def disagree(drift):
+    return "1 place disagrees" if len(drift) == 1 else f"{len(drift)} places disagree"
+
+
+def report(specs, skipped, md_dead, verbose, floor=None, dupes=(), release=None):
+    """Dashboard, then a bar per spec, then dead links. Returns (tested share, dead links).
+    release: (version, [drift]) from scripts/version.py, shown as a row of the box."""
     reqs = [r for rs in specs.values() for r in rs]
     scen = sum(r["scenarios"] for r in reqs)
     impl = sum(r["implemented"] for r in reqs)
@@ -207,7 +213,7 @@ def report(specs, skipped, md_dead, verbose, floor=None, dupes=()):
 
     head = []
     if floor is not None:
-        ok = total >= floor and not dead and not dupes
+        ok = total >= floor and not dead and not dupes and not (release and release[1])
         verdict = paint(" PASS ", BOLD, "42;30") if ok else paint(" FAIL ", BOLD, "41;97")
         if not COLOR:
             verdict = "PASS" if ok else "FAIL"
@@ -219,6 +225,10 @@ def report(specs, skipped, md_dead, verbose, floor=None, dupes=()):
         "dead links   " + (paint(f"{dead}", RED, BOLD) if dead else paint("0", GREEN)),
         "numbers      " + (paint(f"{len(dupes)} used twice", RED, BOLD) if dupes else paint("unique", GREEN)),
     ]
+    if release is not None:
+        current, drift = release
+        head.append("version      " + (paint(f"{current}, {disagree(drift)}", RED, BOLD) if drift
+                                      else paint(f"{current}", GREEN) + paint(f" in all {len(version.PLACES)} places", DIM)))
     print(boxed(head))
     print()
 
@@ -246,6 +256,8 @@ def report(specs, skipped, md_dead, verbose, floor=None, dupes=()):
         print(paint("DEAD LINK", RED, BOLD) + f" {file}: {target}")
     for number, names in dupes:
         print(paint("DUPLICATE", RED, BOLD) + f" spec number {number}: {', '.join(names)}")
+    for problem in (release[1] if release else ()):
+        print(paint("VERSION DRIFT", RED, BOLD) + f" {problem}")
     return total, dead
 
 
@@ -348,7 +360,8 @@ def main(argv=None):
                    help="with --ccn-max: the functions allowed over it, at most at their CCN (make quality-baseline)")
     args = p.parse_args(argv)
     dupes = duplicate_numbers()
-    total, dead = report(*collect(), args.verbose, args.min, dupes)
+    release = version.drift()
+    total, dead = report(*collect(), args.verbose, args.min, dupes, release)
     try:
         lines = report_coverage(args.coverage, args.coverage_min)
         over = report_quality(args.quality, args.ccn_max, args.ccn_baseline)
@@ -358,9 +371,11 @@ def main(argv=None):
     failures = []
     if args.min is not None:
         print()
-        print(f"{'PASS' if total >= args.min and not dead and not dupes else 'FAIL'}: tested {total:.0%} "
-              f"(min {args.min:.0%}), {dead} dead links, {len(dupes)} duplicate spec numbers")
-        if total < args.min or dead or dupes:
+        drift = release[1]
+        print(f"{'PASS' if total >= args.min and not dead and not dupes and not drift else 'FAIL'}: tested {total:.0%} "
+              f"(min {args.min:.0%}), {dead} dead links, {len(dupes)} duplicate spec numbers, "
+              f"version {release[0]}" + (f" ({disagree(drift)})" if drift else ""))
+        if total < args.min or dead or dupes or drift:
             failures.append("specs")
     if args.coverage_min is not None:
         ok = lines is not None and lines >= args.coverage_min
