@@ -9,7 +9,6 @@ use std::time::Duration;
 use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
-use tower_http::trace::TraceLayer;
 
 use crate::api::{self, App};
 use crate::cli::{now_ns, open, Ctx, ServeArgs};
@@ -138,7 +137,8 @@ async fn serve(
                     axum::http::HeaderValue::from_static("no-cache"),
                 )),
         );
-    let router = api::harden(router, limits).layer(TraceLayer::new_for_http());
+    // Outermost, so a 503 from the time limit is logged too (#287).
+    let router = api::harden(router, limits).layer(axum::middleware::from_fn(crate::access::log));
     let listener = tokio::net::TcpListener::bind(listen)
         .await
         .map_err(|e| format!("{listen}: {e}"))?;
