@@ -36,7 +36,7 @@ The key words "MUST", "MUST NOT", "REQUIRED", "SHALL", "SHALL NOT", "SHOULD", "S
 
 `frank serve` MUST take `FRANK_SSO_ISSUER`, `FRANK_SSO_CLIENT_ID`, `FRANK_SSO_CLIENT_SECRET_FILE`, `FRANK_SSO_REDIRECT_URL` and `FRANK_SSO_ORGANISATION`. With none of them SSO MUST be off. With some but not all, `frank serve` MUST refuse to start and name the missing settings. The issuer and redirect URL MUST be `https://`, except for `localhost`. The organisation MUST exist at startup.
 
-**Implementation:** `crates/frank/src/sso.rs::from_settings`, `crates/frank/src/main.rs`
+**Implementation:** `crates/frank/src/sso.rs::from_settings`, `crates/frank/src/serve.rs::sso_config`
 
 #### Scenario: No settings
 
