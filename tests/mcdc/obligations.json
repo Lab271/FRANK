@@ -2542,7 +2542,7 @@
   {
     "id": "cli_role_4039463d",
     "file": "crates/frank/src/cli.rs",
-    "line": 257,
+    "line": 265,
     "decision": "s.eq_ignore_ascii_case(\"none\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -2552,7 +2552,7 @@
   {
     "id": "cli_run_dcdb3cf8",
     "file": "crates/frank/src/cli.rs",
-    "line": 268,
+    "line": 276,
     "decision": "match cli.command {\n        Command::Serve(args) => crate::serve::start(&ctx, args),\n        Command::Participant(cmd) => participant(&ctx, cmd, io),\n        Command::User(cmd) => user(&ctx, cmd, io),\n        Command::Token(cmd) => token(&ctx, cmd, io),\n        Command::Ingest {\n            files,\n            participant,\n            create,\n        } => ingest_as(&ctx, &files, &participant, create, io),\n        Command::Rebuild => rebuild(&ctx, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2562,7 +2562,7 @@
   {
     "id": "cli_setup_6ffe4d30",
     "file": "crates/frank/src/cli.rs",
-    "line": 290,
+    "line": 298,
     "decision": "old.exists() && !db.exists()",
     "conditions": 2,
     "vectors_required": 3,
@@ -2572,7 +2572,7 @@
   {
     "id": "cli_open_ca7be090",
     "file": "crates/frank/src/cli.rs",
-    "line": 327,
+    "line": 335,
     "decision": "match e {\n            // 0.13 added `digest` and `received`; `Sightings::open` refuses a\n            // table without them.\n            IngestError::SchemaMismatch => format!(\n                \"{}: written by FRANK 0.12 or older (no digest column, pseudonymous \\\n             reporters): move it aside and reload the sightings\",\n                data.join(crate::store::sightings::NAME).display()\n            ),\n            e => format!(\"sightings: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2582,7 +2582,7 @@
   {
     "id": "cli_open_1b1b018d",
     "file": "crates/frank/src/cli.rs",
-    "line": 337,
+    "line": 345,
     "decision": "let Some(location) = location",
     "conditions": 1,
     "vectors_required": 2,
@@ -2590,10 +2590,10 @@
     "wildcard_risk": false
   },
   {
-    "id": "cli_participant_2c40044c",
+    "id": "cli_participant_b57a8db2",
     "file": "crates/frank/src/cli.rs",
-    "line": 353,
-    "decision": "match cmd {\n        ParticipantCmd::Add {\n            name,\n            status: st,\n            kind,\n            sector,\n            region,\n            with_token,\n        } => {\n            let id = participant_add(\n                ctx,\n                &name,\n                &st,\n                &kind,\n                sector.as_deref(),\n                region.as_deref(),\n                io,\n            )?;\n            if with_token {\n                first_user_with_token(ctx, &id, &name, io)?;\n            }\n            Ok(())\n        }\n        ParticipantCmd::List => participant_list(ctx, io),\n        ParticipantCmd::SetStatus { name, status: st } => {\n            participant_set_status(ctx, &name, &st, io)\n        }\n        ParticipantCmd::Remove { name } => participant_remove(ctx, &name, io),\n    }",
+    "line": 361,
+    "decision": "match cmd {\n        ParticipantCmd::Add {\n            name,\n            status: st,\n            kind,\n            sector,\n            region,\n            with_token,\n        } => {\n            let id = participant_add(\n                ctx,\n                &name,\n                &st,\n                &kind,\n                sector.as_deref(),\n                region.as_deref(),\n                io,\n            )?;\n            if with_token {\n                first_user_with_token(ctx, &id, &name, io)?;\n            }\n            Ok(())\n        }\n        ParticipantCmd::List => participant_list(ctx, io),\n        ParticipantCmd::SetStatus { name, status: st } => {\n            participant_set_status(ctx, &name, &st, io)\n        }\n        ParticipantCmd::Remove {\n            name,\n            sso_organisation,\n            sso_admin_organisation,\n        } => {\n            let settings = [\n                (\"FRANK_SSO_ORGANISATION\", sso_organisation),\n                (\"FRANK_SSO_ADMIN_ORGANISATION\", sso_admin_organisation),\n            ];\n            participant_remove(ctx, &name, &settings, io)\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
@@ -2602,8 +2602,18 @@
   {
     "id": "cli_participant_2a99c2bd",
     "file": "crates/frank/src/cli.rs",
-    "line": 371,
+    "line": 379,
     "decision": "with_token",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "cli_participant_remove_949a689c",
+    "file": "crates/frank/src/cli.rs",
+    "line": 417,
+    "decision": "named.as_deref() == Some(id.as_str())",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -2612,7 +2622,7 @@
   {
     "id": "cli_user_06469e69",
     "file": "crates/frank/src/cli.rs",
-    "line": 458,
+    "line": 494,
     "decision": "match cmd {\n        UserCmd::Add {\n            participant,\n            name,\n            machine,\n            role: r,\n        } => user_add(ctx, &participant, &name, machine, r.as_deref(), io),\n        UserCmd::List => user_list(ctx, io),\n        UserCmd::Disable { name } => user_set_disabled(ctx, &name, true, io),\n        UserCmd::Enable { name } => user_set_disabled(ctx, &name, false, io),\n        UserCmd::Remove { name } => user_remove(ctx, &name, io),\n        UserCmd::SetRole { name, role: r } => user_set_role(ctx, &name, &r, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2622,7 +2632,7 @@
   {
     "id": "cli_user_add_a086e9a5",
     "file": "crates/frank/src/cli.rs",
-    "line": 481,
+    "line": 517,
     "decision": "machine",
     "conditions": 1,
     "vectors_required": 2,
@@ -2632,7 +2642,7 @@
   {
     "id": "cli_user_list_1d027061",
     "file": "crates/frank/src/cli.rs",
-    "line": 496,
+    "line": 532,
     "decision": "u.disabled",
     "conditions": 1,
     "vectors_required": 2,
@@ -2642,7 +2652,7 @@
   {
     "id": "cli_user_set_disabled_b92d7d38",
     "file": "crates/frank/src/cli.rs",
-    "line": 507,
+    "line": 543,
     "decision": "disabled",
     "conditions": 1,
     "vectors_required": 2,
@@ -2652,7 +2662,7 @@
   {
     "id": "cli_token_b179090c",
     "file": "crates/frank/src/cli.rs",
-    "line": 537,
+    "line": 573,
     "decision": "match cmd {\n        TokenCmd::New { user } => token_new(ctx, &user, io),\n        TokenCmd::Add { user, hash: h } => token_add(ctx, &user, &h, io),\n        TokenCmd::List => token_list(ctx, io),\n        TokenCmd::Revoke { prefix } => token_revoke(ctx, &prefix, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2662,7 +2672,7 @@
   {
     "id": "cli_token_list_703c733f",
     "file": "crates/frank/src/cli.rs",
-    "line": 564,
+    "line": 600,
     "decision": "t.revoked",
     "conditions": 1,
     "vectors_required": 2,
@@ -2672,7 +2682,7 @@
   {
     "id": "cli_ingest_as_106edf7f",
     "file": "crates/frank/src/cli.rs",
-    "line": 592,
+    "line": 628,
     "decision": "match parts::organisation_id(&ctx.db, participant) {\n        Ok(id) => id,\n        Err(_) if create => {\n            let id = parts::add_organisation(\n                &ctx.db,\n                participant,\n                Tier::Contributor,\n                \"cyber_partner\",\n                None,\n                None,\n            )?;\n            ctx.log(\n                \"participant_added\",\n                json!({ \"participant\": id, \"name\": participant, \"status\": Tier::Contributor.as_str() }),\n            )?;\n            id\n        }\n        Err(e) => return Err(format!(\"{e} (register it, or pass --create)\")),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2682,7 +2692,7 @@
   {
     "id": "cli_ingest_as_29e92c17",
     "file": "crates/frank/src/cli.rs",
-    "line": 594,
+    "line": 630,
     "decision": "create",
     "conditions": 1,
     "vectors_required": 2,
@@ -2692,7 +2702,7 @@
   {
     "id": "cli_ingest_file_8049078c",
     "file": "crates/frank/src/cli.rs",
-    "line": 665,
+    "line": 701,
     "decision": "let Some((id, _, _)) = subs\n        .iter()\n        .find(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))",
     "conditions": 1,
     "vectors_required": 2,
@@ -2702,7 +2712,7 @@
   {
     "id": "cli_ingest_file_adc096cb",
     "file": "crates/frank/src/cli.rs",
-    "line": 680,
+    "line": 716,
     "decision": "known.contains_key(&id) || fresh.iter().any(|f| f.1 == id)",
     "conditions": 2,
     "vectors_required": 3,
@@ -2712,7 +2722,7 @@
   {
     "id": "cli_ingest_file_e96014b5",
     "file": "crates/frank/src/cli.rs",
-    "line": 695,
+    "line": 731,
     "decision": "!fresh.is_empty()",
     "conditions": 1,
     "vectors_required": 2,

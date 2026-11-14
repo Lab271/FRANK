@@ -160,8 +160,16 @@ pub enum ParticipantCmd {
     List,
     /// Change an organisation's status; its users have it on their next request.
     SetStatus { name: String, status: String },
-    /// Remove an organisation that has no users.
-    Remove { name: String },
+    /// Remove an organisation that has no users, unless an SSO setting names it.
+    Remove {
+        name: String,
+        /// Kept: `serve` needs the organisation SSO creates users in.
+        #[arg(long, env = "FRANK_SSO_ORGANISATION")]
+        sso_organisation: Option<String>,
+        /// Kept: `serve` needs the organisation of the SSO admin group.
+        #[arg(long, env = "FRANK_SSO_ADMIN_ORGANISATION")]
+        sso_admin_organisation: Option<String>,
+    },
 }
 
 #[derive(Subcommand)]
@@ -377,12 +385,40 @@ fn participant(ctx: &Ctx, cmd: ParticipantCmd, io: &mut Io) -> Result<(), String
         ParticipantCmd::SetStatus { name, status: st } => {
             participant_set_status(ctx, &name, &st, io)
         }
-        ParticipantCmd::Remove { name } => participant_remove(ctx, &name, io),
+        ParticipantCmd::Remove {
+            name,
+            sso_organisation,
+            sso_admin_organisation,
+        } => {
+            let settings = [
+                ("FRANK_SSO_ORGANISATION", sso_organisation),
+                ("FRANK_SSO_ADMIN_ORGANISATION", sso_admin_organisation),
+            ];
+            participant_remove(ctx, &name, &settings, io)
+        }
     }
 }
 
-fn participant_remove(ctx: &Ctx, name: &str, io: &mut Io) -> Result<(), String> {
-    let (id, name) = parts::remove_organisation(&ctx.db, name)?;
+/// As the API (#324): `serve` would not start without an organisation its
+/// SSO settings name, so those stay. A setting and `name` may each be a
+/// name or an id.
+fn participant_remove(
+    ctx: &Ctx,
+    name: &str,
+    settings: &[(&str, Option<String>)],
+    io: &mut Io,
+) -> Result<(), String> {
+    let id = parts::organisation_id(&ctx.db, name)?;
+    for (setting, value) in settings {
+        let named = value
+            .as_deref()
+            .map(str::trim)
+            .and_then(|v| parts::organisation_id(&ctx.db, v).ok());
+        if named.as_deref() == Some(id.as_str()) {
+            return Err(format!("{name} is named by {setting}: change it first"));
+        }
+    }
+    let (id, name) = parts::remove_organisation(&ctx.db, &id)?;
     ctx.log(
         "participant_removed",
         json!({ "participant": id, "name": name }),
