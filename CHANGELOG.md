@@ -4,13 +4,26 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
-## [0.52.0] - 2026-11-14
+## [0.53.0] - 2026-11-14
 
 ### Added
 
 - Assurance: MC/DC over every decision of two or more conditions (`make test-mcdc`, ADR-025), with the admin, disclosure, SSO and token rules covered vector by vector.
+
+## [0.52.0] - 2026-11-14
+
+### Added
+
 - `docs/performance.md`: what a query costs against S3, the layers that brought a cold 30-day statistics call from 1,506 GETs to 33 and to none after the warm-up, how it is measured and what is not yet.
 - `docs/mcp.md`: connecting an AI assistant to FRANK over MCP, the tools, what each tier sees, and troubleshooting.
+- Caddy writes a JSON access log to stdout; its `X-Request-Id` joins each request to FRANK's `frank::access` line (#307). `make log-check` verifies the join and that no token or cookie is logged.
+- STACKIT: FRANK and Caddy log to the VM's journal as JSON, one entry per line, kept 30 days (#308).
+- ADR-024 sets the three log streams (web, app, audit) and supersedes ADR-019 point 3 (#306).
+- `frank serve` logs its runtime manifest at start under the target `mvl_manifest` (mvl-manifest from mvl-rust v0.12.1): version, toolchain, build provenance, packages, runtime environment and assurance warnings (#315). The default filter is `frank=info,mvl_manifest=info`.
+
+### Fixed
+
+- An empty tokens file no longer writes a `tokens_imported` audit line and warning on every start.
 
 ## [0.51.3] - 2026-11-14
 
