@@ -704,6 +704,20 @@ async fn maintain(app: api::Shared, retention_days: u32) {
                     tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
                 }
             }
+            // The first tick comes at once: after flushing and compacting
+            // what the downtime left, fill the read cache so the first
+            // caller does not pay the cold GETs (#291). Never fatal.
+            if n == 1 {
+                let started = std::time::Instant::now();
+                match app.sightings.warm() {
+                    Ok(Some(files)) => {
+                        let ms = started.elapsed().as_millis();
+                        tracing::info!(files, ms, "read cache warmed");
+                    }
+                    Ok(None) => {}
+                    Err(e) => tracing::warn!("read cache warm-up: {e}"),
+                }
+            }
             Ok(())
         })
         .await;

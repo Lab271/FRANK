@@ -50,3 +50,4 @@ The target is an AWS deployment with S3 (#220). FRANK has run on a local filesys
   | `/v1/files` | 0 | 0 | 0 | 0 | 0 |
 
   A cold 30-day statistics call is about 1-4 s at AWS latencies, well inside `FRANK_REQUEST_TIMEOUT`. Every test file is under 64 KiB, so each is read whole in its footer GET (one GET per kept file; more bytes than the chunks alone). The test now asserts that bound; larger day files go through span fetches, which it does not measure (#228). The 256 MiB cache decision stands.
+- *Revised 2026-11-14 (#291):* the cache is empty after every restart, so FRANK warms it on the maintenance loop's first tick: one query that touches every listed file (`Sightings::warm`, S3 mode only), after flush and compact. With files under 64 KiB that is one GET per file and the whole table in the cache; in the test, 33 GETs, then the first statistics, explore and records calls send none.

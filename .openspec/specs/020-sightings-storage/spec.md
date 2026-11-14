@@ -189,9 +189,9 @@ On open, a local table stored with the comma-separated `technique` string (0.20 
 
 ### Requirement 7: Sightings in an object store [MUST]
 
-With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manifest and Parquet files MUST be kept in the store, while its WAL, writer lock and scratch space MUST stay on the local volume in `data/s3/sightings/`, apart from the local table's `data/sightings/`. Credentials MUST come from the AWS chain, never from the URI. An `https://` endpoint MUST go through the TLS transport (`--features tls`, built into the image); without it the store MUST be refused with a message saying why. Retention MUST delete the objects themselves, after db-core's delete grace. A query MUST read the store's files by range (footers, then the column chunks it loads) through db-core's read cache, and listing the files MUST fetch none (#282).
+With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manifest and Parquet files MUST be kept in the store, while its WAL, writer lock and scratch space MUST stay on the local volume in `data/s3/sightings/`, apart from the local table's `data/sightings/`. Credentials MUST come from the AWS chain, never from the URI. An `https://` endpoint MUST go through the TLS transport (`--features tls`, built into the image); without it the store MUST be refused with a message saying why. Retention MUST delete the objects themselves, after db-core's delete grace. A query MUST read the store's files by range (footers, then the column chunks it loads) through db-core's read cache, and listing the files MUST fetch none (#282). On start, after flushing and compacting, the server MUST warm the read cache by touching every listed file once, off the request path; a failure MUST only be logged (#291).
 
-**Implementation:** `crates/frank/src/objects.rs::open`, `crates/frank/src/store/sightings.rs::open_in`, `crates/frank/src/store/sightings.rs::read_file`, `crates/frank/src/store/sightings.rs::nanos`
+**Implementation:** `crates/frank/src/objects.rs::open`, `crates/frank/src/store/sightings.rs::open_in`, `crates/frank/src/store/sightings.rs::read_file`, `crates/frank/src/store/sightings.rs::nanos`, `crates/frank/src/store/sightings.rs::warm`, `crates/frank/src/main.rs::maintain`
 
 #### Scenario: Files in the store, the WAL apart
 
@@ -216,6 +216,14 @@ With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manife
 - THEN the second call of each sends no request, no call sends a HEAD or reads as many bytes as the files hold, a 7-day window sends fewer requests than a 30-day one, and the file list fetches nothing
 
 **Tests:** `crates/frank/tests/s3_requests.rs::requests_per_endpoint_cold_and_warm`
+
+#### Scenario: The first caller after a start sends nothing
+
+- GIVEN 30 days of sightings in a store, and a new process with an empty cache
+- WHEN the warm-up runs, then statistics, explore and the records list are called
+- THEN the warm-up sends one GET per listed file, the calls after it send none, and on the filesystem the warm-up does nothing
+
+**Tests:** `crates/frank/tests/s3_requests.rs::requests_per_endpoint_cold_and_warm`, `crates/frank/tests/s3_requests.rs::warm_is_a_no_op_on_the_filesystem`
 
 #### Scenario: Retention deletes objects
 

@@ -203,5 +203,50 @@ async fn requests_per_endpoint_cold_and_warm() {
         "a 7-day window skips files (#283): {cold:?}"
     );
     assert_eq!(cold[5], 0, "listing the files fetches none");
+
+    // The warm-up the maintenance loop runs on its first tick (#291): from
+    // a new process, one GET per listed file fills the cache with the whole
+    // table, and the first caller after it sends nothing.
+    let (app, s) = server(&dir, &s3);
+    let a = s3.counts();
+    let t = std::time::Instant::now();
+    assert_eq!(s.warm().unwrap(), Some(files.len()));
+    let serial = t.elapsed().as_micros() / latency.as_micros();
+    let b = s3.counts();
+    let (warm_gets, warm_bytes) = delta(a, b);
+    eprintln!(
+        "{:<28} {warm_gets:>9} {warm_bytes:>10} {:>9} {serial:>11}",
+        "warm-up", b.max_in_flight
+    );
+    assert_eq!(
+        warm_gets,
+        files.len() as u64,
+        "the warm-up sends one GET per listed file"
+    );
+    for uri in [
+        "/v1/statistics?days=30",
+        "/v1/explore?group=rule",
+        "/v1/sightings?limit=50",
+    ] {
+        let before = s3.counts();
+        get(&app, uri).await;
+        assert_eq!(
+            delta(before, s3.counts()).0,
+            0,
+            "{uri}: after the warm-up the first call sends nothing"
+        );
+    }
+    s.close().unwrap();
+    let _ = std::fs::remove_dir_all(&dir);
+}
+
+/// On the filesystem there is nothing to warm: the page cache does it.
+#[test]
+fn warm_is_a_no_op_on_the_filesystem() {
+    let dir = std::env::temp_dir().join(format!("frank-warm-fs-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    let s = Sightings::open(&dir, None, now).unwrap();
+    assert_eq!(s.warm().unwrap(), None);
+    s.close().unwrap();
     let _ = std::fs::remove_dir_all(&dir);
 }

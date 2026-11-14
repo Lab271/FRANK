@@ -33,6 +33,7 @@ Every time FRANK starts, the WAL on the volume is replayed. This is the only tim
 3. **Clear what a crash left behind** (db-core). `tmp/` is emptied, and any object in `live/`, `archive/` or `staging/` that the manifest does not list is deleted: an hour file uploaded just before a crash, never committed.
 4. **Replay the WAL** (db-core). Segment files whose frames are all at or below `flushed_lsn` are deleted. The rest are read in LSN order, and the frames above `flushed_lsn` become pages again: the open hour, plus any hour that closed while FRANK was down.
 5. **Flush and compact straight away** (FRANK). The maintenance loop's first tick comes immediately, so hours that closed during the downtime go to the bucket within the first minute, and closed days are merged.
+6. **Warm the read cache** (FRANK, S3 mode only, #291). On that same first tick, after flushing and compacting, `Sightings::warm()` runs one query that touches every listed file, so db-core fetches each footer now. A file up to 64 KiB comes whole in that one GET, so with today's file sizes the whole table is in the cache before the first caller arrives. It logs `read cache warmed` with the number of files and the time it took; an error only logs a warning. Requests are served throughout: the warm-up runs in the maintenance task, not on a request.
 
 **When replay meets a bad frame.** An incomplete frame at the very end of the last segment is the torn tail of a crash mid-write: it was never fsynced, so never acknowledged, and replay cuts it off. A bad frame anywhere else may be acknowledged data, so the table refuses to open, and FRANK refuses to start rather than drop it silently. Replaying twice gives the same result.
 
@@ -50,7 +51,7 @@ Not to scale. A row is readable from the moment it is appended. Until its hour i
 |---|---|---|---|---|
 | Pages | db-core | Rows of the open hour (and any closed hour not yet flushed) | Writer, in memory; rebuilt from the WAL on restart | Every query reads the newest rows without a file |
 | Held files | db-core | One handle per listed file, with its parsed footer | Writer; kept while the manifest lists the file (db-core #1051, #1052) | No re-fetch or re-parse of footers between queries |
-| RangeCache | db-core | Footer and column-chunk bytes, keyed by object and offset; a held range answers any read inside it | One per S3 store client, 256 MiB, least recently used out first; empty after a restart. Flush and compaction bypass it | A repeated read sends nothing. Listed files never change, so a cached range is never stale |
+| RangeCache | db-core | Footer and column-chunk bytes, keyed by object and offset; a held range answers any read inside it | One per S3 store client, 256 MiB, least recently used out first; empty after a restart until FRANK's warm-up refills it (#291). Flush and compaction bypass it | A repeated read sends nothing. Listed files never change, so a cached range is never stale |
 | Manifest ranges | FRANK picks, db-core keeps | Min and max of `rule_id`, `ioc_value`, `ts`, `received` per file | FRANK names the columns (sort key, `stat_columns`); db-core records them in `manifest.json`. Files written before v0.46.0 have no `ts`/`received` range | A file outside a query's window costs no request at all |
 | Browser | FRANK | Downloaded Parquet files (`/v1/files/{path}`) | `Cache-Control: private, max-age=3600, immutable`; the open hour is `no-store` | Partners re-query in the browser (frank-wasm) without downloading again |
 
@@ -72,6 +73,8 @@ Measured by [`crates/frank/tests/s3_requests.rs`](../crates/frank/tests/s3_reque
 "GETs end to end" is the cold call's wall time over the 1 ms the fake adds per GET: about how many requests ran one after another (the queries' own work is in it too). At AWS's 20–100 ms per request, a cold 30-day statistics call takes about 1–4 s; warm it sends nothing. With db-core v0.240 the same call took 1,506 GETs, about 560 end to end (11–56 s on AWS); v0.241 (t-rust-db/db-core#1059) reads a footer in one GET and fetches nearby chunks together and in parallel (#290).
 
 Every test file is under 64 KiB, so each is read whole by its footer GET: one GET per kept file, and slightly more bytes than the chunks alone. Day files larger than that go through the span fetches instead, which this table does not measure. The run against AWS itself is #228.
+
+**After the warm-up** (#291), measured in the same test: from a new process it sends 33 GETs for the 33 files (one each, up to 16 at a time, about 4 GET latencies end to end, so roughly 0.1–0.4 s on AWS), after which `/v1/statistics?days=30`, `/v1/explore?group=rule` and `/v1/sightings?limit=50` each send none. Once day files outgrow 64 KiB, the warm-up still saves each file's footer GET; the chunk spans are then fetched by the first query that needs them.
 
 ## Rules the design rests on
 
