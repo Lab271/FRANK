@@ -1,0 +1,152 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1000" height="545" viewBox="0 0 1000 545" role="img" aria-label="Write path split by owner. FRANK parses a submission and calls db-core's append, which writes a WAL frame to the local volume and fsyncs before FRANK sends the receipt. FRANK's maintenance loop calls flush and compact; db-core writes closed hours as Parquet, publishes them to the bucket and commits by rewriting manifest.json. FRANK's audit records go to the bucket through db-core's store.">
+<title>Write path split by owner. FRANK parses a submission and calls db-core's append, which writes a WAL frame to the local volume and fsyncs before FRANK sends the receipt. FRANK's maintenance loop calls flush and compact; db-core writes closed hours as Parquet, publishes them to the bucket and commits by rewriting manifest.json. FRANK's audit records go to the bucket through db-core's store.</title>
+<style>
+text { font-family: "IBM Plex Sans", system-ui, -apple-system, "Segoe UI", Helvetica, Arial, sans-serif; font-size: 13px; }
+.mono { font-family: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
+.sub, .lab { font-size: 11px; }
+.zone { font-weight: 600; font-size: 14px; } .lanename { font-weight: 600; font-size: 12px; }
+.box { stroke-width: 1.2; } .box.commit, .box.cache { stroke-width: 2; } .box.quiet { stroke-dasharray: 4 3; }
+.aw, .ar, .am { stroke-width: 1.6; fill: none; } .am, .dash { stroke-dasharray: 5 4; }
+.axis { stroke-width: 1; fill: none; }
+.bar-w, .bar-r, .bar-g { stroke-width: 1.2; } .bar-g { fill: none; stroke-dasharray: 5 4; }
+.bg { fill: #ffffff; }
+text { fill: #19212c; }
+.sub, .lab { fill: #5a6575; }
+.lab.w { fill: #a85400; } .lab.r { fill: #0b726e; }
+.lane { fill: #eceff3; } .zf { fill: #f3eee6; } .zd { fill: #e8eef4; }
+.box { fill: #ffffff; stroke: #cdd3dc; }
+.box.commit { stroke: #a85400; fill: #fbeedd; }
+.box.cache { stroke: #0b726e; fill: #dcf1ef; }
+.aw { stroke: #a85400; } .ar { stroke: #0b726e; } .am { stroke: #5a6575; }
+.hw { fill: #a85400; } .hr { fill: #0b726e; } .hm { fill: #5a6575; }
+.axis { stroke: #5a6575; }
+.bar-w { fill: #fbeedd; stroke: #a85400; }
+.bar-r { fill: #dcf1ef; stroke: #0b726e; }
+.bar-g { stroke: #5a6575; }
+@media (prefers-color-scheme: dark) {
+.bg { fill: #1a2029; }
+text { fill: #e4e8ee; }
+.sub, .lab { fill: #97a2b2; }
+.lab.w { fill: #f0a24a; } .lab.r { fill: #52c6bd; }
+.lane { fill: #161b22; } .zf { fill: #1f1c18; } .zd { fill: #161d26; }
+.box { fill: #1a2029; stroke: #333c49; }
+.box.commit { stroke: #f0a24a; fill: #3a2a17; }
+.box.cache { stroke: #52c6bd; fill: #13322f; }
+.aw { stroke: #f0a24a; } .ar { stroke: #52c6bd; } .am { stroke: #97a2b2; }
+.hw { fill: #f0a24a; } .hr { fill: #52c6bd; } .hm { fill: #97a2b2; }
+.axis { stroke: #97a2b2; }
+.bar-w { fill: #3a2a17; stroke: #f0a24a; }
+.bar-r { fill: #13322f; stroke: #52c6bd; }
+.bar-g { stroke: #97a2b2; }
+}
+</style>
+<rect class="bg" x="0" y="0" width="1000" height="545"/>
+          <defs>
+            <marker id="w1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0L10 5L0 10z" class="hw"/></marker>
+          </defs>
+          
+          <rect class="zf" x="0" y="30" width="320" height="505"/>
+          <rect class="zd" x="345" y="30" width="345" height="505"/>
+          <rect class="lane" x="700" y="30" width="300" height="245"/>
+          <rect class="lane" x="700" y="285" width="300" height="250"/>
+          <text class="zone" x="16" y="52">FRANK</text>
+          <text class="lab" x="70" y="52">crates/frank, frank-core</text>
+          <text class="zone" x="360" y="52">db-core</text>
+          <text class="lab" x="424" y="52">storage/ingest, store/s3</text>
+          <text class="lanename" x="712" y="52">Local volume</text>
+          <text class="lab" x="712" y="67">EFS or block volume</text>
+          <text class="lanename" x="712" y="307">S3 bucket</text>
+          <text class="lab" x="712" y="322">Garage, STACKIT, AWS</text>
+
+          
+          <rect class="box" x="35" y="64" width="260" height="48" rx="6"/>
+          <text class="mono" x="165" y="84" text-anchor="middle">POST /v1/sightings</text>
+          <text class="sub" x="165" y="101" text-anchor="middle">api.rs · contributor and up</text>
+
+          <rect class="box" x="35" y="140" width="260" height="52" rx="6"/>
+          <text x="165" y="161" text-anchor="middle">frank-core</text>
+          <text class="sub" x="165" y="179" text-anchor="middle">parse · normalise · drop identities</text>
+
+          <rect class="box" x="35" y="220" width="260" height="52" rx="6"/>
+          <text class="mono" x="165" y="241" text-anchor="middle">Sightings::append</text>
+          <text class="sub" x="165" y="259" text-anchor="middle">one row per sighting × IoC</text>
+
+          <rect class="box" x="35" y="380" width="260" height="60" rx="6"/>
+          <text x="165" y="401" text-anchor="middle">maintain loop</text>
+          <text class="sub" x="165" y="418" text-anchor="middle">main.rs · flush every 60 s</text>
+          <text class="sub" x="165" y="432" text-anchor="middle">compact + retention every hour</text>
+
+          <rect class="box" x="35" y="466" width="260" height="56" rx="6"/>
+          <text class="mono" x="165" y="488" text-anchor="middle">audit::record</text>
+          <text class="sub" x="165" y="506" text-anchor="middle">one line per action</text>
+
+          
+          <rect class="box" x="365" y="220" width="310" height="52" rx="6"/>
+          <text class="mono" x="520" y="241" text-anchor="middle">Table::append_row</text>
+          <text class="sub" x="520" y="259" text-anchor="middle">WAL frame · Ack::Durable on the last row</text>
+
+          <rect class="box" x="365" y="298" width="310" height="52" rx="6"/>
+          <text x="520" y="319" text-anchor="middle">pages: open hour</text>
+          <text class="sub" x="520" y="337" text-anchor="middle">head + sealed, in memory</text>
+
+          <rect class="box" x="365" y="380" width="310" height="60" rx="6"/>
+          <text x="520" y="399" text-anchor="middle">flush / compact (tiers)</text>
+          <text class="sub" x="520" y="415" text-anchor="middle">Parquet · zstd · 64k-row groups, built in tmp/</text>
+          <text class="sub" x="520" y="430" text-anchor="middle">sorted rule_id, ioc_value · ranges ts, received</text>
+
+          <rect class="box" x="365" y="466" width="310" height="56" rx="6"/>
+          <text class="mono" x="520" y="488" text-anchor="middle">S3Store</text>
+          <text class="sub" x="520" y="506" text-anchor="middle">PUT (multipart ≥ 64 MiB) · fenced manifest on AWS</text>
+
+          
+          <rect class="box quiet" x="800" y="100" width="185" height="52" rx="6"/>
+          <text class="sub" x="892" y="121" text-anchor="middle">iocs.db · registry.db</text>
+          <text class="sub" x="892" y="138" text-anchor="middle">participants.db</text>
+
+          <rect class="box" x="800" y="214" width="185" height="56" rx="6"/>
+          <text class="mono" x="892" y="236" text-anchor="middle">wal/</text>
+          <text class="sub" x="892" y="254" text-anchor="middle">data/s3/sightings</text>
+
+          <rect class="box commit" x="800" y="300" width="185" height="44" rx="6"/>
+          <text class="mono" x="892" y="320" text-anchor="middle">manifest.json</text>
+          <text class="sub" x="892" y="336" text-anchor="middle">files · rows · ranges</text>
+
+          <rect class="box" x="800" y="356" width="185" height="44" rx="6"/>
+          <text class="mono" x="892" y="376" text-anchor="middle">live/date=/hour=/</text>
+          <text class="sub" x="892" y="392" text-anchor="middle">one file per hour</text>
+
+          <rect class="box" x="800" y="412" width="185" height="44" rx="6"/>
+          <text class="mono" x="892" y="432" text-anchor="middle">archive/date=/</text>
+          <text class="sub" x="892" y="448" text-anchor="middle">one file per day</text>
+
+          <rect class="box" x="800" y="478" width="185" height="44" rx="6"/>
+          <text class="mono" x="892" y="498" text-anchor="middle">audit/YYYY-MM-DD/</text>
+          <text class="sub" x="892" y="514" text-anchor="middle">one object per line</text>
+
+          
+          <line class="aw" x1="165" y1="112" x2="165" y2="138" marker-end="url(#w1)"/>
+          <line class="aw" x1="165" y1="192" x2="165" y2="218" marker-end="url(#w1)"/>
+          <line class="aw" x1="295" y1="246" x2="363" y2="246" marker-end="url(#w1)"/>
+          <line class="aw" x1="675" y1="246" x2="798" y2="246" marker-end="url(#w1)"/>
+          <text class="lab w" x="708" y="240">append + fsync</text>
+          <polyline class="aw dash" points="365,228 332,228 332,88 297,88" marker-end="url(#w1)"/>
+          <text class="lab w" x="340" y="160">receipt after fsync</text>
+          <line class="aw" x1="520" y1="272" x2="520" y2="296" marker-end="url(#w1)"/>
+          <text class="lab w" x="528" y="289">keeps rows</text>
+
+          
+          <line class="aw" x1="295" y1="410" x2="363" y2="410" marker-end="url(#w1)"/>
+          <line class="aw" x1="520" y1="350" x2="520" y2="378" marker-end="url(#w1)"/>
+          <text class="lab w" x="528" y="368">closed hours</text>
+          <line class="aw" x1="520" y1="440" x2="520" y2="464" marker-end="url(#w1)"/>
+          <text class="lab w" x="528" y="457">publish</text>
+          <polyline class="aw" points="675,476 708,476 708,322 798,322" marker-end="url(#w1)"/>
+          <text class="lab w" x="716" y="316">2 · commit</text>
+          <polyline class="aw" points="675,488 722,488 722,378 798,378" marker-end="url(#w1)"/>
+          <text class="lab w" x="730" y="372">1 · hour file</text>
+          <polyline class="aw" points="800,392 788,392 788,434 798,434" marker-end="url(#w1)"/>
+          <text class="lab w" x="782" y="418" text-anchor="end">merge day</text>
+          <line class="aw" x1="295" y1="500" x2="363" y2="500" marker-end="url(#w1)"/>
+          <line class="aw" x1="675" y1="508" x2="798" y2="508" marker-end="url(#w1)"/>
+          <text class="lab w" x="736" y="502">put</text>
+        </svg>
