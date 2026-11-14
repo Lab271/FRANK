@@ -3,6 +3,8 @@
 #
 #   scripts/read-garage-column.sh                  an interactive column-rs shell
 #   scripts/read-garage-column.sh "SELECT …"       one query, then exit (or SQL="SELECT …")
+#   TABLE=audit scripts/read-garage-column.sh      the audit table (#309), under the
+#                                                  sightings' prefix; default `sightings`
 #
 # column-rs 0.45 opens an s3:// table location directly (t-rust-db/tools#123),
 # read-only, through the manifest: the table is `sightings`, striped as the
@@ -28,6 +30,12 @@ PORT=${GARAGE_S3_PORT:-3900}
 COLUMN_RS=${COLUMN_RS:-$(command -v column-rs || true)}
 URL=${URL:-}
 TLS=${TLS:-1}
+TABLE=${TABLE:-sightings}
+case $TABLE in
+  sightings) path=sightings ;;
+  audit) path=sightings/audit ;;
+  *) echo "read-garage-column: TABLE is sightings or audit" >&2; exit 1 ;;
+esac
 CA_CERT=${CA_CERT:-target/frank-local-ca.crt}
 
 MIN=0.45.0
@@ -57,7 +65,7 @@ if [ -n "$URL" ]; then
 else
   endpoint=http://127.0.0.1:$PORT
   [ "$TLS" = 0 ] || endpoint=https://${FRANK_HOST:-frank.local}:${GARAGE_TLS_PORT:-9443}
-  table="s3://frank/sightings?endpoint=$endpoint&region=garage"
+  table="s3://frank/$path?endpoint=$endpoint&region=garage"
 fi
 query=${1:-${SQL:-}}
 
@@ -74,6 +82,6 @@ printf '%s→ s3-column%s %s%s%s  [%s]\n' "$b" "$z" "$c" "$table" "$z" "$scheme"
 if [ -n "$query" ]; then
   "$COLUMN_RS" -c "$query" "$table"
 else
-  echo "the table is \`sightings\`; .quit to leave" >&2
+  echo "the table is \`$TABLE\`; .quit to leave" >&2
   "$COLUMN_RS" "$table"
 fi

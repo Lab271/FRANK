@@ -3,7 +3,9 @@
 //!
 //! A line has the request id, method, path with its query string, status,
 //! latency and the caller (`user@organisation`, `public`, or `unknown` when
-//! no token or session was resolved) with its tier. Never logged: the
+//! no token or session was resolved) with its tier; a call over `POST /mcp`
+//! adds the MCP tool it named (`tool`, ADR-024: reads are logged here, not
+//! audited). Never logged: the
 //! `Authorization` header, the session cookie, a token, a body, or the query
 //! of the SSO callback (its one-time code).
 
@@ -24,14 +26,29 @@ use crate::auth::Caller;
 /// The response header that carries the request id.
 pub const REQUEST_ID: &str = "x-request-id";
 
+/// What a handler notes for the access line of its request.
+#[derive(Default)]
+struct Note {
+    /// The caller `api::require` resolved.
+    caller: Option<(String, Tier)>,
+    /// The MCP tool a `tools/call` named.
+    tool: Option<String>,
+}
+
 tokio::task_local! {
-    /// The caller `api::require` resolved for the request in progress.
-    static CALLER: RefCell<Option<(String, Tier)>>;
+    /// The note of the request in progress.
+    static NOTE: RefCell<Note>;
 }
 
 /// Notes the caller for the access line; outside a request, nothing.
 pub(crate) fn record(caller: &Caller) {
-    let _ = CALLER.try_with(|c| *c.borrow_mut() = Some((caller.label(), caller.tier)));
+    let _ = NOTE.try_with(|n| n.borrow_mut().caller = Some((caller.label(), caller.tier)));
+}
+
+/// Notes the MCP tool called, for the access line; outside a request,
+/// nothing.
+pub(crate) fn tool(name: &str) {
+    let _ = NOTE.try_with(|n| n.borrow_mut().tool = Some(name.to_string()));
 }
 
 /// The middleware: a request id (also returned as `X-Request-Id` and on the
@@ -45,15 +62,17 @@ pub async fn log(req: Request, next: Next) -> Response {
         _ => req.uri().to_string(),
     };
     let span = tracing::info_span!(target: "frank", "request", request_id = %id);
-    let (mut res, caller) = CALLER
-        .scope(RefCell::new(None), async {
+    let (mut res, note) = NOTE
+        .scope(RefCell::new(Note::default()), async {
             let res = next.run(req).instrument(span).await;
-            (res, CALLER.with(RefCell::take))
+            (res, NOTE.with(RefCell::take))
         })
         .await;
-    let (caller, tier) = caller.map_or(("unknown".to_string(), "-".to_string()), |(c, t)| {
-        (c, t.to_string())
-    });
+    let (caller, tier) = note
+        .caller
+        .map_or(("unknown".to_string(), "-".to_string()), |(c, t)| {
+            (c, t.to_string())
+        });
     tracing::info!(
         target: "frank::access",
         request_id = %id,
@@ -63,6 +82,7 @@ pub async fn log(req: Request, next: Next) -> Response {
         latency_ms = u64::try_from(start.elapsed().as_millis()).unwrap_or(u64::MAX),
         caller = %caller,
         tier = %tier,
+        tool = note.tool.as_deref(),
     );
     if let Ok(v) = HeaderValue::from_str(&id) {
         res.headers_mut().insert(REQUEST_ID, v);

@@ -46,6 +46,14 @@ pub fn start_until(
 ) -> Result<(), String> {
     // Which build this is, before anything else is logged (#315).
     log_manifest();
+    // The one writer of the audit table (ADR-024): commands run next to
+    // the server spool their lines.
+    if ctx.audit.is_spool() {
+        return Err(format!(
+            "{}: the audit table is held by another process (is a server running?)",
+            ctx.data.display()
+        ));
+    }
     let sso = sso_config(ctx, &args)?;
     let limits = limits(&args)?;
     let participants = Participants::open(&ctx.participants)?;
@@ -184,19 +192,25 @@ async fn serve(
         .map_err(|e| e.to_string())?;
     maintenance.abort();
     let s = app.sightings.clone();
+    let audit = app.audit.clone();
     tokio::task::spawn_blocking(move || {
         let _ = s.flush();
-        s.close()
+        s.close().map_err(|e| e.to_string())?;
+        // Lines a command spooled since the last tick; the open hour stays
+        // in the WAL for the next start.
+        let _ = audit.drain_spool();
+        let _ = audit.flush();
+        audit.close()
     })
     .await
-    .map_err(|e| e.to_string())?
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string())??;
     tracing::info!("stopped");
     Ok(())
 }
 
 /// Flushes closed hours every minute; merges closed days and applies
-/// retention to both stores every hour.
+/// retention to both stores every hour. The audit the same way, with its
+/// own retention, after moving the lines commands spooled into it.
 async fn maintain(app: api::Shared, retention_days: u32) {
     let mut tick = tokio::time::interval(Duration::from_secs(60));
     let mut n: u64 = 0;
@@ -216,12 +230,17 @@ async fn maintain(app: api::Shared, retention_days: u32) {
             if flushed > 0 {
                 tracing::info!(files = flushed, "flushed closed hours");
             }
+            let spooled = app.audit.drain_spool()?;
+            if spooled > 0 {
+                tracing::info!(lines = spooled, "audit: spooled lines moved into the table");
+            }
+            app.audit.flush()?;
             if n % 60 == 1 {
                 let merged = app.sightings.compact().map_err(|e| e.to_string())?;
                 let keep_from = now_ns().div_euclid(DAY_NS) - i64::from(retention_days);
                 app.iocs.retain_from(keep_from)?;
                 app.registry.retain_from(keep_from)?;
-                app.audit.retain_from(keep_from)?;
+                app.audit.compact()?;
                 if merged > 0 {
                     tracing::info!(files = merged, keep_from_day = keep_from, "compacted");
                 }

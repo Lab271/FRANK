@@ -32,6 +32,8 @@ struct Harness {
     sightings: Sightings,
     iocs: Iocs,
     registry: Registry,
+    /// The server's audit table (the one writer, so read through it).
+    audit: Audit,
     /// `participants.db`, for changes made while the server runs.
     db: std::path::PathBuf,
     _dir: TempDir,
@@ -82,6 +84,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
     let registry = Registry::open(&dir, &sightings).unwrap();
     let lists = frank::lists::Lists::open(&dir).unwrap();
     lists.refresh(now());
+    let audit = Audit::open(&dir).unwrap();
     let app = router(Arc::new(App {
         data: dir.clone(),
         sightings: sightings.clone(),
@@ -90,7 +93,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
         lists,
         participants: Participants::open(&dir).unwrap(),
         registry: registry.clone(),
-        audit: Audit::open(&dir).unwrap(),
+        audit: audit.clone(),
         sso: None,
         submit_lock: std::sync::Mutex::new(()),
         now,
@@ -100,6 +103,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
         sightings,
         iocs,
         registry,
+        audit,
         db,
         _dir: TempDir(dir),
     }
@@ -1149,14 +1153,7 @@ async fn a_resend_is_recognised() {
     );
 
     // Each POST is one audit line naming the user, never in the Parquet.
-    let mut lines = Vec::new();
-    for f in std::fs::read_dir(h._dir.0.join("audit")).unwrap() {
-        let text = std::fs::read_to_string(f.unwrap().path()).unwrap();
-        lines.extend(
-            text.lines()
-                .map(|l| serde_json::from_str::<Value>(l).unwrap()),
-        );
-    }
+    let lines = h.audit.read_from(0).unwrap();
     let actions: Vec<(&str, &str)> = lines
         .iter()
         .map(|l| (l["action"].as_str().unwrap(), l["by"].as_str().unwrap()))
@@ -1879,10 +1876,19 @@ async fn admins_manage_their_own_organisation_only() {
         3,
         "the superadmin sees bea too"
     );
-    let dir = h.db.parent().unwrap().join("audit");
-    for f in std::fs::read_dir(dir).unwrap() {
-        let text = std::fs::read_to_string(f.unwrap().path()).unwrap();
-        assert!(!text.contains(&token), "a token in the audit log");
+    // Not in a row, nor in a file of the table (the WAL included).
+    let rows = serde_json::to_string(&h.audit.read_from(0).unwrap()).unwrap();
+    assert!(!rows.contains(&token), "a token in the audit log");
+    h.audit.flush().unwrap();
+    let mut files = vec![h.db.parent().unwrap().join(frank::audit::NAME)];
+    while let Some(p) = files.pop() {
+        if p.is_dir() {
+            files.extend(std::fs::read_dir(&p).unwrap().map(|e| e.unwrap().path()));
+        } else {
+            let bytes = std::fs::read(&p).unwrap();
+            let found = bytes.windows(token.len()).any(|w| w == token.as_bytes());
+            assert!(!found, "a token in {}", p.display());
+        }
     }
 }
 
@@ -3824,28 +3830,14 @@ async fn mcp_malformed_messages_are_json_rpc_errors() {
         .starts_with("422"));
 }
 
+/// A tool call is a read: not in the audit (ADR-024), but named on the
+/// access line (see `the_access_log_names_the_mcp_tool`).
 #[tokio::test]
-async fn mcp_tool_calls_are_audited() {
+async fn mcp_tool_calls_are_not_audited() {
     let h = harness("mcp-audit");
     mcp_tool(&h.app, Some("c"), "whoami", json!({})).await;
     mcp_tool(&h.app, Some("o"), "rule_detail", json!({"id": "r1"})).await;
-    let dir = h._dir.0.join(frank::audit::DIR);
-    let mut lines = String::new();
-    for f in std::fs::read_dir(dir).unwrap() {
-        lines += &std::fs::read_to_string(f.unwrap().path()).unwrap();
-    }
-    let calls: Vec<Value> = lines
-        .lines()
-        .map(|l| serde_json::from_str::<Value>(l).unwrap())
-        .filter(|l| l["action"] == "mcp_call")
-        .collect();
-    assert_eq!(calls.len(), 2, "{lines}");
-    assert_eq!(calls[0]["by"], "mdr@mdr");
-    assert_eq!(calls[0]["tool"], "whoami");
-    assert_eq!(calls[0]["ok"], true);
-    assert_eq!(calls[1]["by"], "obs@obs");
-    assert_eq!(calls[1]["ok"], false, "observer may not see a rule");
-    assert!(!lines.contains("\"c\""), "no token in the audit");
+    assert!(h.audit.read_from(0).unwrap().is_empty());
 }
 
 /// The log lines written while a test runs (#287).
@@ -4033,6 +4025,27 @@ async fn json_format_is_one_object_per_line_with_target() {
     assert_eq!(a["tier"], "contributor");
     assert!(a["latency_ms"].is_u64());
     assert_eq!(a["request_id"].as_str().unwrap().len(), 26);
+}
+
+/// ADR-024 point 6: a tool call over `POST /mcp` is a read, logged on its
+/// access line with the tool's name; other requests have no `tool`.
+#[tokio::test]
+async fn the_access_log_names_the_mcp_tool() {
+    let h = harness("access-mcp");
+    let (app, cap, _g) = logged(&h, true);
+    mcp_tool(&app, Some("c"), "whoami", json!({})).await;
+    call(&app, "GET", "/v1/whoami", Some("c"), None).await;
+    let access: Vec<Value> = cap
+        .text()
+        .lines()
+        .map(|l| serde_json::from_str::<Value>(l).unwrap())
+        .filter(|l| l["target"] == "frank::access")
+        .collect();
+    assert_eq!(access.len(), 2, "{access:?}");
+    assert_eq!(access[0]["uri"], "/mcp");
+    assert_eq!(access[0]["tool"], "whoami");
+    assert_eq!(access[0]["caller"], "mdr@mdr");
+    assert!(access[1].get("tool").is_none(), "{}", access[1]);
 }
 
 /// The keys of `rows` (or `[field]` of each row) as strings.

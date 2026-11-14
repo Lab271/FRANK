@@ -49,7 +49,7 @@ pub fn hex(bytes: &[u8]) -> String {
 #[must_use]
 pub fn unhex(s: &str) -> Option<Vec<u8>> {
     // Checked first: `from_str_radix` takes a leading `+`.
-    if s.len() % 2 != 0 || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
+    if !s.len().is_multiple_of(2) || !s.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..s.len())
@@ -65,17 +65,17 @@ mod tests {
 
     // MC/DC of `unhex`'s guard: odd length || a non-hex byte (ADR-025).
     #[test]
-    fn mcdc__lib_unhex_72fb6839__v1_even_and_hex_is_decoded() {
+    fn mcdc__lib_unhex_86af38cf__v1_even_and_hex_is_decoded() {
         assert_eq!(unhex("0aFf"), Some(vec![0x0a, 0xff]));
     }
 
     #[test]
-    fn mcdc__lib_unhex_72fb6839__v2_odd_length_is_refused() {
+    fn mcdc__lib_unhex_86af38cf__v2_odd_length_is_refused() {
         assert_eq!(unhex("0af"), None);
     }
 
     #[test]
-    fn mcdc__lib_unhex_72fb6839__v3_a_non_hex_byte_is_refused() {
+    fn mcdc__lib_unhex_86af38cf__v3_a_non_hex_byte_is_refused() {
         // `+a` would pass `from_str_radix`; the guard refuses it first.
         assert_eq!(unhex("+a"), None);
     }

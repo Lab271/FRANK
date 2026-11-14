@@ -109,9 +109,9 @@ Every minute the server MUST write each closed hour to `live/date=…/hour=…/`
 
 ### Requirement 4: Day merge and retention [MUST]
 
-Every hour the server MUST merge closed days into `archive/date=…/` and drop whole days older than `FRANK_RETENTION_DAYS` (default 400). The same cut MUST be applied to `iocs.db`, the registry and the audit log. Retention is by arrival day.
+Every hour the server MUST merge closed days into `archive/date=…/` and drop whole days older than `FRANK_RETENTION_DAYS` (default 400). The same cut MUST be applied to `iocs.db` and the registry. The audit table MUST be merged in the same pass, with its own `FRANK_AUDIT_RETENTION_DAYS` (default 400, Requirement 9). Retention is by arrival day.
 
-**Implementation:** `crates/frank/src/store/sightings.rs::compact`, `crates/frank/src/serve.rs::maintain`
+**Implementation:** `crates/frank/src/store/sightings.rs::compact`, `crates/frank/src/audit.rs::compact`, `crates/frank/src/serve.rs::maintain`
 
 #### Scenario: Days merge and expire
 
@@ -121,13 +121,13 @@ Every hour the server MUST merge closed days into `archive/date=…/` and drop w
 
 **Tests:** `crates/frank/src/store/sightings.rs::retention_deletes_the_objects_in_the_store`
 
-#### Scenario: Audit days expire with the sightings
+#### Scenario: Audit days expire with their own retention
 
-- GIVEN audit lines on two days
-- WHEN retention keeps the second day only
-- THEN the first day's file is gone and the second's stays
+- GIVEN an audit table with a retention of 2 days, and lines on two days 3 days apart
+- WHEN a day later it is flushed and compacted
+- THEN only the later line is left
 
-**Tests:** `crates/frank/src/audit.rs::lines_append_per_day_and_expire`
+**Tests:** `crates/frank/src/audit.rs::retention_drops_whole_days_at_compaction`
 
 ---
 
@@ -259,19 +259,35 @@ A local table copied to the bucket, with its `wal/` moved to the store mode's WA
 
 ---
 
-### Requirement 9: The audit log in the store [MUST]
+### Requirement 9: The audit table [MUST]
 
-With `FRANK_STORE` the audit log MUST go to the store as one object per line under `audit/YYYY-MM-DD/`, since S3 cannot append, and MUST read back in order. Two writers in the same nanosecond MUST both keep their line.
+The audit log MUST be a striped db-core table `audit` (ADR-024, #309), sorted by `at`, with the columns `at`, `by`, `action`, `participant`, `user`, `token` and the other fields as one JSON string `fields`: under the data directory, or with `FRANK_STORE` under `<store>/audit` with its WAL in `<data>/s3/audit`. Its retention MUST be `FRANK_AUDIT_RETENTION_DAYS`, apart from the sightings'. The server MUST be its one writer: a command that finds the table locked MUST append its line to `<data>/audit.spool`, and the server MUST move the spool into the table every minute and at shutdown. A server MUST NOT start when another process holds the table. The JSONL days of 0.55 and before (`<data>/audit/*.jsonl`, or `audit/YYYY-MM-DD/` objects) MUST be imported once and kept aside in `audit.jsonl/`; an import cut short MUST go on without duplicates.
 
-**Implementation:** `crates/frank/src/audit.rs::open_in`, `crates/frank/src/audit.rs::record`, `crates/frank/src/audit.rs::read_from`
+**Implementation:** `crates/frank/src/audit.rs::open_in`, `crates/frank/src/audit.rs::record`, `crates/frank/src/audit.rs::drain_spool`, `crates/frank/src/serve.rs::maintain`
 
-#### Scenario: One object per line, ordered and expiring
+#### Scenario: Lines read back as they were written
 
-- GIVEN two audit handles on one store
-- WHEN both record lines in the same nanosecond and on the next day
-- THEN every line is read back in order, and retention drops the first day
+- GIVEN lines with promoted fields and other fields
+- WHEN they are read back
+- THEN each is the JSON line it was, oldest first, and newest first when queried
 
-**Tests:** `crates/frank/src/audit.rs::in_a_store_one_object_per_line_ordered_and_expiring`
+**Tests:** `crates/frank/src/audit.rs::lines_are_rows_and_read_back_as_lines`
+
+#### Scenario: A second opener spools
+
+- GIVEN the table held by one handle
+- WHEN a second handle records two lines
+- THEN they are in the spool, and the holder's drain moves them into the table, finishing a drain cut short first
+
+**Tests:** `crates/frank/src/audit.rs::a_second_opener_spools_and_the_holder_drains_it`, `crates/frank/tests/cli.rs::a_command_next_to_the_server_spools_its_audit_line`, `crates/frank/tests/cli.rs::serve_refuses_an_audit_table_held_by_another_process`
+
+#### Scenario: JSONL days are imported once
+
+- GIVEN JSONL day files, or day objects in a store
+- WHEN the table is opened, opened again, and opened after the import marker is removed
+- THEN every line is in the table once, and the days are kept in `audit.jsonl/`
+
+**Tests:** `crates/frank/src/audit.rs::jsonl_files_are_imported_once_and_kept_aside`, `crates/frank/src/audit.rs::day_objects_in_a_store_are_imported_once_and_moved_aside`
 
 ---
 

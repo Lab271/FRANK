@@ -145,17 +145,33 @@ Issuing a token MUST return the plain token once, with `Cache-Control: no-store`
 
 ### Requirement 6: Audit [MUST]
 
-Every change MUST write an audit line. An admin MUST see only the audit lines about its organisation; a superadmin MUST see all of them. Tokens MUST appear only as a prefix.
+Every change MUST write an audit line. An admin MUST see only the audit lines about its organisation; a superadmin MUST see all of them. The admin's scope MUST be part of the query on the audit table (#309). Tokens MUST appear only as a prefix. An MCP tool call is a read: it MUST NOT be audited, and its access line MUST name the tool (ADR-024).
 
-**Implementation:** `crates/frank/src/admin.rs::record`, `crates/frank/src/admin.rs::audit`
+**Implementation:** `crates/frank/src/admin.rs::record`, `crates/frank/src/admin.rs::audit`, `crates/frank/src/audit.rs::query`, `crates/frank/src/access.rs::tool`
 
 #### Scenario: The audit never holds a plain token
 
 - GIVEN tokens issued and revoked through the API
-- WHEN the audit log is read from disk
+- WHEN the audit rows are read, and the table's files read from disk
 - THEN no token appears in plain
 
 **Tests:** `crates/frank/tests/api.rs::admins_manage_their_own_organisation_only`
+
+#### Scenario: The scope is a query
+
+- GIVEN lines about an organisation, a user, a token, by a user, and about another organisation
+- WHEN they are queried with the admin's scope
+- THEN the first four are returned and the last is not; a quote in a value is quoted
+
+**Tests:** `crates/frank/src/audit.rs::a_scope_lets_through_its_organisation_users_tokens_and_doers`
+
+#### Scenario: MCP tool calls are in the access log
+
+- GIVEN an MCP tool call and a plain request
+- WHEN the access log is read, and the audit
+- THEN the call's line names the tool, the other has no tool, and the audit has neither
+
+**Tests:** `crates/frank/tests/api.rs::the_access_log_names_the_mcp_tool`, `crates/frank/tests/api.rs::mcp_tool_calls_are_not_audited`
 
 ---
 

@@ -38,10 +38,10 @@ pub fn routes() -> Router<Shared> {
 }
 
 async fn mcp(State(app): State<Shared>, headers: HeaderMap, body: String) -> Response {
-    let caller = match require(&app, &headers, Tier::Public) {
-        Ok(c) => c,
-        Err(e) => return e.into_response(),
-    };
+    // Named before the message is read; the access line names it.
+    if let Err(e) = require(&app, &headers, Tier::Public) {
+        return e.into_response();
+    }
     let Ok(msg) = serde_json::from_str::<Value>(&body) else {
         return reply(&Value::Null, Err((PARSE_ERROR, "not JSON".into())));
     };
@@ -71,19 +71,11 @@ async fn mcp(State(app): State<Shared>, headers: HeaderMap, body: String) -> Res
         "tools/call" => {
             let name = params["name"].as_str().unwrap_or_default().to_string();
             let args = params.get("arguments").cloned().unwrap_or(json!({}));
-            let r = call(app.clone(), headers, &name, args).await;
-            let ok = matches!(r, Ok(Ok(_)));
-            if r.is_ok() {
-                if let Err(e) = app.audit.record(
-                    (app.now)(),
-                    &caller.label(),
-                    "mcp_call",
-                    json!({ "tool": name, "ok": ok }),
-                ) {
-                    tracing::error!("audit mcp_call: {e}");
-                }
-            }
-            r.map(tool_result)
+            // A read: in the access log, not the audit (ADR-024).
+            crate::access::tool(&name);
+            call(app.clone(), headers, &name, args)
+                .await
+                .map(tool_result)
         }
         other => Err((METHOD_NOT_FOUND, format!("unknown method {other:?}"))),
     };

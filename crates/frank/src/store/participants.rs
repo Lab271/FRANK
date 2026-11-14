@@ -1167,8 +1167,8 @@ pub fn tokens(path: &Path) -> Result<Vec<TokenInfo>, String> {
 }
 
 /// Revokes the one token whose hash starts with `prefix` (at least 8 hex
-/// digits, as `frank token list` shows them).
-pub fn revoke(path: &Path, prefix: &str) -> Result<(), String> {
+/// digits, as `frank token list` shows them); its first 12 digits.
+pub fn revoke(path: &Path, prefix: &str) -> Result<String, String> {
     let prefix = prefix.to_ascii_lowercase();
     if prefix.len() < 8 || !prefix.bytes().all(|b| b.is_ascii_hexdigit()) {
         return Err("give at least 8 hex digits of the token's hash (frank token list)".into());
@@ -1189,7 +1189,8 @@ pub fn revoke(path: &Path, prefix: &str) -> Result<(), String> {
                     now_s(),
                     sql_quote(one)
                 ),
-            ),
+            )
+            .map(|()| one[..12].to_string()),
             [] => Err(format!("no active token {prefix}…")),
             _ => Err(format!(
                 "{prefix}… matches several tokens: give more digits"

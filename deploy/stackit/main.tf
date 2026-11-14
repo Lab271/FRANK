@@ -99,22 +99,23 @@ resource "stackit_server" "frank" {
     delete_on_termination = true
   }
   user_data = templatefile("${path.module}/cloud-init.yaml.tftpl", {
-    domain         = var.domain
-    image          = var.image
-    registry       = split("/", var.image)[0]
-    registry_user  = var.registry_user
-    registry_token = var.registry_token
-    retention_days = var.retention_days
-    store          = local.store
-    store_key      = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].access_key
-    store_secret   = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].secret_access_key
-    abuse_key      = var.abuse_key
-    sso_issuer     = var.sso_issuer
-    sso_client_id  = var.sso_client_id
-    sso_secret     = var.sso_client_secret
-    sso_org        = var.sso_organisation
-    sso_admin      = var.sso_admin_group
-    sso_admin_org  = var.sso_admin_organisation
+    domain               = var.domain
+    image                = var.image
+    registry             = split("/", var.image)[0]
+    registry_user        = var.registry_user
+    registry_token       = var.registry_token
+    retention_days       = var.retention_days
+    audit_retention_days = var.audit_retention_days
+    store                = local.store
+    store_key            = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].access_key
+    store_secret         = local.store == "" ? "" : stackit_objectstorage_credential.frank[0].secret_access_key
+    abuse_key            = var.abuse_key
+    sso_issuer           = var.sso_issuer
+    sso_client_id        = var.sso_client_id
+    sso_secret           = var.sso_client_secret
+    sso_org              = var.sso_organisation
+    sso_admin            = var.sso_admin_group
+    sso_admin_org        = var.sso_admin_organisation
     # The same scripts as `make geoip` and `make lists` (#276).
     fetch_geoip = file("${path.module}/../../scripts/fetch-geoip.sh")
     fetch_lists = file("${path.module}/../../scripts/fetch-lists.sh")

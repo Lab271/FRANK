@@ -7,7 +7,7 @@ version = "0.56.0"
 edition = "2021"
 license = "Apache-2.0"
 repository = "https://github.com/Lab271/FRANK"
-rust-version = "1.85"
+rust-version = "1.89"
 
 [workspace.dependencies]
 frank-core = { path = "crates/frank-core" }

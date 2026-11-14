@@ -45,6 +45,15 @@ pub struct Cli {
     /// credentials file, an ECS task role or the EC2 instance role.
     #[arg(long, env = "FRANK_STORE", global = true)]
     pub store: Option<String>,
+    /// Days the audit log keeps (ADR-024), apart from the sightings'
+    /// `FRANK_RETENTION_DAYS`: the accountability record outlives the data.
+    #[arg(
+        long,
+        env = "FRANK_AUDIT_RETENTION_DAYS",
+        default_value_t = 400,
+        global = true
+    )]
+    pub audit_retention_days: u32,
     #[command(subcommand)]
     pub command: Command,
 }
@@ -284,9 +293,12 @@ pub fn setup(cli: &Cli) -> Result<Ctx, String> {
             cli.participants.display()
         ));
     }
-    let store = open_store(cli.store.as_deref())?;
     Ok(Ctx {
-        audit: Audit::open_in(&cli.data, store)?,
+        audit: Audit::open_in(
+            &cli.data,
+            cli.store.as_deref(),
+            Some(cli.audit_retention_days),
+        )?,
         data: cli.data.clone(),
         participants: cli.participants.clone(),
         db,
@@ -547,11 +559,10 @@ fn token_list(ctx: &Ctx, io: &mut Io) -> Result<(), String> {
 }
 
 fn token_revoke(ctx: &Ctx, prefix: &str, io: &mut Io) -> Result<(), String> {
-    parts::revoke(&ctx.db, prefix)?;
-    ctx.log(
-        "token_revoked",
-        json!({ "token": prefix.to_ascii_lowercase() }),
-    )?;
+    // The token's 12 digits, as every other line has them, whatever
+    // prefix was given.
+    let token = parts::revoke(&ctx.db, prefix)?;
+    ctx.log("token_revoked", json!({ "token": token }))?;
     io.err(format!("revoked {prefix}…"))
 }
 

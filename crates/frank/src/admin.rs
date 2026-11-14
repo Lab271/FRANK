@@ -608,9 +608,9 @@ async fn audit(
     let days = w.days.unwrap_or(7).clamp(1, MAX_AUDIT_DAYS);
     blocking(move || {
         let from_day = (app.now)().div_euclid(DAY_NS) - (days - 1);
-        let lines = app.audit.read_from(from_day).map_err(internal)?;
-        let mut lines: Vec<Value> = if c.role == Some(Role::Superadmin) {
-            lines
+        // An admin's scope is part of the query (#309).
+        let scope = if c.role == Some(Role::Superadmin) {
+            None
         } else {
             let users: Vec<String> = managed_users(&app, &c)?
                 .into_iter()
@@ -622,25 +622,21 @@ async fn audit(
                 .filter(|t| t.participant == c.participant)
                 .map(|t| t.prefix)
                 .collect();
-            let by: Vec<String> = users
+            let by = users
                 .iter()
                 .map(|u| format!("{u}@{}", c.organisation))
                 .collect();
-            lines
-                .into_iter()
-                .filter(|l| {
-                    let s = |k: &str| l[k].as_str().unwrap_or("");
-                    s("participant") == c.participant
-                        || users.iter().any(|u| u == s("user"))
-                        || tokens
-                            .iter()
-                            .any(|t| !s("token").is_empty() && t.starts_with(s("token")))
-                        || by.iter().any(|b| b == s("by"))
-                })
-                .collect()
+            Some(crate::audit::Scope {
+                participant: c.participant.clone(),
+                users,
+                tokens,
+                by,
+            })
         };
-        lines.reverse();
-        lines.truncate(MAX_AUDIT_LINES);
+        let lines = app
+            .audit
+            .query(from_day * DAY_NS, scope.as_ref(), MAX_AUDIT_LINES)
+            .map_err(internal)?;
         Ok(Json(json!({ "days": days, "lines": lines })))
     })
     .await
