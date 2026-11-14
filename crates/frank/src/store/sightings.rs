@@ -175,76 +175,142 @@ fn rewrite(
         std::fs::remove_dir_all(&work)?;
     }
 
+    // Read the old table and convert its rows, write them to a new table
+    // next to it, then swap it in only once every row is there.
+    let all = read_stored(&dir, stored, retention_days, clock)?;
+    let rows = rewritten_rows(stored, &all)?;
+    let n = write_rewritten(&work.join(NAME), &dir, rows, retention_days, clock)?;
+
+    std::fs::rename(&dir, &backup)?;
+    std::fs::rename(work.join(NAME), &dir)?;
+    std::fs::remove_dir(&work)?;
+    tracing::info!(
+        "{} rewritten to the 0.28 schema ({n} rows); the old table is in {} and can be deleted once checked",
+        dir.display(),
+        backup.display()
+    );
+    Ok(())
+}
+
+/// Every row of the table under `dir`, stored with `stored`; the table is
+/// closed again once read ([`rewrite`]'s first step).
+fn read_stored(
+    dir: &Path,
+    stored: &[ColumnSpec],
+    retention_days: Option<u32>,
+    clock: fn() -> i64,
+) -> Result<QueryResult, IngestError> {
     let old = Table::open(
-        &dir,
+        dir,
         options(stored.to_vec(), SORT_KEY, retention_days, clock),
     )?;
     let all = old
         .query(&format!("SELECT * FROM {NAME}"))
-        .map_err(|e| corrupt(e.to_string()))?;
+        .map_err(|e| IngestError::Corrupt(e.to_string()))?;
     old.close()?;
+    Ok(all)
+}
 
+/// The rows of `all`, stored with `stored`, in the current schema, each
+/// with the time it arrived, in order of arrival ([`rewrite`]).
+fn rewritten_rows(
+    stored: &[ColumnSpec],
+    all: &QueryResult,
+) -> Result<Vec<(i64, Vec<RecordValue>)>, IngestError> {
     let at = |name: &str| stored.iter().position(|c| c.name == name);
-    // `ts` and `received` read back as ISO text (db-core #1046), `seq` as
-    // an integer.
+    // `ts` and `received` read back as ISO text (db-core #1046).
     let int = |row: &[Cell], i: Option<usize>| i.and_then(|i| nanos(&row[i]));
-    let (technique, received, ts) = (at("technique"), at("received"), at("ts"));
-    let first = |row: &[Cell]| int(row, at("seq")).unwrap_or(0) == 0;
+    let (received, ts) = (at("received"), at("ts"));
     let mut rows: Vec<(i64, Vec<RecordValue>)> = Vec::with_capacity(all.rows.len());
     for row in &all.rows {
         let values = schema()
             .iter()
-            .map(|c| {
-                if c.name == TECHNIQUES && technique.is_some() {
-                    return Ok(techniques(match technique.map(|i| &row[i]) {
-                        Some(Cell::Text(t)) => Some(t.as_str()),
-                        _ => None,
-                    }));
-                }
-                // A stored list (0.21 on) reads back as JSON text.
-                if c.column_type == ColumnType::ListUtf8 {
-                    return match at(&c.name).map(|i| &row[i]) {
-                        Some(Cell::Text(t)) => serde_json::from_str::<Vec<Option<String>>>(t)
-                            .map(RecordValue::List)
-                            .map_err(|e| corrupt(format!("{}: {e}: {t}", c.name))),
-                        _ => Ok(RecordValue::Null),
-                    };
-                }
-                let cell = at(&c.name).map(|i| &row[i]);
-                if c.name == "digest" && !first(row) {
-                    return Ok(RecordValue::Null);
-                }
-                if let Some(v @ (Cell::Text(_) | Cell::Blob(_))) =
-                    cell.filter(|_| c.column_type == ColumnType::Binary)
-                {
-                    return id_bytes(v, c.name == "digest")
-                        .map(RecordValue::Bytes)
-                        .ok_or_else(|| corrupt(format!("{}: not an id or digest: {v:?}", c.name)));
-                }
-                if c.column_type == ColumnType::TimestampNanos {
-                    return Ok(cell
-                        .and_then(nanos)
-                        .map_or(RecordValue::Null, RecordValue::Int));
-                }
-                Ok(match cell {
-                    None | Some(Cell::Null) => RecordValue::Null,
-                    Some(Cell::Int(n)) => RecordValue::Int(*n),
-                    Some(Cell::Text(t)) => RecordValue::Str(t.clone()),
-                    Some(other) => {
-                        return Err(corrupt(format!("{}: unexpected value {other:?}", c.name)))
-                    }
-                })
-            })
+            .map(|c| rewritten_value(stored, row, c))
             .collect::<Result<Vec<_>, _>>()?;
         let arrived = int(row, received).or(int(row, ts)).unwrap_or(0);
         rows.push((arrived, values));
     }
     rows.sort_by_key(|(arrived, _)| *arrived);
+    Ok(rows)
+}
 
+/// The value of column `c` of the current schema for `row`, a row of a
+/// table stored with `stored` ([`rewrite`]).
+fn rewritten_value(
+    stored: &[ColumnSpec],
+    row: &[Cell],
+    c: &ColumnSpec,
+) -> Result<RecordValue, IngestError> {
+    let corrupt = |why: String| IngestError::Corrupt(why);
+    let at = |name: &str| stored.iter().position(|c| c.name == name);
+    // `seq` reads back as an integer.
+    let first = |row: &[Cell]| at("seq").and_then(|i| nanos(&row[i])).unwrap_or(0) == 0;
+    if c.column_type == ColumnType::ListUtf8 {
+        return rewritten_list(stored, row, c);
+    }
+    let cell = at(&c.name).map(|i| &row[i]);
+    if c.name == "digest" && !first(row) {
+        return Ok(RecordValue::Null);
+    }
+    if let Some(v @ (Cell::Text(_) | Cell::Blob(_))) =
+        cell.filter(|_| c.column_type == ColumnType::Binary)
+    {
+        return id_bytes(v, c.name == "digest")
+            .map(RecordValue::Bytes)
+            .ok_or_else(|| corrupt(format!("{}: not an id or digest: {v:?}", c.name)));
+    }
+    if c.column_type == ColumnType::TimestampNanos {
+        return Ok(cell
+            .and_then(nanos)
+            .map_or(RecordValue::Null, RecordValue::Int));
+    }
+    Ok(match cell {
+        None | Some(Cell::Null) => RecordValue::Null,
+        Some(Cell::Int(n)) => RecordValue::Int(*n),
+        Some(Cell::Text(t)) => RecordValue::Str(t.clone()),
+        Some(other) => return Err(corrupt(format!("{}: unexpected value {other:?}", c.name))),
+    })
+}
+
+/// The value of list column `c` for `row`: the techniques from the
+/// `technique` string when the table has it, else the stored list.
+fn rewritten_list(
+    stored: &[ColumnSpec],
+    row: &[Cell],
+    c: &ColumnSpec,
+) -> Result<RecordValue, IngestError> {
+    let at = |name: &str| stored.iter().position(|c| c.name == name);
+    let technique = at("technique");
+    if c.name == TECHNIQUES && technique.is_some() {
+        return Ok(techniques(match technique.map(|i| &row[i]) {
+            Some(Cell::Text(t)) => Some(t.as_str()),
+            _ => None,
+        }));
+    }
+    // A stored list (0.21 on) reads back as JSON text.
+    match at(&c.name).map(|i| &row[i]) {
+        Some(Cell::Text(t)) => serde_json::from_str::<Vec<Option<String>>>(t)
+            .map(RecordValue::List)
+            .map_err(|e| IngestError::Corrupt(format!("{}: {e}: {t}", c.name))),
+        _ => Ok(RecordValue::Null),
+    }
+}
+
+/// Appends `rows` to a new table at `path`, each at its arrival time, and
+/// checks every row is there before compacting and closing it; the number
+/// of rows ([`rewrite`]). `dir`, the table rewritten, is named in the
+/// error when rows are missing.
+fn write_rewritten(
+    path: &Path,
+    dir: &Path,
+    rows: Vec<(i64, Vec<RecordValue>)>,
+    retention_days: Option<u32>,
+    clock: fn() -> i64,
+) -> Result<usize, IngestError> {
     let n = rows.len();
     REPLAY.store(rows.first().map_or_else(clock, |r| r.0), Ordering::SeqCst);
     let new = Table::open(
-        work.join(NAME),
+        path,
         options(schema(), SORT_KEY, retention_days, replay_clock),
     )?;
     for (i, (arrived, values)) in rows.into_iter().enumerate() {
@@ -261,26 +327,17 @@ fn rewrite(
     let copied = new
         .query(&format!("SELECT count(*) FROM {NAME}"))
         .map(|r| scalar(&r))
-        .map_err(|e| corrupt(e.to_string()))?;
+        .map_err(|e| IngestError::Corrupt(e.to_string()))?;
     if usize::try_from(copied).ok() != Some(n) {
         new.close()?;
-        return Err(corrupt(format!(
+        return Err(IngestError::Corrupt(format!(
             "rewrite copied {copied} of {n} rows; {} is unchanged",
             dir.display()
         )));
     }
     new.compact()?;
     new.close()?;
-
-    std::fs::rename(&dir, &backup)?;
-    std::fs::rename(work.join(NAME), &dir)?;
-    std::fs::remove_dir(&work)?;
-    tracing::info!(
-        "{} rewritten to the 0.28 schema ({n} rows); the old table is in {} and can be deleted once checked",
-        dir.display(),
-        backup.display()
-    );
-    Ok(())
+    Ok(n)
 }
 
 fn options(

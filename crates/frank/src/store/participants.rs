@@ -279,38 +279,10 @@ fn with_db<T>(
 type Callers = (HashMap<String, Caller>, HashMap<String, (Caller, i64)>);
 
 fn load_callers(db: &mut RowEngine) -> Result<Callers, String> {
-    let orgs: HashMap<String, (String, Tier)> =
-        query(db, "SELECT id, name, status FROM organisations")?
-            .rows
-            .iter()
-            .filter_map(|r| Some((text(&r[0]), (text(&r[1]), Tier::parse(&text(&r[2]))?))))
-            .collect();
-    let users: HashMap<String, (String, String, String)> =
-        query(db, "SELECT id, organisation, name, kind FROM users")?
-            .rows
-            .iter()
-            .map(|r| (text(&r[0]), (text(&r[1]), text(&r[2]), text(&r[3]))))
-            .collect();
-    let roles = roles(db)?;
-    let disabled = disabled(db)?;
-    // The working user with id `user_id` as a caller.
-    let caller = |user_id: &str| -> Option<Caller> {
-        if disabled.contains(user_id) {
-            return None;
-        }
-        let (org, user, _) = users.get(user_id)?;
-        let (name, status) = orgs.get(org)?;
-        Some(Caller {
-            tier: *status,
-            participant: org.clone(),
-            organisation: name.clone(),
-            user: user.clone(),
-            role: roles.get(user_id).copied(),
-        })
-    };
+    let dir = Directory::load(db)?;
     let mut by_hash = HashMap::new();
     for r in query(db, "SELECT hash, user FROM tokens WHERE revoked IS NULL")?.rows {
-        if let Some(c) = caller(&text(&r[1])) {
+        if let Some(c) = dir.caller(&text(&r[1])) {
             by_hash.insert(text(&r[0]), c);
         }
     }
@@ -318,14 +290,63 @@ fn load_callers(db: &mut RowEngine) -> Result<Callers, String> {
     for r in query(db, "SELECT hash, user, expires FROM sessions")?.rows {
         let user_id = text(&r[1]);
         // Only people sign in; a session of a machine user is never valid.
-        if users.get(&user_id).is_some_and(|u| u.2 != "human") {
+        if dir.users.get(&user_id).is_some_and(|u| u.2 != "human") {
             continue;
         }
-        if let Some(c) = caller(&user_id) {
+        if let Some(c) = dir.caller(&user_id) {
             by_session.insert(text(&r[0]), (c, int(&r[2])));
         }
     }
     Ok((by_hash, by_session))
+}
+
+/// What makes a user id a caller, as [`load_callers`] reads it.
+struct Directory {
+    /// Organisation id → (name, status).
+    orgs: HashMap<String, (String, Tier)>,
+    /// User id → (organisation id, name, kind).
+    users: HashMap<String, (String, String, String)>,
+    roles: HashMap<String, Role>,
+    disabled: HashSet<String>,
+}
+
+impl Directory {
+    fn load(db: &mut RowEngine) -> Result<Directory, String> {
+        let orgs = query(db, "SELECT id, name, status FROM organisations")?
+            .rows
+            .iter()
+            .filter_map(|r| Some((text(&r[0]), (text(&r[1]), Tier::parse(&text(&r[2]))?))))
+            .collect();
+        let users = query(db, "SELECT id, organisation, name, kind FROM users")?
+            .rows
+            .iter()
+            .map(|r| (text(&r[0]), (text(&r[1]), text(&r[2]), text(&r[3]))))
+            .collect();
+        let roles = roles(db)?;
+        let disabled = disabled(db)?;
+        Ok(Directory {
+            orgs,
+            users,
+            roles,
+            disabled,
+        })
+    }
+
+    /// The working user with id `user_id` as a caller.
+    fn caller(&self, user_id: &str) -> Option<Caller> {
+        if self.disabled.contains(user_id) {
+            return None;
+        }
+        let (org, user, _) = self.users.get(user_id)?;
+        let (name, status) = self.orgs.get(org)?;
+        Some(Caller {
+            tier: *status,
+            participant: org.clone(),
+            organisation: name.clone(),
+            user: user.clone(),
+            role: self.roles.get(user_id).copied(),
+        })
+    }
 }
 
 /// User id → role.
@@ -784,25 +805,7 @@ pub fn sign_in(
             ),
         )?;
         if let Some(row) = linked.rows.first() {
-            let user_id = text(&row[0]);
-            let r = query(
-                db,
-                &format!(
-                    "SELECT name, kind FROM users WHERE id = {}",
-                    sql_quote(&user_id)
-                ),
-            )?;
-            let Some(u) = r.rows.first() else {
-                return Ok(Err("the linked user no longer exists".into()));
-            };
-            let name = text(&u[0]);
-            if text(&u[1]) != "human" {
-                return Ok(Err(format!("{name} is a machine user")));
-            }
-            if disabled.contains(&user_id) {
-                return Ok(Err(format!("{name} is disabled")));
-            }
-            return Ok(Ok((name, SignedIn::Known)));
+            return sign_in_known(db, &text(&row[0]), &disabled);
         }
         let Some(name) = id.email.as_deref().map(|e| e.trim().to_ascii_lowercase()) else {
             return Ok(Err("the ID token has no email claim".into()));
@@ -810,59 +813,106 @@ pub fn sign_in(
         if check_name("user", &name).is_err() {
             return Ok(Err(format!("{name:?} is not a valid user name")));
         }
-        let link = |db: &mut RowEngine, user_id: &str| {
-            exec(
-                db,
-                &format!(
-                    "INSERT INTO sso_subjects (subject, user, created) VALUES ({}, {}, {})",
-                    sql_quote(&key),
-                    sql_quote(user_id),
-                    now_s()
-                ),
-            )
-        };
         if let Ok((user_id, _, kind)) = find_user_row(db, &name) {
-            if kind != "human" {
-                return Ok(Err(format!("{name} is a machine user")));
-            }
-            if !id.email_verified {
-                return Ok(Err(format!(
-                    "{name} exists and the identity's e-mail is not verified"
-                )));
-            }
-            if disabled.contains(&user_id) {
-                return Ok(Err(format!("{name} is disabled")));
-            }
-            let other = query(
-                db,
-                &format!(
-                    "SELECT subject FROM sso_subjects WHERE user = {}",
-                    sql_quote(&user_id)
-                ),
-            )?;
-            if !other.rows.is_empty() {
-                return Ok(Err(format!("{name} is linked to another identity")));
-            }
-            link(db, &user_id)?;
-            return Ok(Ok((name, SignedIn::Linked)));
+            let user = (name, user_id, kind);
+            return link_existing(db, &key, user, id.email_verified, &disabled);
         }
-        let (org, _) = find_org(db, organisation)?;
-        let user_id = uuid4()?;
-        transaction(db, |db| {
-            exec(
-                db,
-                &format!(
-                    "INSERT INTO users (id, organisation, name, kind, created) VALUES ({}, {}, {}, 'human', {})",
-                    sql_quote(&user_id),
-                    sql_quote(&org),
-                    sql_quote(&name),
-                    now_s()
-                ),
-            )?;
-            link(db, &user_id)
-        })?;
-        Ok(Ok((name, SignedIn::Provisioned)))
+        provision(db, &key, name, organisation)
     })
+}
+
+/// What [`sign_in`] comes to: a store failure, or a refusal or the user.
+type SignInResult = Result<Result<(String, SignedIn), String>, String>;
+
+/// An identity linked before signs in as its user, while that is a
+/// working human.
+fn sign_in_known(db: &mut RowEngine, user_id: &str, disabled: &HashSet<String>) -> SignInResult {
+    let r = query(
+        db,
+        &format!(
+            "SELECT name, kind FROM users WHERE id = {}",
+            sql_quote(user_id)
+        ),
+    )?;
+    let Some(u) = r.rows.first() else {
+        return Ok(Err("the linked user no longer exists".into()));
+    };
+    let name = text(&u[0]);
+    if text(&u[1]) != "human" {
+        return Ok(Err(format!("{name} is a machine user")));
+    }
+    if disabled.contains(user_id) {
+        return Ok(Err(format!("{name} is disabled")));
+    }
+    Ok(Ok((name, SignedIn::Known)))
+}
+
+/// Links the identity (`key`) to the existing user `(name, id, kind)`: a
+/// working human, by a verified e-mail, not linked to another identity.
+fn link_existing(
+    db: &mut RowEngine,
+    key: &str,
+    (name, user_id, kind): (String, String, String),
+    email_verified: bool,
+    disabled: &HashSet<String>,
+) -> SignInResult {
+    if kind != "human" {
+        return Ok(Err(format!("{name} is a machine user")));
+    }
+    if !email_verified {
+        return Ok(Err(format!(
+            "{name} exists and the identity's e-mail is not verified"
+        )));
+    }
+    if disabled.contains(&user_id) {
+        return Ok(Err(format!("{name} is disabled")));
+    }
+    let other = query(
+        db,
+        &format!(
+            "SELECT subject FROM sso_subjects WHERE user = {}",
+            sql_quote(&user_id)
+        ),
+    )?;
+    if !other.rows.is_empty() {
+        return Ok(Err(format!("{name} is linked to another identity")));
+    }
+    link_subject(db, key, &user_id)?;
+    Ok(Ok((name, SignedIn::Linked)))
+}
+
+/// Creates the human user `name` in `organisation`, without a role, linked
+/// to the identity (`key`), in one transaction.
+fn provision(db: &mut RowEngine, key: &str, name: String, organisation: &str) -> SignInResult {
+    let (org, _) = find_org(db, organisation)?;
+    let user_id = uuid4()?;
+    transaction(db, |db| {
+        exec(
+            db,
+            &format!(
+                "INSERT INTO users (id, organisation, name, kind, created) VALUES ({}, {}, {}, 'human', {})",
+                sql_quote(&user_id),
+                sql_quote(&org),
+                sql_quote(&name),
+                now_s()
+            ),
+        )?;
+        link_subject(db, key, &user_id)
+    })?;
+    Ok(Ok((name, SignedIn::Provisioned)))
+}
+
+/// Links the identity `key` (issuer and subject) to the user `user_id`.
+fn link_subject(db: &mut RowEngine, key: &str, user_id: &str) -> Result<(), String> {
+    exec(
+        db,
+        &format!(
+            "INSERT INTO sso_subjects (subject, user, created) VALUES ({}, {}, {})",
+            sql_quote(key),
+            sql_quote(user_id),
+            now_s()
+        ),
+    )
 }
 
 /// Starts an SSO session for the human user `user` and returns the value

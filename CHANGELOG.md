@@ -9,6 +9,13 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 - `docs/performance.md`: what a query costs against S3, the layers that brought a cold 30-day statistics call from 1,506 GETs to 33 and to none after the warm-up, how it is measured and what is not yet.
 - `docs/mcp.md`: connecting an AI assistant to FRANK over MCP, the tools, what each tier sees, and troubleshooting.
 
+## [0.51.2] - 2026-11-14
+
+### Changed
+
+- CI: the slow tests run in parallel with the others, and the image build reuses cached layers (#313).
+- Internal: the 15 most complex functions are split into named steps with no change in behaviour; no function in `crates/*/src` is over CCN 15, and the CCN baseline is empty (#302).
+
 ## [0.51.1] - 2026-11-14
 
 ### Changed
