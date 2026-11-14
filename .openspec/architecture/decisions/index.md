@@ -24,8 +24,9 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [016](016-phase3-rust-on-db-core.md) | Phase 3 in Rust on db-core: striped Parquet sightings, a row table for IoCs, a WASM client | Accepted, revised 2026-10-23 (participants, #159) and 2026-11-10 (target identities, #256) | 2026-10-22 |
 | [017](017-user-roles-for-identity-administration.md) | User roles for identity administration, apart from the participant status | Accepted | 2026-10-27 |
 | [018](018-container-is-the-reference-and-test-tiers.md) | The container image is the reference; four test tiers | Accepted | 2026-11-03 |
-| [019](019-sightings-in-s3-state-on-a-volume.md) | Sightings in S3, the rest of the state on a volume | Accepted | 2026-11-07 |
+| [019](019-sightings-in-s3-state-on-a-volume.md) | Sightings in S3, the rest of the state on a volume | Accepted; point 3 (audit) superseded by ADR-024 | 2026-11-07 |
 | [020](020-sso-with-openid-connect.md) | Sign in with OpenID Connect, users provisioned on first login, bearer tokens unchanged | Accepted | 2026-11-10 |
 | [021](021-spec-links-checked-in-ci.md) | Spec links are checked in CI | Accepted | 2026-11-10 |
 | [022](022-browser-tests-in-obscura.md) | Browser tests in Obscura, from Playwright, in `make e2e` | Accepted | 2026-11-12 |
 | [023](023-coverage-and-code-quality-next-to-spec-assurance.md) | Coverage and code quality next to spec assurance | Accepted | 2026-11-14 |
+| [024](024-log-streams.md) | Three log streams: web (Caddy) and app as regular streams, the audit as a striped table | Accepted | 2026-11-14 |
