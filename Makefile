@@ -56,7 +56,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality quality-baseline version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -134,19 +134,24 @@ version: ## Show the version; fails if Cargo.toml, both Cargo.lock, README and C
 # read by assurance and check-assurance. COVERAGE_MIN (lines, 0.0-1.0) and CCN_MAX
 # turn them into gates; unset, they are shown and never fail.
 LIZARD ?= uvx lizard==1.25.1
+# The functions allowed over CCN_MAX, at most at their CCN, until they are fixed (#301).
+CCN_BASELINE ?= .openspec/quality-baseline.csv
 check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN (and COVERAGE_MIN, CCN_MAX when set); tests the checker first, quietly unless it fails, so the dashboard comes first
 	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_*.py' 2>&1) || { echo "$$out"; exit 1; }
-	@python3 scripts/assurance.py --min $(ASSURANCE_MIN) $(if $(COVERAGE_MIN),--coverage-min $(COVERAGE_MIN),) $(if $(CCN_MAX),--ccn-max $(CCN_MAX),)
+	@python3 scripts/assurance.py --min $(ASSURANCE_MIN) $(if $(COVERAGE_MIN),--coverage-min $(COVERAGE_MIN),) $(if $(CCN_MAX),--ccn-max $(CCN_MAX) --ccn-baseline $(CCN_BASELINE),)
 
 coverage: ## Test coverage with cargo llvm-cov into target/assurance/coverage.json (runs every test, instrumented)
 	@$(CARGO) llvm-cov --version >/dev/null 2>&1 || { echo "cargo install cargo-llvm-cov --locked && rustup component add llvm-tools-preview"; exit 1; }
 	@mkdir -p target/assurance
 	$(CARGO) llvm-cov --workspace --locked --json --summary-only --output-path target/assurance/coverage.json
 
-quality: ## Code quality with lizard (CCN, function and file length, fan-in/out) into target/assurance/lizard.csv
+quality: ## Code quality with lizard (CCN, function and file length) into target/assurance/lizard.csv
 	@mkdir -p target/assurance
-	$(LIZARD) -l rust -Eio --csv crates/*/src > target/assurance/lizard.csv.tmp
+	$(LIZARD) -l rust --csv crates/*/src > target/assurance/lizard.csv.tmp
 	@mv target/assurance/lizard.csv.tmp target/assurance/lizard.csv
+
+quality-baseline: quality ## Rewrite the CCN baseline from the current code: every function over CCN_MAX (default 15), worst first
+	python3 scripts/quality_metrics.py target/assurance/lizard.csv --ccn-max $(or $(CCN_MAX),15) > $(CCN_BASELINE)
 
 fmt: ## Format the code
 	$(CARGO) fmt --all

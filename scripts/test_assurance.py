@@ -68,6 +68,33 @@ class DeadReason(Tree):
         # "a" occurs in the file, but there is no `fn a`
         self.assertEqual(assurance.dead_reason("src/lib.rs::a", self.root), "no fn a")
 
+    def test_a_tests_link_must_name_a_test_fn(self):
+        self.write("tests/api.rs", "\n".join([
+            "fn harness() -> u8 { 1 }",
+            "#[test]",
+            "fn plain() {}",
+            "#[tokio::test(flavor = \"multi_thread\")]",
+            "async fn on_tokio() {}",
+            "#[test]",
+            "#[ignore = \"slow\"] // run by make test-slow",
+            "// pages through thousands",
+            "fn slow() {}",
+            "mod inner { pub fn twice() {} }",
+            "#[test]",
+            "fn twice() {}",
+        ]) + "\n")
+        for name in ("plain", "on_tokio", "slow", "twice"):
+            self.assertIsNone(assurance.dead_reason(f"tests/api.rs::{name}", self.root, test=True), name)
+        self.assertEqual(assurance.dead_reason("tests/api.rs::harness", self.root, test=True),
+                         "fn harness is not a test")
+        # an Implementation link may name any fn
+        self.assertIsNone(assurance.dead_reason("tests/api.rs::harness", self.root))
+
+    def test_a_helper_linked_as_a_test_counts_against_coverage(self):
+        self.write("tests/t.rs", "fn adds() {}\n")
+        reqs = assurance.parse_spec(SPEC, self.root)
+        self.assertEqual(reqs[0]["dead"], [("tests/t.rs::adds", "fn adds is not a test")])
+
     def test_non_rust_symbol_is_a_substring(self):
         self.write("web/app.js", "function render() {}\n")
         self.assertIsNone(assurance.dead_reason("web/app.js::render", self.root))
@@ -160,7 +187,7 @@ class Gates(unittest.TestCase):
         lines = lambda c, n: {k: {"count": n, "covered": c, "percent": 0} for k in ("lines", "functions", "regions")}
         self.cov.write_text(json.dumps({"type": "llvm.coverage.json.export", "data": [
             {"files": [{"filename": "/x/a.rs", "summary": lines(8, 10)}], "totals": lines(8, 10)}]}))
-        self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95,1,12,30\n')
+        self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95\n')
 
     def tearDown(self):
         assurance.COLOR = self.color
@@ -189,6 +216,12 @@ class Gates(unittest.TestCase):
         self.assertEqual(self.run_main("--coverage-min", "0.8")[0], 0)
         self.assertEqual(self.run_main("--coverage-min", "0.9")[0], 1)
 
+    def test_a_near_miss_shows_a_decimal(self):
+        # 8/10 lines: 80.0% against 80.5% must not read "80% (min 80%)"
+        code, out = self.run_main("--coverage-min", "0.805")
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL: lines covered 80.0% (min 80.5%)", out)
+
     def test_a_gate_without_its_measurement_fails(self):
         self.cov.unlink()
         self.assertEqual(self.run_main("--coverage-min", "0.5")[0], 1)
@@ -200,6 +233,20 @@ class Gates(unittest.TestCase):
         code, out = self.run_main("--ccn-max", "19")
         self.assertEqual(code, 1)
         self.assertIn("OVER CCN 20 src/a.rs::big", out)
+
+    def test_the_ccn_baseline_allows_what_it_lists(self):
+        baseline = self.dir / "baseline.csv"
+        baseline.write_text("file,function,ccn\nsrc/a.rs,big,20\n")
+        self.assertEqual(self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))[0], 0)
+        baseline.write_text("file,function,ccn\nsrc/a.rs,big,19\nsrc/a.rs,gone,30\n")
+        code, out = self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))
+        self.assertEqual(code, 1)
+        self.assertIn("GREW CCN 20 src/a.rs::big (baseline 19)", out)
+        self.assertIn("STALE src/a.rs::gone", out)
+        baseline.write_text("file,function,ccn\n")
+        code, out = self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))
+        self.assertEqual(code, 1)
+        self.assertIn("OVER CCN 20 src/a.rs::big (not in the baseline)", out)
 
     def test_tested_scenarios_below_the_floor_fail(self):
         self.assertEqual(self.run_main("--min", "0.0")[0], 0)

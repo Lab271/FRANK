@@ -13,14 +13,14 @@
 
 ## Decision
 
-1. **Each measurement runs on its own and leaves a file.** `make coverage` runs `cargo llvm-cov --summary-only --json` into `target/assurance/coverage.json`; `make quality` runs lizard (pinned, `-l rust -Eio --csv crates/*/src`) into `target/assurance/lizard.csv`. `target/` is not committed: the numbers belong to a build, not to the tree.
+1. **Each measurement runs on its own and leaves a file.** `make coverage` runs `cargo llvm-cov --summary-only --json` into `target/assurance/coverage.json`; `make quality` runs lizard (pinned, `-l rust --csv crates/*/src`) into `target/assurance/lizard.csv`. `target/` is not committed: the numbers belong to a build, not to the tree.
 2. **`scripts/assurance.py` reads them** (`scripts/coverage_metrics.py`, `scripts/quality_metrics.py`, standard library only) and shows a coverage box and a code-quality box after the spec box, with how long ago each was measured. A missing file shows `not measured`, not a failure, so `check-assurance` stays fast and works in CI as before.
 3. **Gates on request.** `COVERAGE_MIN` (lines, 0.0–1.0) and `CCN_MAX` make `check-assurance` fail below or above them, and when the measurement is missing. Unset, they are shown against display limits (80% lines, CCN 15, 80 lines a function) and never fail.
-4. **Fan-in and fan-out are shown as approximate and never gated**, for the name matching above. Tests are not scanned: they would swamp it.
+4. **Only what lizard measures right for Rust is read**: CCN and length. Fan-in and fan-out were shown as approximate at first and are left out since #298: `participants.rs::path` showed a fan-in of 249, any variable `path` counting; the parameter count is left out too (`iocs.rs::upsert` showed 13 for 3 tuple parameters). Tests are not scanned.
 
 ## Consequences
 
 - The dashboard can show numbers from an older tree; the age next to each box says so. Run `make coverage quality` before reading them.
-- Without `COVERAGE_MIN` or `CCN_MAX`, nothing stops coverage or complexity from getting worse; setting them, in the Makefile or in CI, is a later decision once the numbers have settled. On 2026-11-14: 90% of lines, 18 functions over CCN 15 (`main.rs::main` 77).
-- `crates/frank/src/main.rs` shows 0%: the integration tests call the library, not the binary.
+- Without `COVERAGE_MIN` or `CCN_MAX`, nothing stops coverage or complexity from getting worse. Since #299 CI runs the tests under `make coverage` (once: no separate `cargo test`), runs `make quality`, and gates on `COVERAGE_MIN=0.90`. On 2026-11-14 it held with 90.3% (8681/9618 lines, macOS); after #300 the same tree measured 94.4% on macOS (9190/9737) and 93.9% in CI on Linux (8886/9463), llvm-cov counting lines differently per platform, so the floor stays at 0.90 and is checked against CI's number; the two files are kept as the `assurance-metrics` artifact. `CCN_MAX=15` gates since #301 against `.openspec/quality-baseline.csv`, the 18 functions over CCN 15 on 2026-11-14 (`main.rs::main` 77) with their CCN: a new one over 15, a listed one that grows, and a listed one fixed but still listed all fail, so the list only shrinks; `make quality-baseline` rewrites it, and the PR diff shows that. llvm-cov does not run doc tests; the workspace has none.
+- `crates/frank/src/main.rs` showed 0% (476 lines, half of what was uncovered): the integration tests call the library, not the binary. Since #300 the subcommands are in `frank::cli` and the server in `frank::serve`, tested by `crates/frank/tests/cli.rs`; `main.rs` only parses the arguments.
 - Evidence: `scripts/coverage_metrics.py`, `scripts/quality_metrics.py` and their tests, `scripts/test_assurance.py::Gates`, `Makefile` targets `coverage`, `quality` and `check-assurance`.
