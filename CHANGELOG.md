@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.53.0] - 2026-11-14
+
+### Added
+
+- Assurance: MC/DC over every decision of two or more conditions (`make test-mcdc`, ADR-025), with the admin, disclosure, SSO and token rules covered vector by vector.
+
 ## [0.52.0] - 2026-11-14
 
 ### Added

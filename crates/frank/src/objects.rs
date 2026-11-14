@@ -144,7 +144,8 @@ mod tests {
             let (mut s, _) = listener.accept().unwrap();
             let mut seen = Vec::new();
             let mut buf = [0u8; 1024];
-            while !seen.windows(4).any(|w| w == b"\r\n\r\n") || !seen.ends_with(b"payload") {
+            // The body comes last, so once it is in, the headers are too.
+            while !seen.ends_with(b"payload") {
                 let n = s.read(&mut buf).unwrap();
                 seen.extend_from_slice(&buf[..n]);
             }

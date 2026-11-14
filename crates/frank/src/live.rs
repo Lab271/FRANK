@@ -421,6 +421,7 @@ pub fn places(
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -551,5 +552,31 @@ mod tests {
         // Beyond the top: taken together.
         let p = places(&pairs, &geo, 1, 1);
         assert_eq!(p.countries.other, Some(t(3, 2)));
+    }
+
+    // rank: `top.len() < limit && t.reporters >= min`
+    fn ranked(min: i64, limit: usize) -> (Vec<(&'static str, Tally)>, Option<Tally>) {
+        rank([("NL", "192.0.2.1", "r1")].into_iter(), min, limit)
+    }
+
+    #[test]
+    fn mcdc__live_rank_66ac27d6__v1_room_and_enough_reporters_is_top() {
+        let (top, other) = ranked(1, 1);
+        assert_eq!(top.iter().map(|(k, _)| *k).collect::<Vec<_>>(), ["NL"]);
+        assert!(other.is_none());
+    }
+
+    #[test]
+    fn mcdc__live_rank_66ac27d6__v2_no_room_goes_to_the_rest() {
+        let (top, other) = ranked(1, 0);
+        assert!(top.is_empty());
+        assert_eq!(other.map(|t| (t.iocs, t.reporters)), Some((1, 1)));
+    }
+
+    #[test]
+    fn mcdc__live_rank_66ac27d6__v3_too_few_reporters_is_not_top() {
+        let (top, other) = ranked(2, 1);
+        assert!(top.is_empty());
+        assert!(other.is_none(), "the rest has too few reporters too");
     }
 }

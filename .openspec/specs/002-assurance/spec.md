@@ -283,3 +283,77 @@ With a baseline (`CCN_BASELINE`, `.openspec/quality-baseline.csv`: file, functio
 - THEN it fails with `UNREADABLE`
 
 **Tests:** `scripts/test_assurance.py::test_an_unreadable_measurement_fails`
+
+### Requirement 11: MC/DC obligations are a committed snapshot [MUST]
+
+`make mcdc-obligations` MUST write every decision of `crates/*/src` to `tests/mcdc/obligations.json` with `cargo-mvl-mcdc scan` (ADR-025), and `make check-mcdc-fresh` MUST fail when the snapshot differs from a fresh scan. A tagged test MUST name a decision of the snapshot, and no id MAY belong to two files.
+
+**Implementation:** `Makefile::mcdc-obligations:`, `Makefile::check-mcdc-fresh:`, `crates/frank/tests/mcdc_discharge.rs`
+
+#### Scenario: A tag whose decision is gone
+
+- GIVEN a test named `mcdc__<id>__v<N>_<what>`
+- WHEN its id is not in the snapshot
+- THEN the discharge test fails and names the file
+
+**Tests:** `crates/frank/tests/mcdc_discharge.rs::every_tagged_test_names_a_decision_in_the_snapshot`, `crates/frank/tests/mcdc_discharge.rs::a_tagged_name_yields_its_id`
+
+#### Scenario: One id in two files
+
+- GIVEN the snapshot
+- WHEN two files have a decision with the same id
+- THEN the discharge test fails and names both
+
+**Tests:** `crates/frank/tests/mcdc_discharge.rs::no_decision_id_is_shared_by_two_files`
+
+### Requirement 12: Every decision of two or more conditions is covered [MUST]
+
+`make test-mcdc` MUST run the `mcdc__` tests through `cargo-mvl-mcdc harvest` into `target/assurance/mcdc.json` and fail while a decision of two or more conditions lacks a passing test for one of its vectors. Decisions of one condition and exhaustive matches are not counted.
+
+**Implementation:** `Makefile::test-mcdc:`, `scripts/mcdc_metrics.py::main`, `scripts/mcdc_metrics.py::summary`, `scripts/mcdc_metrics.py::missing`
+
+#### Scenario: What counts
+
+- GIVEN decisions of two and three conditions, one of one condition and an exhaustive match
+- WHEN the harvest is summarised
+- THEN only the first two count, and the one with a vector open is listed
+
+**Tests:** `scripts/test_mcdc_metrics.py::test_only_decisions_of_two_or_more_conditions_count`
+
+#### Scenario: Open or covered
+
+- GIVEN a decision with a vector without a passing test
+- WHEN `test-mcdc` reports
+- THEN it fails, names the decision and, verbose, the test to add or fix; with every vector covered it passes
+
+**Tests:** `scripts/test_mcdc_metrics.py::test_an_open_decision_fails_and_is_named`, `scripts/test_mcdc_metrics.py::test_missing_names_each_vector_without_a_passing_test_and_each_failing_test`, `scripts/test_mcdc_metrics.py::test_all_covered_passes`
+
+#### Scenario: Not a harvest
+
+- GIVEN another JSON document
+- WHEN it is read
+- THEN it is refused with a pointer to `make test-mcdc`
+
+**Tests:** `scripts/test_mcdc_metrics.py::test_another_json_is_refused`
+
+### Requirement 13: MC/DC in the dashboard [SHOULD]
+
+The dashboard SHOULD show a MC/DC box after the quality box: decisions of two or more conditions covered, the first open ones, and how long ago it was measured; `not measured (make test-mcdc)` without the file. With `MCDC_MIN` set, `make check-assurance` SHOULD fail below it or when MC/DC was not measured.
+
+**Implementation:** `scripts/assurance.py::report_mcdc`, `Makefile::MCDC_MIN`, `scripts/assurance.py::main`
+
+#### Scenario: Shown with its open decisions
+
+- GIVEN one decision covered and one open
+- WHEN the dashboard runs
+- THEN the box shows the open one only
+
+**Tests:** `scripts/test_assurance.py::test_mcdc_is_shown_with_its_open_decisions`, `scripts/test_assurance.py::test_not_measured_is_shown_not_failed`
+
+#### Scenario: Below the minimum, or not measured
+
+- GIVEN half the decisions covered
+- WHEN the minimum is 0.5, 1.0, or the file is missing
+- THEN the check passes, fails, and fails
+
+**Tests:** `scripts/test_assurance.py::test_mcdc_below_the_minimum_fails`

@@ -59,8 +59,26 @@ pub fn unhex(s: &str) -> Option<Vec<u8>> {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
+
+    // MC/DC of `unhex`'s guard: odd length || a non-hex byte (ADR-025).
+    #[test]
+    fn mcdc__lib_unhex_72fb6839__v1_even_and_hex_is_decoded() {
+        assert_eq!(unhex("0aFf"), Some(vec![0x0a, 0xff]));
+    }
+
+    #[test]
+    fn mcdc__lib_unhex_72fb6839__v2_odd_length_is_refused() {
+        assert_eq!(unhex("0af"), None);
+    }
+
+    #[test]
+    fn mcdc__lib_unhex_72fb6839__v3_a_non_hex_byte_is_refused() {
+        // `+a` would pass `from_str_radix`; the guard refuses it first.
+        assert_eq!(unhex("+a"), None);
+    }
 
     #[test]
     fn sql_quote_doubles_quotes() {

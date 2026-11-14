@@ -261,6 +261,7 @@ fn cell(c: &Cell) -> Value {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -420,5 +421,37 @@ mod tests {
         assert_eq!(r["merged"], false);
         assert_eq!(r["rows"], json!([["a", 1], ["b", 1]]));
         assert!(a.add_file("bad", vec![1, 2, 3]).is_err());
+    }
+
+    // merge_kind: `starts_with("COUNT(DISTINCT") || starts_with("AVG(")`
+    #[test]
+    fn mcdc__lib_merge_kind_2c93cdbc__v1_other_label_merges() {
+        assert_eq!(merge_kind("sum(n)"), Some(Merge::Sum));
+    }
+
+    #[test]
+    fn mcdc__lib_merge_kind_2c93cdbc__v2_count_distinct_does_not_merge() {
+        assert_eq!(merge_kind("count(DISTINCT reporter)"), None);
+    }
+
+    #[test]
+    fn mcdc__lib_merge_kind_2c93cdbc__v3_avg_does_not_merge() {
+        assert_eq!(merge_kind("avg(confidence)"), None);
+    }
+
+    // merge_kind: `starts_with("COUNT(") || starts_with("SUM(")`
+    #[test]
+    fn mcdc__lib_merge_kind_5fc215ae__v1_min_is_not_summed() {
+        assert_eq!(merge_kind("min(ts)"), Some(Merge::Min));
+    }
+
+    #[test]
+    fn mcdc__lib_merge_kind_5fc215ae__v2_count_sums() {
+        assert_eq!(merge_kind("count(*)"), Some(Merge::Sum));
+    }
+
+    #[test]
+    fn mcdc__lib_merge_kind_5fc215ae__v3_sum_sums() {
+        assert_eq!(merge_kind("sum(observations)"), Some(Merge::Sum));
     }
 }

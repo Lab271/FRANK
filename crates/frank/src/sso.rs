@@ -971,6 +971,7 @@ fn audit(app: &crate::api::App, by: &str, action: &str, fields: Value) {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -1597,5 +1598,163 @@ mod tests {
         assert!(e.starts_with(&format!("POST {url}: ")), "{e}");
         assert!(!e.contains("p:w") && !e.contains(&basic), "{e}");
         server.join().unwrap();
+    }
+
+    // --- MC/DC (ADR-025) -----------------------------------------------------
+
+    // Url::parse: scheme != "https" && scheme != "http" refuses the URL.
+    #[test]
+    fn mcdc__sso_parse_52e58cd8__v1_neither_scheme_is_refused() {
+        assert_eq!(
+            Url::parse("ftp://a").unwrap_err(),
+            "\"ftp://a\": only http and https"
+        );
+    }
+
+    #[test]
+    fn mcdc__sso_parse_52e58cd8__v2_https_is_accepted() {
+        assert_eq!(Url::parse("https://a").unwrap().scheme, "https");
+    }
+
+    #[test]
+    fn mcdc__sso_parse_52e58cd8__v3_http_is_accepted() {
+        assert_eq!(Url::parse("http://a").unwrap().scheme, "http");
+    }
+
+    // Url::secure: scheme == "https" || host == "localhost" is accepted.
+    #[test]
+    fn mcdc__sso_secure_401c17fe__v1_http_elsewhere_is_refused() {
+        let e = Url::parse("http://a.example")
+            .unwrap()
+            .secure()
+            .unwrap_err();
+        assert!(e.contains("https is required"), "{e}");
+    }
+
+    #[test]
+    fn mcdc__sso_secure_401c17fe__v2_https_is_secure() {
+        assert!(Url::parse("https://a.example").unwrap().secure().is_ok());
+    }
+
+    #[test]
+    fn mcdc__sso_secure_401c17fe__v3_http_on_localhost_is_allowed() {
+        assert!(Url::parse("http://localhost:9400")
+            .unwrap()
+            .secure()
+            .is_ok());
+    }
+
+    /// Checks a token without `kid` against a JWKS of just `key`.
+    fn check_with_only(key: Value) -> Result<Value, String> {
+        let (sso, _) = stub_sso(json!([key]));
+        let provider = sso.provider().unwrap();
+        let token = sign(&json!({ "alg": "RS256" }), &claims());
+        sso.check(&provider, &token, "n1", NOW)
+    }
+
+    // Sso::key: kty != "RSA" || use is not "sig" skips the key.
+    #[test]
+    fn mcdc__sso_key_f615b2bb__v1_an_rsa_signing_key_is_used() {
+        assert_eq!(check_with_only(jwk(None)).unwrap(), claims());
+    }
+
+    #[test]
+    fn mcdc__sso_key_f615b2bb__v2_a_non_rsa_key_is_skipped() {
+        let mut k = jwk(None);
+        k["kty"] = json!("EC");
+        assert_eq!(check_with_only(k).unwrap_err(), "no signing key None");
+    }
+
+    #[test]
+    fn mcdc__sso_key_f615b2bb__v3_an_encryption_key_is_skipped() {
+        let mut k = jwk(None);
+        k["use"] = json!("enc");
+        assert_eq!(check_with_only(k).unwrap_err(), "no signing key None");
+    }
+
+    // enc: alphanumeric || one of "-._~" stays as is, the rest is %XX.
+    #[test]
+    fn mcdc__sso_enc_866337b6__v1_a_space_is_escaped() {
+        assert_eq!(enc(" "), "%20");
+    }
+
+    #[test]
+    fn mcdc__sso_enc_866337b6__v2_alphanumerics_stay() {
+        assert_eq!(enc("a1"), "a1");
+    }
+
+    #[test]
+    fn mcdc__sso_enc_866337b6__v3_unreserved_marks_stay() {
+        assert_eq!(enc("-._~"), "-._~");
+    }
+
+    /// The query `code=c` (if `code`) and a state cookie `s1`.
+    fn callback_with(code: bool) -> (HashMap<String, String>, HeaderMap) {
+        let mut q = HashMap::new();
+        if code {
+            q.insert("code".to_string(), "c".to_string());
+        }
+        let mut h = HeaderMap::new();
+        h.append(
+            header::COOKIE,
+            HeaderValue::from_static("frank_sso_state=s1"),
+        );
+        (q, h)
+    }
+
+    // early_refusal: state.is_empty() || no code refuses the callback.
+    #[test]
+    fn mcdc__sso_early_refusal_682c2728__v1_state_and_code_pass() {
+        let (q, h) = callback_with(true);
+        assert_eq!(early_refusal(&q, "s1", &h), None);
+    }
+
+    #[test]
+    fn mcdc__sso_early_refusal_682c2728__v2_an_empty_state_is_refused() {
+        let (q, h) = callback_with(true);
+        assert_eq!(
+            early_refusal(&q, "", &h).as_deref(),
+            Some("the callback has no code or state")
+        );
+    }
+
+    #[test]
+    fn mcdc__sso_early_refusal_682c2728__v3_a_missing_code_is_refused() {
+        let (q, h) = callback_with(false);
+        assert_eq!(
+            early_refusal(&q, "s1", &h).as_deref(),
+            Some("the callback has no code or state")
+        );
+    }
+
+    /// Sends `raw` to `serve_once`, closes the write side, and returns the
+    /// request as the server read it.
+    fn raw_request(raw: &[u8]) -> String {
+        use std::io::Write as _;
+        let (url, server) = serve_once("200 OK");
+        let addr = url.trim_start_matches("http://").trim_end_matches("/x");
+        let mut stream = std::net::TcpStream::connect(addr).unwrap();
+        stream.write_all(raw).unwrap();
+        stream.shutdown(std::net::Shutdown::Write).unwrap();
+        server.join().unwrap()
+    }
+
+    // serve_once: line == "\r\n" || line.is_empty() ends the head.
+    #[test]
+    fn mcdc__sso_serve_once_ef757bb2__v1_a_header_line_does_not_end_the_head() {
+        let r = raw_request(b"GET /x HTTP/1.1\r\nHost: a\r\nX-B: b\r\n\r\n");
+        assert!(r.contains("X-B: b\r\n"), "{r}");
+    }
+
+    #[test]
+    fn mcdc__sso_serve_once_ef757bb2__v2_a_blank_line_ends_the_head() {
+        let r = raw_request(b"GET /x HTTP/1.1\r\nHost: a\r\n\r\nafter");
+        assert_eq!(r, "GET /x HTTP/1.1\r\nHost: a\r\n\r\n");
+    }
+
+    #[test]
+    fn mcdc__sso_serve_once_ef757bb2__v3_end_of_stream_ends_the_head() {
+        let r = raw_request(b"GET /x HTTP/1.1\r\nHost: a\r\n");
+        assert_eq!(r, "GET /x HTTP/1.1\r\nHost: a\r\n");
     }
 }
