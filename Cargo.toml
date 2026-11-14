@@ -16,7 +16,7 @@ frank-core = { path = "crates/frank-core" }
 db-core = { git = "https://github.com/t-rust-db/db-core", tag = "v0.241.0", default-features = false }
 # The runtime manifest logged at server start (#315, ADR-024); not on
 # crates.io, so straight from mvl-rust, pinned by tag as db-core is.
-mvl-manifest = { git = "https://github.com/mvl-lang/mvl-rust", tag = "v0.12.0" }
+mvl-manifest = { git = "https://github.com/mvl-lang/mvl-rust", tag = "v0.12.1" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 time = { version = "0.3", features = ["parsing", "formatting", "macros"] }

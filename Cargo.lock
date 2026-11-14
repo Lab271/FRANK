@@ -692,8 +692,8 @@ dependencies = [
 
 [[package]]
 name = "mvl-manifest"
-version = "0.12.0"
-source = "git+https://github.com/mvl-lang/mvl-rust?tag=v0.12.0#35071b1b2dd34f112ec2304fe79a4875279572a7"
+version = "0.12.1"
+source = "git+https://github.com/mvl-lang/mvl-rust?tag=v0.12.1#e8229bb5508658999b7bdcb370eb4b6da266e75f"
 dependencies = [
  "libc",
  "log",
