@@ -1,5 +1,8 @@
 """Tests for scripts/assurance.py: python3 -m unittest discover -s scripts -p 'test_*.py'"""
 
+import contextlib
+import io
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -137,6 +140,69 @@ class Dashboard(unittest.TestCase):
     def test_no_escape_codes_without_colour(self):
         self.assertNotIn("\x1b", assurance.cell(7, 15, 0.95))
         self.assertEqual(assurance.paint("x", assurance.RED), "x")
+
+    def test_box_fits_a_title_longer_than_its_lines(self):
+        top, body, bottom = assurance.boxed(["x"], "FRANK code quality").split("\n")
+        self.assertEqual(len(top), len(body))
+        self.assertEqual(len(top), len(bottom))
+
+
+class Gates(unittest.TestCase):
+    """Coverage and quality (ADR-023): shown when measured, gated only on request."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.dir = Path(self.tmp.name)
+        self.cov = self.dir / "coverage.json"
+        self.lizard = self.dir / "lizard.csv"
+        lines = lambda c, n: {k: {"count": n, "covered": c, "percent": 0} for k in ("lines", "functions", "regions")}
+        self.cov.write_text(json.dumps({"type": "llvm.coverage.json.export", "data": [
+            {"files": [{"filename": "/x/a.rs", "summary": lines(8, 10)}], "totals": lines(8, 10)}]}))
+        self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95,1,12,30\n')
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def run_main(self, *args):
+        with contextlib.redirect_stdout(io.StringIO()) as out:
+            code = assurance.main(["--coverage", str(self.cov), "--quality", str(self.lizard), *args])
+        return code, out.getvalue()
+
+    def test_measured_without_gates_passes_and_shows_both(self):
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("FRANK coverage", out)
+        self.assertIn("src/a.rs::big", out)
+
+    def test_not_measured_is_shown_not_failed(self):
+        self.cov.unlink()
+        self.lizard.unlink()
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("not measured (make coverage)", out)
+        self.assertIn("not measured (make quality)", out)
+
+    def test_coverage_below_the_minimum_fails(self):
+        self.assertEqual(self.run_main("--coverage-min", "0.8")[0], 0)
+        self.assertEqual(self.run_main("--coverage-min", "0.9")[0], 1)
+
+    def test_a_gate_without_its_measurement_fails(self):
+        self.cov.unlink()
+        self.assertEqual(self.run_main("--coverage-min", "0.5")[0], 1)
+        self.lizard.unlink()
+        self.assertEqual(self.run_main("--ccn-max", "50")[0], 1)
+
+    def test_a_function_over_ccn_max_fails_and_is_named(self):
+        self.assertEqual(self.run_main("--ccn-max", "20")[0], 0)
+        code, out = self.run_main("--ccn-max", "19")
+        self.assertEqual(code, 1)
+        self.assertIn("OVER CCN 20 src/a.rs::big", out)
+
+    def test_an_unreadable_measurement_fails(self):
+        self.lizard.write_text("1,2,3\n")
+        code, out = self.run_main()
+        self.assertEqual(code, 1)
+        self.assertIn("UNREADABLE", out)
 
 
 if __name__ == "__main__":

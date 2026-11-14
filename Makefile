@@ -56,7 +56,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance versionsmoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -130,9 +130,23 @@ assurance: ## Spec -> code -> test traceability per spec (V=1: per requirement, 
 version: ## Show the version; fails if Cargo.toml, both Cargo.lock, README and CHANGELOG disagree. BUMP=major|minor|patch writes the next one everywhere and dates [Unreleased]
 	@python3 scripts/version.py $(if $(BUMP),--bump $(BUMP),)
 
-check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN; tests the checker first, quietly unless it fails, so the dashboard comes first
+# Coverage and code quality (ADR-023): measured on their own into target/assurance/,
+# read by assurance and check-assurance. COVERAGE_MIN (lines, 0.0-1.0) and CCN_MAX
+# turn them into gates; unset, they are shown and never fail.
+LIZARD ?= uvx lizard==1.25.1
+check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN (and COVERAGE_MIN, CCN_MAX when set); tests the checker first, quietly unless it fails, so the dashboard comes first
 	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_*.py' 2>&1) || { echo "$$out"; exit 1; }
-	@python3 scripts/assurance.py --min $(ASSURANCE_MIN)
+	@python3 scripts/assurance.py --min $(ASSURANCE_MIN) $(if $(COVERAGE_MIN),--coverage-min $(COVERAGE_MIN),) $(if $(CCN_MAX),--ccn-max $(CCN_MAX),)
+
+coverage: ## Test coverage with cargo llvm-cov into target/assurance/coverage.json (runs every test, instrumented)
+	@$(CARGO) llvm-cov --version >/dev/null 2>&1 || { echo "cargo install cargo-llvm-cov --locked && rustup component add llvm-tools-preview"; exit 1; }
+	@mkdir -p target/assurance
+	$(CARGO) llvm-cov --workspace --locked --json --summary-only --output-path target/assurance/coverage.json
+
+quality: ## Code quality with lizard (CCN, function and file length, fan-in/out) into target/assurance/lizard.csv
+	@mkdir -p target/assurance
+	$(LIZARD) -l rust -Eio --csv crates/*/src > target/assurance/lizard.csv.tmp
+	@mv target/assurance/lizard.csv.tmp target/assurance/lizard.csv
 
 fmt: ## Format the code
 	$(CARGO) fmt --all

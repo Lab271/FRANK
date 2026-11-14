@@ -23,15 +23,27 @@ Usage:
     scripts/assurance.py            dashboard, a bar per spec (colour on a terminal; NO_COLOR=1 turns it off)
     scripts/assurance.py -v         per requirement, with dead links
     scripts/assurance.py --min 0.5  exit 1 if tested < 50% or any link is dead
+
+Coverage and code quality (ADR-023) are measured on their own, by `make coverage`
+and `make quality`, into target/assurance/; this reads what they left and shows a
+box each, or "not measured". --coverage-min and --ccn-max turn them into gates.
 """
 
 import argparse
 import os
 import re
 import sys
+import time
 from pathlib import Path
 
+import coverage_metrics
+import quality_metrics
+
 ROOT = Path(__file__).resolve().parent.parent
+COVERAGE = ROOT / "target/assurance/coverage.json"   # make coverage
+QUALITY = ROOT / "target/assurance/lizard.csv"       # make quality
+# Shown, not gated, unless --coverage-min or --ccn-max is given.
+COVERAGE_SHOWN, CCN_SHOWN, LENGTH_SHOWN = 0.80, 15, 80
 LINK = re.compile(r"`([^`]+)`")
 MD_LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
 
@@ -157,9 +169,9 @@ def cell(done, of, floor, width=BAR):
     return f"{bar(share, floor, width)} {done:>3}/{of:<3} {paint(f'{share:>4.0%}', grade(share, floor))}"
 
 
-def boxed(lines):
-    width = max(len(ANSI.sub("", l)) for l in lines)
-    top = paint("╭─ FRANK spec assurance " + "─" * (width - 21) + "╮", BOLD)
+def boxed(lines, title="FRANK spec assurance"):
+    width = max(len(title) + 1, *(len(ANSI.sub("", l)) for l in lines))
+    top = paint(f"╭─ {title} " + "─" * (width - len(title) - 1) + "╮", BOLD)
     body = [paint("│ ", BOLD) + l + " " * (width - len(ANSI.sub("", l))) + paint(" │", BOLD) for l in lines]
     return "\n".join([top, *body, paint("╰" + "─" * (width + 2) + "╯", BOLD)])
 
@@ -217,20 +229,122 @@ def report(specs, skipped, md_dead, verbose, floor=None, dupes=()):
     return total, dead
 
 
+def age(path):
+    """How long ago the file was written: 'measured 3 h ago'."""
+    s = max(0, time.time() - Path(path).stat().st_mtime)
+    for unit, n in (("d", 86400), ("h", 3600), ("min", 60)):
+        if s >= n:
+            return f"measured {s // n:.0f} {unit} ago"
+    return "measured just now"
+
+
+def short(func):
+    """crates/frank/src/main.rs + main -> frank/src/main.rs::main"""
+    return f"{func['file'].removeprefix('crates/')}::{func['name']}"
+
+
+def report_coverage(path, floor=None):
+    """The coverage box. Returns the share of lines covered, None when not measured."""
+    print()
+    if not Path(path).is_file():
+        print(boxed([paint("not measured (make coverage)", DIM)], "FRANK coverage"))
+        return None
+    cov = coverage_metrics.read(path, ROOT)
+    f = COVERAGE_SHOWN if floor is None else floor
+    lines = [f"{kind:<12} {cell(*cov['totals'][kind], f)}" for kind in coverage_metrics.KINDS]
+    lines.append(paint(f"cargo llvm-cov, {age(path)}", DIM))
+    print(boxed(lines, "FRANK coverage"))
+    worst = coverage_metrics.least_covered(cov["files"])
+    if worst:
+        print(paint("least covered (lines)", BOLD))
+        for name, done, of in worst:
+            print(f"  {cell(done, of, f, 10)}  {name}")
+    covered, count = cov["totals"]["lines"]
+    return covered / count if count else 0.0
+
+
+def report_quality(path, ccn_max=None):
+    """The quality box. Returns the functions over --ccn-max ([] without it), None when not measured."""
+    print()
+    if not Path(path).is_file():
+        print(boxed([paint("not measured (make quality)", DIM)], "FRANK code quality"))
+        return None
+    funcs = quality_metrics.read(path)
+    limit = CCN_SHOWN if ccn_max is None else ccn_max
+    q = quality_metrics.summary(funcs, quality_metrics.file_lengths(funcs, ROOT), limit, LENGTH_SHOWN)
+
+    def count(items, what):
+        return paint(f"{len(items)} {what}", YELLOW if items else GREEN)
+
+    top = q["by_ccn"][0] if q["by_ccn"] else None
+    lines = [
+        f"functions    {q['functions']} in {q['files']} files",
+        f"CCN          avg {q['ccn_avg']:.1f}" + (f", max {top['ccn']} {short(top)}" if top else ""),
+        f"{f'over CCN {limit}':<13}{count(q['over_ccn'], 'functions')}",
+        f"{f'over {LENGTH_SHOWN} lines':<13}{count(q['over_length'], 'functions')}",
+    ]
+    if q["longest_files"]:
+        name, n = q["longest_files"][0]
+        lines.append(f"longest file {n} lines {name.removeprefix('crates/')}")
+    for key, label in (("by_fan_in", "fan-in"), ("by_fan_out", "fan-out")):
+        if q[key]:
+            f = q[key][0]
+            lines.append(f"{label:<8} ≈   max {f[key[3:]]} {short(f)}")
+    lines.append(paint(f"lizard, crates/*/src, {age(path)}; fan-in/out by name, approximate", DIM))
+    print(boxed(lines, "FRANK code quality"))
+    tables = (("CCN", "by_ccn", "ccn"), ("function lines", "by_length", "length"))
+    for title, key, field in tables:
+        print(paint(f"highest {title}", BOLD))
+        for f in q[key]:
+            print(f"  {f[field]:>4}  {short(f)}")
+    print(paint("longest files", BOLD))
+    for name, n in q["longest_files"]:
+        print(f"  {n:>4}  {name.removeprefix('crates/')}")
+    return q["over_ccn"] if ccn_max is not None else []
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="FRANK spec traceability")
     p.add_argument("-v", "--verbose", action="store_true", help="per requirement, with dead links")
     p.add_argument("--min", type=float,
                    help="fail if tested < MIN (0.0-1.0), any link is dead or two specs share a number")
+    p.add_argument("--coverage", type=Path, default=COVERAGE, help="llvm-cov JSON (make coverage)")
+    p.add_argument("--quality", type=Path, default=QUALITY, help="lizard CSV (make quality)")
+    p.add_argument("--coverage-min", type=float,
+                   help="fail if lines covered < MIN (0.0-1.0) or coverage was not measured")
+    p.add_argument("--ccn-max", type=int,
+                   help="fail if a function's CCN > MAX or quality was not measured")
     args = p.parse_args(argv)
     dupes = duplicate_numbers()
     total, dead = report(*collect(), args.verbose, args.min, dupes)
+    try:
+        lines = report_coverage(args.coverage, args.coverage_min)
+        over = report_quality(args.quality, args.ccn_max)
+    except (ValueError, KeyError, OSError) as e:
+        print(paint("UNREADABLE", RED, BOLD) + f" {e}")
+        return 1
+    failures = []
     if args.min is not None:
-        ok = total >= args.min and not dead and not dupes
-        print(f"{'PASS' if ok else 'FAIL'}: tested {total:.0%} (min {args.min:.0%}), {dead} dead links, "
-              f"{len(dupes)} duplicate spec numbers")
-        return 0 if ok else 1
-    return 0
+        print()
+        print(f"{'PASS' if total >= args.min and not dead and not dupes else 'FAIL'}: tested {total:.0%} "
+              f"(min {args.min:.0%}), {dead} dead links, {len(dupes)} duplicate spec numbers")
+        if total < args.min or dead or dupes:
+            failures.append("specs")
+    if args.coverage_min is not None:
+        ok = lines is not None and lines >= args.coverage_min
+        got = "not measured" if lines is None else f"{lines:.0%}"
+        print(f"{'PASS' if ok else 'FAIL'}: lines covered {got} (min {args.coverage_min:.0%})")
+        if not ok:
+            failures.append("coverage")
+    if args.ccn_max is not None:
+        ok = over is not None and not over
+        got = "not measured" if over is None else f"{len(over)} functions over"
+        print(f"{'PASS' if ok else 'FAIL'}: CCN {got} (max {args.ccn_max})")
+        for f in over or []:
+            print(paint("OVER CCN", RED, BOLD) + f" {f['ccn']} {short(f)}")
+        if not ok:
+            failures.append("quality")
+    return 1 if failures else 0
 
 
 if __name__ == "__main__":

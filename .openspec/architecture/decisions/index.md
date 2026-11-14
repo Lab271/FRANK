@@ -28,3 +28,4 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [020](020-sso-with-openid-connect.md) | Sign in with OpenID Connect, users provisioned on first login, bearer tokens unchanged | Accepted | 2026-11-10 |
 | [021](021-spec-links-checked-in-ci.md) | Spec links are checked in CI | Accepted | 2026-11-10 |
 | [022](022-browser-tests-in-obscura.md) | Browser tests in Obscura, from Playwright, in `make e2e` | Accepted | 2026-11-12 |
+| [023](023-coverage-and-code-quality-next-to-spec-assurance.md) | Coverage and code quality next to spec assurance | Accepted | 2026-11-14 |
