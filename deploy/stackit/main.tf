@@ -120,10 +120,17 @@ locals {
   store = var.store_bucket == "" ? "" : "s3://${var.store_bucket}/sightings?endpoint=https://object.storage.${var.region}.onstackit.cloud&region=${var.region}"
 }
 
+# Every sighting and the audit log: a plan that would replace it (another
+# name) or remove it (store_bucket emptied) is refused. Versioning keeps
+# deleted objects, not a deleted bucket. To drop it on purpose, take it out
+# of the state first and delete it in STACKIT.
 resource "stackit_objectstorage_bucket" "frank" {
   count      = var.store_bucket == "" ? 0 : 1
   project_id = var.project_id
   name       = var.store_bucket
+  lifecycle {
+    prevent_destroy = true
+  }
 }
 
 resource "stackit_objectstorage_credentials_group" "frank" {
