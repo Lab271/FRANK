@@ -368,33 +368,16 @@ impl Audit {
     /// to `audit.jsonl/` first, then imported, then marked.
     fn import_store(&self, root: &Store) -> Result<(), String> {
         let marker = format!("{OLD}/{IMPORTED}");
-        let err = |k: &str, e: std::io::Error| format!("{k}: {e}");
-        if root.get(&marker).map_err(|e| err(&marker, e))?.is_some() {
+        if root
+            .get(&marker)
+            .map_err(|e| store_err(&marker, e))?
+            .is_some()
+        {
             return Ok(());
         }
-        // Only the day objects: the table's own files are under the same
-        // prefix, in `live/`, `archive/` and the manifest.
-        let prefix = format!("{NAME}/");
-        for key in root.list(&prefix).map_err(|e| err(&prefix, e))? {
-            if key_day(&key).is_none() {
-                continue;
-            }
-            let Some(bytes) = root.get(&key).map_err(|e| err(&key, e))? else {
-                continue;
-            };
-            let to = format!("{OLD}/{}", &key[prefix.len()..]);
-            root.put(&to, &bytes).map_err(|e| err(&to, e))?;
-            root.delete(&key).map_err(|e| err(&key, e))?;
-        }
-        let mut text = String::new();
-        let moved = format!("{OLD}/");
-        for key in root.list(&moved).map_err(|e| err(&moved, e))? {
-            if let Some(bytes) = root.get(&key).map_err(|e| err(&key, e))? {
-                text += &String::from_utf8_lossy(&bytes);
-            }
-        }
-        let n = self.import(&text, self.count()?)?;
-        root.put(&marker, b"").map_err(|e| err(&marker, e))?;
+        move_day_objects(root)?;
+        let n = self.import(&store_text(root)?, self.count()?)?;
+        root.put(&marker, b"").map_err(|e| store_err(&marker, e))?;
         if n > 0 {
             tracing::info!(
                 lines = n,
@@ -403,6 +386,41 @@ impl Audit {
         }
         Ok(())
     }
+}
+
+fn store_err(key: &str, e: std::io::Error) -> String {
+    format!("{key}: {e}")
+}
+
+/// Moves the `audit/YYYY-MM-DD/` objects of `root` to `audit.jsonl/`. Only
+/// the day objects: the table's own files are under the same prefix, in
+/// `live/`, `archive/` and the manifest.
+fn move_day_objects(root: &Store) -> Result<(), String> {
+    let prefix = format!("{NAME}/");
+    for key in root.list(&prefix).map_err(|e| store_err(&prefix, e))? {
+        if key_day(&key).is_none() {
+            continue;
+        }
+        let Some(bytes) = root.get(&key).map_err(|e| store_err(&key, e))? else {
+            continue;
+        };
+        let to = format!("{OLD}/{}", &key[prefix.len()..]);
+        root.put(&to, &bytes).map_err(|e| store_err(&to, e))?;
+        root.delete(&key).map_err(|e| store_err(&key, e))?;
+    }
+    Ok(())
+}
+
+/// The text of every object kept in `audit.jsonl/` in `root`, in key order.
+fn store_text(root: &Store) -> Result<String, String> {
+    let moved = format!("{OLD}/");
+    let mut text = String::new();
+    for key in root.list(&moved).map_err(|e| store_err(&moved, e))? {
+        if let Some(bytes) = root.get(&key).map_err(|e| store_err(&key, e))? {
+            text += &String::from_utf8_lossy(&bytes);
+        }
+    }
+    Ok(text)
 }
 
 /// `<data>/audit` of 0.55 and before, a directory of JSONL days, renamed

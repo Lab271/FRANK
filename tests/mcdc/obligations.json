@@ -2330,30 +2330,10 @@
     "wildcard_risk": false
   },
   {
-    "id": "audit_import_store_157873fe",
+    "id": "audit_import_store_20df7039",
     "file": "crates/frank/src/audit.rs",
-    "line": 372,
-    "decision": "root.get(&marker).map_err(|e| err(&marker, e))?.is_some()",
-    "conditions": 1,
-    "vectors_required": 2,
-    "compiler_void": false,
-    "wildcard_risk": false
-  },
-  {
-    "id": "audit_import_store_f96d3f81",
-    "file": "crates/frank/src/audit.rs",
-    "line": 379,
-    "decision": "key_day(&key).is_none()",
-    "conditions": 1,
-    "vectors_required": 2,
-    "compiler_void": false,
-    "wildcard_risk": false
-  },
-  {
-    "id": "audit_import_store_fefb070a",
-    "file": "crates/frank/src/audit.rs",
-    "line": 392,
-    "decision": "let Some(bytes) = root.get(&key).map_err(|e| err(&key, e))?",
+    "line": 371,
+    "decision": "root\n            .get(&marker)\n            .map_err(|e| store_err(&marker, e))?\n            .is_some()",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -2362,8 +2342,28 @@
   {
     "id": "audit_import_store_48fa7593",
     "file": "crates/frank/src/audit.rs",
-    "line": 398,
+    "line": 381,
     "decision": "n > 0",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_move_day_objects_f96d3f81",
+    "file": "crates/frank/src/audit.rs",
+    "line": 401,
+    "decision": "key_day(&key).is_none()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "audit_store_text_849ba8d2",
+    "file": "crates/frank/src/audit.rs",
+    "line": 419,
+    "decision": "let Some(bytes) = root.get(&key).map_err(|e| store_err(&key, e))?",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -2372,7 +2372,7 @@
   {
     "id": "audit_set_aside_local_1019358b",
     "file": "crates/frank/src/audit.rs",
-    "line": 415,
+    "line": 433,
     "decision": "!jsonl",
     "conditions": 1,
     "vectors_required": 2,
@@ -2382,7 +2382,7 @@
   {
     "id": "audit_set_aside_local_3ffa82f6",
     "file": "crates/frank/src/audit.rs",
-    "line": 419,
+    "line": 437,
     "decision": "old.exists()",
     "conditions": 1,
     "vectors_required": 2,
@@ -2392,7 +2392,7 @@
   {
     "id": "audit_sub_location_eee21ffe",
     "file": "crates/frank/src/audit.rs",
-    "line": 433,
+    "line": 451,
     "decision": "match location.split_once('?') {\n        Some((path, query)) => format!(\"{}/{name}?{query}\", path.trim_end_matches('/')),\n        None => format!(\"{}/{name}\", location.trim_end_matches('/')),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2402,7 +2402,7 @@
   {
     "id": "audit_spool_89463cf5",
     "file": "crates/frank/src/audit.rs",
-    "line": 458,
+    "line": 476,
     "decision": "![at(path), at(&path.with_file_name(DRAINING))].contains(&Some(ino))",
     "conditions": 1,
     "vectors_required": 2,
@@ -2412,7 +2412,7 @@
   {
     "id": "audit_row_00b4aa23",
     "file": "crates/frank/src/audit.rs",
-    "line": 476,
+    "line": 494,
     "decision": "let Some(fields) = line.as_object()",
     "conditions": 1,
     "vectors_required": 2,
@@ -2422,7 +2422,7 @@
   {
     "id": "audit_row_fd605bd4",
     "file": "crates/frank/src/audit.rs",
-    "line": 479,
+    "line": 497,
     "decision": "match k.as_str() {\n                \"at\" | \"by\" | \"action\" => true,\n                k if PROMOTED.contains(&k) => v.is_string(),\n                _ => false,\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2432,7 +2432,7 @@
   {
     "id": "audit_row_441de682",
     "file": "crates/frank/src/audit.rs",
-    "line": 481,
+    "line": 499,
     "decision": "PROMOTED.contains(&k)",
     "conditions": 1,
     "vectors_required": 2,
@@ -2442,7 +2442,7 @@
   {
     "id": "audit_row_2003fe68",
     "file": "crates/frank/src/audit.rs",
-    "line": 484,
+    "line": 502,
     "decision": "!own_column",
     "conditions": 1,
     "vectors_required": 2,
@@ -2452,7 +2452,7 @@
   {
     "id": "audit_line_b0565605",
     "file": "crates/frank/src/audit.rs",
-    "line": 506,
+    "line": 524,
     "decision": "match cells.get(i) {\n        Some(Cell::Text(t)) => Some(t.clone()),\n        _ => None,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2462,7 +2462,7 @@
   {
     "id": "audit_line_2815fd15",
     "file": "crates/frank/src/audit.rs",
-    "line": 519,
+    "line": 537,
     "decision": "let Some(v) = text(3 + i)",
     "conditions": 1,
     "vectors_required": 2,
@@ -2472,7 +2472,7 @@
   {
     "id": "audit_line_f8908d4e",
     "file": "crates/frank/src/audit.rs",
-    "line": 523,
+    "line": 541,
     "decision": "let Some(Value::Object(rest)) = text(6).and_then(|f| serde_json::from_str(&f).ok())",
     "conditions": 1,
     "vectors_required": 2,
@@ -2482,7 +2482,7 @@
   {
     "id": "audit_append_0d81b45f",
     "file": "crates/frank/src/audit.rs",
-    "line": 541,
+    "line": 559,
     "decision": "i + 1 == n",
     "conditions": 1,
     "vectors_required": 2,
@@ -3950,19 +3950,9 @@
     "wildcard_risk": false
   },
   {
-    "id": "serve_maintain_16f811c3",
-    "file": "crates/frank/src/serve.rs",
-    "line": 234,
-    "decision": "spooled > 0",
-    "conditions": 1,
-    "vectors_required": 2,
-    "compiler_void": false,
-    "wildcard_risk": false
-  },
-  {
     "id": "serve_maintain_f768d81b",
     "file": "crates/frank/src/serve.rs",
-    "line": 238,
+    "line": 234,
     "decision": "n % 60 == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3972,7 +3962,7 @@
   {
     "id": "serve_maintain_8aaeab4c",
     "file": "crates/frank/src/serve.rs",
-    "line": 244,
+    "line": 239,
     "decision": "merged > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3982,7 +3972,7 @@
   {
     "id": "serve_maintain_01b7c705",
     "file": "crates/frank/src/serve.rs",
-    "line": 251,
+    "line": 245,
     "decision": "n == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3990,20 +3980,40 @@
     "wildcard_risk": false
   },
   {
-    "id": "serve_maintain_47910d58",
+    "id": "serve_maintain_9a822e22",
     "file": "crates/frank/src/serve.rs",
-    "line": 253,
-    "decision": "match app.sightings.warm() {\n                    Ok(Some(files)) => {\n                        let ms = started.elapsed().as_millis();\n                        tracing::info!(files, ms, \"read cache warmed\");\n                    }\n                    Ok(None) => {}\n                    Err(e) => tracing::warn!(\"read cache warm-up: {e}\"),\n                }",
+    "line": 251,
+    "decision": "match result {\n            Ok(Ok(())) => {}\n            Ok(Err(e)) => tracing::error!(\"maintenance: {e}\"),\n            Err(e) => tracing::error!(\"maintenance task: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
     "wildcard_risk": false
   },
   {
-    "id": "serve_maintain_9a822e22",
+    "id": "serve_maintain_audit_16f811c3",
     "file": "crates/frank/src/serve.rs",
-    "line": 265,
-    "decision": "match result {\n            Ok(Ok(())) => {}\n            Ok(Err(e)) => tracing::error!(\"maintenance: {e}\"),\n            Err(e) => tracing::error!(\"maintenance task: {e}\"),\n        }",
+    "line": 264,
+    "decision": "spooled > 0",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "serve_maintain_audit_d1567926",
+    "file": "crates/frank/src/serve.rs",
+    "line": 268,
+    "decision": "compact",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "serve_warm_cache_c1998cdd",
+    "file": "crates/frank/src/serve.rs",
+    "line": 278,
+    "decision": "match sightings.warm() {\n        Ok(Some(files)) => {\n            let ms = started.elapsed().as_millis();\n            tracing::info!(files, ms, \"read cache warmed\");\n        }\n        Ok(None) => {}\n        Err(e) => tracing::warn!(\"read cache warm-up: {e}\"),\n    }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
@@ -4012,7 +4022,7 @@
   {
     "id": "serve_shutdown_642a0cd3",
     "file": "crates/frank/src/serve.rs",
-    "line": 279,
+    "line": 294,
     "decision": "let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())",
     "conditions": 1,
     "vectors_required": 2,
@@ -4022,7 +4032,7 @@
   {
     "id": "serve_serve_args_8574ccac",
     "file": "crates/frank/src/serve.rs",
-    "line": 299,
+    "line": 314,
     "decision": "match cli.command {\n            Command::Serve(a) => a,\n            _ => unreachable!(),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4032,7 +4042,7 @@
   {
     "id": "serve_tokens_after_import_6d884e63",
     "file": "crates/frank/src/serve.rs",
-    "line": 357,
+    "line": 372,
     "decision": "existing",
     "conditions": 1,
     "vectors_required": 2,
@@ -4042,7 +4052,7 @@
   {
     "id": "serve_tokens_after_import_5afa7b5b",
     "file": "crates/frank/src/serve.rs",
-    "line": 364,
+    "line": 379,
     "decision": "file",
     "conditions": 1,
     "vectors_required": 2,
