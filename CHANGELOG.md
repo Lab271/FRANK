@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-14
+
+### Added
+
+- `deploy/stackit` outputs `data_volume_id`, so a deployment can put a backup schedule on the data volume (test-frank#7).
+
 ## [0.47.0] - 2026-11-14
 
 ### Changed
