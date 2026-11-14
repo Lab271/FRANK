@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.56.0] - 2026-11-14
+
 ### Added
 
 - SSO admin group (#321, ADR-026): with `FRANK_SSO_ADMIN_GROUP` and `FRANK_SSO_ADMIN_ORGANISATION`, members of that provider group (the ID token's `groups` claim) are admins in that organisation, from their first sign-in; leaving the group takes back the role it gave. Roles set with the command line are never touched. Audit lines `role_granted` and `role_revoked`. `deploy/stackit`: `sso_admin_group` and `sso_admin_organisation`.
