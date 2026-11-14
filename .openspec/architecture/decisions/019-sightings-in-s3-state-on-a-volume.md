@@ -38,3 +38,15 @@ The target is an AWS deployment with S3 (#220). FRANK has run on a local filesys
   | `/v1/files` | 0 | 0 | 0 | 0 | 0 |
 
   The cost is the request count, not the bytes: a GET per footer and per column chunk, with up to one file's GETs in flight at a time. At AWS's 20-100 ms before the first byte, a cold 30-day statistics call takes about 11-56 s, close to `FRANK_REQUEST_TIMEOUT` (60 s); warm, every endpoint sends nothing. **Decision:** keep db-core's 256 MiB read cache, which holds the whole table at today's size, and ask db-core to coalesce adjacent ranges and fetch a file's chunks in parallel (t-rust-db/db-core#1059). The run against AWS itself, for real latencies, is #228.
+- *Revised 2026-11-14 (#290):* db-core v0.241.0 (t-rust-db/db-core#1059) reads a footer with one GET of the file's last 64 KiB, which takes a smaller file whole, fetches column chunks less than 1 MiB apart as one span, and runs footers (16 at a time) and spans (8 per file, 64 per store) in parallel. The same test, same table:
+
+  | Endpoint (partner) | Cold GETs | Cold bytes | Peak in flight | GET latencies end to end | Warm GETs |
+  |---|---:|---:|---:|---:|---:|
+  | `/v1/statistics?days=30` | 33 | 306 KB | 16 | ~41 | 0 |
+  | `/v1/statistics?days=7` | 10 | 73 KB | 10 | ~12 | 0 |
+  | `/v1/explore?group=rule` | 33 | 306 KB | 16 | ~9 | 0 |
+  | `/v1/live?window=24h` | 4 | 12 KB | 4 | ~5 | 0 |
+  | `/v1/sightings?limit=50` | 33 | 306 KB | 16 | ~8 | 0 |
+  | `/v1/files` | 0 | 0 | 0 | 0 | 0 |
+
+  A cold 30-day statistics call is about 1-4 s at AWS latencies, well inside `FRANK_REQUEST_TIMEOUT`. Every test file is under 64 KiB, so each is read whole in its footer GET (one GET per kept file; more bytes than the chunks alone). The test now asserts that bound; larger day files go through span fetches, which it does not measure (#228). The 256 MiB cache decision stands.

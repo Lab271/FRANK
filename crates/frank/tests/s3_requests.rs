@@ -140,6 +140,14 @@ async fn requests_per_endpoint_cold_and_warm() {
     let stored: u64 = files.iter().map(|f| f.2).sum();
     s.close().unwrap();
     eprintln!("{} files, {stored} bytes in the bucket", files.len());
+    // db-core reads a footer with one 64 KiB tail GET, which takes a file
+    // that small whole (db-core#1059). Every file here fits, so a cold call
+    // costs at most one GET per file; FRANK files larger than this go
+    // through coalesced spans instead, and this bound would not hold.
+    assert!(
+        files.iter().all(|f| f.2 <= 64 << 10),
+        "every test file fits in db-core's tail read"
+    );
     // A GET's time to first byte, scaled down: wall time over it is the
     // number of GETs that ran one after another.
     let latency = std::time::Duration::from_millis(1);
@@ -175,7 +183,15 @@ async fn requests_per_endpoint_cold_and_warm() {
             delta(b, c).0
         );
         assert_eq!(delta(b, c).0, 0, "{uri}: warm, the cache answers");
-        assert!(bytes < stored, "{uri}: read {bytes} of {stored} bytes");
+        assert!(
+            gets <= files.len() as u64,
+            "{uri}: {gets} GETs for {} files, at most one each",
+            files.len()
+        );
+        assert!(
+            bytes <= stored,
+            "{uri}: read {bytes} of {stored} bytes, nothing twice"
+        );
         assert_eq!(
             b.heads, a.heads,
             "{uri}: no HEAD, sizes are in the manifest"
