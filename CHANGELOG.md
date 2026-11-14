@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.51.3] - 2026-11-14
+
 ### Added
 
 - `docs/performance.md`: what a query costs against S3, the layers that brought a cold 30-day statistics call from 1,506 GETs to 33 and to none after the warm-up, how it is measured and what is not yet.
