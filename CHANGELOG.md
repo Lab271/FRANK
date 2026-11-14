@@ -4,11 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
-## [0.52.0] - 2026-11-14
-
 ### Added
 
-- MC/DC, as in db-core (#317, ADR-025): `cargo-mvl-mcdc` lists every decision of `crates/*/src` in the committed `tests/mcdc/obligations.json`, and tests named `mcdc__<id>__v<N>_<what>` cover each decision of two or more conditions, one test per vector: the admin API's role and scope rules, small-cell suppression and the partner gate, SSO, token and label checks. `make test-mcdc` fails while one is open (48/48 now) and runs in CI; `make check-mcdc-fresh` fails a stale snapshot; `check-assurance` shows a MC/DC box (`MCDC_MIN` gates it).
 - `docs/performance.md`: what a query costs against S3, the layers that brought a cold 30-day statistics call from 1,506 GETs to 33 and to none after the warm-up, how it is measured and what is not yet.
 - `docs/mcp.md`: connecting an AI assistant to FRANK over MCP, the tools, what each tier sees, and troubleshooting.
 
