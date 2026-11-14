@@ -150,6 +150,14 @@ write_files:
     content: |
       ${domain} {
         encode zstd gzip
+        # The web stream (ADR-024, #307): JSON to stdout, so journald
+        # (kept 30 days, #308). FRANK's X-Request-Id is on each line;
+        # Authorization and cookies are redacted while log_credentials
+        # stays unset.
+        log {
+          output stdout
+          format json
+        }
         # HSTS (#244): a public certificate, so a year; FRANK sets the
         # other security headers itself.
         header Strict-Transport-Security "max-age=31536000"

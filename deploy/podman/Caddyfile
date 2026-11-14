@@ -17,9 +17,23 @@
 	}
 }
 
+# The web stream (ADR-024, #307): one JSON line per request to stdout, next
+# to FRANK's own lines. FRANK's X-Request-Id is among the response headers
+# on each line, which joins it to FRANK's `frank::access` line. Caddy
+# redacts Authorization, Cookie and Set-Cookie unless `log_credentials` is
+# set in the global options: keep it unset. The line has the query string,
+# so it is as sensitive as FRANK's access log: 30 days, FRANK admins only.
+(log) {
+	log {
+		output stdout
+		format json
+	}
+}
+
 (frank) {
 	tls internal
 	encode zstd gzip
+	import log
 	reverse_proxy frank:8080
 }
 
@@ -36,6 +50,7 @@ localhost {
 }
 
 http://{$FRANK_HOST:frank.local}, http://localhost {
+	import log
 	# 307: temporary, so a browser does not keep it when the port changes,
 	# and a POST stays a POST.
 	redir https://{host}:{$FRANK_HTTPS_PORT:8443}{uri} 307

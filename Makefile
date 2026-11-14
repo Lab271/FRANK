@@ -56,7 +56,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality version smoke log-check e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -196,6 +196,9 @@ audit: ## cargo deny check with deny.toml (#220), as CI runs it: licences, sourc
 smoke: ## Read-only checks of a running FRANK: make smoke TOKEN=… [FRANK_URL=…|TLS=1] [CA=…]
 	@TOKEN="$(TOKEN)" $(PYTHON) scripts/smoke.py --url $(if $(TLS),$(FRANK_URL_TLS),$(FRANK_URL)) \
 	  $(if $(TLS),--ca $(CA_CERT),$(if $(CA),--ca $(CA)))
+
+log-check: ## Against make up: one request through Caddy gives a Caddy line and a frank::access line with the same X-Request-Id, and no token or cookie in either (ADR-024)
+	@URL=https://localhost:$(lastword $(subst :, ,$(FRANK_TLS_ADDR))) COMPOSE="$(COMPOSE)" scripts/log_check.sh
 
 e2e: $(if $(E2E_TAG),,image) ## Throwaway container (no Caddy), generated data, every check: [E2E_TAG=…] [E2E_PORT=18080] [KEEP=1] [S3=1: sightings in a throwaway Garage] [SSO=1: sign in through the OIDC stub] [BROWSER=1: the web UI in Obscura]
 	IMAGE=$(IMAGE):$(or $(E2E_TAG),$(VERSION)) E2E_PORT=$(E2E_PORT) PYTHON="$(PYTHON)" KEEP=$(KEEP) S3=$(S3) SSO=$(SSO) BROWSER=$(BROWSER) scripts/e2e.sh
