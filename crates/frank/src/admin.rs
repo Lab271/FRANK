@@ -60,7 +60,10 @@ pub fn routes() -> Router<Shared> {
             "/v1/admin/organisations",
             get(organisations).post(add_organisation),
         )
-        .route("/v1/admin/organisations/{id}", patch(set_status))
+        .route(
+            "/v1/admin/organisations/{id}",
+            patch(set_status).delete(remove_organisation),
+        )
         .route("/v1/admin/users", get(users).post(add_user))
         .route(
             "/v1/admin/users/{name}",
@@ -249,6 +252,56 @@ async fn set_status(
         Ok(Json(json!({ "id": id, "status": status })))
     })
     .await
+}
+
+/// Removes an organisation without users. Refused for the organisations
+/// SSO sign-in puts people in: FRANK would not start without them.
+async fn remove_organisation(
+    State(app): State<Shared>,
+    headers: HeaderMap,
+    UrlPath(id): UrlPath<String>,
+) -> Result<Json<Value>, ApiError> {
+    let c = superadmin(&app, &headers)?;
+    blocking(move || {
+        let _w = WRITE.lock().map_err(internal)?;
+        let path = app.participants.path();
+        let Some(org) = parts::organisations(path)
+            .map_err(internal)?
+            .into_iter()
+            .find(|o| o.id == id)
+        else {
+            return Err(not_found("participant"));
+        };
+        if let Some(setting) = sso_uses(&app, &org) {
+            return Err(conflict(format!(
+                "{} is {setting}: change that setting first",
+                org.name
+            )));
+        }
+        let (id, name) = parts::remove_organisation(path, &id).map_err(conflict)?;
+        record(
+            &app,
+            &c,
+            "participant_removed",
+            json!({ "participant": id, "name": name }),
+        )?;
+        Ok(Json(json!({ "id": id, "name": name })))
+    })
+    .await
+}
+
+/// The SSO setting that names `org`, if one does.
+fn sso_uses(app: &App, org: &parts::Organisation) -> Option<&'static str> {
+    let config = &app.sso.as_ref()?.config;
+    let names = |v: &str| v == org.id || v == org.name;
+    if names(&config.organisation) {
+        return Some("FRANK_SSO_ORGANISATION");
+    }
+    config
+        .admin
+        .as_ref()
+        .filter(|a| names(&a.organisation))
+        .map(|_| "FRANK_SSO_ADMIN_ORGANISATION")
 }
 
 // --- users --------------------------------------------------------------

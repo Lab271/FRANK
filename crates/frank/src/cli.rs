@@ -160,6 +160,8 @@ pub enum ParticipantCmd {
     List,
     /// Change an organisation's status; its users have it on their next request.
     SetStatus { name: String, status: String },
+    /// Remove an organisation that has no users.
+    Remove { name: String },
 }
 
 #[derive(Subcommand)]
@@ -375,7 +377,17 @@ fn participant(ctx: &Ctx, cmd: ParticipantCmd, io: &mut Io) -> Result<(), String
         ParticipantCmd::SetStatus { name, status: st } => {
             participant_set_status(ctx, &name, &st, io)
         }
+        ParticipantCmd::Remove { name } => participant_remove(ctx, &name, io),
     }
+}
+
+fn participant_remove(ctx: &Ctx, name: &str, io: &mut Io) -> Result<(), String> {
+    let (id, name) = parts::remove_organisation(&ctx.db, name)?;
+    ctx.log(
+        "participant_removed",
+        json!({ "participant": id, "name": name }),
+    )?;
+    io.err(format!("removed {name:?}"))
 }
 
 fn participant_add(

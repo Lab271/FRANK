@@ -1892,6 +1892,46 @@ async fn admins_manage_their_own_organisation_only() {
     }
 }
 
+/// Only a superadmin removes an organisation, and only one without users.
+#[tokio::test]
+async fn superadmins_remove_only_empty_organisations() {
+    let h = harness("admin-remove-org");
+    admins(&h);
+    let app = &h.app;
+    let (_, new) = call(
+        app,
+        "POST",
+        "/v1/admin/organisations",
+        Some("s"),
+        Some(json!({"name": "emptyco", "status": "contributor"})),
+    )
+    .await;
+    let empty = new["id"].as_str().unwrap().to_string();
+    let mdr = parts::organisation_id(&h.db, "mdr").unwrap();
+    let path = |id: &str| format!("/v1/admin/organisations/{id}");
+    // Only a superadmin removes one, and only without users.
+    let (st, _) = call(app, "DELETE", &path(&empty), Some("a"), None).await;
+    assert_eq!(st, StatusCode::FORBIDDEN);
+    let (st, body) = call(app, "DELETE", &path(&mdr), Some("s"), None).await;
+    assert_eq!(st, StatusCode::CONFLICT, "{body}");
+    let (st, body) = call(app, "DELETE", &path(&empty), Some("s"), None).await;
+    assert_eq!(
+        (st, body["name"].as_str()),
+        (StatusCode::OK, Some("emptyco"))
+    );
+    let (st, _) = call(app, "DELETE", &path(&empty), Some("s"), None).await;
+    assert_eq!(st, StatusCode::NOT_FOUND);
+    let (_, orgs) = call(app, "GET", "/v1/admin/organisations", Some("s"), None).await;
+    assert!(!names(&orgs, "organisations").contains(&"emptyco".to_string()));
+    let (_, audit) = call(app, "GET", "/v1/admin/audit?days=1", Some("s"), None).await;
+    let removed = audit["lines"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|l| l["action"] == "participant_removed" && l["name"] == "emptyco");
+    assert!(removed, "{audit}");
+}
+
 /// #175: superadmins manage every organisation; the guards keep an
 /// organisation, and the platform, from losing its last admin.
 #[tokio::test]

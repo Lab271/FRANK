@@ -1033,6 +1033,8 @@ async function loadAdmin(clearMessage = true) {
       api(`/v1/admin/audit?days=${$("adm-days").value}`).then((r) => r.json()),
     ]);
     const active = (name) => tokens.filter((t) => t.user === name && !t.revoked).length;
+    // Only an organisation without users can go; the server checks again.
+    $("adm-org-remove").disabled = users.length > 0;
     show($("adm-users"), table(["user", "kind", "role", "state", ""], users.map((u) =>
       [u.name, u.kind, roleSelect(u), u.disabled ? "disabled" : "active", userActions(u, active(u.name))])));
     show($("adm-tokens"), table(["token", "user", "state", ""], tokens.map(tokenRow)));
@@ -1072,6 +1074,14 @@ $("adm-org").addEventListener("change", () => { adminOrg = $("adm-org").value; l
 $("adm-days").addEventListener("change", () => loadAdmin(false));
 $("adm-status-set").addEventListener("click", () => adminAct(() =>
   sendJson(`/v1/admin/organisations/${encodeURIComponent(adminOrg)}`, "PATCH", { status: $("adm-status").value })));
+$("adm-org-remove").addEventListener("click", () => {
+  const name = $("adm-org").selectedOptions[0]?.textContent || adminOrg;
+  if (!confirm(`Remove the organisation ${name}? It has no users; its sightings keep its id.`)) return;
+  adminAct(async () => {
+    await api(`/v1/admin/organisations/${encodeURIComponent(adminOrg)}`, { method: "DELETE" });
+    adminOrg = "";
+  });
+});
 $("adm-user-add").addEventListener("submit", (ev) => {
   ev.preventDefault();
   adminAct(async () => {

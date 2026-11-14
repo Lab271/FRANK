@@ -89,9 +89,10 @@ target/release/frank participant set-status acme-mdr partner   # all its users, 
 target/release/frank token revoke 1a2b3c4d          # by hash prefix, from `make participants`
 target/release/frank user disable acme-feed         # its tokens stop working; `enable` brings them back
 target/release/frank user remove acme-feed          # a disabled user only, with its role and tokens
+target/release/frank participant remove acme-mdr    # an organisation without users only; its sightings keep its id
 ```
 
-**Admins** ([ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)). A role belongs to a person, never to an API client, and decides what the user may manage; the organisation's status still decides what it sees. An **admin** (in a contributor, partner or core organisation) manages its own organisation's users and tokens and reads its audit lines; a **superadmin** (in a core organisation) manages every organisation, its status included. Make the first superadmin on the command line, then manage the rest from the web UI's admin tab:
+**Admins** ([ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)). A role belongs to a person, never to an API client, and decides what the user may manage; the organisation's status still decides what it sees. An **admin** (in a contributor, partner or core organisation) manages its own organisation's users and tokens and reads its audit lines; a **superadmin** (in a core organisation) manages every organisation, its status included, and adds organisations or removes one without users (not one an SSO setting names). Make the first superadmin on the command line, then manage the rest from the web UI's admin tab:
 
 ```bash
 make participant NAME=lab271 STATUS=core            # the operator's organisation

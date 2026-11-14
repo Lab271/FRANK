@@ -487,6 +487,23 @@ paths:
         "403": { $ref: "#/components/responses/Forbidden" }
         "404": { $ref: "#/components/responses/NotFound" }
         "409": { $ref: "#/components/responses/Conflict" }
+    delete:
+      tags: [admin]
+      summary: Remove an organisation without users
+      description: Refused (409) while it has users, and for an organisation an SSO setting names (`FRANK_SSO_ORGANISATION`, `FRANK_SSO_ADMIN_ORGANISATION`). Its sightings keep its id as their reporter. Audited as `participant_removed`.
+      x-min-status: core
+      x-role: superadmin
+      parameters:
+        - { name: id, in: path, required: true, description: "The organisation's id.", schema: { type: string } }
+      responses:
+        "200":
+          description: The removed organisation's id and name.
+          content:
+            application/json:
+              schema: { type: object }
+        "403": { $ref: "#/components/responses/Forbidden" }
+        "404": { $ref: "#/components/responses/NotFound" }
+        "409": { $ref: "#/components/responses/Conflict" }
 
   /v1/admin/users:
     get:
