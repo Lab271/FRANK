@@ -1,11 +1,7 @@
 file,function,ccn
-crates/frank/src/mmdb.rs,decode,44
 crates/frank/src/store/sightings.rs,rewrite,35
 crates/frank-core/src/model.rs,phase2,23
 crates/frank/src/store/participants.rs,sign_in,23
-crates/frank/src/mcp.rs,call,19
-crates/frank/src/records.rs,parse,18
-crates/frank/src/mmdb.rs,from_bytes,17
 crates/frank/src/sso.rs,check,17
 crates/frank-core/src/model.rs,frank1,16
 crates/frank/src/store/participants.rs,load_callers,16

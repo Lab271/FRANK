@@ -68,34 +68,11 @@ impl List {
             match k.as_str() {
                 "since" => q.since = time(k, v)?,
                 "until" => q.until = Some(time(k, v)?),
-                "order" => {
-                    q.desc = match v.as_str() {
-                        "asc" => false,
-                        "desc" => true,
-                        _ => return Err("order: expected asc or desc".into()),
-                    };
-                }
-                "mine" => {
-                    q.mine = match v.as_str() {
-                        "true" | "1" => true,
-                        "false" | "0" => false,
-                        _ => return Err("mine: expected true or false".into()),
-                    };
-                }
+                "order" => q.desc = desc(v)?,
+                "mine" => q.mine = mine(v)?,
                 "cursor" => q.after = Some(cursor(v).ok_or("cursor: not one this API gave")?),
-                "limit" => {
-                    q.limit = v
-                        .parse()
-                        .ok()
-                        .filter(|n| (1..=MAX_LIMIT).contains(n))
-                        .ok_or(format!("limit must be 1-{MAX_LIMIT}"))?;
-                }
-                other => {
-                    let d =
-                        Dimension::parse(other).ok_or(format!("unknown parameter {other:?}"))?;
-                    d.condition(v, false)?;
-                    q.filters.push((d, v.clone()));
-                }
+                "limit" => q.limit = limit(v)?,
+                other => q.filters.push(filter(other, v)?),
             }
         }
         Ok(q)
@@ -223,6 +200,39 @@ fn time(key: &str, v: &str) -> Result<i64, String> {
 }
 
 /// A cursor `{ts}.{sighting_id}` this API gave.
+/// `order`: newest first for `desc`.
+fn desc(v: &str) -> Result<bool, String> {
+    match v {
+        "asc" => Ok(false),
+        "desc" => Ok(true),
+        _ => Err("order: expected asc or desc".into()),
+    }
+}
+
+/// `mine`: `true`/`1` or `false`/`0`.
+fn mine(v: &str) -> Result<bool, String> {
+    match v {
+        "true" | "1" => Ok(true),
+        "false" | "0" => Ok(false),
+        _ => Err("mine: expected true or false".into()),
+    }
+}
+
+/// `limit`: 1 to [`MAX_LIMIT`].
+fn limit(v: &str) -> Result<usize, String> {
+    v.parse()
+        .ok()
+        .filter(|n| (1..=MAX_LIMIT).contains(n))
+        .ok_or(format!("limit must be 1-{MAX_LIMIT}"))
+}
+
+/// Any other parameter: an Explore dimension and a value it accepts.
+fn filter(k: &str, v: &str) -> Result<(Dimension, String), String> {
+    let d = Dimension::parse(k).ok_or(format!("unknown parameter {k:?}"))?;
+    d.condition(v, false)?;
+    Ok((d, v.to_string()))
+}
+
 fn cursor(v: &str) -> Option<(i64, SightingId)> {
     let (ts, id) = v.split_once('.')?;
     let id = SightingId::parse(id).ok()?;

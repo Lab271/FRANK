@@ -172,20 +172,40 @@ async fn call(
     let s = State(app);
     Ok(match name {
         "whoami" => api::whoami(s, headers).await,
-        "statistics" => api::statistics(s, headers, Query(args(&a)?)).await,
-        "summary" => api::summary(s, headers, Query(args(&a)?)).await,
-        "lookup_ioc" => api::ioc_lookup(s, headers, Query(args(&a)?)).await,
-        "ioc_range" => api::ioc_range(s, headers, Query(args(&a)?)).await,
         "explore" => api::explore(s, headers, Query(params(&a)?)).await,
-        "rule_detail" => {
-            let Id { id } = args(&a)?;
-            api::rule_detail(s, headers, Path(id), Query(args(&a)?)).await
-        }
         "list_sightings" => api::list(s, headers, Query(params(&a)?)).await,
-        "get_sighting" => {
-            let Id { id } = args(&a)?;
-            api::sighting(s, headers, Path(id)).await
-        }
+        "rule_detail" | "get_sighting" => call_by_id(s, headers, name, &a).await?,
+        _ => call_with_args(s, headers, name, &a).await?,
+    })
+}
+
+/// [`call`] for the tools on one record named by an `id` argument.
+async fn call_by_id(
+    s: State<Shared>,
+    headers: HeaderMap,
+    name: &str,
+    a: &Value,
+) -> Result<Result<Json<Value>, ApiError>, (i64, String)> {
+    let Id { id } = args(a)?;
+    Ok(match name {
+        "rule_detail" => api::rule_detail(s, headers, Path(id), Query(args(a)?)).await,
+        _ => api::sighting(s, headers, Path(id)).await,
+    })
+}
+
+/// [`call`] for the tools whose arguments are one typed query, and the
+/// error for an unknown tool.
+async fn call_with_args(
+    s: State<Shared>,
+    headers: HeaderMap,
+    name: &str,
+    a: &Value,
+) -> Result<Result<Json<Value>, ApiError>, (i64, String)> {
+    Ok(match name {
+        "statistics" => api::statistics(s, headers, Query(args(a)?)).await,
+        "summary" => api::summary(s, headers, Query(args(a)?)).await,
+        "lookup_ioc" => api::ioc_lookup(s, headers, Query(args(a)?)).await,
+        "ioc_range" => api::ioc_range(s, headers, Query(args(a)?)).await,
         other => return Err((INVALID_PARAMS, format!("unknown tool {other:?}"))),
     })
 }
