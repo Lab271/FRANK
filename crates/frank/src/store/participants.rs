@@ -461,8 +461,9 @@ fn find_user(db: &mut RowEngine, name: &str) -> Result<String, String> {
         .ok_or_else(|| format!("no user {name:?}"))
 }
 
-/// The user called `name`: `(id, organisation id, kind)`.
-fn find_user_row(db: &mut RowEngine, name: &str) -> Result<(String, String, String), String> {
+/// The user called `name`: `(id, organisation id, kind)`, `None` when there
+/// is none. A failing query is an error, never "no such user" (#312).
+fn user_row(db: &mut RowEngine, name: &str) -> Result<Option<(String, String, String)>, String> {
     let r = query(
         db,
         &format!(
@@ -470,10 +471,15 @@ fn find_user_row(db: &mut RowEngine, name: &str) -> Result<(String, String, Stri
             sql_quote(name)
         ),
     )?;
-    r.rows
+    Ok(r.rows
         .first()
-        .map(|row| (text(&row[0]), text(&row[1]), text(&row[2])))
-        .ok_or_else(|| format!("no user {name:?}"))
+        .map(|row| (text(&row[0]), text(&row[1]), text(&row[2]))))
+}
+
+/// The user called `name`: `(id, organisation id, kind)`; an error when there
+/// is none.
+fn find_user_row(db: &mut RowEngine, name: &str) -> Result<(String, String, String), String> {
+    user_row(db, name)?.ok_or_else(|| format!("no user {name:?}"))
 }
 
 /// The status of the organisation with id `id`.
@@ -813,7 +819,9 @@ pub fn sign_in(
         if check_name("user", &name).is_err() {
             return Ok(Err(format!("{name:?} is not a valid user name")));
         }
-        if let Ok((user_id, _, kind)) = find_user_row(db, &name) {
+        // A store error here is a failure, not "no such user": it must not
+        // fall through to provisioning (#312).
+        if let Some((user_id, _, kind)) = user_row(db, &name)? {
             let user = (name, user_id, kind);
             return link_existing(db, &key, user, id.email_verified, &disabled);
         }
@@ -1114,6 +1122,56 @@ pub fn import_tokens_file(path: &Path, file: &Path) -> Result<Vec<String>, Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_user_row_is_found_missing_or_an_error() {
+        let dir = temp("user-row");
+        let path = dir.join(FILE);
+        add_organisation(
+            &path,
+            "acme",
+            Tier::Contributor,
+            "cyber_partner",
+            None,
+            None,
+        )
+        .unwrap();
+        add_user(&path, "acme", "alice", "human", None).unwrap();
+        let found = with_db(&path, |db| user_row(db, "alice")).unwrap();
+        assert_eq!(found.map(|(_, _, kind)| kind).as_deref(), Some("human"));
+        assert_eq!(with_db(&path, |db| user_row(db, "bob")).unwrap(), None);
+        with_db(&path, |db| exec(db, "DROP TABLE users")).unwrap();
+        let e = with_db(&path, |db| user_row(db, "alice")).unwrap_err();
+        assert!(e.contains("users"), "{e}");
+    }
+
+    #[test]
+    fn a_store_error_in_the_sign_in_lookup_is_not_a_new_user() {
+        // #312: the lookup used to read any error as "no such user" and go on
+        // to provisioning. With no organisation "nowhere", provisioning fails
+        // with `no participant`, so that error names the old path.
+        let dir = temp("sign-in-lookup");
+        let path = dir.join(FILE);
+        add_organisation(
+            &path,
+            "acme",
+            Tier::Contributor,
+            "cyber_partner",
+            None,
+            None,
+        )
+        .unwrap();
+        with_db(&path, |db| exec(db, "DROP TABLE users")).unwrap();
+        let id = Identity {
+            issuer: "https://idp.example".into(),
+            subject: "sub-1".into(),
+            email: Some("alice@example.org".into()),
+            email_verified: true,
+        };
+        let e = sign_in(&path, &id, "nowhere").unwrap_err();
+        assert!(e.contains("no such table: users"), "{e}");
+        assert!(!e.contains("no participant"), "{e}");
+    }
 
     fn temp(name: &str) -> PathBuf {
         let dir =
