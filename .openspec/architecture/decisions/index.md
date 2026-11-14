@@ -30,3 +30,4 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [022](022-browser-tests-in-obscura.md) | Browser tests in Obscura, from Playwright, in `make e2e` | Accepted | 2026-11-12 |
 | [023](023-coverage-and-code-quality-next-to-spec-assurance.md) | Coverage and code quality next to spec assurance | Accepted | 2026-11-14 |
 | [024](024-log-streams.md) | Three log streams: web (Caddy) and app as regular streams, the audit as a striped table | Accepted | 2026-11-14 |
+| [025](025-mcdc-with-tagged-tests.md) | MC/DC with tagged tests (cargo-mvl-mcdc), as in db-core | Accepted | 2026-11-14 |

@@ -240,6 +240,7 @@ fn cursor(v: &str) -> Option<(i64, SightingId)> {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -357,5 +358,32 @@ mod tests {
         );
         assert!(sql.ends_with("ORDER BY ts, sighting_id LIMIT 101"), "{sql}");
         assert!(q.ioc_sql("x", None).is_none());
+    }
+
+    // conditions: `with_iocs || !Self::by_ioc(*d)`
+    fn filtered(kv: (&str, &str), with_iocs: bool) -> Vec<String> {
+        List::parse(&params(&[kv]), NOW)
+            .unwrap()
+            .conditions("tlp = 'green'", None, with_iocs)
+    }
+
+    const IOC: (&str, &str) = ("ioc", "ipv4:198.51.100.7");
+
+    #[test]
+    fn mcdc__records_conditions_2e25596f__v1_ioc_filter_left_out() {
+        let ioc = Dimension::Ioc.condition(IOC.1, false).unwrap();
+        assert!(!filtered(IOC, false).contains(&ioc));
+    }
+
+    #[test]
+    fn mcdc__records_conditions_2e25596f__v2_with_iocs_keeps_ioc_filter() {
+        let ioc = Dimension::Ioc.condition(IOC.1, false).unwrap();
+        assert!(filtered(IOC, true).contains(&ioc));
+    }
+
+    #[test]
+    fn mcdc__records_conditions_2e25596f__v3_other_filter_kept() {
+        let sector = Dimension::Sector.condition("Energy", false).unwrap();
+        assert!(filtered(("sector", "Energy"), false).contains(&sector));
     }
 }

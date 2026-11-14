@@ -1544,6 +1544,7 @@ pub fn rebuild_iocs(sightings: &Sightings, iocs: &Iocs) -> Result<usize, String>
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
     use frank_core::observable::ip_hex;
@@ -1556,5 +1557,33 @@ mod tests {
         assert!(h("185.221.0.0") > hi);
         assert!(cidr_bounds("10.0.0.0/33").is_none());
         assert!(cidr_bounds("::/0").is_some());
+    }
+
+    /// [`explore_params`] for `group` and maybe `listed`: the status of a refusal.
+    fn explore_status(group: &str, listed: Option<&str>) -> StatusCode {
+        let mut params = BTreeMap::from([("group".to_string(), group.to_string())]);
+        if let Some(l) = listed {
+            params.insert("listed".into(), l.into());
+        }
+        explore_params(&mut params).map_or_else(|e| e.0, |_| StatusCode::OK)
+    }
+
+    // `listed_by.is_some() && q.group != Dimension::Ioc`: `listed` with group=ioc only.
+    #[test]
+    fn mcdc__api_explore_params_e70c7cc2__v1_listed_by_rule_is_refused() {
+        assert_eq!(
+            explore_status("rule", Some("any")),
+            StatusCode::UNPROCESSABLE_ENTITY
+        );
+    }
+
+    #[test]
+    fn mcdc__api_explore_params_e70c7cc2__v2_no_listed_is_accepted() {
+        assert_eq!(explore_status("rule", None), StatusCode::OK);
+    }
+
+    #[test]
+    fn mcdc__api_explore_params_e70c7cc2__v3_listed_by_ioc_is_accepted() {
+        assert_eq!(explore_status("ioc", Some("any")), StatusCode::OK);
     }
 }

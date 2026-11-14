@@ -262,6 +262,7 @@ pub fn trend(ts: &[i64], now: i64, days: i64) -> Vec<(String, i64)> {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -371,5 +372,49 @@ mod tests {
                 ("2026-10-22".into(), 1)
             ]
         );
+    }
+
+    // condition: `v.is_empty() || v.len() > 2048 || v.chars().any(is_control)`
+    #[test]
+    fn mcdc__explore_condition_05e3715e__v1_usable_value() {
+        assert!(Dimension::Rule.condition("r1", false).is_ok());
+    }
+
+    #[test]
+    fn mcdc__explore_condition_05e3715e__v2_empty_is_refused() {
+        assert!(Dimension::Rule.condition("  ", false).is_err());
+    }
+
+    #[test]
+    fn mcdc__explore_condition_05e3715e__v3_too_long_is_refused() {
+        assert!(Dimension::Rule.condition(&"x".repeat(2049), false).is_err());
+    }
+
+    #[test]
+    fn mcdc__explore_condition_05e3715e__v4_control_is_refused() {
+        assert!(Dimension::Rule.condition("a\u{7}b", false).is_err());
+    }
+
+    // sql: `self.by_technique() && self.by_ioc()`
+    fn counted(kv: &[(&str, &str)]) -> String {
+        Query::parse(&params(kv)).unwrap().sql(0, "x").unwrap()
+    }
+
+    #[test]
+    fn mcdc__explore_sql_80f5db87__v1_technique_by_ioc_counts_distinct() {
+        let sql = counted(&[("group", "technique"), ("ioc_type", "ipv4")]);
+        assert!(sql.contains("count(DISTINCT sighting_id) AS n"), "{sql}");
+    }
+
+    #[test]
+    fn mcdc__explore_sql_80f5db87__v2_not_by_technique_counts_rows() {
+        let sql = counted(&[("group", "rule"), ("ioc_type", "ipv4")]);
+        assert!(sql.contains("count(*) AS n"), "{sql}");
+    }
+
+    #[test]
+    fn mcdc__explore_sql_80f5db87__v3_no_ioc_counts_rows() {
+        let sql = counted(&[("group", "technique"), ("rule", "r1")]);
+        assert!(sql.contains("count(*) AS n"), "{sql}");
     }
 }

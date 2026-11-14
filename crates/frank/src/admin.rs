@@ -734,3 +734,382 @@ async fn files(
     })
     .await
 }
+
+#[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
+mod tests {
+    use std::sync::Arc;
+
+    use axum::body::Body;
+    use axum::http::Request;
+    use tower::ServiceExt;
+
+    use super::*;
+    use crate::store::{Iocs, Participants, Registry, Sightings};
+
+    /// 2026-10-22 12:00 UTC.
+    fn now() -> i64 {
+        1_792_670_400_000_000_000
+    }
+
+    /// `ops` (core): superadmin `root` (token `s`). `mdr` (core, as a
+    /// superadmin needs): admin `amy`
+    /// (token `a`), superadmin `sam`, plain user `mdr` (token `c`).
+    /// `mdr2`: admin `ben` (token `b`).
+    struct Fixture {
+        app: Shared,
+        mdr2: String,
+        dir: std::path::PathBuf,
+    }
+
+    impl Drop for Fixture {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.dir);
+        }
+    }
+
+    fn fixture(name: &str) -> Fixture {
+        let dir = std::env::temp_dir().join(format!("frank-admin-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let db = dir.join(parts::FILE);
+        let mut ids = Vec::new();
+        for (org, status) in [
+            ("ops", Tier::Core),
+            ("mdr", Tier::Core),
+            ("mdr2", Tier::Contributor),
+        ] {
+            ids.push(
+                parts::add_organisation(&db, org, status, "cyber_partner", None, None).unwrap(),
+            );
+        }
+        for (org, user, role, token) in [
+            ("ops", "root", Some(Role::Superadmin), Some("s")),
+            ("mdr", "amy", Some(Role::Admin), Some("a")),
+            ("mdr", "sam", Some(Role::Superadmin), None),
+            ("mdr", "mdr", None, Some("c")),
+            ("mdr2", "ben", Some(Role::Admin), Some("b")),
+        ] {
+            parts::add_user(&db, org, user, "human", role).unwrap();
+            if let Some(t) = token {
+                parts::add_token_hash(&db, user, &hash(t)).unwrap();
+            }
+        }
+        let sightings = Sightings::open(&dir, None, now).unwrap();
+        let app = Arc::new(App {
+            data: dir.clone(),
+            iocs: Iocs::open(&dir).unwrap(),
+            geo: crate::geo::Geo::open(&dir, now()).unwrap(),
+            lists: crate::lists::Lists::open(&dir).unwrap(),
+            participants: Participants::open(&dir).unwrap(),
+            registry: Registry::open(&dir, &sightings).unwrap(),
+            audit: crate::audit::Audit::open(&dir).unwrap(),
+            sightings,
+            sso: None,
+            submit_lock: std::sync::Mutex::new(()),
+            now,
+        });
+        Fixture {
+            app,
+            mdr2: ids.remove(2),
+            dir,
+        }
+    }
+
+    async fn call(f: &Fixture, method: &str, uri: &str, token: &str, body: Value) -> StatusCode {
+        let req = Request::builder()
+            .method(method)
+            .uri(uri)
+            .header("authorization", format!("Bearer {token}"))
+            .header("content-type", "application/json")
+            .body(Body::from(body.to_string()))
+            .unwrap();
+        let resp = routes()
+            .with_state(f.app.clone())
+            .oneshot(req)
+            .await
+            .unwrap();
+        resp.status()
+    }
+
+    fn user(f: &Fixture, name: &str) -> UserInfo {
+        parts::users(f.app.participants.path())
+            .unwrap()
+            .into_iter()
+            .find(|u| u.name == name)
+            .unwrap()
+    }
+
+    fn caller(f: &Fixture, name: &str) -> Caller {
+        let u = user(f, name);
+        Caller {
+            tier: Tier::Contributor,
+            participant: u.participant,
+            organisation: u.organisation,
+            user: u.name,
+            role: u.role,
+        }
+    }
+
+    fn status<T: std::fmt::Debug>(r: Result<T, ApiError>) -> StatusCode {
+        r.unwrap_err().0
+    }
+
+    // add_user: asks for superadmin && the caller is not a superadmin.
+    #[tokio::test]
+    async fn mcdc__admin_add_user_af4244f1__v1_admin_making_superadmin_is_403() {
+        let f = fixture("au1-1");
+        let body = json!({"name": "x", "role": "superadmin"});
+        assert_eq!(
+            call(&f, "POST", "/v1/admin/users", "a", body).await,
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_add_user_af4244f1__v2_admin_making_admin_is_created() {
+        let f = fixture("au1-2");
+        let body = json!({"name": "x", "role": "admin"});
+        assert_eq!(
+            call(&f, "POST", "/v1/admin/users", "a", body).await,
+            StatusCode::CREATED
+        );
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_add_user_af4244f1__v3_superadmin_making_superadmin_is_created() {
+        let f = fixture("au1-3");
+        let body = json!({"name": "x", "role": "superadmin"});
+        assert_eq!(
+            call(&f, "POST", "/v1/admin/users", "s", body).await,
+            StatusCode::CREATED
+        );
+    }
+
+    // add_user: !manages(organisation) || !organisation exists.
+    #[tokio::test]
+    async fn mcdc__admin_add_user_c6c3b8f2__v1_own_existing_organisation_is_created() {
+        let f = fixture("au2-1");
+        let body = json!({"name": "x"});
+        assert_eq!(
+            call(&f, "POST", "/v1/admin/users", "a", body).await,
+            StatusCode::CREATED
+        );
+        assert_eq!(user(&f, "x").organisation, "mdr");
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_add_user_c6c3b8f2__v2_unmanaged_organisation_is_404() {
+        let f = fixture("au2-2");
+        let body = json!({"name": "x", "participant": f.mdr2});
+        assert_eq!(
+            call(&f, "POST", "/v1/admin/users", "a", body).await,
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_add_user_c6c3b8f2__v3_unknown_organisation_is_404() {
+        let f = fixture("au2-3");
+        let body = json!({"name": "x", "participant": "identity--nobody"});
+        assert_eq!(
+            call(&f, "POST", "/v1/admin/users", "s", body).await,
+            StatusCode::NOT_FOUND
+        );
+    }
+
+    // set_role: (grants superadmin || takes superadmin) && caller not superadmin.
+    #[tokio::test]
+    async fn mcdc__admin_set_role_bcd3a302__v1_admin_granting_superadmin_is_403() {
+        let f = fixture("sr-1");
+        let body = json!({"role": "superadmin"});
+        assert_eq!(
+            call(&f, "PATCH", "/v1/admin/users/mdr", "a", body).await,
+            StatusCode::FORBIDDEN
+        );
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_set_role_bcd3a302__v2_admin_granting_admin_is_200() {
+        let f = fixture("sr-2");
+        let body = json!({"role": "admin"});
+        assert_eq!(
+            call(&f, "PATCH", "/v1/admin/users/mdr", "a", body).await,
+            StatusCode::OK
+        );
+        assert_eq!(user(&f, "mdr").role, Some(Role::Admin));
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_set_role_bcd3a302__v3_admin_taking_superadmin_is_403() {
+        let f = fixture("sr-3");
+        let body = json!({"role": "admin"});
+        assert_eq!(
+            call(&f, "PATCH", "/v1/admin/users/sam", "a", body).await,
+            StatusCode::FORBIDDEN
+        );
+        assert_eq!(user(&f, "sam").role, Some(Role::Superadmin));
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_set_role_bcd3a302__v4_superadmin_granting_superadmin_is_200() {
+        let f = fixture("sr-4");
+        let body = json!({"role": "superadmin"});
+        assert_eq!(
+            call(&f, "PATCH", "/v1/admin/users/mdr", "s", body).await,
+            StatusCode::OK
+        );
+        assert_eq!(user(&f, "mdr").role, Some(Role::Superadmin));
+    }
+
+    // keeps_admins: loses_admin && no other working admin in its organisation.
+    #[test]
+    fn mcdc__admin_keeps_admins_09dc97b1__v1_last_admin_losing_it_is_409() {
+        let f = fixture("ka1-1");
+        let r = keeps_admins(&f.app, &user(&f, "ben"), true, false);
+        assert_eq!(status(r), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn mcdc__admin_keeps_admins_09dc97b1__v2_not_losing_admin_is_ok() {
+        let f = fixture("ka1-2");
+        assert!(keeps_admins(&f.app, &user(&f, "ben"), false, false).is_ok());
+    }
+
+    #[test]
+    fn mcdc__admin_keeps_admins_09dc97b1__v3_another_admin_left_is_ok() {
+        let f = fixture("ka1-3");
+        // `sam` still holds a role in `mdr`.
+        assert!(keeps_admins(&f.app, &user(&f, "amy"), true, false).is_ok());
+    }
+
+    // keeps_admins: loses_superadmin && no other working superadmin.
+    #[test]
+    fn mcdc__admin_keeps_admins_6e5634ce__v1_last_superadmin_losing_it_is_409() {
+        let f = fixture("ka2-1");
+        // A disabled superadmin does not count.
+        parts::set_disabled(f.app.participants.path(), "sam", true).unwrap();
+        let r = keeps_admins(&f.app, &user(&f, "root"), false, true);
+        assert_eq!(status(r), StatusCode::CONFLICT);
+    }
+
+    #[test]
+    fn mcdc__admin_keeps_admins_6e5634ce__v2_not_losing_superadmin_is_ok() {
+        let f = fixture("ka2-2");
+        parts::set_disabled(f.app.participants.path(), "sam", true).unwrap();
+        assert!(keeps_admins(&f.app, &user(&f, "root"), false, false).is_ok());
+    }
+
+    #[test]
+    fn mcdc__admin_keeps_admins_6e5634ce__v3_another_superadmin_left_is_ok() {
+        let f = fixture("ka2-3");
+        assert!(keeps_admins(&f.app, &user(&f, "root"), false, true).is_ok());
+    }
+
+    // changeable_user: target is superadmin && caller is not.
+    #[test]
+    fn mcdc__admin_changeable_user_b208e878__v1_admin_changing_superadmin_is_403() {
+        let f = fixture("cu-1");
+        let r = changeable_user(&f.app, &caller(&f, "amy"), "sam");
+        assert_eq!(status(r), StatusCode::FORBIDDEN);
+    }
+
+    #[test]
+    fn mcdc__admin_changeable_user_b208e878__v2_admin_changing_plain_user_is_ok() {
+        let f = fixture("cu-2");
+        let u = changeable_user(&f.app, &caller(&f, "amy"), "mdr").unwrap();
+        assert_eq!(u.name, "mdr");
+    }
+
+    #[test]
+    fn mcdc__admin_changeable_user_b208e878__v3_superadmin_changing_superadmin_is_ok() {
+        let f = fixture("cu-3");
+        let u = changeable_user(&f.app, &caller(&f, "root"), "sam").unwrap();
+        assert_eq!(u.name, "sam");
+    }
+
+    // revoke: prefix shorter than 8 || not all hex.
+    #[tokio::test]
+    async fn mcdc__admin_revoke_a7b4364b__v1_eight_hex_digits_pass_the_check() {
+        let f = fixture("rv1-1");
+        // Past the check: no token has this prefix.
+        let s = call(&f, "DELETE", "/v1/admin/tokens/00000000", "a", Value::Null).await;
+        assert_eq!(s, StatusCode::NOT_FOUND);
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_revoke_a7b4364b__v2_short_prefix_is_422() {
+        let f = fixture("rv1-2");
+        let s = call(&f, "DELETE", "/v1/admin/tokens/0000000", "a", Value::Null).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_revoke_a7b4364b__v3_non_hex_prefix_is_422() {
+        let f = fixture("rv1-3");
+        let s = call(&f, "DELETE", "/v1/admin/tokens/0000000g", "a", Value::Null).await;
+        assert_eq!(s, StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    // revoke: the caller's own token && its only active one.
+    #[tokio::test]
+    async fn mcdc__admin_revoke_9dd1b906__v1_own_last_token_is_409() {
+        let f = fixture("rv2-1");
+        let uri = format!("/v1/admin/tokens/{}", &hash("a")[..12]);
+        assert_eq!(
+            call(&f, "DELETE", &uri, "a", Value::Null).await,
+            StatusCode::CONFLICT
+        );
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_revoke_9dd1b906__v2_another_users_token_is_200() {
+        let f = fixture("rv2-2");
+        let uri = format!("/v1/admin/tokens/{}", &hash("c")[..12]);
+        assert_eq!(
+            call(&f, "DELETE", &uri, "a", Value::Null).await,
+            StatusCode::OK
+        );
+    }
+
+    #[tokio::test]
+    async fn mcdc__admin_revoke_9dd1b906__v3_own_token_with_another_left_is_200() {
+        let f = fixture("rv2-3");
+        parts::add_token_hash(f.app.participants.path(), "amy", &hash("a2")).unwrap();
+        let uri = format!("/v1/admin/tokens/{}", &hash("a")[..12]);
+        assert_eq!(
+            call(&f, "DELETE", &uri, "a", Value::Null).await,
+            StatusCode::OK
+        );
+    }
+
+    // resolve: a part is ".." || "." || holds '\' or NUL.
+    #[test]
+    fn mcdc__admin_resolve_d808f945__v1_plain_name_resolves() {
+        let f = fixture("rs-1");
+        std::fs::create_dir_all(f.dir.join("sub")).unwrap();
+        let dir = resolve(&f.app, "data/sub").unwrap();
+        assert!(dir.ends_with("sub"));
+    }
+
+    #[test]
+    fn mcdc__admin_resolve_d808f945__v2_dotdot_is_422() {
+        let f = fixture("rs-2");
+        let r = resolve(&f.app, "data/..");
+        assert_eq!(status(r), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn mcdc__admin_resolve_d808f945__v3_dot_is_422() {
+        let f = fixture("rs-3");
+        let r = resolve(&f.app, "data/.");
+        assert_eq!(status(r), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+
+    #[test]
+    fn mcdc__admin_resolve_d808f945__v4_backslash_is_422() {
+        let f = fixture("rs-4");
+        let r = resolve(&f.app, "data/a\\b");
+        assert_eq!(status(r), StatusCode::UNPROCESSABLE_ENTITY);
+    }
+}

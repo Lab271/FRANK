@@ -4035,6 +4035,169 @@ async fn json_format_is_one_object_per_line_with_target() {
     assert_eq!(a["request_id"].as_str().unwrap().len(), 26);
 }
 
+/// The keys of `rows` (or `[field]` of each row) as strings.
+fn row_keys(rows: &Value, field: &str) -> Vec<String> {
+    rows.as_array()
+        .unwrap()
+        .iter()
+        .map(|r| r[field].as_str().unwrap().to_string())
+        .collect()
+}
+
+/// [`explore_fixture`]'s rules in `/v1/statistics` as `tok` sees them.
+async fn top_rules(h: &Harness, tok: &str) -> Vec<String> {
+    let (_, s) = call(&h.app, "GET", "/v1/statistics", Some(tok), None).await;
+    row_keys(&s["top_rules"], "key")
+}
+
+// `exact || *r >= MIN_CELL` in `breakdown`: r1 has three reporters, r2 one.
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_breakdown_7a9eeb03__v1_a_small_cell_is_dropped_below_partner() {
+    let h = harness("mcdc-breakdown-v1");
+    explore_fixture(&h).await;
+    assert!(!top_rules(&h, "c").await.contains(&"r2".into()));
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_breakdown_7a9eeb03__v2_a_partner_sees_the_small_cell() {
+    let h = harness("mcdc-breakdown-v2");
+    explore_fixture(&h).await;
+    assert!(top_rules(&h, "p").await.contains(&"r2".into()));
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_breakdown_7a9eeb03__v3_a_large_cell_is_kept_below_partner() {
+    let h = harness("mcdc-breakdown-v3");
+    explore_fixture(&h).await;
+    assert!(top_rules(&h, "c").await.contains(&"r1".into()));
+}
+
+/// The rules of `domain:evil.example` (in every [`explore_fixture`]
+/// sighting) as `tok` sees them.
+async fn ioc_rules(h: &Harness, tok: &str) -> Vec<String> {
+    let uri = "/v1/iocs?type=domain&value=evil.example";
+    let (_, ioc) = call(&h.app, "GET", uri, Some(tok), None).await;
+    row_keys(&ioc["rules"], "rule_id")
+}
+
+// `exact || *r >= MIN_CELL` in `ioc_history`: an IoC's rules.
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_ioc_history_7a9eeb03__v1_a_small_cell_is_dropped_below_partner() {
+    let h = harness("mcdc-ioc-v1");
+    explore_fixture(&h).await;
+    assert!(!ioc_rules(&h, "c").await.contains(&"r2".into()));
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_ioc_history_7a9eeb03__v2_a_partner_sees_the_small_cell() {
+    let h = harness("mcdc-ioc-v2");
+    explore_fixture(&h).await;
+    assert!(ioc_rules(&h, "p").await.contains(&"r2".into()));
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_ioc_history_7a9eeb03__v3_a_large_cell_is_kept_below_partner() {
+    let h = harness("mcdc-ioc-v3");
+    explore_fixture(&h).await;
+    assert!(ioc_rules(&h, "c").await.contains(&"r1".into()));
+}
+
+/// [`explore_fixture`]'s rules in `/v1/explore?group=rule` as `tok` sees them.
+async fn explore_rules(h: &Harness, tok: &str) -> Vec<String> {
+    let (_, r) = call(&h.app, "GET", "/v1/explore?group=rule", Some(tok), None).await;
+    keys(&r)
+}
+
+// `exact || *r >= MIN_CELL` in `grouped`: Explore's rows.
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_grouped_7a9eeb03__v1_a_small_cell_is_dropped_below_partner() {
+    let h = harness("mcdc-grouped-v1");
+    explore_fixture(&h).await;
+    assert!(!explore_rules(&h, "c").await.contains(&"r2".into()));
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_grouped_7a9eeb03__v2_a_partner_sees_the_small_cell() {
+    let h = harness("mcdc-grouped-v2");
+    explore_fixture(&h).await;
+    assert!(explore_rules(&h, "p").await.contains(&"r2".into()));
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_grouped_7a9eeb03__v3_a_large_cell_is_kept_below_partner() {
+    let h = harness("mcdc-grouped-v3");
+    explore_fixture(&h).await;
+    assert!(explore_rules(&h, "c").await.contains(&"r1".into()));
+}
+
+// `caller.tier < Tier::Partner && !q.mine`: below partner, only `mine=true`.
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_list_2ccc32ae__v1_a_contributor_listing_all_is_forbidden() {
+    let h = harness("mcdc-list-v1");
+    let r = call(&h.app, "GET", "/v1/sightings", Some("c"), None).await;
+    assert_eq!(r.0, StatusCode::FORBIDDEN, "{}", r.1);
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_list_2ccc32ae__v2_a_partner_lists_all() {
+    let h = harness("mcdc-list-v2");
+    let r = call(&h.app, "GET", "/v1/sightings", Some("p"), None).await;
+    assert_eq!(r.0, StatusCode::OK, "{}", r.1);
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__api_list_2ccc32ae__v3_a_contributor_lists_its_own() {
+    let h = harness("mcdc-list-v3");
+    let r = call(&h.app, "GET", "/v1/sightings?mine=true", Some("c"), None).await;
+    assert_eq!(r.0, StatusCode::OK, "{}", r.1);
+}
+
+/// `POST /mcp` with a JSON-RPC message holding an id and `extra`, no method.
+async fn mcp_without_method(label: &str, extra: Value) -> (StatusCode, Value) {
+    let h = harness(&format!("mcdc-mcp-{label}"));
+    let mut msg = json!({"jsonrpc": "2.0", "id": 1});
+    msg.as_object_mut()
+        .unwrap()
+        .extend(extra.as_object().unwrap().clone());
+    call(&h.app, "POST", "/mcp", None, Some(msg)).await
+}
+
+// `msg.contains_key("result") || msg.contains_key("error")`: a response to
+// a request is accepted; an id without a method is not.
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__mcp_mcp_4a0d09ff__v1_neither_is_an_invalid_request() {
+    let (st, r) = mcp_without_method("v1", json!({})).await;
+    assert_eq!(st, StatusCode::OK, "{r}");
+    assert_eq!(r["error"]["code"], -32600, "{r}");
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__mcp_mcp_4a0d09ff__v2_a_result_is_accepted() {
+    let (st, r) = mcp_without_method("v2", json!({"result": {}})).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{r}");
+}
+
+#[tokio::test]
+#[allow(non_snake_case)]
+async fn mcdc__mcp_mcp_4a0d09ff__v3_an_error_is_accepted() {
+    let (st, r) = mcp_without_method("v3", json!({"error": {"code": 1, "message": "no"}})).await;
+    assert_eq!(st, StatusCode::ACCEPTED, "{r}");
+}
+
 /// The runtime manifest (#315) in a subscriber like `main`'s, which also
 /// carries `log` records (mvl-manifest's) into `tracing`.
 fn manifest_lines(filter: &str) -> (bool, Captured) {

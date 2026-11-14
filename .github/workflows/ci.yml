@@ -13,6 +13,9 @@ env:
   # mvl-rust rev for the qualified-subset gate (make check-mvl-limit, #217);
   # the same pin as t-rust-db's sqlite-rs.
   MVL_RUST_REV: "a64eb33e7c9ef9ad031d22a70405e59aa1ad3cb0"
+  # mvl-rust rev for cargo-mvl-mcdc (make test-mcdc, ADR-025): db-core's pin. The
+  # snapshot tests/mcdc/obligations.json must come from the same scanner.
+  MVL_MCDC_REV: "5a5ffd5a8e79298271a65649b3f586ebce2ffb31"
 
 jobs:
   rust:
@@ -45,6 +48,10 @@ jobs:
           make quality
       - name: Coverage and CCN gates (make check-assurance COVERAGE_MIN=0.90 CCN_MAX=15)
         run: make check-assurance COVERAGE_MIN=0.90 CCN_MAX=15
+      - name: MC/DC (make test-mcdc)
+        run: |
+          cargo install --locked --git https://github.com/mvl-lang/mvl-rust --rev "$MVL_MCDC_REV" rust-mcdc --bin cargo-mvl-mcdc
+          make test-mcdc
       - name: Upload coverage and quality
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
@@ -53,6 +60,7 @@ jobs:
           path: |
             target/assurance/coverage.json
             target/assurance/lizard.csv
+            target/assurance/mcdc.json
           if-no-files-found: warn
 
   # make test-slow: a release build for the #[ignore = "slow"] tests, in

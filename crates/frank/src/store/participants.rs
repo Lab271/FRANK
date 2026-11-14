@@ -1120,6 +1120,7 @@ pub fn import_tokens_file(path: &Path, file: &Path) -> Result<Vec<String>, Strin
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -1590,5 +1591,169 @@ mod tests {
             .unwrap();
         assert_eq!(how, SignedIn::Provisioned);
         let _ = std::fs::remove_dir_all(dir);
+    }
+
+    // --- MC/DC (ADR-025) -----------------------------------------------------
+
+    // check_label: len <= 64 && only [a-z0-9_] is accepted.
+    #[test]
+    fn mcdc__store_participants_check_label_6ec01162__v1_short_and_plain_is_kept() {
+        assert_eq!(
+            check_label("sector", Some("Energy_1")).unwrap().as_deref(),
+            Some("energy_1")
+        );
+    }
+
+    #[test]
+    fn mcdc__store_participants_check_label_6ec01162__v2_too_long_is_refused() {
+        assert!(check_label("sector", Some(&"a".repeat(65))).is_err());
+    }
+
+    #[test]
+    fn mcdc__store_participants_check_label_6ec01162__v3_a_dash_is_refused() {
+        assert_eq!(
+            check_label("sector", Some("a-b")).unwrap_err(),
+            "sector \"a-b\": use [a-z0-9_]"
+        );
+    }
+
+    // sign_in: issuer with a space || empty subject is malformed.
+    #[test]
+    fn mcdc__store_participants_sign_in_ca24ef4a__v1_a_wellformed_identity_signs_in() {
+        let (dir, path) = sso_setup("mcdc-sign-in");
+        let id = identity("00u1", "a@lab271.dev", false);
+        let (name, _) = sign_in(&path, &id, "lab").unwrap().unwrap();
+        assert_eq!(name, "a@lab271.dev");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn mcdc__store_participants_sign_in_ca24ef4a__v2_an_issuer_with_a_space_is_malformed() {
+        let mut id = identity("00u1", "a@lab271.dev", false);
+        id.issuer = "https://sso example".into();
+        let path = PathBuf::from("/nonexistent/frank-mcdc");
+        assert_eq!(
+            sign_in(&path, &id, "lab").unwrap().unwrap_err(),
+            "malformed issuer or subject"
+        );
+    }
+
+    #[test]
+    fn mcdc__store_participants_sign_in_ca24ef4a__v3_an_empty_subject_is_malformed() {
+        let id = identity("", "a@lab271.dev", false);
+        let path = PathBuf::from("/nonexistent/frank-mcdc");
+        assert_eq!(
+            sign_in(&path, &id, "lab").unwrap().unwrap_err(),
+            "malformed issuer or subject"
+        );
+    }
+
+    /// A store with organisation `lab` and its human `bob`.
+    fn with_bob(name: &str) -> (PathBuf, PathBuf) {
+        let dir = temp(name);
+        let path = dir.join(FILE);
+        add_organisation(&path, "lab", Tier::Partner, "cyber_partner", None, None).unwrap();
+        add_user(&path, "lab", "bob", "human", None).unwrap();
+        (dir, path)
+    }
+
+    // add_token_hash: len != 64 || not all hex is no SHA-256 digest.
+    #[test]
+    fn mcdc__store_participants_add_token_hash_71dd7312__v1_a_digest_is_stored() {
+        let (dir, path) = with_bob("mcdc-hash");
+        add_token_hash(&path, "bob", &hash("t1")).unwrap();
+        assert_eq!(tokens(&path).unwrap().len(), 1);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn mcdc__store_participants_add_token_hash_71dd7312__v2_a_short_hash_is_refused() {
+        let path = PathBuf::from("/nonexistent/frank-mcdc");
+        assert_eq!(
+            add_token_hash(&path, "bob", "abc").unwrap_err(),
+            "not a SHA-256 hex digest"
+        );
+    }
+
+    #[test]
+    fn mcdc__store_participants_add_token_hash_71dd7312__v3_a_non_hex_hash_is_refused() {
+        let path = PathBuf::from("/nonexistent/frank-mcdc");
+        assert_eq!(
+            add_token_hash(&path, "bob", &"g".repeat(64)).unwrap_err(),
+            "not a SHA-256 hex digest"
+        );
+    }
+
+    // revoke: prefix shorter than 8 || not all hex is refused.
+    const SHORT_PREFIX: &str = "give at least 8 hex digits of the token's hash (frank token list)";
+
+    #[test]
+    fn mcdc__store_participants_revoke_a7b4364b__v1_eight_hex_digits_revoke() {
+        let (dir, path) = with_bob("mcdc-revoke");
+        add_token_hash(&path, "bob", &hash("t1")).unwrap();
+        revoke(&path, &hash("t1")[..8]).unwrap();
+        assert!(tokens(&path).unwrap()[0].revoked);
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn mcdc__store_participants_revoke_a7b4364b__v2_a_short_prefix_is_refused() {
+        let path = PathBuf::from("/nonexistent/frank-mcdc");
+        assert_eq!(revoke(&path, "abcdef1").unwrap_err(), SHORT_PREFIX);
+    }
+
+    #[test]
+    fn mcdc__store_participants_revoke_a7b4364b__v3_a_non_hex_prefix_is_refused() {
+        let path = PathBuf::from("/nonexistent/frank-mcdc");
+        assert_eq!(revoke(&path, "zzzzzzzz").unwrap_err(), SHORT_PREFIX);
+    }
+
+    /// Imports `content` as a tokens file into a fresh store.
+    fn import(name: &str, content: &str) -> Vec<String> {
+        let dir = temp(name);
+        let file = dir.join("tokens");
+        std::fs::write(&file, content).unwrap();
+        let created = import_tokens_file(&dir.join(FILE), &file).unwrap();
+        let _ = std::fs::remove_dir_all(dir);
+        created
+    }
+
+    // import_tokens_file: an empty line || a '#' comment is skipped.
+    #[test]
+    fn mcdc__store_participants_import_tokens_file_e06a2edc__v1_a_token_line_is_imported() {
+        let created = import("mcdc-import-line", &format!("{} partner me\n", hash("t1")));
+        assert_eq!(created, ["me"]);
+    }
+
+    #[test]
+    fn mcdc__store_participants_import_tokens_file_e06a2edc__v2_an_empty_line_is_skipped() {
+        assert!(import("mcdc-import-empty", "  \n").is_empty());
+    }
+
+    #[test]
+    fn mcdc__store_participants_import_tokens_file_e06a2edc__v3_a_comment_is_skipped() {
+        assert!(import("mcdc-import-comment", "# partner me\n").is_empty());
+    }
+
+    // import_tokens_file: alphanumeric || one of "._@-" stays in a label.
+    #[test]
+    fn mcdc__store_participants_import_tokens_file_c08636ae__v1_other_characters_become_dashes() {
+        let created = import("mcdc-label-plus", &format!("{} partner a+b\n", hash("t1")));
+        assert_eq!(created, ["a-b"]);
+    }
+
+    #[test]
+    fn mcdc__store_participants_import_tokens_file_c08636ae__v2_alphanumerics_stay() {
+        let created = import("mcdc-label-alnum", &format!("{} partner ab1\n", hash("t1")));
+        assert_eq!(created, ["ab1"]);
+    }
+
+    #[test]
+    fn mcdc__store_participants_import_tokens_file_c08636ae__v3_marks_stay() {
+        let created = import(
+            "mcdc-label-marks",
+            &format!("{} partner a.b@c\n", hash("t1")),
+        );
+        assert_eq!(created, ["a.b@c"]);
     }
 }

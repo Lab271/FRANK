@@ -587,6 +587,7 @@ pub fn nanos(cell: &Cell) -> Option<i64> {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
     use frank_core::Tlp;
@@ -1098,5 +1099,75 @@ mod tests {
             "the table is left as it was"
         );
         let _ = std::fs::remove_dir_all(&data);
+    }
+
+    /// A stored row of `seq` and a binary digest, read back as `c`.
+    fn digest_value(seq: i64, c: ColumnSpec) -> RecordValue {
+        let stored = [
+            ColumnSpec::new("seq", ColumnType::Int64, true),
+            ColumnSpec::new("rule_id", ColumnType::Utf8, true),
+            ColumnSpec::new("digest", ColumnType::Binary, true),
+        ];
+        let row = [
+            Cell::Int(seq),
+            Cell::Text("r1".into()),
+            Cell::Blob(vec![7; 32]),
+        ];
+        rewritten_value(&stored, &row, &c).unwrap()
+    }
+
+    // `c.name == "digest" && !first(row)`: the digest only on the seq 0 row.
+    #[test]
+    fn mcdc__store_sightings_rewritten_value_4c644b06__v1_digest_on_a_later_row_is_null() {
+        let v = digest_value(1, ColumnSpec::new("digest", ColumnType::Binary, true));
+        assert_eq!(v, RecordValue::Null);
+    }
+
+    #[test]
+    fn mcdc__store_sightings_rewritten_value_4c644b06__v2_another_column_is_kept() {
+        let v = digest_value(1, ColumnSpec::new("rule_id", ColumnType::Utf8, true));
+        assert_eq!(v, RecordValue::Str("r1".into()));
+    }
+
+    #[test]
+    fn mcdc__store_sightings_rewritten_value_4c644b06__v3_digest_on_the_first_row_is_kept() {
+        let v = digest_value(0, ColumnSpec::new("digest", ColumnType::Binary, true));
+        assert_eq!(v, RecordValue::Bytes(vec![7; 32]));
+    }
+
+    /// List column `c` of a row stored with `stored`.
+    fn list_value(stored: &[(&str, &str)], c: &str) -> RecordValue {
+        let spec: Vec<ColumnSpec> = stored
+            .iter()
+            .map(|(n, _)| ColumnSpec::new(*n, ColumnType::Utf8, true))
+            .collect();
+        let row: Vec<Cell> = stored
+            .iter()
+            .map(|(_, v)| Cell::Text((*v).into()))
+            .collect();
+        rewritten_list(&spec, &row, &ColumnSpec::new(c, ColumnType::ListUtf8, true)).unwrap()
+    }
+
+    fn list(v: &[&str]) -> RecordValue {
+        RecordValue::List(v.iter().map(|s| Some((*s).to_string())).collect())
+    }
+
+    // `c.name == TECHNIQUES && technique.is_some()`: the list from the string.
+    #[test]
+    fn mcdc__store_sightings_rewritten_list_6f911444__v1_techniques_from_the_string() {
+        let v = list_value(&[("technique", "T1,T2"), ("other", r#"["x"]"#)], TECHNIQUES);
+        assert_eq!(v, list(&["T1", "T2"]));
+    }
+
+    #[test]
+    fn mcdc__store_sightings_rewritten_list_6f911444__v2_another_list_is_read_back() {
+        let v = list_value(&[("technique", "T1,T2"), ("other", r#"["x"]"#)], "other");
+        assert_eq!(v, list(&["x"]));
+    }
+
+    #[test]
+    fn mcdc__store_sightings_rewritten_list_6f911444__v3_no_string_reads_the_stored_list() {
+        let v = list_value(&[(TECHNIQUES, r#"["T9"]"#)], TECHNIQUES);
+        assert_eq!(v, list(&["T9"]));
     }
 }

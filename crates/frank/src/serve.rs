@@ -255,3 +255,105 @@ async fn shutdown() {
     let term = std::future::pending::<()>();
     tokio::select! { () = ctrl_c => {}, () = term => {} }
 }
+
+#[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
+mod tests {
+    use super::*;
+    use crate::cli::{setup, Cli, Command};
+    use clap::Parser;
+    use frank_core::Tier;
+
+    fn serve_args(extra: &[&str]) -> ServeArgs {
+        let cli = Cli::try_parse_from([["frank", "serve"].as_slice(), extra].concat()).unwrap();
+        match cli.command {
+            Command::Serve(a) => a,
+            _ => unreachable!(),
+        }
+    }
+
+    // `args.request_timeout == 0 || args.max_concurrency == 0`: both at least 1.
+    #[test]
+    fn mcdc__serve_limits_cb1ba987__v1_both_set_is_accepted() {
+        let l = limits(&serve_args(&[
+            "--request-timeout",
+            "5",
+            "--max-concurrency",
+            "2",
+        ]))
+        .unwrap();
+        assert_eq!((l.timeout, l.concurrency), (Duration::from_secs(5), 2));
+    }
+
+    #[test]
+    fn mcdc__serve_limits_cb1ba987__v2_no_timeout_is_refused() {
+        assert!(limits(&serve_args(&[
+            "--request-timeout",
+            "0",
+            "--max-concurrency",
+            "2"
+        ]))
+        .is_err());
+    }
+
+    #[test]
+    fn mcdc__serve_limits_cb1ba987__v3_no_concurrency_is_refused() {
+        assert!(limits(&serve_args(&[
+            "--request-timeout",
+            "5",
+            "--max-concurrency",
+            "0"
+        ]))
+        .is_err());
+    }
+
+    /// A context in a fresh directory, with `existing` tokens in
+    /// `participants.db` and a tokens file of one token if `file`; the
+    /// active tokens after [`import_tokens`].
+    fn tokens_after_import(label: &str, existing: bool, file: bool) -> usize {
+        let dir = std::env::temp_dir().join(format!("frank-serve-{label}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let (data, people) = (dir.join("data"), dir.join("participants"));
+        let cli = Cli::try_parse_from([
+            "frank",
+            "--data",
+            data.to_str().unwrap(),
+            "--participants",
+            people.to_str().unwrap(),
+            "rebuild",
+        ])
+        .unwrap();
+        let ctx = setup(&cli).unwrap();
+        if existing {
+            parts::add_organisation(&ctx.db, "ops", Tier::Core, "cyber_partner", None, None)
+                .unwrap();
+            parts::add_user(&ctx.db, "ops", "root", "human", None).unwrap();
+            parts::add_token(&ctx.db, "root").unwrap();
+        }
+        let tokens = dir.join("tokens");
+        if file {
+            std::fs::write(&tokens, format!("{} partner me\n", crate::auth::hash("t1"))).unwrap();
+        }
+        let participants = Participants::open(&ctx.participants).unwrap();
+        import_tokens(&ctx, &participants, &tokens).unwrap();
+        let n = participants.active_tokens().unwrap();
+        std::fs::remove_dir_all(&dir).ok();
+        n
+    }
+
+    // `participants.active_tokens()? == 0 && tokens.exists()`: imported once.
+    #[test]
+    fn mcdc__serve_import_tokens_400d7164__v1_no_tokens_and_a_file_imports_it() {
+        assert_eq!(tokens_after_import("v1", false, true), 1);
+    }
+
+    #[test]
+    fn mcdc__serve_import_tokens_400d7164__v2_tokens_already_skip_the_file() {
+        assert_eq!(tokens_after_import("v2", true, true), 1);
+    }
+
+    #[test]
+    fn mcdc__serve_import_tokens_400d7164__v3_no_file_imports_nothing() {
+        assert_eq!(tokens_after_import("v3", false, false), 0);
+    }
+}

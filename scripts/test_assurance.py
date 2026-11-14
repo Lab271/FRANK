@@ -200,6 +200,11 @@ class Gates(unittest.TestCase):
         self.cov.write_text(json.dumps({"type": "llvm.coverage.json.export", "data": [
             {"files": [{"filename": "/x/a.rs", "summary": lines(8, 10)}], "totals": lines(8, 10)}]}))
         self.lizard.write_text('90,20,900,3,95,"big@1-95@src/a.rs","src/a.rs","big","big",1,95\n')
+        self.mcdc = self.dir / "mcdc.json"
+        decision = lambda id, done: {"id": id, "file": "crates/a/src/a.rs", "line": 1, "vectors_required": 3,
+                                     "compiler_void": False, "vectors_discharged": 3 if done else 1,
+                                     "discharged": done, "tagged_tests": []}
+        self.mcdc.write_text(json.dumps([decision("a_x_1", True), decision("a_y_2", False)]))
 
     def tearDown(self):
         assurance.COLOR = self.color
@@ -207,7 +212,8 @@ class Gates(unittest.TestCase):
 
     def run_main(self, *args):
         with contextlib.redirect_stdout(io.StringIO()) as out:
-            code = assurance.main(["--coverage", str(self.cov), "--quality", str(self.lizard), *args])
+            code = assurance.main(["--coverage", str(self.cov), "--quality", str(self.lizard),
+                                   "--mcdc", str(self.mcdc), *args])
         return code, out.getvalue()
 
     def test_measured_without_gates_passes_and_shows_both(self):
@@ -219,10 +225,12 @@ class Gates(unittest.TestCase):
     def test_not_measured_is_shown_not_failed(self):
         self.cov.unlink()
         self.lizard.unlink()
+        self.mcdc.unlink()
         code, out = self.run_main()
         self.assertEqual(code, 0)
         self.assertIn("not measured (make coverage)", out)
         self.assertIn("not measured (make quality)", out)
+        self.assertIn("not measured (make test-mcdc)", out)
 
     def test_coverage_below_the_minimum_fails(self):
         self.assertEqual(self.run_main("--coverage-min", "0.8")[0], 0)
@@ -259,6 +267,21 @@ class Gates(unittest.TestCase):
         code, out = self.run_main("--ccn-max", "15", "--ccn-baseline", str(baseline))
         self.assertEqual(code, 1)
         self.assertIn("OVER CCN 20 src/a.rs::big (not in the baseline)", out)
+
+    def test_mcdc_is_shown_with_its_open_decisions(self):
+        code, out = self.run_main()
+        self.assertEqual(code, 0)
+        self.assertIn("FRANK MC/DC", out)
+        self.assertIn("a_y_2  1/3 vectors  a/src/a.rs:1", out)
+        self.assertNotIn("a_x_1", out)
+
+    def test_mcdc_below_the_minimum_fails(self):
+        self.assertEqual(self.run_main("--mcdc-min", "0.5")[0], 0)
+        code, out = self.run_main("--mcdc-min", "1.0")
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL: MC/DC decisions covered 50.0% (min 100.0%)", out)
+        self.mcdc.unlink()
+        self.assertEqual(self.run_main("--mcdc-min", "0.0")[0], 1)
 
     def test_tested_scenarios_below_the_floor_fail(self):
         self.assertEqual(self.run_main("--min", "0.0")[0], 0)
