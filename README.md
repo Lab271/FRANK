@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.51.0
+## Version: 0.51.1
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -193,10 +193,10 @@ make test        # cargo test --workspace
 make lint        # fmt, clippy (native and wasm32)
 make check-assurance   # spec links and scores; the coverage and quality boxes; the checker's tests first
 make coverage    # test coverage (cargo llvm-cov) into target/assurance/, read by check-assurance
-make quality     # code quality (lizard: CCN, function and file length, approximate fan-in/out)
+make quality     # code quality (lizard: CCN, function and file length)
 ```
 
-`check-assurance` shows a coverage box and a code-quality box once `make coverage` and `make quality` have written their files, and says `not measured` until then. `COVERAGE_MIN=0.85` or `CCN_MAX=15` make them gates. See [spec 002](.openspec/specs/002-assurance/spec.md) and [ADR-023](.openspec/architecture/decisions/023-coverage-and-code-quality-next-to-spec-assurance.md).
+`check-assurance` shows a coverage box and a code-quality box once `make coverage` and `make quality` have written their files, and says `not measured` until then. `COVERAGE_MIN=0.85` or `CCN_MAX=15` make them gates; with `CCN_MAX`, the functions in `.openspec/quality-baseline.csv` may stay over it at most at their recorded CCN, and the list may only shrink (`make quality-baseline` rewrites it). See [spec 002](.openspec/specs/002-assurance/spec.md) and [ADR-023](.openspec/architecture/decisions/023-coverage-and-code-quality-next-to-spec-assurance.md).
 
 **Test tiers** ([ADR-018](.openspec/architecture/decisions/018-container-is-the-reference-and-test-tiers.md), #208). `make run` is for developing; the container image is what gets checked, because it is what gets deployed.
 
@@ -211,7 +211,7 @@ make fuzz                          # fuzz the submission parsers for FUZZ_TIME=6
 make audit                         # cargo-deny: RustSec advisories, licences, sources (deny.toml)
 ```
 
-`scripts/smoke.py` needs Python 3.9 or later and nothing else (macOS's own `python3` does; `PYTHON=` for another). It asks `/v1/whoami` for each token's status (`TOKEN` takes several, space separated) and checks what that status may and may not read. It never submits unless `--writable` is given, which only `make e2e` does: sightings cannot be deleted. CI runs `test-slow`, `audit` and a short `fuzz`, and runs `e2e` on the image before pushing it.
+`scripts/smoke.py` needs Python 3.9 or later and nothing else (macOS's own `python3` does; `PYTHON=` for another). It asks `/v1/whoami` for each token's status (`TOKEN` takes several, space separated) and checks what that status may and may not read. It never submits unless `--writable` is given, which only `make e2e` does: sightings cannot be deleted. CI runs the tests under `make coverage` and fails below 90% of lines covered (`COVERAGE_MIN`), runs `make quality` and fails on a function over CCN 15 that the baseline does not allow (`CCN_MAX`), `test-slow`, `audit` and a short `fuzz`, and runs `e2e` on the image before pushing it.
 
 **Streaming test** (#177): `scripts/stream_sightings.py` sends synthetic sightings through `POST /v1/sightings` at a steady rate, stamped now, so they pass through every stage of the striped table: the open hour, an hour file in `live/` once the hour closes, a merged day in `archive/` after midnight UTC. With a partner or core token it polls `/v1/statistics` and `/v1/files` and checks that the stored count is the starting count plus what was created at every poll; a share of the sightings is resent and must get its original receipt. Exit code 1 on any mismatch. Run nothing else against the server meanwhile.
 

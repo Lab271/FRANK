@@ -79,7 +79,7 @@ An append MUST return only once its rows are on disk (the WAL fsynced on the las
 
 Every minute the server MUST write each closed hour to `live/date=…/hour=…/` as one Parquet file (zstd, sorted by `rule_id`, `ioc_value`), whose `ts` and `received` ranges the manifest MUST record so a `ts` or `received` window skips the files outside it without reading them (#283, #284). On shutdown it MUST flush before closing. Rows of the open hour MUST still be readable as one Parquet file written on request.
 
-**Implementation:** `crates/frank/src/store/sightings.rs::flush`, `crates/frank/src/store/sightings.rs::options`, `crates/frank/src/store/sightings.rs::open_rows_parquet`, `crates/frank/src/main.rs::maintain`
+**Implementation:** `crates/frank/src/store/sightings.rs::flush`, `crates/frank/src/store/sightings.rs::options`, `crates/frank/src/store/sightings.rs::open_rows_parquet`, `crates/frank/src/serve.rs::maintain`
 
 #### Scenario: A closed hour becomes one file
 
@@ -111,7 +111,7 @@ Every minute the server MUST write each closed hour to `live/date=…/hour=…/`
 
 Every hour the server MUST merge closed days into `archive/date=…/` and drop whole days older than `FRANK_RETENTION_DAYS` (default 400). The same cut MUST be applied to `iocs.db`, the registry and the audit log. Retention is by arrival day.
 
-**Implementation:** `crates/frank/src/store/sightings.rs::compact`, `crates/frank/src/main.rs::maintain`
+**Implementation:** `crates/frank/src/store/sightings.rs::compact`, `crates/frank/src/serve.rs::maintain`
 
 #### Scenario: Days merge and expire
 
@@ -191,7 +191,7 @@ On open, a local table stored with the comma-separated `technique` string (0.20 
 
 With `FRANK_STORE=s3://bucket/prefix?endpoint=…&region=…` the table's manifest and Parquet files MUST be kept in the store, while its WAL, writer lock and scratch space MUST stay on the local volume in `data/s3/sightings/`, apart from the local table's `data/sightings/`. Credentials MUST come from the AWS chain, never from the URI. An `https://` endpoint MUST go through the TLS transport (`--features tls`, built into the image); without it the store MUST be refused with a message saying why. Retention MUST delete the objects themselves, after db-core's delete grace. A query MUST read the store's files by range (footers, then the column chunks it loads) through db-core's read cache, and listing the files MUST fetch none (#282). On start, after flushing and compacting, the server MUST warm the read cache by touching every listed file once, off the request path; a failure MUST only be logged (#291).
 
-**Implementation:** `crates/frank/src/objects.rs::open`, `crates/frank/src/store/sightings.rs::open_in`, `crates/frank/src/store/sightings.rs::read_file`, `crates/frank/src/store/sightings.rs::nanos`, `crates/frank/src/store/sightings.rs::warm`, `crates/frank/src/main.rs::maintain`
+**Implementation:** `crates/frank/src/objects.rs::open`, `crates/frank/src/store/sightings.rs::open_in`, `crates/frank/src/store/sightings.rs::read_file`, `crates/frank/src/store/sightings.rs::nanos`, `crates/frank/src/store/sightings.rs::warm`, `crates/frank/src/serve.rs::maintain`
 
 #### Scenario: Files in the store, the WAL apart
 

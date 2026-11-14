@@ -4,6 +4,14 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.51.1] - 2026-11-14
+
+### Changed
+
+- `make check-assurance`: a spec's `**Tests:**` link must name a `#[test]` function, and `make quality` no longer reports lizard's fan-in and fan-out (#298).
+- CI runs the workspace tests under `cargo llvm-cov` and gates on 90% of lines covered and on CCN 15, with the functions allowed over it listed in `.openspec/quality-baseline.csv`, which can only shrink (#299, #301).
+- The `frank` admin subcommands and `serve` moved out of `main.rs` into `frank::cli` and `frank::serve`; the command line is unchanged (#300).
+
 ## [0.51.0] - 2026-11-14
 
 ### Added

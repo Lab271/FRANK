@@ -167,7 +167,7 @@ A submission MUST record its new rows in `iocs.db` right after appending them to
 
 Every hour, with the sightings' compaction, `iocs.db` MUST drop the days before the retention cut (`FRANK_RETENTION_DAYS`). Its days are arrival days, the clock the sightings table's retention uses, so an IoC is kept exactly as long as the rows it was counted from, also when a sighting is dated before it arrived (#257).
 
-**Implementation:** `crates/frank/src/store/iocs.rs::retain_from`, `crates/frank/src/main.rs::maintain`
+**Implementation:** `crates/frank/src/store/iocs.rs::retain_from`, `crates/frank/src/serve.rs::maintain`
 
 #### Scenario: Old days are dropped
 
