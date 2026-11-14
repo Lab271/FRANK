@@ -27,6 +27,21 @@ write_files:
       AWS_ACCESS_KEY_ID=${store_key}
       AWS_SECRET_ACCESS_KEY=${store_secret}
 %{ endif ~}
+%{ if sso_issuer != "" ~}
+  # SSO (ADR-020): the settings, and the client secret as a file, mounted
+  # into the container; FRANK never reads it from the environment.
+  - path: /etc/frank/sso.env
+    permissions: "0644"
+    content: |
+      FRANK_SSO_ISSUER=${sso_issuer}
+      FRANK_SSO_CLIENT_ID=${sso_client_id}
+      FRANK_SSO_CLIENT_SECRET_FILE=/run/secrets/frank-sso-client-secret
+      FRANK_SSO_REDIRECT_URL=https://${domain}/v1/sso/callback
+      FRANK_SSO_ORGANISATION=${sso_org}
+  - path: /etc/frank/sso-client-secret
+    permissions: "0600"
+    content: ${jsonencode(sso_secret)}
+%{ endif ~}
   - path: /etc/systemd/system/frank.service
     permissions: "0644"
     content: |
@@ -58,6 +73,10 @@ write_files:
         -e FRANK_RETENTION_DAYS=$${FRANK_RETENTION_DAYS} \
 %{ if store != "" ~}
         --env-file /etc/frank/store.env \
+%{ endif ~}
+%{ if sso_issuer != "" ~}
+        --env-file /etc/frank/sso.env \
+        -v /etc/frank/sso-client-secret:/run/secrets/frank-sso-client-secret:ro,Z \
 %{ endif ~}
         $${FRANK_IMAGE}
       ExecStop=/usr/bin/podman stop -t 30 frank
@@ -201,6 +220,7 @@ runcmd:
     mount -a
     mkdir -p /srv/frank/data /srv/frank/participants && touch /srv/frank/tokens
     chown -R 65532:65532 /srv/frank/data /srv/frank/participants /srv/frank/tokens
+    if [ -f /etc/frank/sso-client-secret ]; then chown 65532:65532 /etc/frank/sso-client-secret; fi
     chmod 600 /srv/frank/tokens
   - |
     umask 077
