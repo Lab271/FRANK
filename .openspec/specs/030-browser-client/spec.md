@@ -193,7 +193,7 @@ The URL hash SHOULD hold the view's state (`#explore?group=rule&sector=energy&pa
 
 ### Requirement 8: Admin tab [MUST]
 
-For a user with a role (ADR-017) the admin tab MUST list the organisations it manages, their users, tokens and audit lines, and MUST offer the changes of spec 011 through `/v1/admin/`. Controls for a superadmin only (status, new organisation, superadmin role, file listing) MUST be hidden from an admin. A new token MUST be shown once, with a copy button.
+For a user with a role (ADR-017) the admin tab MUST list the organisations it manages, their users, tokens and audit lines, and MUST offer the changes of spec 011 through `/v1/admin/`. Controls for a superadmin only (status, removing an organisation, new organisation, superadmin role, file listing) MUST be hidden from an admin. A new token MUST be shown once, with a copy button.
 
 **Implementation:** `web/app.js::loadAdmin`, `web/app.js::tokenCard`, `web/app.js::loadFiles`
 

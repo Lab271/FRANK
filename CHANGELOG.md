@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.58.1] - 2026-11-14
+
+### Fixed
+
+- `frank participant remove` refuses an organisation `FRANK_SSO_ORGANISATION` or `FRANK_SSO_ADMIN_ORGANISATION` names, as the API does, so `serve` keeps starting.
+
 ## [0.58.0] - 2026-11-14
 
 ### Added

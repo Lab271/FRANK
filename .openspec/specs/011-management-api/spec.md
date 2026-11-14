@@ -73,9 +73,9 @@ Every `/v1/admin/` route MUST require a caller that holds a role. A caller witho
 
 ### Requirement 2: Organisations [MUST]
 
-A superadmin MUST be able to create an organisation, set its status (`observer`, `contributor`, `partner`, `core`) and remove one that has no users; an organisation an SSO setting names MUST NOT be removed. An admin MUST see its own organisation only.
+A superadmin MUST be able to create an organisation, set its status (`observer`, `contributor`, `partner`, `core`) and remove one that has no users, over the API and with `frank participant remove`; an organisation an SSO setting (`FRANK_SSO_ORGANISATION`, `FRANK_SSO_ADMIN_ORGANISATION`) names MUST NOT be removed by either. An admin MUST see its own organisation only.
 
-**Implementation:** `crates/frank/src/admin.rs::organisations`, `crates/frank/src/admin.rs::add_organisation`, `crates/frank/src/admin.rs::set_status`, `crates/frank/src/admin.rs::remove_organisation`, `crates/frank/src/store/participants.rs::remove_organisation`
+**Implementation:** `crates/frank/src/admin.rs::organisations`, `crates/frank/src/admin.rs::add_organisation`, `crates/frank/src/admin.rs::set_status`, `crates/frank/src/admin.rs::remove_organisation`, `crates/frank/src/store/participants.rs::remove_organisation`, `crates/frank/src/cli.rs::participant_remove`
 
 #### Scenario: Only a superadmin creates or re-statuses an organisation
 
@@ -92,6 +92,14 @@ A superadmin MUST be able to create an organisation, set its status (`observer`,
 - THEN the empty one is gone and audited as `participant_removed`; the other is refused with 409; the admin with 403. The organisation `FRANK_SSO_ORGANISATION` names is refused with 409 even when empty
 
 **Tests:** `crates/frank/tests/api.rs::superadmins_remove_only_empty_organisations`, `crates/frank/src/store/participants.rs::only_an_organisation_without_users_is_removed`, `crates/frank/tests/sso.rs::the_organisation_sso_signs_people_into_cannot_be_removed`
+
+#### Scenario: The command line keeps the SSO organisations too
+
+- GIVEN an organisation with users, and empty ones named by `FRANK_SSO_ORGANISATION` and `FRANK_SSO_ADMIN_ORGANISATION` (by name or id)
+- WHEN `frank participant remove` is run for each, and for another empty organisation
+- THEN the first three are refused, naming the reason; the last is removed and audited as `participant_removed`
+
+**Tests:** `crates/frank/tests/cli.rs::participant_remove_needs_no_users_and_no_sso_setting`
 
 ---
 
