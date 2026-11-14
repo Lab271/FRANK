@@ -1,7 +1,7 @@
 # Sightings API Specification
 
 **Domain:** API / Sightings
-**Version:** 3.0.0
+**Version:** 3.1.0
 **Status:** Implemented
 **Date:** 2026-11-10
 
@@ -437,9 +437,50 @@ Every response, the web UI's included, MUST carry a Content-Security-Policy that
 
 ---
 
+### Requirement 18: The access log [MUST]
+
+FRANK MUST write one INFO line per request under the target `frank::access`, apart from its application lines (`frank`), with `request_id`, `method`, `uri` (path and query string), `status`, `latency_ms`, `caller` (`user@organisation`, `public`, or `unknown` when no token or session was resolved) and `tier`. The request id MUST be a ULID, returned as `X-Request-Id`. A line MUST NOT contain the `Authorization` header, the session cookie, a token, a request or response body, or the query of the SSO callback. With `FRANK_LOG_FORMAT=json` each line MUST be one JSON object with `target`; plain text is the default (#287).
+
+**Implementation:** `crates/frank/src/access.rs::log`
+
+#### Scenario: A request is one line with its query and caller
+
+- GIVEN a partner's token
+- WHEN a GET with a query string is made
+- THEN exactly one `frank::access` line has the request id of `X-Request-Id`, the method, path and query, status 200, latency and `lab@lab` with its tier
+
+**Tests:** `crates/frank/tests/api.rs::a_request_is_one_access_line_with_query_and_caller`
+
+#### Scenario: Refused requests are logged
+
+- GIVEN an unknown token and an observer's token
+- WHEN each requests a partner route
+- THEN the lines say 401 with `caller=unknown` and 403 with `caller=obs@obs`
+
+**Tests:** `crates/frank/tests/api.rs::refused_requests_are_logged_with_their_status`
+
+#### Scenario: Secrets are never logged
+
+- GIVEN requests with a known token, a session cookie, a body and an SSO callback code
+- WHEN they are logged
+- THEN no line contains the token, `Bearer`, the cookie, the body or the code
+
+**Tests:** `crates/frank/tests/api.rs::no_token_cookie_or_body_is_logged`
+
+#### Scenario: JSON lines
+
+- GIVEN `FRANK_LOG_FORMAT=json`
+- WHEN a request is made
+- THEN each line is a JSON object, and the access line has `target` `frank::access` and its fields at the top level
+
+**Tests:** `crates/frank/tests/api.rs::json_format_is_one_object_per_line_with_target`
+
+---
+
 ## Document History
 
 | Date | Version | Author | Notes |
 |------|---------|--------|-------|
 | 2026-02-06 | 1.0 | SDD Migration | Phase 2 sightings API (FastAPI, Cognito), removed in #248 |
 | 2026-11-10 | 3.0.0 | Platform Team | Rewritten for the Rust API (#250) |
+| 2026-11-14 | 3.1.0 | Platform Team | Requirement 18: the access log (#287) |

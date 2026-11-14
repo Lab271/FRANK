@@ -18,7 +18,7 @@ use frank_core::{Format, Tier};
 use serde_json::json;
 use tower_http::services::ServeDir;
 use tower_http::set_header::SetResponseHeaderLayer;
-use tower_http::trace::TraceLayer;
+use tracing_subscriber::util::SubscriberInitExt;
 
 const DAY_NS: i64 = 86_400 * 1_000_000_000;
 
@@ -210,14 +210,15 @@ fn now_ns() -> i64 {
 }
 
 fn main() -> Result<(), String> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| "frank=info,tower_http=info".into()),
-        )
-        // Colours only on a terminal: a container's log keeps plain text.
-        .with_ansi(std::io::stdout().is_terminal())
-        .init();
+    // Colours only on a terminal: a container's log keeps plain text.
+    frank::access::subscriber(
+        std::env::var("FRANK_LOG_FORMAT").is_ok_and(|f| f == "json"),
+        std::io::stdout().is_terminal(),
+        tracing_subscriber::EnvFilter::try_from_default_env()
+            .unwrap_or_else(|_| "frank=info".into()),
+        std::io::stdout,
+    )
+    .init();
     let cli = Cli::parse();
     for dir in [&cli.data, &cli.participants] {
         std::fs::create_dir_all(dir).map_err(|e| format!("{}: {e}", dir.display()))?;
@@ -648,7 +649,8 @@ async fn serve(
                     axum::http::HeaderValue::from_static("no-cache"),
                 )),
         );
-    let router = api::harden(router, limits).layer(TraceLayer::new_for_http());
+    // Outermost, so a 503 from the time limit is logged too (#287).
+    let router = api::harden(router, limits).layer(axum::middleware::from_fn(frank::access::log));
     let listener = tokio::net::TcpListener::bind(listen)
         .await
         .map_err(|e| format!("{listen}: {e}"))?;

@@ -15,14 +15,14 @@ serde_json.workspace = true
 time.workspace = true
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "signal", "sync", "time"] }
-tower-http = { version = "0.6", features = ["fs", "trace", "limit", "set-header", "timeout"] }
+tower-http = { version = "0.6", features = ["fs", "limit", "set-header", "timeout"] }
 # GlobalConcurrencyLimitLayer: one limit for the whole server (#244).
 tower = { version = "0.5", features = ["limit"] }
 clap = { version = "4", features = ["derive", "env"] }
 sha2 = "0.10"
 getrandom = "0.3"
 tracing = "0.1"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 # HTTPS calls: the identity provider for SSO (#241) and, with `tls`, S3.
 ureq = { version = "3", default-features = false, features = ["rustls", "platform-verifier"] }
 # RS256 signatures of OIDC ID tokens (#241); already linked through rustls.
