@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.48.0] - 2026-11-14
+
+### Added
+
+- `make coverage` (cargo llvm-cov) and `make quality` (lizard: CCN, function and file length, approximate fan-in/out) measure on their own into `target/assurance/`; `make check-assurance` shows both and can gate on `COVERAGE_MIN` and `CCN_MAX` (#293, #294).
+
 ## [0.47.0] - 2026-11-14
 
 ### Changed
