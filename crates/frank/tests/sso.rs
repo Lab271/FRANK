@@ -479,6 +479,48 @@ async fn the_admin_group_in_the_id_token_makes_its_members_admins() {
 }
 
 #[tokio::test]
+async fn the_organisation_sso_signs_people_into_cannot_be_removed() {
+    let h = harness_in("remove-sso-org", false, "landing");
+    parts::add_organisation(
+        &h.db,
+        "landing",
+        Tier::Contributor,
+        "cyber_partner",
+        None,
+        None,
+    )
+    .unwrap();
+    parts::add_organisation(&h.db, "ops", Tier::Core, "cyber_partner", None, None).unwrap();
+    parts::add_user(
+        &h.db,
+        "ops",
+        "root",
+        "human",
+        Some(frank::auth::Role::Superadmin),
+    )
+    .unwrap();
+    parts::add_token_hash(&h.db, "root", &hash("t-root")).unwrap();
+    let id = parts::organisation_id(&h.db, "landing").unwrap();
+    let req = Request::builder()
+        .method("DELETE")
+        .uri(format!("/v1/admin/organisations/{id}"))
+        .header(header::AUTHORIZATION, "Bearer t-root")
+        .body(Body::empty())
+        .unwrap();
+    let r = send(&h.app, req).await;
+    assert_eq!(r.status, StatusCode::CONFLICT, "{:?}", r.body);
+    assert!(
+        r.body["error"]
+            .as_str()
+            .unwrap()
+            .contains("FRANK_SSO_ORGANISATION"),
+        "{:?}",
+        r.body
+    );
+    assert!(parts::organisation_id(&h.db, "landing").is_ok());
+}
+
+#[tokio::test]
 async fn the_callback_refuses_every_bad_token() {
     let h = harness("refusals", false);
     let cases: [(&str, Value, Value, bool); 8] = [

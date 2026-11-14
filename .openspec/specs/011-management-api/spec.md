@@ -73,9 +73,9 @@ Every `/v1/admin/` route MUST require a caller that holds a role. A caller witho
 
 ### Requirement 2: Organisations [MUST]
 
-A superadmin MUST be able to create an organisation and set its status (`observer`, `contributor`, `partner`, `core`). An admin MUST see its own organisation only.
+A superadmin MUST be able to create an organisation, set its status (`observer`, `contributor`, `partner`, `core`) and remove one that has no users; an organisation an SSO setting names MUST NOT be removed. An admin MUST see its own organisation only.
 
-**Implementation:** `crates/frank/src/admin.rs::organisations`, `crates/frank/src/admin.rs::add_organisation`, `crates/frank/src/admin.rs::set_status`
+**Implementation:** `crates/frank/src/admin.rs::organisations`, `crates/frank/src/admin.rs::add_organisation`, `crates/frank/src/admin.rs::set_status`, `crates/frank/src/admin.rs::remove_organisation`, `crates/frank/src/store/participants.rs::remove_organisation`
 
 #### Scenario: Only a superadmin creates or re-statuses an organisation
 
@@ -84,6 +84,14 @@ A superadmin MUST be able to create an organisation and set its status (`observe
 - THEN the admin is refused with 403; the superadmin succeeds
 
 **Tests:** `crates/frank/tests/api.rs::superadmins_and_the_guards`
+
+#### Scenario: Only an empty organisation is removed
+
+- GIVEN an organisation without users and one with users
+- WHEN a superadmin deletes each, and an admin deletes the empty one
+- THEN the empty one is gone and audited as `participant_removed`; the other is refused with 409; the admin with 403. The organisation `FRANK_SSO_ORGANISATION` names is refused with 409 even when empty
+
+**Tests:** `crates/frank/tests/api.rs::superadmins_remove_only_empty_organisations`, `crates/frank/src/store/participants.rs::only_an_organisation_without_users_is_removed`, `crates/frank/tests/sso.rs::the_organisation_sso_signs_people_into_cannot_be_removed`
 
 ---
 

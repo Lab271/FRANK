@@ -543,6 +543,27 @@ pub fn add_organisation(
     Ok(id)
 }
 
+/// Removes the organisation `name_or_id`, only while it has no users;
+/// returns its id and name. Its sightings keep its id as their reporter.
+pub fn remove_organisation(path: &Path, name_or_id: &str) -> Result<(String, String), String> {
+    with_db(path, |db| {
+        let (id, name) = find_org(db, name_or_id)?;
+        let q = sql_quote(&id);
+        let users = query(
+            db,
+            &format!("SELECT name FROM users WHERE organisation = {q}"),
+        )?;
+        if !users.rows.is_empty() {
+            return Err(format!(
+                "{name} has {} user(s): remove them first",
+                users.rows.len()
+            ));
+        }
+        exec(db, &format!("DELETE FROM organisations WHERE id = {q}"))?;
+        Ok((id, name))
+    })
+}
+
 /// The id of the organisation `name_or_id` names.
 pub fn organisation_id(path: &Path, name_or_id: &str) -> Result<String, String> {
     with_db(path, |db| find_org(db, name_or_id).map(|(id, _)| id))
@@ -1793,6 +1814,20 @@ mod tests {
             sync_admin_group(&path, &name, true, &admins(), "lab").unwrap(),
             Some(RoleChange::Granted)
         );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn only_an_organisation_without_users_is_removed() {
+        let (dir, path) = sso_setup("remove-org");
+        add_user(&path, "lab", "alice", "human", None).unwrap();
+        let e = remove_organisation(&path, "lab").unwrap_err();
+        assert!(e.contains("1 user(s)"), "{e}");
+        let (id, name) = remove_organisation(&path, "core").unwrap();
+        assert_eq!(name, "core");
+        assert!(organisation_id(&path, &id).is_err());
+        assert!(remove_organisation(&path, "core").is_err());
+        assert_eq!(organisations(&path).unwrap().len(), 1);
         let _ = std::fs::remove_dir_all(dir);
     }
 

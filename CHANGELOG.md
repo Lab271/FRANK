@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.58.0] - 2026-11-14
+
+### Added
+
+- Superadmins remove an organisation that has no users (#324): `DELETE /v1/admin/organisations/{id}`, a "remove organisation" button in the web UI's admin tab (enabled only while it has no users), and `frank participant remove NAME`. An organisation an SSO setting names cannot be removed. Audit line `participant_removed`.
+
 ## [0.57.0] - 2026-11-14
 
 ### Added

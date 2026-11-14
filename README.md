@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.57.0
+## Version: 0.58.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -89,9 +89,10 @@ target/release/frank participant set-status acme-mdr partner   # all its users, 
 target/release/frank token revoke 1a2b3c4d          # by hash prefix, from `make participants`
 target/release/frank user disable acme-feed         # its tokens stop working; `enable` brings them back
 target/release/frank user remove acme-feed          # a disabled user only, with its role and tokens
+target/release/frank participant remove acme-mdr    # an organisation without users only; its sightings keep its id
 ```
 
-**Admins** ([ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)). A role belongs to a person, never to an API client, and decides what the user may manage; the organisation's status still decides what it sees. An **admin** (in a contributor, partner or core organisation) manages its own organisation's users and tokens and reads its audit lines; a **superadmin** (in a core organisation) manages every organisation, its status included. Make the first superadmin on the command line, then manage the rest from the web UI's admin tab:
+**Admins** ([ADR-017](.openspec/architecture/decisions/017-user-roles-for-identity-administration.md)). A role belongs to a person, never to an API client, and decides what the user may manage; the organisation's status still decides what it sees. An **admin** (in a contributor, partner or core organisation) manages its own organisation's users and tokens and reads its audit lines; a **superadmin** (in a core organisation) manages every organisation, its status included, and adds organisations or removes one without users (not one an SSO setting names). Make the first superadmin on the command line, then manage the rest from the web UI's admin tab:
 
 ```bash
 make participant NAME=lab271 STATUS=core            # the operator's organisation
