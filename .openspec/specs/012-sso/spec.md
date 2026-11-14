@@ -197,11 +197,15 @@ With `FRANK_SSO_ADMIN_GROUP` and `FRANK_SSO_ADMIN_ORGANISATION` set (both or nei
 - WHEN a person whose ID token lists `frank-admins` signs in for the first time
 - THEN the person is a human user in `sbp` with role admin, and `role_granted` is audited
 
+**Tests:** `crates/frank/tests/sso.rs::the_admin_group_in_the_id_token_makes_its_members_admins`, `crates/frank/src/store/participants.rs::the_admin_group_makes_a_new_member_admin_in_its_organisation`, `crates/frank/src/sso.rs::the_admin_group_needs_both_settings_and_sso`
+
 #### Scenario: A member leaves the group
 
 - GIVEN a user made admin by the group
 - WHEN its next ID token does not list the group
 - THEN the role is gone, the user is back in `FRANK_SSO_ORGANISATION`, and `role_revoked` is audited
+
+**Tests:** `crates/frank/src/store/participants.rs::leaving_the_admin_group_takes_back_only_the_role_it_gave`, `crates/frank/src/store/participants.rs::removing_a_user_forgets_the_role_the_group_gave`
 
 #### Scenario: A role set by hand
 
@@ -209,7 +213,7 @@ With `FRANK_SSO_ADMIN_GROUP` and `FRANK_SSO_ADMIN_ORGANISATION` set (both or nei
 - WHEN it signs in, in the group or not
 - THEN its role and organisation do not change
 
-**Tests:** `crates/frank/tests/sso.rs::the_admin_group_in_the_id_token_makes_its_members_admins`, `crates/frank/src/store/participants.rs::the_admin_group_makes_a_new_member_admin_in_its_organisation`, `crates/frank/src/store/participants.rs::leaving_the_admin_group_takes_back_only_the_role_it_gave`, `crates/frank/src/store/participants.rs::the_admin_group_leaves_command_line_roles_and_machines_alone`, `crates/frank/src/store/participants.rs::removing_a_user_forgets_the_role_the_group_gave`, `crates/frank/src/sso.rs::the_admin_group_needs_both_settings_and_sso`
+**Tests:** `crates/frank/src/store/participants.rs::the_admin_group_leaves_command_line_roles_and_machines_alone`
 
 ---
 
