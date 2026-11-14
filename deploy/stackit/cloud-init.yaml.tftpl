@@ -40,7 +40,13 @@ write_files:
       EnvironmentFile=/etc/frank/frank.env
       ExecStartPre=-/usr/bin/podman rm -f frank
       ExecStartPre=/usr/bin/podman pull --authfile /etc/frank/auth.json $${FRANK_IMAGE}
+      # Logs (ADR-024, #308): JSON lines with `target`, so `frank` and
+      # `frank::access` can be shipped as two streams; to journald by
+      # name, not by the distro's default, kept 30 days (journald.conf.d).
       ExecStart=/usr/bin/podman run --name frank --rm \
+        --log-driver journald \
+        -e RUST_LOG=frank=info \
+        -e FRANK_LOG_FORMAT=json \
         -p 127.0.0.1:8080:8080 \
         -v /srv/frank/data:/data:Z \
         -v /srv/frank/participants:/participants:Z \
@@ -145,6 +151,17 @@ write_files:
       [Install]
       WantedBy=timers.target
 %{ endfor ~}
+  - path: /etc/systemd/journald.conf.d/frank.conf
+    permissions: "0644"
+    content: |
+      # ADR-024, #308: FRANK's lines (frank, frank::access) and Caddy's
+      # access log name users and keep query strings (#287), so the
+      # journal keeps them 30 days, across reboots. This bounds every
+      # unit's journal on this VM, which holds nothing else that needs
+      # longer. A log store the lines are shipped to sets its own.
+      [Journal]
+      Storage=persistent
+      MaxRetentionSec=30day
   - path: /etc/caddy/Caddyfile
     permissions: "0644"
     content: |
@@ -184,6 +201,8 @@ runcmd:
       echo '{}' > /etc/frank/auth.json
     fi
   - systemctl daemon-reload
+  # The 30-day journal (journald.conf.d/frank.conf) before anything logs.
+  - systemctl restart systemd-journald
   - systemctl enable --now frank.service
   - systemctl enable --now frank-backup.timer
   - systemctl enable --now frank-geoip.timer frank-lists.timer
