@@ -56,7 +56,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality quality-baseline version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality quality-baseline mcdc-tool mcdc-obligations check-mcdc-fresh test-mcdc version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -139,11 +139,11 @@ LIZARD ?= uvx lizard==1.25.1
 # The functions allowed over CCN_MAX, at most at their CCN, until they are fixed (#301).
 CCN_BASELINE ?= .openspec/quality-baseline.csv
 # The gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN, and
-# COVERAGE_MIN / CCN_MAX when set. Runs the checker's own tests first, quietly
+# COVERAGE_MIN / CCN_MAX / MCDC_MIN when set. Runs the checker's own tests first, quietly
 # unless they fail, so the dashboard comes first.
-check-assurance: ## Gate: spec links and tests; COVERAGE_MIN and CCN_MAX when set
+check-assurance: ## Gate: spec links and tests; COVERAGE_MIN, CCN_MAX and MCDC_MIN when set
 	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_*.py' 2>&1) || { echo "$$out"; exit 1; }
-	@python3 scripts/assurance.py --min $(ASSURANCE_MIN) $(if $(COVERAGE_MIN),--coverage-min $(COVERAGE_MIN),) $(if $(CCN_MAX),--ccn-max $(CCN_MAX) --ccn-baseline $(CCN_BASELINE),)
+	@python3 scripts/assurance.py --min $(ASSURANCE_MIN) $(if $(COVERAGE_MIN),--coverage-min $(COVERAGE_MIN),) $(if $(CCN_MAX),--ccn-max $(CCN_MAX) --ccn-baseline $(CCN_BASELINE),) $(if $(MCDC_MIN),--mcdc-min $(MCDC_MIN),)
 
 coverage: ## Test coverage (cargo llvm-cov, every test) into target/assurance/
 	@$(CARGO) llvm-cov --version >/dev/null 2>&1 || { echo "cargo install cargo-llvm-cov --locked && rustup component add llvm-tools-preview"; exit 1; }
@@ -158,6 +158,41 @@ quality: ## Code quality (lizard: CCN, function and file length) into target/ass
 # Every function over CCN_MAX (default 15), worst first.
 quality-baseline: quality ## Rewrite the CCN baseline from the current code
 	python3 scripts/quality_metrics.py target/assurance/lizard.csv --ccn-max $(or $(CCN_MAX),15) > $(CCN_BASELINE)
+
+# MC/DC (ADR-025, #317), as db-core does it: cargo-mvl-mcdc (mvl-rust's rust-mcdc)
+# lists every decision of crates/*/src in a committed snapshot; tests named
+# mcdc__<id>__v<N>_<what> cover its vectors. All of src, no file left out.
+MCDC ?= cargo-mvl-mcdc
+MCDC_FILES := $(shell find crates -path '*/src/*.rs' | LC_ALL=C sort)
+MCDC_OBLIGATIONS := tests/mcdc/obligations.json
+# The same rev as MVL_MCDC_REV in CI: the snapshot depends on the scanner.
+MCDC_INSTALL := cargo install --locked --git https://github.com/mvl-lang/mvl-rust --rev 5a5ffd5a8e79298271a65649b3f586ebce2ffb31 rust-mcdc --bin cargo-mvl-mcdc
+mcdc-tool:
+	@command -v $(MCDC) >/dev/null 2>&1 || { echo "$(MCDC) not found; install: $(MCDC_INSTALL)"; exit 1; }
+
+mcdc-obligations: mcdc-tool ## Rewrite the MC/DC snapshot (tests/mcdc/obligations.json) from crates/*/src
+	@mkdir -p $(dir $(MCDC_OBLIGATIONS))
+	@$(MCDC) scan -o $(MCDC_OBLIGATIONS) $(MCDC_FILES)
+	@echo "wrote $(MCDC_OBLIGATIONS): commit it with the change that moved a decision"
+
+check-mcdc-fresh: mcdc-tool ## The MC/DC snapshot matches a fresh scan
+	@mkdir -p target/assurance
+	@$(MCDC) scan -o target/assurance/obligations.fresh.json $(MCDC_FILES)
+	@cmp -s target/assurance/obligations.fresh.json $(MCDC_OBLIGATIONS) \
+	  && echo "check-mcdc-fresh: $(MCDC_OBLIGATIONS) is current" \
+	  || { echo "check-mcdc-fresh: $(MCDC_OBLIGATIONS) is stale; run make mcdc-obligations and commit it"; exit 1; }
+
+# harvest runs a bare `cargo test` and reads the outcome of the mcdc__ tests. A
+# PATH shim narrows that one call to them, over the workspace, with the tls
+# feature so its code is covered too; every other cargo call passes through.
+test-mcdc: check-mcdc-fresh ## MC/DC: every decision of two or more conditions covered, into target/assurance/ (VERBOSE=1)
+	@mkdir -p target/mcdc-shim
+	@printf '#!/bin/sh\nif [ "$$1" = test ] && [ $$# -eq 1 ]; then exec "%s" test --workspace --tests --locked --features frank/tls -- mcdc__; fi\nexec "%s" "$$@"\n' \
+	  "$$(command -v cargo)" "$$(command -v cargo)" > target/mcdc-shim/cargo
+	@chmod +x target/mcdc-shim/cargo
+	@PATH="$(CURDIR)/target/mcdc-shim:$$PATH" $(MCDC) harvest --obligations=$(MCDC_OBLIGATIONS) --run-dir=. 2>/dev/null \
+	  > target/assurance/mcdc.json.tmp; mv target/assurance/mcdc.json.tmp target/assurance/mcdc.json
+	@python3 scripts/mcdc_metrics.py target/assurance/mcdc.json $(if $(filter 1,$(VERBOSE)),-v,)
 
 fmt: ## Format the code
 	$(CARGO) fmt --all

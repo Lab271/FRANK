@@ -27,6 +27,7 @@ Usage:
 Coverage and code quality (ADR-023) are measured on their own, by `make coverage`
 and `make quality`, into target/assurance/; this reads what they left and shows a
 box each, or "not measured". --coverage-min and --ccn-max turn them into gates.
+MC/DC (ADR-025) likewise, from `make test-mcdc`; --mcdc-min gates it.
 """
 
 import argparse
@@ -37,12 +38,14 @@ import time
 from pathlib import Path
 
 import coverage_metrics
+import mcdc_metrics
 import quality_metrics
 import version
 
 ROOT = Path(__file__).resolve().parent.parent
 COVERAGE = ROOT / "target/assurance/coverage.json"   # make coverage
 QUALITY = ROOT / "target/assurance/lizard.csv"       # make quality
+MCDC = ROOT / "target/assurance/mcdc.json"           # make test-mcdc
 # Shown, not gated, unless --coverage-min or --ccn-max is given.
 COVERAGE_SHOWN, CCN_SHOWN, LENGTH_SHOWN = 0.80, 15, 80
 LINK = re.compile(r"`([^`]+)`")
@@ -345,6 +348,25 @@ def report_quality(path, ccn_max=None, baseline_path=None):
     return ccn_problems(funcs, ccn_max, baseline) if ccn_max is not None else []
 
 
+def report_mcdc(path, floor=None):
+    """The MC/DC box. Returns the share of decisions covered, None when not measured."""
+    print()
+    if not Path(path).is_file():
+        print(boxed([paint("not measured (make test-mcdc)", DIM)], "FRANK MC/DC"))
+        return None
+    s = mcdc_metrics.summary(mcdc_metrics.read(path))
+    lines = [
+        f"{'decisions':<12} {cell(s['covered'], s['decisions'], 1.0 if floor is None else floor)}",
+        paint(f"of two or more conditions; {s['single']} of one left to branch coverage", DIM),
+        paint(f"cargo-mvl-mcdc, {age(path)}", DIM),
+    ]
+    print(boxed(lines, "FRANK MC/DC"))
+    for r in s["open"][:5]:
+        print(f"  {paint('open', YELLOW)}  {r['id']}  {r['vectors_discharged']}/{r['vectors_required']} vectors  "
+              f"{r['file'].removeprefix('crates/')}:{r['line']}")
+    return s["covered"] / s["decisions"] if s["decisions"] else 1.0
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="FRANK spec traceability")
     p.add_argument("-v", "--verbose", action="store_true", help="per requirement, with dead links")
@@ -352,12 +374,15 @@ def main(argv=None):
                    help="fail if tested < MIN (0.0-1.0), any link is dead or two specs share a number")
     p.add_argument("--coverage", type=Path, default=COVERAGE, help="llvm-cov JSON (make coverage)")
     p.add_argument("--quality", type=Path, default=QUALITY, help="lizard CSV (make quality)")
+    p.add_argument("--mcdc", type=Path, default=MCDC, help="cargo-mvl-mcdc harvest JSON (make test-mcdc)")
     p.add_argument("--coverage-min", type=float,
                    help="fail if lines covered < MIN (0.0-1.0) or coverage was not measured")
     p.add_argument("--ccn-max", type=int,
                    help="fail if a function's CCN > MAX or quality was not measured")
     p.add_argument("--ccn-baseline", type=Path,
                    help="with --ccn-max: the functions allowed over it, at most at their CCN (make quality-baseline)")
+    p.add_argument("--mcdc-min", type=float,
+                   help="fail if decisions covered < MIN (0.0-1.0) or MC/DC was not measured")
     args = p.parse_args(argv)
     dupes = duplicate_numbers()
     release = version.drift()
@@ -365,6 +390,7 @@ def main(argv=None):
     try:
         lines = report_coverage(args.coverage, args.coverage_min)
         over = report_quality(args.quality, args.ccn_max, args.ccn_baseline)
+        mcdc = report_mcdc(args.mcdc, args.mcdc_min)
     except (ValueError, KeyError, OSError) as e:
         print(paint("UNREADABLE", RED, BOLD) + f" {e}")
         return 1
@@ -393,6 +419,12 @@ def main(argv=None):
             print(line)
         if not ok:
             failures.append("quality")
+    if args.mcdc_min is not None:
+        ok = mcdc is not None and mcdc >= args.mcdc_min
+        got = "not measured" if mcdc is None else f"{mcdc:.1%}"
+        print(f"{'PASS' if ok else 'FAIL'}: MC/DC decisions covered {got} (min {args.mcdc_min:.1%})")
+        if not ok:
+            failures.append("mcdc")
     return 1 if failures else 0
 
 
