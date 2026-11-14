@@ -156,6 +156,7 @@ pub fn ip_hex(ip: IpAddr) -> String {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -203,5 +204,22 @@ mod tests {
         for t in IocType::ALL {
             assert_eq!(IocType::parse(t.as_str()), Some(t));
         }
+    }
+
+    // new, file hash: `!matches!(h.len(), 32 | 40 | 64 | 128) || !all hex`
+    #[test]
+    fn mcdc__observable_new_93880de9__v1_hex_digest_is_kept() {
+        let h = "a1b2c3d4e5f6789012345678901234ab";
+        assert_eq!(Ioc::new(IocType::FileHash, h).unwrap().value, h);
+    }
+
+    #[test]
+    fn mcdc__observable_new_93880de9__v2_wrong_length_is_refused() {
+        assert!(Ioc::new(IocType::FileHash, "abc").is_err());
+    }
+
+    #[test]
+    fn mcdc__observable_new_93880de9__v3_non_hex_is_refused() {
+        assert!(Ioc::new(IocType::FileHash, "g1b2c3d4e5f6789012345678901234ab").is_err());
     }
 }

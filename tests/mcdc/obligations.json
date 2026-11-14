@@ -1570,6 +1570,16 @@
     "wildcard_risk": false
   },
   {
+    "id": "admin_fixture_cd7a7625",
+    "file": "crates/frank/src/admin.rs",
+    "line": 794,
+    "decision": "let Some(t) = token",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
     "id": "api_require_41a18e13",
     "file": "crates/frank/src/api.rs",
     "line": 111,
@@ -2148,6 +2158,16 @@
     "vectors_required": 0,
     "compiler_void": true,
     "wildcard_risk": true
+  },
+  {
+    "id": "api_explore_status_f28b1f26",
+    "file": "crates/frank/src/api.rs",
+    "line": 1565,
+    "decision": "let Some(l) = listed",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
   },
   {
     "id": "audit_open_in_71a853e9",
@@ -3730,6 +3750,36 @@
     "wildcard_risk": false
   },
   {
+    "id": "serve_serve_args_8574ccac",
+    "file": "crates/frank/src/serve.rs",
+    "line": 248,
+    "decision": "match cli.command {\n            Command::Serve(a) => a,\n            _ => unreachable!(),\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": true
+  },
+  {
+    "id": "serve_tokens_after_import_6d884e63",
+    "file": "crates/frank/src/serve.rs",
+    "line": 306,
+    "decision": "existing",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "serve_tokens_after_import_5afa7b5b",
+    "file": "crates/frank/src/serve.rs",
+    "line": 313,
+    "decision": "file",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
     "id": "sso_from_settings_559c6a0e",
     "file": "crates/frank/src/sso.rs",
     "line": 122,
@@ -4232,7 +4282,7 @@
   {
     "id": "sso_jwk_23c2ca11",
     "file": "crates/frank/src/sso.rs",
-    "line": 1197,
+    "line": 1198,
     "decision": "let Some(kid) = kid",
     "conditions": 1,
     "vectors_required": 2,
@@ -4242,7 +4292,7 @@
   {
     "id": "sso_claims_with_decf96df",
     "file": "crates/frank/src/sso.rs",
-    "line": 1271,
+    "line": 1272,
     "decision": "v.is_null()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4252,7 +4302,7 @@
   {
     "id": "sso_serve_once_32e1e9c9",
     "file": "crates/frank/src/sso.rs",
-    "line": 1552,
+    "line": 1553,
     "decision": "let Some(v) = lower.strip_prefix(\"content-length:\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -4262,10 +4312,20 @@
   {
     "id": "sso_serve_once_ef757bb2",
     "file": "crates/frank/src/sso.rs",
-    "line": 1556,
+    "line": 1557,
     "decision": "line == \"\\r\\n\" || line.is_empty()",
     "conditions": 2,
     "vectors_required": 3,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "sso_callback_with_12fe5385",
+    "file": "crates/frank/src/sso.rs",
+    "line": 1694,
+    "decision": "code",
+    "conditions": 1,
+    "vectors_required": 2,
     "compiler_void": false,
     "wildcard_risk": false
   },
@@ -5312,7 +5372,7 @@
   {
     "id": "store_sightings_counts_8b0777fb",
     "file": "crates/frank/src/store/sightings.rs",
-    "line": 684,
+    "line": 685,
     "decision": "match (&row[0], &row[1]) {\n                (Cell::Text(t), Cell::Int(n)) => format!(\"{t} {n}\"),\n                other => format!(\"{other:?}\"),\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -5322,7 +5382,7 @@
   {
     "id": "store_sightings_copy_97708940",
     "file": "crates/frank/src/store/sightings.rs",
-    "line": 849,
+    "line": 850,
     "decision": "matches!(e.file_name().to_str(), Some(\"tmp\" | \"lock\" | \"LOCK\"))",
     "conditions": 1,
     "vectors_required": 2,
@@ -5332,7 +5392,7 @@
   {
     "id": "store_sightings_copy_e1498309",
     "file": "crates/frank/src/store/sightings.rs",
-    "line": 852,
+    "line": 853,
     "decision": "src.is_dir()",
     "conditions": 1,
     "vectors_required": 2,

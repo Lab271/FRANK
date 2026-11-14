@@ -1029,6 +1029,7 @@ fn technique(s: &str) -> Option<String> {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
     use serde_json::json;
@@ -1469,5 +1470,81 @@ mod tests {
             (bare.sighting_id, bare.ts_ns, bare.ts_given),
             (None, NOW, false)
         );
+    }
+
+    // technique: `ts.len() < MAX_TECHNIQUES && !ts.contains(&t)`
+    #[test]
+    fn mcdc__model_technique_f76ff56e__v1_room_and_new_is_kept() {
+        let mut b = SightingBuilder::new();
+        b.rule_id("r").technique("T1059");
+        assert_eq!(b.build(NOW).unwrap().sighting_of.techniques, ["T1059"]);
+    }
+
+    #[test]
+    fn mcdc__model_technique_f76ff56e__v2_full_list_drops_new() {
+        let mut b = SightingBuilder::new();
+        b.rule_id("r");
+        for i in 0..MAX_TECHNIQUES {
+            b.technique(&format!("T{}", 1000 + i));
+        }
+        b.technique("T1059");
+        let ts = b.build(NOW).unwrap().sighting_of.techniques;
+        assert_eq!(ts.len(), MAX_TECHNIQUES);
+        assert!(!ts.contains(&"T1059".to_string()));
+    }
+
+    #[test]
+    fn mcdc__model_technique_f76ff56e__v3_repeat_is_dropped() {
+        let mut b = SightingBuilder::new();
+        b.rule_id("r").technique("T1059").technique("t1059");
+        assert_eq!(b.build(NOW).unwrap().sighting_of.techniques, ["T1059"]);
+    }
+
+    // build: `s.evidence.is_empty() && rule_id.is_none()`
+    #[test]
+    fn mcdc__model_build_4dbe9a99__v1_neither_is_refused() {
+        let e = SightingBuilder::new().build(NOW).unwrap_err();
+        assert!(matches!(e, Error::Invalid(m) if m.contains("SIGMA rule_id")));
+    }
+
+    #[test]
+    fn mcdc__model_build_4dbe9a99__v2_observable_only_builds() {
+        let mut b = SightingBuilder::new();
+        b.observable(IocType::Ipv4, "192.0.2.1", None, &serde_json::Map::new());
+        assert_eq!(keys(&b.build(NOW).unwrap()), ["ipv4:192.0.2.1"]);
+    }
+
+    #[test]
+    fn mcdc__model_build_4dbe9a99__v3_rule_only_builds() {
+        let mut b = SightingBuilder::new();
+        b.rule_id("r");
+        assert_eq!(rule(&b.build(NOW).unwrap()), Some("r"));
+    }
+
+    // phase2_times: `last.is_none() && first.is_none()` (metadata's time)
+    const OCT1: i64 = 1_790_812_800_000_000_000;
+
+    fn phase2_ts(sighting: &Value) -> Option<i64> {
+        let mut b = SightingBuilder::new();
+        let meta = json!({ "timestamp": "2026-10-01T00:00:00Z" });
+        phase2_times(&mut b, sighting, &meta).unwrap();
+        b.ts
+    }
+
+    #[test]
+    fn mcdc__model_phase2_times_df62e57e__v1_no_times_takes_metadata() {
+        assert_eq!(phase2_ts(&json!({})), Some(OCT1));
+    }
+
+    #[test]
+    fn mcdc__model_phase2_times_df62e57e__v2_last_observed_skips_metadata() {
+        let s = json!({ "last_observed": "2026-09-01T00:00:00Z" });
+        assert_eq!(phase2_ts(&s), None);
+    }
+
+    #[test]
+    fn mcdc__model_phase2_times_df62e57e__v3_first_observed_skips_metadata() {
+        let s = json!({ "first_observed": "2026-09-01T00:00:00Z" });
+        assert_eq!(phase2_ts(&s), None);
     }
 }

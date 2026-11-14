@@ -404,6 +404,7 @@ fn utc(t: &str) -> Option<i64> {
 }
 
 #[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
 mod tests {
     use super::*;
 
@@ -481,5 +482,43 @@ mod tests {
             "the header line is not an address"
         );
         assert!(abuse_ch("other", "a,b").is_err());
+    }
+
+    // entry: `v.contains('/') || v.contains(whitespace) || !v.contains('.')`
+    #[test]
+    fn mcdc__lists_entry_c002c71b__v1_host_name_is_an_entry() {
+        let e = entry("Example.com", None, None).unwrap();
+        assert_eq!((e.mtype, e.value.as_str()), ("hostname", "example.com"));
+    }
+
+    #[test]
+    fn mcdc__lists_entry_c002c71b__v2_slash_is_no_entry() {
+        assert!(entry("example.com/x", None, None).is_none());
+    }
+
+    #[test]
+    fn mcdc__lists_entry_c002c71b__v3_whitespace_is_no_entry() {
+        assert!(entry("example .com", None, None).is_none());
+    }
+
+    #[test]
+    fn mcdc__lists_entry_c002c71b__v4_no_dot_is_no_entry() {
+        assert!(entry("localhost", None, None).is_none());
+    }
+
+    // csv_fields: `quoted && chars.peek() == Some(&'"')`
+    #[test]
+    fn mcdc__lists_csv_fields_39a262dc__v1_doubled_quote_in_quotes_escapes() {
+        assert_eq!(csv_fields(r#""a""b",c"#), [r#"a"b"#, "c"]);
+    }
+
+    #[test]
+    fn mcdc__lists_csv_fields_39a262dc__v2_doubled_quote_unquoted_toggles() {
+        assert_eq!(csv_fields(r#"a""b,c"#), ["ab", "c"]);
+    }
+
+    #[test]
+    fn mcdc__lists_csv_fields_39a262dc__v3_single_quote_in_quotes_closes() {
+        assert_eq!(csv_fields(r#""a,b"c,d"#), ["a,bc", "d"]);
     }
 }

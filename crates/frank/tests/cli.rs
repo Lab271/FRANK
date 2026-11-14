@@ -396,3 +396,77 @@ fn serve_imports_a_tokens_file_answers_and_stops() {
         imported[0].prefix
     );
 }
+
+// `old.exists() && !db.exists()`: `participants.db` left in the data directory.
+#[test]
+#[allow(non_snake_case)]
+fn mcdc__cli_setup_6ffe4d30__v1_only_the_old_file_is_refused() {
+    let d = dir("setup-v1");
+    std::fs::create_dir_all(d.0.join("data")).unwrap();
+    std::fs::write(d.0.join("data").join(FILE), b"").unwrap();
+    let e = cli::setup(&parse(&d.0, &["rebuild"])).err().unwrap();
+    assert!(e.contains("moved out of the data directory"), "{e}");
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn mcdc__cli_setup_6ffe4d30__v2_no_old_file_is_set_up() {
+    let d = dir("setup-v2");
+    assert!(cli::setup(&parse(&d.0, &["rebuild"])).is_ok());
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn mcdc__cli_setup_6ffe4d30__v3_old_file_beside_the_moved_one_is_set_up() {
+    let d = dir("setup-v3");
+    for sub in ["data", "participants"] {
+        std::fs::create_dir_all(d.0.join(sub)).unwrap();
+        std::fs::write(d.0.join(sub).join(FILE), b"").unwrap();
+    }
+    assert!(cli::setup(&parse(&d.0, &["rebuild"])).is_ok());
+}
+
+// `known.contains_key(&id) || fresh.iter().any(|f| f.1 == id)`: a sighting
+// registered before, or earlier in the same file, is a duplicate.
+#[test]
+#[allow(non_snake_case)]
+fn mcdc__cli_ingest_file_adc096cb__v1_a_new_sighting_is_created() {
+    let d = dir("ingest-v1");
+    let file = example("minimal.json");
+    let r = ok(
+        &d.0,
+        &["ingest", file.to_str().unwrap(), "--as", "acme", "--create"],
+    );
+    assert_eq!(r.err, "ingested 1 sightings (0 already registered)\n");
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn mcdc__cli_ingest_file_adc096cb__v2_a_registered_sighting_is_a_duplicate() {
+    let d = dir("ingest-v2");
+    let file = example("minimal.json");
+    let file = file.to_str().unwrap();
+    ok(&d.0, &["ingest", file, "--as", "acme", "--create"]);
+    let r = ok(&d.0, &["ingest", file, "--as", "acme"]);
+    assert_eq!(r.err, "ingested 0 sightings (1 already registered)\n");
+}
+
+#[test]
+#[allow(non_snake_case)]
+fn mcdc__cli_ingest_file_adc096cb__v3_a_repeat_in_the_same_file_is_a_duplicate() {
+    let d = dir("ingest-v3");
+    let one = std::fs::read_to_string(example("minimal.json")).unwrap();
+    let twice = d.0.join("twice.json");
+    std::fs::write(&twice, format!("[{one},{one}]")).unwrap();
+    let r = ok(
+        &d.0,
+        &[
+            "ingest",
+            twice.to_str().unwrap(),
+            "--as",
+            "acme",
+            "--create",
+        ],
+    );
+    assert_eq!(r.err, "ingested 1 sightings (1 already registered)\n");
+}

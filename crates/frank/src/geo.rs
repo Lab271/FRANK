@@ -245,3 +245,110 @@ fn build(l: &Loaded) -> Option<i64> {
 fn day(epoch_s: i64) -> String {
     crate::store::iocs::day_label(epoch_s.div_euclid(86_400))
 }
+
+/// The tests' MaxMind DB writer, shared with the integration tests.
+#[cfg(test)]
+#[allow(dead_code)]
+#[path = "../tests/support/mmdb.rs"]
+mod test_mmdb;
+
+#[cfg(test)]
+#[allow(non_snake_case)] // mcdc__<id>__v<N>_<what> (ADR-025)
+mod tests {
+    use super::*;
+    use frank_core::{SightingBuilder, SightingId};
+
+    const NOW: i64 = 1_792_670_400_000_000_000;
+    const BUILD: u64 = 1_792_454_400;
+
+    struct Dir(PathBuf);
+    impl Drop for Dir {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+    fn dir(name: &str) -> Dir {
+        let d = std::env::temp_dir().join(format!("frank-geo-unit-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        Dir(d)
+    }
+
+    fn rows(t: IocType, v: &str) -> Vec<SightingRow> {
+        let mut b = SightingBuilder::new();
+        b.observable(t, v, None, &serde_json::Map::new());
+        b.build(NOW).unwrap().rows(SightingId([1; 16]))
+    }
+
+    /// Opened without databases, which then appear; checked last at `checked`.
+    fn appeared(name: &str, checked: i64) -> (Dir, Geo) {
+        let d = dir(name);
+        let g = Geo::open(&d.0, NOW).unwrap();
+        test_mmdb::dbip(&d.0, BUILD);
+        g.lock().checked = checked;
+        (d, g)
+    }
+
+    fn stamps(g: &Geo) -> [Option<SystemTime>; 2] {
+        [COUNTRY, ASN].map(|f| {
+            std::fs::metadata(g.dir.join(f))
+                .and_then(|m| m.modified())
+                .ok()
+        })
+    }
+
+    // refresh: `!first && stamps == l.stamps`
+    #[test]
+    fn mcdc__geo_refresh_01ee018e__v1_unchanged_files_are_not_reread() {
+        let (_d, g) = appeared("refresh-same", NOW);
+        g.lock().stamps = stamps(&g);
+        g.refresh(NOW + CHECK_NS);
+        assert_eq!(g.status()["status"], "missing");
+    }
+
+    #[test]
+    fn mcdc__geo_refresh_01ee018e__v2_first_check_reads_anyway() {
+        let (_d, g) = appeared("refresh-first", i64::MIN);
+        g.lock().stamps = stamps(&g);
+        g.refresh(NOW + CHECK_NS);
+        assert_eq!(g.status()["status"], "ok");
+    }
+
+    #[test]
+    fn mcdc__geo_refresh_01ee018e__v3_changed_files_are_reread() {
+        let (_d, g) = appeared("refresh-changed", NOW);
+        g.refresh(NOW + CHECK_NS);
+        assert_eq!(g.status()["status"], "ok");
+    }
+
+    // fill: `ips.is_empty() || build(&self.lock()).is_none()`
+    #[test]
+    fn mcdc__geo_fill_8fcf4e98__v1_addresses_with_databases_are_looked_up() {
+        let d = dir("fill-ip");
+        test_mmdb::dbip(&d.0, BUILD);
+        let g = Geo::open(&d.0, NOW).unwrap();
+        g.fill(&rows(IocType::Ipv4, "192.0.2.77"), NOW);
+        let all = g.db().all().unwrap();
+        assert_eq!(
+            all.iter().map(|a| a.ip.as_str()).collect::<Vec<_>>(),
+            ["192.0.2.77"]
+        );
+    }
+
+    #[test]
+    fn mcdc__geo_fill_8fcf4e98__v2_no_addresses_writes_nothing() {
+        let d = dir("fill-none");
+        test_mmdb::dbip(&d.0, BUILD);
+        let g = Geo::open(&d.0, NOW).unwrap();
+        g.fill(&rows(IocType::Domain, "evil.example"), NOW);
+        assert!(g.db().all().unwrap().is_empty());
+    }
+
+    #[test]
+    fn mcdc__geo_fill_8fcf4e98__v3_no_databases_writes_nothing() {
+        let d = dir("fill-nodb");
+        let g = Geo::open(&d.0, NOW).unwrap();
+        g.fill(&rows(IocType::Ipv4, "192.0.2.77"), NOW);
+        assert!(g.db().all().unwrap().is_empty());
+    }
+}
