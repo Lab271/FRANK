@@ -87,6 +87,10 @@ resource "stackit_server" "frank" {
       condition     = length(distinct([for v in [var.sso_issuer, var.sso_client_id, var.sso_client_secret, var.sso_organisation] : v == ""])) == 1
       error_message = "SSO is partly configured: set sso_issuer, sso_client_id, sso_client_secret and sso_organisation together, or none of them."
     }
+    precondition {
+      condition     = (var.sso_admin_group == "") == (var.sso_admin_organisation == "") && (var.sso_admin_group == "" || var.sso_issuer != "")
+      error_message = "Set sso_admin_group and sso_admin_organisation together, and only with the other sso_ settings."
+    }
   }
   boot_volume = {
     source_type           = "image"
@@ -109,6 +113,8 @@ resource "stackit_server" "frank" {
     sso_client_id  = var.sso_client_id
     sso_secret     = var.sso_client_secret
     sso_org        = var.sso_organisation
+    sso_admin      = var.sso_admin_group
+    sso_admin_org  = var.sso_admin_organisation
     # The same scripts as `make geoip` and `make lists` (#276).
     fetch_geoip = file("${path.module}/../../scripts/fetch-geoip.sh")
     fetch_lists = file("${path.module}/../../scripts/fetch-lists.sh")

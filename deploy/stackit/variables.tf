@@ -104,6 +104,18 @@ variable "sso_client_secret" {
   sensitive   = true
 }
 
+variable "sso_admin_group" {
+  description = "Members of this provider group (the ID token's groups claim) are admins in sso_admin_organisation (FRANK_SSO_ADMIN_GROUP, ADR-026); empty: no admin group."
+  type        = string
+  default     = ""
+}
+
+variable "sso_admin_organisation" {
+  description = "The organisation (it must exist) the admin group's members are admins in (FRANK_SSO_ADMIN_ORGANISATION)."
+  type        = string
+  default     = ""
+}
+
 variable "sso_organisation" {
   description = "The organisation (it must exist before SSO is turned on) that people signing in for the first time are created in (FRANK_SSO_ORGANISATION)."
   type        = string

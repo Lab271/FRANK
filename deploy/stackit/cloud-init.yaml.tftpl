@@ -38,6 +38,10 @@ write_files:
       FRANK_SSO_CLIENT_SECRET_FILE=/run/secrets/frank-sso-client-secret
       FRANK_SSO_REDIRECT_URL=https://${domain}/v1/sso/callback
       FRANK_SSO_ORGANISATION=${sso_org}
+%{ if sso_admin != "" ~}
+      FRANK_SSO_ADMIN_GROUP=${sso_admin}
+      FRANK_SSO_ADMIN_ORGANISATION=${sso_admin_org}
+%{ endif ~}
   - path: /etc/frank/sso-client-secret
     permissions: "0600"
     content: ${jsonencode(sso_secret)}

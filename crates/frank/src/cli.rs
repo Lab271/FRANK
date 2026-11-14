@@ -113,6 +113,13 @@ pub struct ServeArgs {
     /// created in, with no role.
     #[arg(long, env = "FRANK_SSO_ORGANISATION")]
     pub sso_organisation: Option<String>,
+    /// Members of this group (the ID token's `groups` claim) are admins
+    /// in `--sso-admin-organisation` (#321, ADR-026). Both or neither.
+    #[arg(long, env = "FRANK_SSO_ADMIN_GROUP")]
+    pub sso_admin_group: Option<String>,
+    /// The organisation the admin group's members are admins in.
+    #[arg(long, env = "FRANK_SSO_ADMIN_ORGANISATION")]
+    pub sso_admin_organisation: Option<String>,
     /// Seconds a request may take, waiting included; then 503 (#244).
     #[arg(long, env = "FRANK_REQUEST_TIMEOUT", default_value_t = 60)]
     pub request_timeout: u64,
