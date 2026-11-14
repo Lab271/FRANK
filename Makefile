@@ -65,7 +65,7 @@ help: ## Show targets by section (colour on a terminal, unless NO_COLOR is set)
 	awk -v b="$$b" -v c="$$c" -v d="$$d" -v r="$$r" ' \
 	  BEGIN { FS = ":.*## "; printf "%sFRANK %s%s  %smake <target> [VAR=value]%s\n", b, "$(VERSION)", r, d, r } \
 	  /^##@/ { printf "\n%s%s%s\n", b, substr($$0, 5), r; next } \
-	  /^[a-z0-9-]+:.*## / { printf "  %s%-13s%s %s\n", c, $$1, r, $$2 }' $(MAKEFILE_LIST)
+	  /^[a-z0-9-]+:.*## / { printf "  %s%-17s%s %s\n", c, $$1, r, $$2 }' $(MAKEFILE_LIST)
 
 check: ## Verify the toolchain
 	@rustup target list --installed | grep -q wasm32-unknown-unknown || { echo "rustup target add wasm32-unknown-unknown"; exit 1; }
@@ -93,7 +93,7 @@ clean: ## Remove build output
 test: ## Run all tests
 	$(CARGO) test --workspace --locked
 
-lint: check-mvl-limit ## fmt check + clippy (native and wasm32) + qualified-subset gate, as CI runs them
+lint: check-mvl-limit ## fmt check, clippy (native and wasm32), qualified-subset gate: as CI
 	$(CARGO) fmt --all --check
 	$(CARGO) clippy --workspace --all-targets --locked -- -D warnings
 	$(CARGO) clippy -p frank-wasm --target wasm32-unknown-unknown --locked -- -D warnings
@@ -106,7 +106,7 @@ lint: check-mvl-limit ## fmt check + clippy (native and wasm32) + qualified-subs
 # (the test module comes last by convention) before it is checked.
 MVL_LIMIT ?= cargo-mvl-limit
 MVL_LIMIT_CRATES := crates/frank-core
-check-mvl-limit: ## Qualified-subset gate on frank-core (cargo-mvl-limit; MVL_LIMIT=path to override)
+check-mvl-limit: ## Qualified-subset gate on frank-core (MVL_LIMIT=path to override)
 	@command -v $(MVL_LIMIT) >/dev/null 2>&1 || { \
 	  echo "error: $(MVL_LIMIT) not found."; \
 	  echo "install: cargo install --git https://github.com/mvl-lang/mvl-rust rust-limit --bin cargo-mvl-limit"; \
@@ -124,10 +124,12 @@ check-mvl-limit: ## Qualified-subset gate on frank-core (cargo-mvl-limit; MVL_LI
 # .openspec/specs must resolve, and every relative Markdown link in the docs.
 # ASSURANCE_MIN is the floor on tested scenarios (195/203 = 96%; the rest are web UI, #254); raise it as tests land.
 ASSURANCE_MIN ?= 0.95
-assurance: ## Spec -> code -> test traceability per spec (V=1: per requirement, with dead links)
+assurance: ## Spec traceability dashboard (V=1: per requirement, with dead links)
 	@python3 scripts/assurance.py $(if $(filter 1,$(V)),-v,)
 
-version: ## Show the version; fails if Cargo.toml, both Cargo.lock, README and CHANGELOG disagree. BUMP=major|minor|patch writes the next one everywhere and dates [Unreleased]
+# Fails if Cargo.toml, both Cargo.lock, README and CHANGELOG disagree; BUMP writes
+# the next version everywhere and dates [Unreleased].
+version: ## Show the version and check it agrees everywhere (BUMP=major|minor|patch)
 	@python3 scripts/version.py $(if $(BUMP),--bump $(BUMP),)
 
 # Coverage and code quality (ADR-023): measured on their own into target/assurance/,
@@ -136,21 +138,25 @@ version: ## Show the version; fails if Cargo.toml, both Cargo.lock, README and C
 LIZARD ?= uvx lizard==1.25.1
 # The functions allowed over CCN_MAX, at most at their CCN, until they are fixed (#301).
 CCN_BASELINE ?= .openspec/quality-baseline.csv
-check-assurance: ## Gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN (and COVERAGE_MIN, CCN_MAX when set); tests the checker first, quietly unless it fails, so the dashboard comes first
+# The gate: no dead spec or doc links, tested scenarios >= ASSURANCE_MIN, and
+# COVERAGE_MIN / CCN_MAX when set. Runs the checker's own tests first, quietly
+# unless they fail, so the dashboard comes first.
+check-assurance: ## Gate: spec links and tests; COVERAGE_MIN and CCN_MAX when set
 	@out=$$(python3 -m unittest discover -q -s scripts -p 'test_*.py' 2>&1) || { echo "$$out"; exit 1; }
 	@python3 scripts/assurance.py --min $(ASSURANCE_MIN) $(if $(COVERAGE_MIN),--coverage-min $(COVERAGE_MIN),) $(if $(CCN_MAX),--ccn-max $(CCN_MAX) --ccn-baseline $(CCN_BASELINE),)
 
-coverage: ## Test coverage with cargo llvm-cov into target/assurance/coverage.json (runs every test, instrumented)
+coverage: ## Test coverage (cargo llvm-cov, every test) into target/assurance/
 	@$(CARGO) llvm-cov --version >/dev/null 2>&1 || { echo "cargo install cargo-llvm-cov --locked && rustup component add llvm-tools-preview"; exit 1; }
 	@mkdir -p target/assurance
 	$(CARGO) llvm-cov --workspace --locked --json --summary-only --output-path target/assurance/coverage.json
 
-quality: ## Code quality with lizard (CCN, function and file length) into target/assurance/lizard.csv
+quality: ## Code quality (lizard: CCN, function and file length) into target/assurance/
 	@mkdir -p target/assurance
 	$(LIZARD) -l rust --csv crates/*/src > target/assurance/lizard.csv.tmp
 	@mv target/assurance/lizard.csv.tmp target/assurance/lizard.csv
 
-quality-baseline: quality ## Rewrite the CCN baseline from the current code: every function over CCN_MAX (default 15), worst first
+# Every function over CCN_MAX (default 15), worst first.
+quality-baseline: quality ## Rewrite the CCN baseline from the current code
 	python3 scripts/quality_metrics.py target/assurance/lizard.csv --ccn-max $(or $(CCN_MAX),15) > $(CCN_BASELINE)
 
 fmt: ## Format the code
