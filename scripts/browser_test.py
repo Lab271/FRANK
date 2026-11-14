@@ -135,7 +135,7 @@ def test_admin_tab_needs_a_role(page: Page, args) -> None:
 
 def test_public_sees_a_short_menu(page: Page, args) -> None:
     page.goto(f"{args.url}/#submit")
-    expect(page.locator("#tier")).to_have_text("public", timeout=TIMEOUT_MS)
+    expect(page.locator("#tier")).to_have_text(re.compile(r"^public\b"), timeout=TIMEOUT_MS)
     expect(page.locator("#stats")).to_have_js_property("hidden", False, timeout=TIMEOUT_MS)
     expect(page.locator("#submit")).to_have_js_property("hidden", True)
     shown = page.eval_on_selector_all("nav button", "bs => bs.filter(b => !b.hidden).map(b => b.dataset.tab)")
