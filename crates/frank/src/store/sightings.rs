@@ -392,6 +392,24 @@ impl Sightings {
         self.table.query(sql).map_err(|e| e.to_string())
     }
 
+    /// Fills db-core's read cache after a start (#291): one query that
+    /// touches every listed file, so each file's footer, and a file up to
+    /// 64 KiB whole, is fetched now rather than by the first caller. Only
+    /// for a table in a store; on the filesystem the page cache does this,
+    /// and `None` is returned. Otherwise the number of files touched.
+    pub fn warm(&self) -> Result<Option<usize>, String> {
+        if self.store.is_none() {
+            return Ok(None);
+        }
+        let files = self.files().map_err(|e| e.to_string())?.len();
+        // A filter on `seq`, which has no manifest range, so no file is
+        // pruned. A bare `count(*)` reads every footer too on db-core
+        // 0.241, but could one day be answered from the manifest's row
+        // counts alone; this cannot.
+        self.query(&format!("SELECT count(*) FROM {NAME} WHERE seq >= 0"))?;
+        Ok(Some(files))
+    }
+
     /// Writes closed hours to `live/`.
     pub fn flush(&self) -> Result<usize, IngestError> {
         Ok(self.table.flush()?.len())

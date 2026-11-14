@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.50.0] - 2026-11-14
+
+### Added
+
+- S3 mode: on start, after flushing and compacting, FRANK warms db-core's read cache with one query over every listed file, so the first caller after a restart sends no cold GETs (#291). Over 30 days that is 33 GETs, one per file, then none for the first statistics, explore and records calls. Logged as `read cache warmed`; errors only warn.
+
 ## [0.49.0] - 2026-11-14
 
 ### Added
