@@ -4,6 +4,13 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.51.2] - 2026-11-14
+
+### Changed
+
+- CI: the slow tests run in parallel with the others, and the image build reuses cached layers (#313).
+- Internal: the 15 most complex functions are split into named steps with no change in behaviour; no function in `crates/*/src` is over CCN 15, and the CCN baseline is empty (#302).
+
 ## [0.51.1] - 2026-11-14
 
 ### Changed
