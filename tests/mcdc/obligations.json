@@ -2282,7 +2282,7 @@
   {
     "id": "cli_role_4039463d",
     "file": "crates/frank/src/cli.rs",
-    "line": 239,
+    "line": 246,
     "decision": "s.eq_ignore_ascii_case(\"none\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -2292,7 +2292,7 @@
   {
     "id": "cli_run_dcdb3cf8",
     "file": "crates/frank/src/cli.rs",
-    "line": 250,
+    "line": 257,
     "decision": "match cli.command {\n        Command::Serve(args) => crate::serve::start(&ctx, args),\n        Command::Participant(cmd) => participant(&ctx, cmd, io),\n        Command::User(cmd) => user(&ctx, cmd, io),\n        Command::Token(cmd) => token(&ctx, cmd, io),\n        Command::Ingest {\n            files,\n            participant,\n            create,\n        } => ingest_as(&ctx, &files, &participant, create, io),\n        Command::Rebuild => rebuild(&ctx, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2302,7 +2302,7 @@
   {
     "id": "cli_setup_6ffe4d30",
     "file": "crates/frank/src/cli.rs",
-    "line": 272,
+    "line": 279,
     "decision": "old.exists() && !db.exists()",
     "conditions": 2,
     "vectors_required": 3,
@@ -2312,7 +2312,7 @@
   {
     "id": "cli_open_ca7be090",
     "file": "crates/frank/src/cli.rs",
-    "line": 306,
+    "line": 313,
     "decision": "match e {\n            // 0.13 added `digest` and `received`; `Sightings::open` refuses a\n            // table without them.\n            IngestError::SchemaMismatch => format!(\n                \"{}: written by FRANK 0.12 or older (no digest column, pseudonymous \\\n             reporters): move it aside and reload the sightings\",\n                data.join(crate::store::sightings::NAME).display()\n            ),\n            e => format!(\"sightings: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2322,7 +2322,7 @@
   {
     "id": "cli_open_1b1b018d",
     "file": "crates/frank/src/cli.rs",
-    "line": 316,
+    "line": 323,
     "decision": "let Some(location) = location",
     "conditions": 1,
     "vectors_required": 2,
@@ -2332,7 +2332,7 @@
   {
     "id": "cli_participant_76a80e33",
     "file": "crates/frank/src/cli.rs",
-    "line": 332,
+    "line": 339,
     "decision": "match cmd {\n        ParticipantCmd::Add {\n            name,\n            status: st,\n            kind,\n            sector,\n            region,\n            with_token,\n        } => {\n            let id = participant_add(\n                ctx,\n                &name,\n                &st,\n                &kind,\n                sector.as_deref(),\n                region.as_deref(),\n                io,\n            )?;\n            if with_token {\n                first_user_with_token(ctx, &id, &name, io)?;\n            }\n            Ok(())\n        }\n        ParticipantCmd::List => participant_list(ctx, io),\n        ParticipantCmd::SetStatus { name, status: st } => {\n            participant_set_status(ctx, &name, &st, io)\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2342,7 +2342,7 @@
   {
     "id": "cli_participant_2a99c2bd",
     "file": "crates/frank/src/cli.rs",
-    "line": 350,
+    "line": 357,
     "decision": "with_token",
     "conditions": 1,
     "vectors_required": 2,
@@ -2352,7 +2352,7 @@
   {
     "id": "cli_user_06469e69",
     "file": "crates/frank/src/cli.rs",
-    "line": 427,
+    "line": 434,
     "decision": "match cmd {\n        UserCmd::Add {\n            participant,\n            name,\n            machine,\n            role: r,\n        } => user_add(ctx, &participant, &name, machine, r.as_deref(), io),\n        UserCmd::List => user_list(ctx, io),\n        UserCmd::Disable { name } => user_set_disabled(ctx, &name, true, io),\n        UserCmd::Enable { name } => user_set_disabled(ctx, &name, false, io),\n        UserCmd::Remove { name } => user_remove(ctx, &name, io),\n        UserCmd::SetRole { name, role: r } => user_set_role(ctx, &name, &r, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2362,7 +2362,7 @@
   {
     "id": "cli_user_add_a086e9a5",
     "file": "crates/frank/src/cli.rs",
-    "line": 450,
+    "line": 457,
     "decision": "machine",
     "conditions": 1,
     "vectors_required": 2,
@@ -2372,7 +2372,7 @@
   {
     "id": "cli_user_list_1d027061",
     "file": "crates/frank/src/cli.rs",
-    "line": 465,
+    "line": 472,
     "decision": "u.disabled",
     "conditions": 1,
     "vectors_required": 2,
@@ -2382,7 +2382,7 @@
   {
     "id": "cli_user_set_disabled_b92d7d38",
     "file": "crates/frank/src/cli.rs",
-    "line": 476,
+    "line": 483,
     "decision": "disabled",
     "conditions": 1,
     "vectors_required": 2,
@@ -2392,7 +2392,7 @@
   {
     "id": "cli_token_b179090c",
     "file": "crates/frank/src/cli.rs",
-    "line": 506,
+    "line": 513,
     "decision": "match cmd {\n        TokenCmd::New { user } => token_new(ctx, &user, io),\n        TokenCmd::Add { user, hash: h } => token_add(ctx, &user, &h, io),\n        TokenCmd::List => token_list(ctx, io),\n        TokenCmd::Revoke { prefix } => token_revoke(ctx, &prefix, io),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2402,7 +2402,7 @@
   {
     "id": "cli_token_list_703c733f",
     "file": "crates/frank/src/cli.rs",
-    "line": 533,
+    "line": 540,
     "decision": "t.revoked",
     "conditions": 1,
     "vectors_required": 2,
@@ -2412,7 +2412,7 @@
   {
     "id": "cli_ingest_as_106edf7f",
     "file": "crates/frank/src/cli.rs",
-    "line": 562,
+    "line": 569,
     "decision": "match parts::organisation_id(&ctx.db, participant) {\n        Ok(id) => id,\n        Err(_) if create => {\n            let id = parts::add_organisation(\n                &ctx.db,\n                participant,\n                Tier::Contributor,\n                \"cyber_partner\",\n                None,\n                None,\n            )?;\n            ctx.log(\n                \"participant_added\",\n                json!({ \"participant\": id, \"name\": participant, \"status\": Tier::Contributor.as_str() }),\n            )?;\n            id\n        }\n        Err(e) => return Err(format!(\"{e} (register it, or pass --create)\")),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2422,7 +2422,7 @@
   {
     "id": "cli_ingest_as_29e92c17",
     "file": "crates/frank/src/cli.rs",
-    "line": 564,
+    "line": 571,
     "decision": "create",
     "conditions": 1,
     "vectors_required": 2,
@@ -2432,7 +2432,7 @@
   {
     "id": "cli_ingest_file_8049078c",
     "file": "crates/frank/src/cli.rs",
-    "line": 635,
+    "line": 642,
     "decision": "let Some((id, _, _)) = subs\n        .iter()\n        .find(|(id, d, _)| known.get(id).is_some_and(|(k, _)| k != d))",
     "conditions": 1,
     "vectors_required": 2,
@@ -2442,7 +2442,7 @@
   {
     "id": "cli_ingest_file_adc096cb",
     "file": "crates/frank/src/cli.rs",
-    "line": 650,
+    "line": 657,
     "decision": "known.contains_key(&id) || fresh.iter().any(|f| f.1 == id)",
     "conditions": 2,
     "vectors_required": 3,
@@ -2452,7 +2452,7 @@
   {
     "id": "cli_ingest_file_e96014b5",
     "file": "crates/frank/src/cli.rs",
-    "line": 665,
+    "line": 672,
     "decision": "!fresh.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3642,8 +3642,18 @@
   {
     "id": "serve_sso_config_18b03b41",
     "file": "crates/frank/src/serve.rs",
-    "line": 88,
+    "line": 90,
     "decision": "let Some(sso) = &sso",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "serve_sso_config_6b1e882a",
+    "file": "crates/frank/src/serve.rs",
+    "line": 93,
+    "decision": "let Some(admin) = &sso.admin",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -3652,7 +3662,7 @@
   {
     "id": "serve_limits_cb1ba987",
     "file": "crates/frank/src/serve.rs",
-    "line": 103,
+    "line": 114,
     "decision": "args.request_timeout == 0 || args.max_concurrency == 0",
     "conditions": 2,
     "vectors_required": 3,
@@ -3662,7 +3672,7 @@
   {
     "id": "serve_import_tokens_400d7164",
     "file": "crates/frank/src/serve.rs",
-    "line": 115,
+    "line": 126,
     "decision": "participants.active_tokens()? == 0 && tokens.exists()",
     "conditions": 2,
     "vectors_required": 3,
@@ -3672,7 +3682,7 @@
   {
     "id": "serve_import_tokens_454975ca",
     "file": "crates/frank/src/serve.rs",
-    "line": 119,
+    "line": 130,
     "decision": "!created.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3682,7 +3692,7 @@
   {
     "id": "serve_import_tokens_e4a772de",
     "file": "crates/frank/src/serve.rs",
-    "line": 132,
+    "line": 143,
     "decision": "participants.active_tokens()? == 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3692,7 +3702,7 @@
   {
     "id": "serve_maintain_17a5a747",
     "file": "crates/frank/src/serve.rs",
-    "line": 201,
+    "line": 212,
     "decision": "let Err(e) = app.geo.backfill(&app.sightings, now_ns())",
     "conditions": 1,
     "vectors_required": 2,
@@ -3702,7 +3712,7 @@
   {
     "id": "serve_maintain_2f261125",
     "file": "crates/frank/src/serve.rs",
-    "line": 205,
+    "line": 216,
     "decision": "flushed > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3712,7 +3722,7 @@
   {
     "id": "serve_maintain_f768d81b",
     "file": "crates/frank/src/serve.rs",
-    "line": 208,
+    "line": 219,
     "decision": "n % 60 == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3722,7 +3732,7 @@
   {
     "id": "serve_maintain_8aaeab4c",
     "file": "crates/frank/src/serve.rs",
-    "line": 214,
+    "line": 225,
     "decision": "merged > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3732,7 +3742,7 @@
   {
     "id": "serve_maintain_01b7c705",
     "file": "crates/frank/src/serve.rs",
-    "line": 221,
+    "line": 232,
     "decision": "n == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3742,7 +3752,7 @@
   {
     "id": "serve_maintain_47910d58",
     "file": "crates/frank/src/serve.rs",
-    "line": 223,
+    "line": 234,
     "decision": "match app.sightings.warm() {\n                    Ok(Some(files)) => {\n                        let ms = started.elapsed().as_millis();\n                        tracing::info!(files, ms, \"read cache warmed\");\n                    }\n                    Ok(None) => {}\n                    Err(e) => tracing::warn!(\"read cache warm-up: {e}\"),\n                }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3752,7 +3762,7 @@
   {
     "id": "serve_maintain_9a822e22",
     "file": "crates/frank/src/serve.rs",
-    "line": 235,
+    "line": 246,
     "decision": "match result {\n            Ok(Ok(())) => {}\n            Ok(Err(e)) => tracing::error!(\"maintenance: {e}\"),\n            Err(e) => tracing::error!(\"maintenance task: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3762,7 +3772,7 @@
   {
     "id": "serve_shutdown_642a0cd3",
     "file": "crates/frank/src/serve.rs",
-    "line": 249,
+    "line": 260,
     "decision": "let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())",
     "conditions": 1,
     "vectors_required": 2,
@@ -3772,7 +3782,7 @@
   {
     "id": "serve_serve_args_8574ccac",
     "file": "crates/frank/src/serve.rs",
-    "line": 269,
+    "line": 280,
     "decision": "match cli.command {\n            Command::Serve(a) => a,\n            _ => unreachable!(),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3782,7 +3792,7 @@
   {
     "id": "serve_tokens_after_import_6d884e63",
     "file": "crates/frank/src/serve.rs",
-    "line": 327,
+    "line": 338,
     "decision": "existing",
     "conditions": 1,
     "vectors_required": 2,
@@ -3792,7 +3802,7 @@
   {
     "id": "serve_tokens_after_import_5afa7b5b",
     "file": "crates/frank/src/serve.rs",
-    "line": 334,
+    "line": 345,
     "decision": "file",
     "conditions": 1,
     "vectors_required": 2,
@@ -3802,7 +3812,7 @@
   {
     "id": "sso_from_settings_559c6a0e",
     "file": "crates/frank/src/sso.rs",
-    "line": 122,
+    "line": 129,
     "decision": "given.iter().all(|(_, g)| !g)",
     "conditions": 1,
     "vectors_required": 2,
@@ -3810,9 +3820,19 @@
     "wildcard_risk": false
   },
   {
+    "id": "sso_from_settings_e0f53452",
+    "file": "crates/frank/src/sso.rs",
+    "line": 130,
+    "decision": "match admin {\n                Some(_) => Err(\"FRANK_SSO_ADMIN_GROUP needs the other FRANK_SSO_ settings\".into()),\n                None => Ok(None),\n            }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
     "id": "sso_from_settings_c2d4ff59",
     "file": "crates/frank/src/sso.rs",
-    "line": 126,
+    "line": 136,
     "decision": "!missing.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3822,7 +3842,7 @@
   {
     "id": "sso_from_settings_d35d4c39",
     "file": "crates/frank/src/sso.rs",
-    "line": 156,
+    "line": 166,
     "decision": "client_id.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3832,7 +3852,7 @@
   {
     "id": "sso_from_settings_8ef2f96b",
     "file": "crates/frank/src/sso.rs",
-    "line": 160,
+    "line": 170,
     "decision": "organisation.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3842,7 +3862,7 @@
   {
     "id": "sso_from_settings_b04614f6",
     "file": "crates/frank/src/sso.rs",
-    "line": 171,
+    "line": 181,
     "decision": "secret.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3850,9 +3870,19 @@
     "wildcard_risk": false
   },
   {
+    "id": "sso_admin_group_907673c4",
+    "file": "crates/frank/src/sso.rs",
+    "line": 206,
+    "decision": "match (trimmed(group), trimmed(organisation)) {\n        (None, None) => Ok(None),\n        (Some(group), Some(organisation)) => Ok(Some(AdminGroup {\n            group,\n            organisation,\n        })),\n        (Some(_), None) => {\n            Err(\"FRANK_SSO_ADMIN_GROUP is set: set FRANK_SSO_ADMIN_ORGANISATION too\".into())\n        }\n        (None, Some(_)) => {\n            Err(\"FRANK_SSO_ADMIN_ORGANISATION is set: set FRANK_SSO_ADMIN_GROUP too\".into())\n        }\n    }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
     "id": "sso_parse_52e58cd8",
     "file": "crates/frank/src/sso.rs",
-    "line": 205,
+    "line": 238,
     "decision": "scheme != \"https\" && scheme != \"http\"",
     "conditions": 2,
     "vectors_required": 3,
@@ -3862,7 +3892,7 @@
   {
     "id": "sso_parse_9876deea",
     "file": "crates/frank/src/sso.rs",
-    "line": 208,
+    "line": 241,
     "decision": "match rest.find(['/', '?', '#']) {\n            Some(i) => (&rest[..i], &rest[i..]),\n            None => (rest, \"\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3872,7 +3902,7 @@
   {
     "id": "sso_parse_517670e3",
     "file": "crates/frank/src/sso.rs",
-    "line": 212,
+    "line": 245,
     "decision": "authority.contains('@')",
     "conditions": 1,
     "vectors_required": 2,
@@ -3882,7 +3912,7 @@
   {
     "id": "sso_parse_ede55f7f",
     "file": "crates/frank/src/sso.rs",
-    "line": 215,
+    "line": 248,
     "decision": "match authority.rsplit_once(':') {\n            Some((h, p)) => (\n                h,\n                Some(\n                    p.parse::<u16>()\n                        .map_err(|_| format!(\"{s:?}: bad port {p:?}\"))?,\n                ),\n            ),\n            None => (authority, None),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3892,7 +3922,7 @@
   {
     "id": "sso_parse_bde4869f",
     "file": "crates/frank/src/sso.rs",
-    "line": 225,
+    "line": 258,
     "decision": "host.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3902,7 +3932,7 @@
   {
     "id": "sso_parse_c4deed88",
     "file": "crates/frank/src/sso.rs",
-    "line": 228,
+    "line": 261,
     "decision": "path.contains('#')",
     "conditions": 1,
     "vectors_required": 2,
@@ -3912,7 +3942,7 @@
   {
     "id": "sso_parse_3db24ff9",
     "file": "crates/frank/src/sso.rs",
-    "line": 235,
+    "line": 268,
     "decision": "path.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3922,7 +3952,7 @@
   {
     "id": "sso_secure_401c17fe",
     "file": "crates/frank/src/sso.rs",
-    "line": 245,
+    "line": 278,
     "decision": "self.scheme == \"https\" || self.host == \"localhost\"",
     "conditions": 2,
     "vectors_required": 3,
@@ -3932,7 +3962,7 @@
   {
     "id": "sso_origin_7161d17d",
     "file": "crates/frank/src/sso.rs",
-    "line": 259,
+    "line": 292,
     "decision": "match (self.scheme.as_str(), self.port) {\n            (\"https\", Some(443)) | (\"http\", Some(80)) | (_, None) => {\n                format!(\"{}://{}\", self.scheme, self.host)\n            }\n            (_, Some(p)) => format!(\"{}://{}:{p}\", self.scheme, self.host),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3942,7 +3972,7 @@
   {
     "id": "sso_provider_835cd19e",
     "file": "crates/frank/src/sso.rs",
-    "line": 406,
+    "line": 439,
     "decision": "let Some(p) = self.provider.lock().map_err(|_| POISONED)?.clone()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3952,7 +3982,7 @@
   {
     "id": "sso_provider_0ae4a809",
     "file": "crates/frank/src/sso.rs",
-    "line": 412,
+    "line": 445,
     "decision": "p.issuer.trim_end_matches('/') != self.config.issuer",
     "conditions": 1,
     "vectors_required": 2,
@@ -3962,7 +3992,7 @@
   {
     "id": "sso_key_f64640e6",
     "file": "crates/frank/src/sso.rs",
-    "line": 434,
+    "line": 467,
     "decision": "match kid {\n            Some(kid) => k.by_kid.get(kid).cloned(),\n            None if k.by_kid.len() == 1 => k.by_kid.values().next().cloned(),\n            None => None,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -3972,7 +4002,7 @@
   {
     "id": "sso_key_fe4b77b5",
     "file": "crates/frank/src/sso.rs",
-    "line": 436,
+    "line": 469,
     "decision": "k.by_kid.len() == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3982,7 +4012,7 @@
   {
     "id": "sso_key_5bf970f5",
     "file": "crates/frank/src/sso.rs",
-    "line": 441,
+    "line": 474,
     "decision": "let Some(k) = find(&keys)",
     "conditions": 1,
     "vectors_required": 2,
@@ -3992,7 +4022,7 @@
   {
     "id": "sso_key_e41e3c34",
     "file": "crates/frank/src/sso.rs",
-    "line": 444,
+    "line": 477,
     "decision": "keys\n                .fetched_ns\n                .is_some_and(|at| now_ns - at < JWKS_REFETCH_NS)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4002,7 +4032,7 @@
   {
     "id": "sso_key_f615b2bb",
     "file": "crates/frank/src/sso.rs",
-    "line": 455,
+    "line": 488,
     "decision": "k.kty != \"RSA\" || k.usage.as_deref().is_some_and(|u| u != \"sig\")",
     "conditions": 2,
     "vectors_required": 3,
@@ -4012,7 +4042,7 @@
   {
     "id": "sso_begin_9b1f0b92",
     "file": "crates/frank/src/sso.rs",
-    "line": 485,
+    "line": 518,
     "decision": "pending.len() >= MAX_PENDING",
     "conditions": 1,
     "vectors_required": 2,
@@ -4022,7 +4052,7 @@
   {
     "id": "sso_begin_89d5d111",
     "file": "crates/frank/src/sso.rs",
-    "line": 497,
+    "line": 530,
     "decision": "provider.authorization_endpoint.contains('?')",
     "conditions": 1,
     "vectors_required": 2,
@@ -4032,7 +4062,7 @@
   {
     "id": "sso_finish_13757aee",
     "file": "crates/frank/src/sso.rs",
-    "line": 523,
+    "line": 556,
     "decision": "now_ns - pending.at_ns >= LOGIN_NS",
     "conditions": 1,
     "vectors_required": 2,
@@ -4042,7 +4072,7 @@
   {
     "id": "sso_finish_8ba504c0",
     "file": "crates/frank/src/sso.rs",
-    "line": 544,
+    "line": 577,
     "decision": "subject.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4052,7 +4082,7 @@
   {
     "id": "sso_verify_d0e2a354",
     "file": "crates/frank/src/sso.rs",
-    "line": 581,
+    "line": 622,
     "decision": "header[\"alg\"] != \"RS256\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4062,7 +4092,7 @@
   {
     "id": "sso_check_claims_450c0f30",
     "file": "crates/frank/src/sso.rs",
-    "line": 601,
+    "line": 642,
     "decision": "claims[\"iss\"].as_str() != Some(self.config.issuer.as_str())",
     "conditions": 1,
     "vectors_required": 2,
@@ -4072,7 +4102,7 @@
   {
     "id": "sso_check_claims_43f49024",
     "file": "crates/frank/src/sso.rs",
-    "line": 605,
+    "line": 646,
     "decision": "!audience_names(&claims[\"aud\"], client_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4082,7 +4112,7 @@
   {
     "id": "sso_check_claims_f4b13214",
     "file": "crates/frank/src/sso.rs",
-    "line": 608,
+    "line": 649,
     "decision": "claims\n            .get(\"azp\")\n            .is_some_and(|a| a.as_str() != Some(client_id))",
     "conditions": 1,
     "vectors_required": 2,
@@ -4092,7 +4122,7 @@
   {
     "id": "sso_check_claims_cfc1b7eb",
     "file": "crates/frank/src/sso.rs",
-    "line": 615,
+    "line": 656,
     "decision": "exp <= now_ns / 1_000_000_000",
     "conditions": 1,
     "vectors_required": 2,
@@ -4102,7 +4132,7 @@
   {
     "id": "sso_check_claims_85b47852",
     "file": "crates/frank/src/sso.rs",
-    "line": 618,
+    "line": 659,
     "decision": "claims[\"nonce\"].as_str() != Some(nonce)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4112,7 +4142,7 @@
   {
     "id": "sso_audience_names_50fb1188",
     "file": "crates/frank/src/sso.rs",
-    "line": 646,
+    "line": 687,
     "decision": "match aud {\n        Value::String(a) => a == client_id,\n        Value::Array(a) => a.iter().any(|a| a.as_str() == Some(client_id)),\n        _ => false,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4122,7 +4152,7 @@
   {
     "id": "sso_enc_866337b6",
     "file": "crates/frank/src/sso.rs",
-    "line": 657,
+    "line": 698,
     "decision": "b.is_ascii_alphanumeric() || b\"-._~\".contains(&b)",
     "conditions": 2,
     "vectors_required": 3,
@@ -4132,7 +4162,7 @@
   {
     "id": "sso_set_cookie_5e7489d6",
     "file": "crates/frank/src/sso.rs",
-    "line": 683,
+    "line": 724,
     "decision": "config.origin.starts_with(\"https://\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -4142,7 +4172,7 @@
   {
     "id": "sso_csrf_329cc9bf",
     "file": "crates/frank/src/sso.rs",
-    "line": 703,
+    "line": 744,
     "decision": "let (false, Some(sso), Some(_)) = (safe, &app.sso, session_value(&app, req.headers()))",
     "conditions": 1,
     "vectors_required": 2,
@@ -4152,7 +4182,7 @@
   {
     "id": "sso_csrf_98c886fe",
     "file": "crates/frank/src/sso.rs",
-    "line": 708,
+    "line": 749,
     "decision": "origin != Some(sso.config.origin.as_str())",
     "conditions": 1,
     "vectors_required": 2,
@@ -4162,7 +4192,7 @@
   {
     "id": "sso_login_888c5264",
     "file": "crates/frank/src/sso.rs",
-    "line": 752,
+    "line": 793,
     "decision": "match &a.sso {\n        Some(sso) => sso.begin((a.now)()),\n        None => Err(\"sign in with SSO is not configured\".into()),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4172,7 +4202,7 @@
   {
     "id": "sso_login_51d0705d",
     "file": "crates/frank/src/sso.rs",
-    "line": 758,
+    "line": 799,
     "decision": "match begun {\n        Ok((url, state)) => (\n            StatusCode::SEE_OTHER,\n            [NO_STORE],\n            AppendHeaders([\n                (header::LOCATION, url),\n                (\n                    header::SET_COOKIE,\n                    set_cookie(\n                        &sso.config,\n                        STATE_COOKIE,\n                        &state,\n                        \"/v1/sso\",\n                        LOGIN_NS / 1_000_000_000,\n                    ),\n                ),\n            ]),\n        )\n            .into_response(),\n        Err(e) => {\n            tracing::warn!(\"sso login: {e}\");\n            (\n                StatusCode::BAD_GATEWAY,\n                Json(json!({ \"error\": \"the identity provider is not available\" })),\n            )\n                .into_response()\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4182,7 +4212,7 @@
   {
     "id": "sso_early_refusal_4315ff79",
     "file": "crates/frank/src/sso.rs",
-    "line": 812,
+    "line": 855,
     "decision": "let Some(e) = q.get(\"error\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -4192,7 +4222,7 @@
   {
     "id": "sso_early_refusal_682c2728",
     "file": "crates/frank/src/sso.rs",
-    "line": 814,
+    "line": 857,
     "decision": "state.is_empty() || !q.contains_key(\"code\")",
     "conditions": 2,
     "vectors_required": 3,
@@ -4202,7 +4232,7 @@
   {
     "id": "sso_early_refusal_7a6c1a7f",
     "file": "crates/frank/src/sso.rs",
-    "line": 816,
+    "line": 859,
     "decision": "cookie(headers, STATE_COOKIE).as_deref() != Some(state)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4212,7 +4242,7 @@
   {
     "id": "sso_callback_8412b99b",
     "file": "crates/frank/src/sso.rs",
-    "line": 832,
+    "line": 875,
     "decision": "match early_refusal(&q, &state, &headers) {\n        Some(reason) => Outcome::Refused(reason),\n        None => {\n            let a = app.clone();\n            let code = q.get(\"code\").cloned().unwrap_or_default();\n            tokio::task::spawn_blocking(move || sign_in(&a, &state, &code))\n                .await\n                .unwrap_or_else(|e| Outcome::Refused(e.to_string()))\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4220,10 +4250,10 @@
     "wildcard_risk": false
   },
   {
-    "id": "sso_callback_b4e637c2",
+    "id": "sso_callback_d7e7ac60",
     "file": "crates/frank/src/sso.rs",
-    "line": 843,
-    "decision": "match outcome {\n        Outcome::SignedIn {\n            session,\n            label,\n            user,\n            how,\n        } => {\n            if how == SignedIn::Provisioned {\n                audit(\n                    &app,\n                    &label,\n                    \"user_provisioned\",\n                    json!({ \"user\": user, \"via\": \"sso\" }),\n                );\n            }\n            audit(\n                &app,\n                &label,\n                \"sso_login\",\n                json!({ \"user\": user, \"how\": how.as_str() }),\n            );\n            let cookie = set_cookie(\n                &sso.config,\n                SESSION_COOKIE,\n                &session,\n                \"/\",\n                parts::SESSION_SECONDS,\n            );\n            (\n                StatusCode::SEE_OTHER,\n                [NO_STORE],\n                AppendHeaders([\n                    (header::LOCATION, \"/\".to_string()),\n                    (header::SET_COOKIE, clear_state),\n                    (header::SET_COOKIE, cookie),\n                ]),\n            )\n                .into_response()\n        }\n        Outcome::Refused(reason) => {\n            tracing::warn!(\"sso refused: {reason}\");\n            audit(&app, \"sso\", \"sso_refused\", json!({ \"reason\": reason }));\n            (\n                StatusCode::SEE_OTHER,\n                [NO_STORE],\n                AppendHeaders([\n                    (header::LOCATION, \"/?sso=refused\".to_string()),\n                    (header::SET_COOKIE, clear_state),\n                ]),\n            )\n                .into_response()\n        }\n    }",
+    "line": 886,
+    "decision": "match outcome {\n        Outcome::SignedIn {\n            session,\n            label,\n            user,\n            how,\n            role,\n        } => {\n            if how == SignedIn::Provisioned {\n                audit(\n                    &app,\n                    &label,\n                    \"user_provisioned\",\n                    json!({ \"user\": user, \"via\": \"sso\" }),\n                );\n            }\n            if let (Some(change), Some(admin)) = (role, &sso.config.admin) {\n                audit(\n                    &app,\n                    \"sso\",\n                    change.as_str(),\n                    json!({ \"user\": user, \"role\": \"admin\", \"organisation\": admin.organisation, \"group\": admin.group }),\n                );\n            }\n            audit(\n                &app,\n                &label,\n                \"sso_login\",\n                json!({ \"user\": user, \"how\": how.as_str() }),\n            );\n            let cookie = set_cookie(\n                &sso.config,\n                SESSION_COOKIE,\n                &session,\n                \"/\",\n                parts::SESSION_SECONDS,\n            );\n            (\n                StatusCode::SEE_OTHER,\n                [NO_STORE],\n                AppendHeaders([\n                    (header::LOCATION, \"/\".to_string()),\n                    (header::SET_COOKIE, clear_state),\n                    (header::SET_COOKIE, cookie),\n                ]),\n            )\n                .into_response()\n        }\n        Outcome::Refused(reason) => {\n            tracing::warn!(\"sso refused: {reason}\");\n            audit(&app, \"sso\", \"sso_refused\", json!({ \"reason\": reason }));\n            (\n                StatusCode::SEE_OTHER,\n                [NO_STORE],\n                AppendHeaders([\n                    (header::LOCATION, \"/?sso=refused\".to_string()),\n                    (header::SET_COOKIE, clear_state),\n                ]),\n            )\n                .into_response()\n        }\n    }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
@@ -4232,8 +4262,18 @@
   {
     "id": "sso_callback_63db0a7c",
     "file": "crates/frank/src/sso.rs",
-    "line": 850,
+    "line": 894,
     "decision": "how == SignedIn::Provisioned",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "sso_callback_6e6f1973",
+    "file": "crates/frank/src/sso.rs",
+    "line": 902,
+    "decision": "let (Some(change), Some(admin)) = (role, &sso.config.admin)",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -4242,7 +4282,7 @@
   {
     "id": "sso_sign_in_fe91e13a",
     "file": "crates/frank/src/sso.rs",
-    "line": 905,
+    "line": 957,
     "decision": "match sso.finish(state, code, now) {\n        Ok(id) => id,\n        Err(e) => return Outcome::Refused(e),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4252,8 +4292,28 @@
   {
     "id": "sso_sign_in_136e9898",
     "file": "crates/frank/src/sso.rs",
-    "line": 910,
+    "line": 962,
     "decision": "match parts::sign_in(path, &id, &sso.config.organisation) {\n        Ok(Ok(found)) => found,\n        Ok(Err(reason)) => return Outcome::Refused(reason),\n        Err(e) => return Outcome::Refused(format!(\"store: {e}\")),\n    }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "sso_sign_in_d4df0be1",
+    "file": "crates/frank/src/sso.rs",
+    "line": 969,
+    "decision": "match &sso.config.admin {\n        Some(admin) => {\n            let member = id.groups.iter().any(|g| g == &admin.group);\n            match parts::sync_admin_group(path, &user, member, admin, &sso.config.organisation) {\n                Ok(change) => change,\n                Err(e) => return Outcome::Refused(format!(\"admin group: {e}\")),\n            }\n        }\n        None => None,\n    }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "sso_sign_in_3b206f90",
+    "file": "crates/frank/src/sso.rs",
+    "line": 972,
+    "decision": "match parts::sync_admin_group(path, &user, member, admin, &sso.config.organisation) {\n                Ok(change) => change,\n                Err(e) => return Outcome::Refused(format!(\"admin group: {e}\")),\n            }",
     "conditions": 0,
     "vectors_required": 0,
     "compiler_void": true,
@@ -4262,7 +4322,7 @@
   {
     "id": "sso_sign_in_ca3bf6ab",
     "file": "crates/frank/src/sso.rs",
-    "line": 915,
+    "line": 979,
     "decision": "match parts::add_session(path, &user) {\n        Ok(v) => v,\n        Err(e) => return Outcome::Refused(e),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4272,7 +4332,7 @@
   {
     "id": "sso_logout_fde1da13",
     "file": "crates/frank/src/sso.rs",
-    "line": 937,
+    "line": 1002,
     "decision": "let Some(value) = session_value(&app, &headers)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4282,7 +4342,7 @@
   {
     "id": "sso_logout_87671607",
     "file": "crates/frank/src/sso.rs",
-    "line": 949,
+    "line": 1014,
     "decision": "match ended {\n            Ok((true, Some(c))) => audit(&app, &c.label(), \"sso_logout\", json!({ \"user\": c.user })),\n            Ok(_) => {}\n            Err(e) => tracing::error!(\"sso logout: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4292,7 +4352,7 @@
   {
     "id": "sso_audit_d5ec5a40",
     "file": "crates/frank/src/sso.rs",
-    "line": 968,
+    "line": 1033,
     "decision": "let Err(e) = app.audit.record((app.now)(), by, action, fields)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4302,7 +4362,7 @@
   {
     "id": "sso_jwk_23c2ca11",
     "file": "crates/frank/src/sso.rs",
-    "line": 1198,
+    "line": 1292,
     "decision": "let Some(kid) = kid",
     "conditions": 1,
     "vectors_required": 2,
@@ -4312,7 +4372,7 @@
   {
     "id": "sso_claims_with_decf96df",
     "file": "crates/frank/src/sso.rs",
-    "line": 1272,
+    "line": 1367,
     "decision": "v.is_null()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4322,7 +4382,7 @@
   {
     "id": "sso_serve_once_32e1e9c9",
     "file": "crates/frank/src/sso.rs",
-    "line": 1553,
+    "line": 1649,
     "decision": "let Some(v) = lower.strip_prefix(\"content-length:\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -4332,7 +4392,7 @@
   {
     "id": "sso_serve_once_ef757bb2",
     "file": "crates/frank/src/sso.rs",
-    "line": 1557,
+    "line": 1653,
     "decision": "line == \"\\r\\n\" || line.is_empty()",
     "conditions": 2,
     "vectors_required": 3,
@@ -4342,7 +4402,7 @@
   {
     "id": "sso_callback_with_12fe5385",
     "file": "crates/frank/src/sso.rs",
-    "line": 1694,
+    "line": 1790,
     "decision": "code",
     "conditions": 1,
     "vectors_required": 2,
@@ -4492,7 +4552,7 @@
   {
     "id": "store_participants_refresh_7ad14cf4",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 214,
+    "line": 222,
     "decision": "self\n            .cache\n            .read()\n            .map_err(|_| \"participants lock poisoned\")?\n            .stamp\n            == Some(stamp)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4502,7 +4562,7 @@
   {
     "id": "store_participants_with_db_c1af3699",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 257,
+    "line": 265,
     "decision": "fresh",
     "conditions": 1,
     "vectors_required": 2,
@@ -4512,7 +4572,7 @@
   {
     "id": "store_participants_with_db_1921c10e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 267,
+    "line": 275,
     "decision": "let Err(e) = query(&mut db, &format!(\"SELECT user FROM {table} LIMIT 1\"))",
     "conditions": 1,
     "vectors_required": 2,
@@ -4522,7 +4582,7 @@
   {
     "id": "store_participants_with_db_534ecf1b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 268,
+    "line": 276,
     "decision": "!e.contains(\"no such table\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -4532,7 +4592,7 @@
   {
     "id": "store_participants_load_callers_061b6a19",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 285,
+    "line": 293,
     "decision": "let Some(c) = dir.caller(&text(&r[1]))",
     "conditions": 1,
     "vectors_required": 2,
@@ -4542,7 +4602,7 @@
   {
     "id": "store_participants_load_callers_a437148e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 293,
+    "line": 301,
     "decision": "dir.users.get(&user_id).is_some_and(|u| u.2 != \"human\")",
     "conditions": 1,
     "vectors_required": 2,
@@ -4552,7 +4612,7 @@
   {
     "id": "store_participants_load_callers_2c94c847",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 296,
+    "line": 304,
     "decision": "let Some(c) = dir.caller(&user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4562,7 +4622,7 @@
   {
     "id": "store_participants_caller_606da8b7",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 337,
+    "line": 345,
     "decision": "self.disabled.contains(user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4572,7 +4632,7 @@
   {
     "id": "store_participants_check_role_0244f806",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 374,
+    "line": 382,
     "decision": "kind != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4582,7 +4642,7 @@
   {
     "id": "store_participants_check_role_5c4284f4",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 377,
+    "line": 385,
     "decision": "match role {\n        Role::Admin => Tier::Contributor,\n        Role::Superadmin => Tier::Core,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4592,7 +4652,7 @@
   {
     "id": "store_participants_check_role_a908872e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 381,
+    "line": 389,
     "decision": "status < least",
     "conditions": 1,
     "vectors_required": 2,
@@ -4602,7 +4662,7 @@
   {
     "id": "store_participants_check_name_337e0b9e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 396,
+    "line": 404,
     "decision": "what == \"user\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4612,7 +4672,7 @@
   {
     "id": "store_participants_check_name_bde636e8",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 402,
+    "line": 410,
     "decision": "ok",
     "conditions": 1,
     "vectors_required": 2,
@@ -4622,7 +4682,7 @@
   {
     "id": "store_participants_check_name_337e0b9e_2",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 405,
+    "line": 413,
     "decision": "what == \"user\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4632,7 +4692,7 @@
   {
     "id": "store_participants_check_label_6ec01162",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 419,
+    "line": 427,
     "decision": "v.len() <= 64 && v.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_')",
     "conditions": 2,
     "vectors_required": 3,
@@ -4642,7 +4702,7 @@
   {
     "id": "store_participants_find_org_0114a12b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 445,
+    "line": 453,
     "decision": "let Some(row) = r.rows.first()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4652,7 +4712,7 @@
   {
     "id": "store_participants_add_organisation_7edfecb9",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 510,
+    "line": 518,
     "decision": "!KINDS.contains(&kind)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4662,7 +4722,7 @@
   {
     "id": "store_participants_add_organisation_634810a7",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 517,
+    "line": 525,
     "decision": "find_org(db, name).is_ok()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4672,7 +4732,7 @@
   {
     "id": "store_participants_set_status_9732a27e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 558,
+    "line": 566,
     "decision": "let Some(role) = roles.get(&text(&r[0]))",
     "conditions": 1,
     "vectors_required": 2,
@@ -4682,7 +4742,7 @@
   {
     "id": "store_participants_add_user_4d341e1e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 619,
+    "line": 627,
     "decision": "!USER_KINDS.contains(&kind)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4692,7 +4752,7 @@
   {
     "id": "store_participants_add_user_50d13271",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 624,
+    "line": 632,
     "decision": "find_user(db, name).is_ok()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4702,7 +4762,7 @@
   {
     "id": "store_participants_add_user_752dc085",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 627,
+    "line": 635,
     "decision": "let Some(role) = role",
     "conditions": 1,
     "vectors_required": 2,
@@ -4712,7 +4772,7 @@
   {
     "id": "store_participants_add_user_92880446",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 643,
+    "line": 651,
     "decision": "match role {\n                Some(role) => insert_role(db, &id, role),\n                None => Ok(()),\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4722,7 +4782,7 @@
   {
     "id": "store_participants_set_role_752dc085",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 666,
+    "line": 674,
     "decision": "let Some(role) = role",
     "conditions": 1,
     "vectors_required": 2,
@@ -4732,7 +4792,7 @@
   {
     "id": "store_participants_set_role_92880446",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 674,
+    "line": 686,
     "decision": "match role {\n                Some(role) => insert_role(db, &id, role),\n                None => Ok(()),\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4742,7 +4802,7 @@
   {
     "id": "store_participants_set_disabled_a3c464c6",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 720,
+    "line": 732,
     "decision": "disable",
     "conditions": 1,
     "vectors_required": 2,
@@ -4752,7 +4812,7 @@
   {
     "id": "store_participants_remove_user_0f7c9733",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 738,
+    "line": 750,
     "decision": "!disabled(db)?.contains(&id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4762,7 +4822,7 @@
   {
     "id": "store_participants_as_str_08a4dd46",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 784,
+    "line": 805,
     "decision": "match self {\n            SignedIn::Known => \"known\",\n            SignedIn::Linked => \"linked\",\n            SignedIn::Provisioned => \"provisioned\",\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4772,7 +4832,7 @@
   {
     "id": "store_participants_sign_in_ca24ef4a",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 800,
+    "line": 821,
     "decision": "id.issuer.contains(' ') || id.subject.is_empty()",
     "conditions": 2,
     "vectors_required": 3,
@@ -4782,7 +4842,7 @@
   {
     "id": "store_participants_sign_in_24654591",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 813,
+    "line": 834,
     "decision": "let Some(row) = linked.rows.first()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4792,7 +4852,7 @@
   {
     "id": "store_participants_sign_in_bad8a3ef",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 819,
+    "line": 840,
     "decision": "check_name(\"user\", &name).is_err()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4802,7 +4862,7 @@
   {
     "id": "store_participants_sign_in_fa92d341",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 824,
+    "line": 845,
     "decision": "let Some((user_id, _, kind)) = user_row(db, &name)?",
     "conditions": 1,
     "vectors_required": 2,
@@ -4812,7 +4872,7 @@
   {
     "id": "store_participants_sign_in_known_2210aefe",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 849,
+    "line": 870,
     "decision": "text(&u[1]) != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4822,7 +4882,7 @@
   {
     "id": "store_participants_sign_in_known_11c48099",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 852,
+    "line": 873,
     "decision": "disabled.contains(user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4832,7 +4892,7 @@
   {
     "id": "store_participants_link_existing_0244f806",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 867,
+    "line": 888,
     "decision": "kind != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4842,7 +4902,7 @@
   {
     "id": "store_participants_link_existing_c3e684c2",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 870,
+    "line": 891,
     "decision": "!email_verified",
     "conditions": 1,
     "vectors_required": 2,
@@ -4852,7 +4912,7 @@
   {
     "id": "store_participants_link_existing_cbe769ca",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 875,
+    "line": 896,
     "decision": "disabled.contains(&user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4862,8 +4922,48 @@
   {
     "id": "store_participants_link_existing_fb9f588d",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 885,
+    "line": 906,
     "decision": "!other.rows.is_empty()",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "store_participants_as_str_4db5a1bc",
+    "file": "crates/frank/src/store/participants.rs",
+    "line": 969,
+    "decision": "match self {\n            RoleChange::Granted => \"role_granted\",\n            RoleChange::Revoked => \"role_revoked\",\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "store_participants_sync_admin_group_d7b7fada",
+    "file": "crates/frank/src/store/participants.rs",
+    "line": 994,
+    "decision": "match (member, granted) {\n            (true, true) if org == admin_org => Ok(None),\n            (true, _) => {\n                check_role(user, &kind, org_status(db, &admin_org)?, Role::Admin)?;\n                grant_admin(db, &id, &admin_org)?;\n                Ok(Some(RoleChange::Granted))\n            }\n            (false, true) => {\n                let (home, _) = find_org(db, default_organisation)?;\n                revoke_admin(db, &id, &home)?;\n                Ok(Some(RoleChange::Revoked))\n            }\n            (false, false) => Ok(None),\n        }",
+    "conditions": 0,
+    "vectors_required": 0,
+    "compiler_void": true,
+    "wildcard_risk": false
+  },
+  {
+    "id": "store_participants_sync_admin_group_7599195e",
+    "file": "crates/frank/src/store/participants.rs",
+    "line": 995,
+    "decision": "org == admin_org",
+    "conditions": 1,
+    "vectors_required": 2,
+    "compiler_void": false,
+    "wildcard_risk": false
+  },
+  {
+    "id": "store_participants_group_may_change_0244f806",
+    "file": "crates/frank/src/store/participants.rs",
+    "line": 1014,
+    "decision": "kind != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
     "compiler_void": false,
@@ -4872,7 +4972,7 @@
   {
     "id": "store_participants_add_session_0244f806",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 933,
+    "line": 1068,
     "decision": "kind != \"human\"",
     "conditions": 1,
     "vectors_required": 2,
@@ -4882,7 +4982,7 @@
   {
     "id": "store_participants_add_session_b829447e",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 936,
+    "line": 1071,
     "decision": "disabled(db)?.contains(&user_id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4892,7 +4992,7 @@
   {
     "id": "store_participants_end_session_f55fc650",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 963,
+    "line": 1098,
     "decision": "found",
     "conditions": 1,
     "vectors_required": 2,
@@ -4902,7 +5002,7 @@
   {
     "id": "store_participants_add_token_hash_71dd7312",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 980,
+    "line": 1115,
     "decision": "token_hash.len() != 64 || !token_hash.bytes().all(|b| b.is_ascii_hexdigit())",
     "conditions": 2,
     "vectors_required": 3,
@@ -4912,7 +5012,7 @@
   {
     "id": "store_participants_add_token_hash_55fcb79b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 986,
+    "line": 1121,
     "decision": "disabled(db)?.contains(&user)",
     "conditions": 1,
     "vectors_required": 2,
@@ -4922,7 +5022,7 @@
   {
     "id": "store_participants_revoke_a7b4364b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1038,
+    "line": 1173,
     "decision": "prefix.len() < 8 || !prefix.bytes().all(|b| b.is_ascii_hexdigit())",
     "conditions": 2,
     "vectors_required": 3,
@@ -4932,7 +5032,7 @@
   {
     "id": "store_participants_revoke_8f2e8d89",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1049,
+    "line": 1184,
     "decision": "match matches.as_slice() {\n            [one] => exec(\n                db,\n                &format!(\n                    \"UPDATE tokens SET revoked = {} WHERE hash = {}\",\n                    now_s(),\n                    sql_quote(one)\n                ),\n            ),\n            [] => Err(format!(\"no active token {prefix}…\")),\n            _ => Err(format!(\n                \"{prefix}… matches several tokens: give more digits\"\n            )),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4942,7 +5042,7 @@
   {
     "id": "store_participants_import_tokens_file_e06a2edc",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1075,
+    "line": 1210,
     "decision": "line.is_empty() || line.starts_with('#')",
     "conditions": 2,
     "vectors_required": 3,
@@ -4952,7 +5052,7 @@
   {
     "id": "store_participants_import_tokens_file_c08636ae",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1094,
+    "line": 1229,
     "decision": "c.is_ascii_alphanumeric() || \"._@-\".contains(c)",
     "conditions": 2,
     "vectors_required": 3,
@@ -4962,7 +5062,7 @@
   {
     "id": "store_participants_import_tokens_file_6a4cfd7b",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1102,
+    "line": 1237,
     "decision": "label.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -4972,7 +5072,7 @@
   {
     "id": "store_participants_import_tokens_file_b2f27bf2",
     "file": "crates/frank/src/store/participants.rs",
-    "line": 1110,
+    "line": 1245,
     "decision": "existing.contains(&name)",
     "conditions": 1,
     "vectors_required": 2,

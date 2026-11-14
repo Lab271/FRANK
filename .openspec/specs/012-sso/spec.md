@@ -1,13 +1,13 @@
 # Sign in with SSO Specification
 
 **Domain:** API Security / Authentication
-**Version:** 1.0.0
+**Version:** 1.1.0
 **Status:** Implemented
 **Date:** 2026-11-10
 
 **Owner:** Platform Team
-- **Related ADR:** [ADR-020](../../architecture/decisions/020-sso-with-openid-connect.md), [ADR-017](../../architecture/decisions/017-user-roles-for-identity-administration.md), [ADR-002](../../architecture/decisions/002-tiered-access-control.md)
-- **Issues:** #241 (epic), #234, #235, #236, #237, #238, #239, #240
+- **Related ADR:** [ADR-020](../../architecture/decisions/020-sso-with-openid-connect.md), [ADR-026](../../architecture/decisions/026-sso-admin-group.md), [ADR-017](../../architecture/decisions/017-user-roles-for-identity-administration.md), [ADR-002](../../architecture/decisions/002-tiered-access-control.md)
+- **Issues:** #241 (epic), #234, #235, #236, #237, #238, #239, #240, #321
 **Implementation:** `crates/frank/src/sso.rs`, `crates/frank/src/store/participants.rs::sign_in`
 **Tests:** `crates/frank/tests/sso.rs`, `crates/frank/src/sso.rs`, `crates/frank/src/store/participants.rs`, `scripts/sso_check.py`
 
@@ -185,10 +185,36 @@ Development SHOULD use a stub of the provider's OIDC endpoints that runs only th
 
 **Tests:** `scripts/sso_check.py`, `deploy/podman/sso-stub/test_stub.py::test_the_id_token_verifies_against_the_jwks`
 
+### Requirement 9: The admin group [MUST]
+
+With `FRANK_SSO_ADMIN_GROUP` and `FRANK_SSO_ADMIN_ORGANISATION` set (both or neither), every sign-in MUST make a member of the group, named in the ID token's `groups` claim, an admin in the admin organisation, moving it there, unless it holds a role set by hand; and MUST take back the role the group gave from a user who is no longer a member, moving it to `FRANK_SSO_ORGANISATION`. A role set with the command line MUST NOT change (ADR-026).
+
+**Implementation:** `crates/frank/src/store/participants.rs::sync_admin_group`, `crates/frank/src/sso.rs::admin_group`
+
+#### Scenario: A member signs in
+
+- GIVEN the admin group `frank-admins` in the core organisation `sbp`
+- WHEN a person whose ID token lists `frank-admins` signs in for the first time
+- THEN the person is a human user in `sbp` with role admin, and `role_granted` is audited
+
+#### Scenario: A member leaves the group
+
+- GIVEN a user made admin by the group
+- WHEN its next ID token does not list the group
+- THEN the role is gone, the user is back in `FRANK_SSO_ORGANISATION`, and `role_revoked` is audited
+
+#### Scenario: A role set by hand
+
+- GIVEN a superadmin, or an admin made with `frank user set-role`
+- WHEN it signs in, in the group or not
+- THEN its role and organisation do not change
+
+**Tests:** `crates/frank/tests/sso.rs::the_admin_group_in_the_id_token_makes_its_members_admins`, `crates/frank/src/store/participants.rs::the_admin_group_makes_a_new_member_admin_in_its_organisation`, `crates/frank/src/store/participants.rs::leaving_the_admin_group_takes_back_only_the_role_it_gave`, `crates/frank/src/store/participants.rs::the_admin_group_leaves_command_line_roles_and_machines_alone`, `crates/frank/src/store/participants.rs::removing_a_user_forgets_the_role_the_group_gave`, `crates/frank/src/sso.rs::the_admin_group_needs_both_settings_and_sso`
+
 ---
 
 ## Out of scope
 
 - **SCIM** (provisioning and deprovisioning pushed by the provider): a separate story. Until then a person removed in the provider keeps their FRANK user until an admin disables it.
 - **Provider logout**: signing out of FRANK leaves the provider's session.
-- **Group mapping**: every new user lands in one organisation; mapping provider groups to organisations or roles is a later story.
+- **Group mapping** beyond the one admin group (requirement 9): other provider groups are not mapped to organisations or roles.

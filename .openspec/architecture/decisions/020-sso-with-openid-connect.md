@@ -1,6 +1,6 @@
 # ADR-020: Sign in with OpenID Connect, users provisioned on first login, bearer tokens unchanged
 
-- **Status:** Accepted
+- **Status:** Accepted; decision 5's "SSO never grants a role" is superseded for the admin group by [ADR-026](026-sso-admin-group.md)
 - **Date:** 2026-11-10
 - **Decision Makers:** Ilja Heitlager
 - **Related:** [ADR-002](002-tiered-access-control.md) (statuses), [ADR-016](016-phase3-rust-on-db-core.md) (participants), [ADR-017](017-user-roles-for-identity-administration.md) (roles), #241, #234; replaces the Cognito direction of [ADR-006](006-cognito-authentication.md) and the Phase 2 spec 012 (removed in #248)

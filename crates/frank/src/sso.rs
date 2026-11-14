@@ -36,7 +36,7 @@ use sha2::{Digest, Sha256};
 
 use crate::api::Shared;
 use crate::auth::{hex, random};
-use crate::store::participants::{self as parts, Identity, SignedIn};
+use crate::store::participants::{self as parts, AdminGroup, Identity, RoleChange, SignedIn};
 
 /// The session cookie (ADR-020, decision 6).
 pub const SESSION_COOKIE: &str = "frank_session";
@@ -57,6 +57,9 @@ pub struct Settings {
     pub client_secret_file: Option<PathBuf>,
     pub redirect_url: Option<String>,
     pub organisation: Option<String>,
+    /// The admin group and its organisation (#321): both or neither.
+    pub admin_group: Option<String>,
+    pub admin_organisation: Option<String>,
 }
 
 /// A value that is never printed.
@@ -99,6 +102,9 @@ pub struct Config {
     pub redirect_url: String,
     /// The organisation (name or id) new users are created in.
     pub organisation: String,
+    /// Members of this group are admins in its organisation (#321,
+    /// ADR-026).
+    pub admin: Option<AdminGroup>,
     /// `scheme://host[:port]` of the redirect URL: the origin a
     /// cookie-authenticated write must come from.
     pub origin: String,
@@ -119,8 +125,12 @@ impl Config {
             ("FRANK_SSO_REDIRECT_URL", s.redirect_url.is_some()),
             ("FRANK_SSO_ORGANISATION", s.organisation.is_some()),
         ];
+        let admin = admin_group(s.admin_group, s.admin_organisation)?;
         if given.iter().all(|(_, g)| !g) {
-            return Ok(None);
+            return match admin {
+                Some(_) => Err("FRANK_SSO_ADMIN_GROUP needs the other FRANK_SSO_ settings".into()),
+                None => Ok(None),
+            };
         }
         let missing: Vec<&str> = given.iter().filter(|(_, g)| !g).map(|(n, _)| *n).collect();
         if !missing.is_empty() {
@@ -181,7 +191,30 @@ impl Config {
             origin: redirect.origin(),
             redirect_url: redirect_url.trim().to_string(),
             organisation,
+            admin,
         }))
+    }
+}
+
+/// `FRANK_SSO_ADMIN_GROUP` and `FRANK_SSO_ADMIN_ORGANISATION`: both or
+/// neither, neither empty.
+fn admin_group(
+    group: Option<String>,
+    organisation: Option<String>,
+) -> Result<Option<AdminGroup>, String> {
+    let trimmed = |v: Option<String>| v.map(|v| v.trim().to_string()).filter(|v| !v.is_empty());
+    match (trimmed(group), trimmed(organisation)) {
+        (None, None) => Ok(None),
+        (Some(group), Some(organisation)) => Ok(Some(AdminGroup {
+            group,
+            organisation,
+        })),
+        (Some(_), None) => {
+            Err("FRANK_SSO_ADMIN_GROUP is set: set FRANK_SSO_ADMIN_ORGANISATION too".into())
+        }
+        (None, Some(_)) => {
+            Err("FRANK_SSO_ADMIN_ORGANISATION is set: set FRANK_SSO_ADMIN_GROUP too".into())
+        }
     }
 }
 
@@ -549,6 +582,14 @@ impl Sso {
             subject,
             email: claims["email"].as_str().map(str::to_string),
             email_verified: claims["email_verified"].as_bool().unwrap_or(false),
+            groups: claims["groups"]
+                .as_array()
+                .map(|g| {
+                    g.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default(),
         })
     }
 
@@ -794,6 +835,8 @@ enum Outcome {
         label: String,
         user: String,
         how: SignedIn,
+        /// What the admin group changed (#321).
+        role: Option<RoleChange>,
     },
     Refused(String),
 }
@@ -846,6 +889,7 @@ async fn callback(
             label,
             user,
             how,
+            role,
         } => {
             if how == SignedIn::Provisioned {
                 audit(
@@ -853,6 +897,14 @@ async fn callback(
                     &label,
                     "user_provisioned",
                     json!({ "user": user, "via": "sso" }),
+                );
+            }
+            if let (Some(change), Some(admin)) = (role, &sso.config.admin) {
+                audit(
+                    &app,
+                    "sso",
+                    change.as_str(),
+                    json!({ "user": user, "role": "admin", "organisation": admin.organisation, "group": admin.group }),
                 );
             }
             audit(
@@ -912,6 +964,18 @@ fn sign_in(app: &crate::api::App, state: &str, code: &str) -> Outcome {
         Ok(Err(reason)) => return Outcome::Refused(reason),
         Err(e) => return Outcome::Refused(format!("store: {e}")),
     };
+    // The admin group before the session, so its label names the
+    // organisation the user is in now.
+    let role = match &sso.config.admin {
+        Some(admin) => {
+            let member = id.groups.iter().any(|g| g == &admin.group);
+            match parts::sync_admin_group(path, &user, member, admin, &sso.config.organisation) {
+                Ok(change) => change,
+                Err(e) => return Outcome::Refused(format!("admin group: {e}")),
+            }
+        }
+        None => None,
+    };
     let session = match parts::add_session(path, &user) {
         Ok(v) => v,
         Err(e) => return Outcome::Refused(e),
@@ -927,6 +991,7 @@ fn sign_in(app: &crate::api::App, state: &str, code: &str) -> Outcome {
         label,
         user,
         how,
+        role,
     }
 }
 
@@ -1013,7 +1078,36 @@ mod tests {
             client_secret_file: Some(file.0.clone()),
             redirect_url: Some("https://frank.lab271.dev/v1/sso/callback".into()),
             organisation: Some("lab271".into()),
+            admin_group: None,
+            admin_organisation: None,
         }
+    }
+
+    #[test]
+    fn the_admin_group_needs_both_settings_and_sso() {
+        let file = secret_file("admin", "s");
+        let mut s = full(&file);
+        s.admin_group = Some("frank-admins".into());
+        let e = Config::from_settings(s.clone()).unwrap_err();
+        assert!(e.contains("FRANK_SSO_ADMIN_ORGANISATION"), "{e}");
+        s.admin_organisation = Some(" sbp ".into());
+        let admin = Config::from_settings(s).unwrap().unwrap().admin.unwrap();
+        assert_eq!(
+            (admin.group.as_str(), admin.organisation.as_str()),
+            ("frank-admins", "sbp")
+        );
+        let alone = Settings {
+            admin_group: Some("frank-admins".into()),
+            admin_organisation: Some("sbp".into()),
+            ..Settings::default()
+        };
+        let e = Config::from_settings(alone).unwrap_err();
+        assert!(e.contains("needs the other"), "{e}");
+        assert!(Config::from_settings(full(&file))
+            .unwrap()
+            .unwrap()
+            .admin
+            .is_none());
     }
 
     #[test]
@@ -1231,6 +1325,7 @@ mod tests {
             client_secret: Secret::new("s"),
             redirect_url: "https://frank.example/v1/sso/callback".into(),
             organisation: "lab".into(),
+            admin: None,
             origin: "https://frank.example".into(),
         };
         (Sso::new(config, stub.clone()), stub)
@@ -1529,6 +1624,7 @@ mod tests {
                 subject: "u1".into(),
                 email: Some("a@b.c".into()),
                 email_verified: false,
+                groups: Vec::new(),
             }
         );
     }

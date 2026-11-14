@@ -74,12 +74,20 @@ const SESSIONS: [&str; 2] = [
     "CREATE UNIQUE INDEX sessions_hash ON sessions (hash)",
 ];
 
+/// Roles granted by the SSO admin group (#321, ADR-026): one row per user
+/// whose role the group gave, so leaving the group takes back only that.
+const SSO_ROLES: [&str; 2] = [
+    "CREATE TABLE sso_roles (user TEXT NOT NULL, at INTEGER NOT NULL)",
+    "CREATE UNIQUE INDEX sso_roles_user ON sso_roles (user)",
+];
+
 /// The tables added after 0.16, each with the table to probe for.
-const ADDED: [(&str, &[&str]); 4] = [
+const ADDED: [(&str, &[&str]); 5] = [
     ("roles", &ROLES),
     ("disabled", &DISABLED),
     ("sso_subjects", &SSO_SUBJECTS),
     ("sessions", &SESSIONS),
+    ("sso_roles", &SSO_ROLES),
 ];
 
 /// How long an SSO session lasts (ADR-020).
@@ -667,10 +675,14 @@ pub fn set_role(path: &Path, user: &str, role: Option<Role>) -> Result<(), Strin
             check_role(user, &kind, org_status(db, &org)?, role)?;
         }
         transaction(db, |db| {
-            exec(
-                db,
-                &format!("DELETE FROM roles WHERE user = {}", sql_quote(&id)),
-            )?;
+            // A role set by hand is the command line's from now on: the
+            // SSO admin group no longer takes it back (#321).
+            for table in ["roles", "sso_roles"] {
+                exec(
+                    db,
+                    &format!("DELETE FROM {table} WHERE user = {}", sql_quote(&id)),
+                )?;
+            }
             match role {
                 Some(role) => insert_role(db, &id, role),
                 None => Ok(()),
@@ -745,7 +757,14 @@ pub fn remove_user(path: &Path, user: &str) -> Result<Vec<String>, String> {
             .map(|r| text(&r[0])[..12].to_string())
             .collect();
         transaction(db, |db| {
-            for table in ["tokens", "roles", "disabled", "sso_subjects", "sessions"] {
+            for table in [
+                "tokens",
+                "roles",
+                "disabled",
+                "sso_subjects",
+                "sessions",
+                "sso_roles",
+            ] {
                 exec(db, &format!("DELETE FROM {table} WHERE user = {q}"))?;
             }
             exec(db, &format!("DELETE FROM users WHERE id = {q}"))
@@ -765,6 +784,8 @@ pub struct Identity {
     pub subject: String,
     pub email: Option<String>,
     pub email_verified: bool,
+    /// The ID token's `groups` claim; empty without one (#321).
+    pub groups: Vec<String>,
 }
 
 /// How a sign-in found its user.
@@ -919,6 +940,120 @@ fn link_subject(db: &mut RowEngine, key: &str, user_id: &str) -> Result<(), Stri
             sql_quote(key),
             sql_quote(user_id),
             now_s()
+        ),
+    )
+}
+
+/// The SSO admin group (#321, ADR-026): its members are admins in
+/// `organisation`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct AdminGroup {
+    pub group: String,
+    /// Name or id of the organisation the group's members are admins in.
+    pub organisation: String,
+}
+
+/// What the admin group changed at a sign-in.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum RoleChange {
+    /// Moved to the admin organisation and made admin.
+    Granted,
+    /// The group's admin role taken back, and moved to the default
+    /// organisation.
+    Revoked,
+}
+
+impl RoleChange {
+    #[must_use]
+    pub fn as_str(self) -> &'static str {
+        match self {
+            RoleChange::Granted => "role_granted",
+            RoleChange::Revoked => "role_revoked",
+        }
+    }
+}
+
+/// Applies the admin group to the human `user` after a sign-in (ADR-026):
+/// a `member` without a role, or with the one the group gave, becomes
+/// admin in the group's organisation; a user who is no longer a member
+/// loses the role the group gave and goes back to `default_organisation`.
+/// A role set with the command line is never touched.
+pub fn sync_admin_group(
+    path: &Path,
+    user: &str,
+    member: bool,
+    admin: &AdminGroup,
+    default_organisation: &str,
+) -> Result<Option<RoleChange>, String> {
+    with_db(path, |db| {
+        let (id, org, kind) = find_user_row(db, user)?;
+        let Some(granted) = group_may_change(db, &id, &kind)? else {
+            return Ok(None);
+        };
+        let (admin_org, _) = find_org(db, &admin.organisation)?;
+        match (member, granted) {
+            (true, true) if org == admin_org => Ok(None),
+            (true, _) => {
+                check_role(user, &kind, org_status(db, &admin_org)?, Role::Admin)?;
+                grant_admin(db, &id, &admin_org)?;
+                Ok(Some(RoleChange::Granted))
+            }
+            (false, true) => {
+                let (home, _) = find_org(db, default_organisation)?;
+                revoke_admin(db, &id, &home)?;
+                Ok(Some(RoleChange::Revoked))
+            }
+            (false, false) => Ok(None),
+        }
+    })
+}
+
+/// Whether the admin group may change the user `id`: `None` for a machine
+/// or a role set by hand, else whether the group gave its current role.
+fn group_may_change(db: &mut RowEngine, id: &str, kind: &str) -> Result<Option<bool>, String> {
+    if kind != "human" {
+        return Ok(None);
+    }
+    let q = sql_quote(id);
+    let granted = !query(db, &format!("SELECT user FROM sso_roles WHERE user = {q}"))?
+        .rows
+        .is_empty();
+    let has_role = roles(db)?.contains_key(id);
+    Ok((granted || !has_role).then_some(granted))
+}
+
+/// Moves the user `id` to `org` as an admin the group gave.
+fn grant_admin(db: &mut RowEngine, id: &str, org: &str) -> Result<(), String> {
+    let q = sql_quote(id);
+    transaction(db, |db| {
+        move_user(db, id, org)?;
+        exec(db, &format!("DELETE FROM roles WHERE user = {q}"))?;
+        insert_role(db, id, Role::Admin)?;
+        exec(db, &format!("DELETE FROM sso_roles WHERE user = {q}"))?;
+        exec(
+            db,
+            &format!("INSERT INTO sso_roles (user, at) VALUES ({q}, {})", now_s()),
+        )
+    })
+}
+
+/// Takes back the role the group gave the user `id`, moving it to `home`.
+fn revoke_admin(db: &mut RowEngine, id: &str, home: &str) -> Result<(), String> {
+    let q = sql_quote(id);
+    transaction(db, |db| {
+        exec(db, &format!("DELETE FROM roles WHERE user = {q}"))?;
+        exec(db, &format!("DELETE FROM sso_roles WHERE user = {q}"))?;
+        move_user(db, id, home)
+    })
+}
+
+fn move_user(db: &mut RowEngine, user_id: &str, org_id: &str) -> Result<(), String> {
+    exec(
+        db,
+        &format!(
+            "UPDATE users SET organisation = {} WHERE id = {}",
+            sql_quote(org_id),
+            sql_quote(user_id)
         ),
     )
 }
@@ -1168,6 +1303,7 @@ mod tests {
             subject: "sub-1".into(),
             email: Some("alice@example.org".into()),
             email_verified: true,
+            groups: Vec::new(),
         };
         let e = sign_in(&path, &id, "nowhere").unwrap_err();
         assert!(e.contains("no such table: users"), "{e}");
@@ -1442,6 +1578,7 @@ mod tests {
             subject: sub.into(),
             email: Some(email.into()),
             email_verified: verified,
+            groups: Vec::new(),
         }
     }
 
@@ -1532,6 +1669,129 @@ mod tests {
         no_email.email = None;
         let e = sign_in(&path, &no_email, "lab").unwrap().unwrap_err();
         assert!(e.contains("no email"), "{e}");
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    fn admins() -> AdminGroup {
+        AdminGroup {
+            group: "frank-admins".into(),
+            organisation: "core".into(),
+        }
+    }
+
+    fn user_of(path: &Path, name: &str) -> (Option<Role>, String) {
+        let u = users(path).unwrap();
+        let u = u.iter().find(|u| u.name == name).unwrap();
+        (u.role, u.organisation.clone())
+    }
+
+    #[test]
+    fn the_admin_group_makes_a_new_member_admin_in_its_organisation() {
+        let (dir, path) = sso_setup("sso-group-new");
+        let (name, how) = sign_in(&path, &identity("g1", "ada@lab271.dev", false), "lab")
+            .unwrap()
+            .unwrap();
+        assert_eq!(how, SignedIn::Provisioned);
+        let change = sync_admin_group(&path, &name, true, &admins(), "lab").unwrap();
+        assert_eq!(change, Some(RoleChange::Granted));
+        assert_eq!(user_of(&path, &name), (Some(Role::Admin), "core".into()));
+        // Signing in again as a member changes nothing.
+        assert_eq!(
+            sync_admin_group(&path, &name, true, &admins(), "lab").unwrap(),
+            None
+        );
+        // A non-member stays where provisioning put it, without a role.
+        let (bob, _) = sign_in(&path, &identity("g2", "bob@lab271.dev", false), "lab")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            sync_admin_group(&path, &bob, false, &admins(), "lab").unwrap(),
+            None
+        );
+        assert_eq!(user_of(&path, &bob), (None, "lab".into()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn leaving_the_admin_group_takes_back_only_the_role_it_gave() {
+        let (dir, path) = sso_setup("sso-group-leave");
+        let (name, _) = sign_in(&path, &identity("g1", "ada@lab271.dev", false), "lab")
+            .unwrap()
+            .unwrap();
+        sync_admin_group(&path, &name, true, &admins(), "lab").unwrap();
+        let change = sync_admin_group(&path, &name, false, &admins(), "lab").unwrap();
+        assert_eq!(change, Some(RoleChange::Revoked));
+        assert_eq!(user_of(&path, &name), (None, "lab".into()));
+        // Joining again grants it again.
+        let change = sync_admin_group(&path, &name, true, &admins(), "lab").unwrap();
+        assert_eq!(change, Some(RoleChange::Granted));
+        // A role set by hand is the command line's: leaving keeps it.
+        set_role(&path, &name, Some(Role::Superadmin)).unwrap();
+        assert_eq!(
+            sync_admin_group(&path, &name, false, &admins(), "lab").unwrap(),
+            None
+        );
+        assert_eq!(
+            user_of(&path, &name),
+            (Some(Role::Superadmin), "core".into())
+        );
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn the_admin_group_leaves_command_line_roles_and_machines_alone() {
+        let (dir, path) = sso_setup("sso-group-cli");
+        add_user(
+            &path,
+            "core",
+            "root@lab271.dev",
+            "human",
+            Some(Role::Superadmin),
+        )
+        .unwrap();
+        add_user(&path, "lab", "lead@lab271.dev", "human", Some(Role::Admin)).unwrap();
+        add_user(&path, "lab", "feed", "machine", None).unwrap();
+        for member in [true, false] {
+            for user in ["root@lab271.dev", "lead@lab271.dev", "feed"] {
+                assert_eq!(
+                    sync_admin_group(&path, user, member, &admins(), "lab").unwrap(),
+                    None,
+                    "{user} member={member}"
+                );
+            }
+        }
+        assert_eq!(
+            user_of(&path, "root@lab271.dev"),
+            (Some(Role::Superadmin), "core".into())
+        );
+        assert_eq!(
+            user_of(&path, "lead@lab271.dev"),
+            (Some(Role::Admin), "lab".into())
+        );
+        assert_eq!(user_of(&path, "feed"), (None, "lab".into()));
+        let _ = std::fs::remove_dir_all(dir);
+    }
+
+    #[test]
+    fn removing_a_user_forgets_the_role_the_group_gave() {
+        let (dir, path) = sso_setup("sso-group-remove");
+        let (name, _) = sign_in(&path, &identity("g1", "ada@lab271.dev", false), "lab")
+            .unwrap()
+            .unwrap();
+        sync_admin_group(&path, &name, true, &admins(), "lab").unwrap();
+        set_disabled(&path, &name, true).unwrap();
+        remove_user(&path, &name).unwrap();
+        let left = with_db(&path, |db| query(db, "SELECT user FROM sso_roles")).unwrap();
+        assert!(left.rows.is_empty());
+        // The same person again: a new user, made admin again by the group.
+        let (name, how) = sign_in(&path, &identity("g1", "ada@lab271.dev", false), "lab")
+            .unwrap()
+            .unwrap();
+        assert_eq!(how, SignedIn::Provisioned);
+        assert_eq!(
+            sync_admin_group(&path, &name, true, &admins(), "lab").unwrap(),
+            Some(RoleChange::Granted)
+        );
         let _ = std::fs::remove_dir_all(dir);
     }
 

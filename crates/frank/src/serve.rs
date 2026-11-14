@@ -84,10 +84,21 @@ fn sso_config(ctx: &Ctx, args: &ServeArgs) -> Result<Option<crate::sso::Config>,
         client_secret_file: args.sso_client_secret_file.clone(),
         redirect_url: args.sso_redirect_url.clone(),
         organisation: args.sso_organisation.clone(),
+        admin_group: args.sso_admin_group.clone(),
+        admin_organisation: args.sso_admin_organisation.clone(),
     })?;
     if let Some(sso) = &sso {
         parts::organisation_id(&ctx.db, &sso.organisation)
             .map_err(|e| format!("FRANK_SSO_ORGANISATION: {e}"))?;
+        if let Some(admin) = &sso.admin {
+            parts::organisation_id(&ctx.db, &admin.organisation)
+                .map_err(|e| format!("FRANK_SSO_ADMIN_ORGANISATION: {e}"))?;
+            tracing::info!(
+                group = %admin.group,
+                organisation = %admin.organisation,
+                "the SSO admin group's members are admins"
+            );
+        }
         tracing::info!(
             issuer = %sso.issuer,
             client_id = %sso.client_id,

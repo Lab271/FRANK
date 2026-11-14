@@ -13,7 +13,7 @@ use frank::api::{router, App};
 use frank::audit::Audit;
 use frank::auth::hash;
 use frank::sso::{Config, Http, Secret, Sso};
-use frank::store::participants::{self as parts, FILE};
+use frank::store::participants::{self as parts, AdminGroup, FILE};
 use frank::store::{Iocs, Participants, Registry, Sightings};
 use frank_core::Tier;
 use http_body_util::BodyExt;
@@ -181,6 +181,11 @@ fn harness(name: &str, off: bool) -> Harness {
 
 /// As [`harness`], with new users created in `organisation`.
 fn harness_in(name: &str, off: bool, organisation: &str) -> Harness {
+    harness_with(name, off, organisation, None)
+}
+
+/// As [`harness_in`], with the SSO admin group `admin` (#321).
+fn harness_with(name: &str, off: bool, organisation: &str, admin: Option<AdminGroup>) -> Harness {
     let dir = std::env::temp_dir().join(format!("frank-sso-{name}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).unwrap();
@@ -197,6 +202,7 @@ fn harness_in(name: &str, off: bool, organisation: &str) -> Harness {
                 client_secret: Secret::new(SECRET),
                 redirect_url: format!("{ORIGIN}/v1/sso/callback"),
                 organisation: organisation.into(),
+                admin: admin.clone(),
                 origin: ORIGIN.into(),
             },
             idp.clone(),
@@ -423,6 +429,45 @@ async fn a_first_sign_in_provisions_the_user_and_starts_a_session() {
         actions.iter().filter(|a| *a == "user_provisioned").count(),
         1
     );
+}
+
+#[tokio::test]
+async fn the_admin_group_in_the_id_token_makes_its_members_admins() {
+    let admin = AdminGroup {
+        group: "frank-admins".into(),
+        organisation: "sbp".into(),
+    };
+    let h = harness_with("admin-group", false, "lab", Some(admin));
+    parts::add_organisation(&h.db, "sbp", Tier::Core, "cyber_partner", None, None).unwrap();
+    // A member: created, moved to sbp and made admin at the first sign-in.
+    *h.idp.claims.lock().unwrap() = json!({ "groups": ["Everyone", "frank-admins"] });
+    let session = sign_in(&h).await;
+    let me = whoami(&h, Some(&session), None).await.body;
+    assert_eq!(
+        (
+            me["user"].as_str(),
+            me["tier"].as_str(),
+            me["role"].as_str()
+        ),
+        (Some("alice@lab271.dev"), Some("core"), Some("admin"))
+    );
+    // Out of the group: the role goes, back to the default organisation.
+    *h.idp.claims.lock().unwrap() = json!({ "groups": ["Everyone"] });
+    let session = sign_in(&h).await;
+    let me = whoami(&h, Some(&session), None).await.body;
+    assert_eq!(
+        (me["tier"].as_str(), me["role"].is_null()),
+        (Some("partner"), true)
+    );
+    let actions = audit_actions(&h);
+    for a in [
+        "user_provisioned",
+        "role_granted",
+        "role_revoked",
+        "sso_login",
+    ] {
+        assert!(actions.iter().any(|x| x == a), "{a} in {actions:?}");
+    }
 }
 
 #[tokio::test]
