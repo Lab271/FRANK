@@ -34,7 +34,7 @@ services:
       - ../../tokens:/etc/frank/tokens:ro,Z
     environment:
       FRANK_RETENTION_DAYS: "400"
-      RUST_LOG: "frank=info"
+      RUST_LOG: "frank=info,mvl_manifest=info"
     restart: unless-stopped
     stop_signal: SIGTERM
     stop_grace_period: 30s

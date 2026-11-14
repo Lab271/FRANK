@@ -40,7 +40,17 @@ write_files:
       EnvironmentFile=/etc/frank/frank.env
       ExecStartPre=-/usr/bin/podman rm -f frank
       ExecStartPre=/usr/bin/podman pull --authfile /etc/frank/auth.json $${FRANK_IMAGE}
+      # Logs (ADR-024, #308): JSON lines with `target`, so `frank`,
+      # `frank::access` and `mvl_manifest` can be shipped as separate
+      # streams. passthrough: the container's stdout is this unit's, so
+      # journald stores each line whole (up to LineMax, journald.conf.d)
+      # and once. The journald driver cuts lines into 8 KiB partial
+      # entries, which breaks the manifest's packages line (tens of KiB),
+      # and an attached `podman run` would log every line a second time.
       ExecStart=/usr/bin/podman run --name frank --rm \
+        --log-driver passthrough \
+        -e RUST_LOG=frank=info,mvl_manifest=info \
+        -e FRANK_LOG_FORMAT=json \
         -p 127.0.0.1:8080:8080 \
         -v /srv/frank/data:/data:Z \
         -v /srv/frank/participants:/participants:Z \
@@ -51,6 +61,8 @@ write_files:
 %{ endif ~}
         $${FRANK_IMAGE}
       ExecStop=/usr/bin/podman stop -t 30 frank
+      # `journalctl -t frank`: without it the lines carry `podman`.
+      SyslogIdentifier=frank
       Restart=always
       RestartSec=5
 
@@ -145,11 +157,33 @@ write_files:
       [Install]
       WantedBy=timers.target
 %{ endfor ~}
+  - path: /etc/systemd/journald.conf.d/frank.conf
+    permissions: "0644"
+    content: |
+      # ADR-024, #308: FRANK's lines (frank, frank::access) and Caddy's
+      # access log name users and keep query strings (#287), so the
+      # journal keeps them 30 days, across reboots. This bounds every
+      # unit's journal on this VM, which holds nothing else that needs
+      # longer. A log store the lines are shipped to sets its own.
+      # LineMax: a longer line is cut in two; the runtime manifest's
+      # packages line is tens of KiB (#315).
+      [Journal]
+      Storage=persistent
+      MaxRetentionSec=30day
+      LineMax=1M
   - path: /etc/caddy/Caddyfile
     permissions: "0644"
     content: |
       ${domain} {
         encode zstd gzip
+        # The web stream (ADR-024, #307): JSON to stdout, so journald
+        # (kept 30 days, #308). FRANK's X-Request-Id is on each line;
+        # Authorization and cookies are redacted while log_credentials
+        # stays unset.
+        log {
+          output stdout
+          format json
+        }
         # HSTS (#244): a public certificate, so a year; FRANK sets the
         # other security headers itself.
         header Strict-Transport-Security "max-age=31536000"
@@ -176,6 +210,8 @@ runcmd:
       echo '{}' > /etc/frank/auth.json
     fi
   - systemctl daemon-reload
+  # The 30-day journal (journald.conf.d/frank.conf) before anything logs.
+  - systemctl restart systemd-journald
   - systemctl enable --now frank.service
   - systemctl enable --now frank-backup.timer
   - systemctl enable --now frank-geoip.timer frank-lists.timer

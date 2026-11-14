@@ -4034,3 +4034,46 @@ async fn json_format_is_one_object_per_line_with_target() {
     assert!(a["latency_ms"].is_u64());
     assert_eq!(a["request_id"].as_str().unwrap().len(), 26);
 }
+
+/// The runtime manifest (#315) in a subscriber like `main`'s, which also
+/// carries `log` records (mvl-manifest's) into `tracing`.
+fn manifest_lines(filter: &str) -> (bool, Captured) {
+    use tracing_subscriber::util::SubscriberInitExt;
+    let cap = Captured::default();
+    let filter = tracing_subscriber::EnvFilter::new(filter);
+    let _g = frank::access::subscriber(true, false, filter, cap.clone()).set_default();
+    (frank::serve::log_manifest(), cap)
+}
+
+#[test]
+fn the_manifest_is_json_lines_under_its_own_target() {
+    let (logged, cap) = manifest_lines("frank=info,mvl_manifest=info");
+    assert!(logged);
+    let lines: Vec<Value> = cap
+        .text()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    assert!(!lines.is_empty(), "nothing logged");
+    assert!(
+        lines.iter().all(|l| l["target"] == "mvl_manifest"),
+        "{lines:?}"
+    );
+    let first = lines[0]["message"].as_str().unwrap();
+    assert!(first.starts_with("MVL Runtime Manifest"), "{first}");
+    assert!(first.contains(env!("CARGO_PKG_VERSION")), "{first}");
+    let titles: Vec<&str> = lines.iter().filter_map(|l| l["message"].as_str()).collect();
+    for want in ["MVL Build Provenance", "MVL Runtime Packages"] {
+        assert!(
+            titles.iter().any(|t| t.starts_with(want)),
+            "{want}: {titles:?}"
+        );
+    }
+}
+
+#[test]
+fn mvl_manifest_off_logs_nothing() {
+    let (logged, cap) = manifest_lines("frank=info,mvl_manifest=off");
+    assert!(!logged);
+    assert_eq!(cap.text(), "");
+}

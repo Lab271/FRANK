@@ -1,7 +1,7 @@
 # Sightings API Specification
 
 **Domain:** API / Sightings
-**Version:** 3.1.0
+**Version:** 3.2.0
 **Status:** Implemented
 **Date:** 2026-11-10
 
@@ -477,6 +477,30 @@ FRANK MUST write one INFO line per request under the target `frank::access`, apa
 
 ---
 
+### Requirement 19: The runtime manifest at start [MUST]
+
+`frank serve` MUST log its runtime manifest (mvl-manifest, embedded by `build.rs`) once when it starts, before anything else, under the target `mvl_manifest`: app version, toolchain, build provenance (`source_digest`, `lockfile_digest`, VCS where the build had it), the runtime and build packages with their sources and checksums, the runtime environment, and one WARN per condition that weakens assurance. The records MUST go through FRANK's log format (`FRANK_LOG_FORMAT=json` included), never straight to stderr; with `mvl_manifest` filtered out, nothing is logged. The other commands MUST NOT log it (#315).
+
+**Implementation:** `crates/frank/src/serve.rs::log_manifest`
+
+#### Scenario: The manifest is JSON lines under its own target
+
+- GIVEN `FRANK_LOG_FORMAT=json` and `mvl_manifest=info`
+- WHEN the manifest is logged
+- THEN every line is a JSON object with `target` `mvl_manifest`, the first is the runtime manifest with this version, and the build provenance and runtime packages follow
+
+**Tests:** `crates/frank/tests/api.rs::the_manifest_is_json_lines_under_its_own_target`
+
+#### Scenario: Filtered out, nothing is logged
+
+- GIVEN `mvl_manifest=off`
+- WHEN the manifest would be logged
+- THEN nothing is written
+
+**Tests:** `crates/frank/tests/api.rs::mvl_manifest_off_logs_nothing`
+
+---
+
 ## Document History
 
 | Date | Version | Author | Notes |
@@ -484,3 +508,4 @@ FRANK MUST write one INFO line per request under the target `frank::access`, apa
 | 2026-02-06 | 1.0 | SDD Migration | Phase 2 sightings API (FastAPI, Cognito), removed in #248 |
 | 2026-11-10 | 3.0.0 | Platform Team | Rewritten for the Rust API (#250) |
 | 2026-11-14 | 3.1.0 | Platform Team | Requirement 18: the access log (#287) |
+| 2026-11-14 | 3.2.0 | Platform Team | Requirement 19: the runtime manifest at start (#315) |

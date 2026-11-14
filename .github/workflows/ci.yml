@@ -141,7 +141,8 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" = push ] && [ "$GITHUB_REF" = refs/heads/main ]; then
             cache+=(--cache-to "$CACHE")
           fi
-          podman build "${cache[@]}" -t "$IMAGE:${{ github.sha }}" -f Containerfile .
+          # The build date from the commit, for the runtime manifest (#315).
+          podman build "${cache[@]}" --build-arg SOURCE_DATE_EPOCH="$(git log -1 --format=%ct)" -t "$IMAGE:${{ github.sha }}" -f Containerfile .
       - name: Playwright for the browser checks (spec 030, ADR-022)
         run: python3 -m venv /tmp/pw && /tmp/pw/bin/pip install -q playwright==1.64.1
       - name: End-to-end on the built image (make e2e), with the web UI in Obscura, before it is pushed

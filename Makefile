@@ -56,7 +56,7 @@ E2E_TAG ?=
 # `make fuzz` (#245): seconds per run, on the nightly toolchain cargo-fuzz needs.
 FUZZ_TIME ?= 60
 
-.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality quality-baseline version smoke e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
+.PHONY: help check build server wasm test test-slow assurance check-assurance coverage quality quality-baseline version smoke log-check e2e fuzz audit lint fmt run participant participants user role token demo stream-setup stream geoip lists image up sso-env s3-env s3-ls s3-browse s3-read s3-column down trust untrust clean
 
 ##@ General
 
@@ -208,6 +208,9 @@ smoke: ## Read-only checks of a running FRANK: make smoke TOKEN=… [FRANK_URL=�
 	@TOKEN="$(TOKEN)" $(PYTHON) scripts/smoke.py --url $(if $(TLS),$(FRANK_URL_TLS),$(FRANK_URL)) \
 	  $(if $(TLS),--ca $(CA_CERT),$(if $(CA),--ca $(CA)))
 
+log-check: ## Against make up: one request through Caddy gives a Caddy line and a frank::access line with the same X-Request-Id, and no token or cookie in either (ADR-024)
+	@URL=https://localhost:$(lastword $(subst :, ,$(FRANK_TLS_ADDR))) COMPOSE="$(COMPOSE)" scripts/log_check.sh
+
 e2e: $(if $(E2E_TAG),,image) ## Throwaway container (no Caddy), generated data, every check: [E2E_TAG=…] [E2E_PORT=18080] [KEEP=1] [S3=1: sightings in a throwaway Garage] [SSO=1: sign in through the OIDC stub] [BROWSER=1: the web UI in Obscura]
 	IMAGE=$(IMAGE):$(or $(E2E_TAG),$(VERSION)) E2E_PORT=$(E2E_PORT) PYTHON="$(PYTHON)" KEEP=$(KEEP) S3=$(S3) SSO=$(SSO) BROWSER=$(BROWSER) scripts/e2e.sh
 
@@ -236,7 +239,7 @@ lists: ## Download the warning (MISP, CC0) and reference (abuse.ch, CC0; Auth-Ke
 ##@ Container (podman)
 
 image: ## Build the container image with podman
-	podman build -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
+	podman build --build-arg SOURCE_DATE_EPOCH=$$(git log -1 --format=%ct) -t $(IMAGE):$(VERSION) -t $(IMAGE):latest -f Containerfile .
 
 up: image s3-env $(if $(UP_SSO),sso-env) ## Run in podman: http://127.0.0.1:8080 and https://frank.local:8443, the sightings in a Garage (S3) bucket (files in ./s3; S3 API on 127.0.0.1:3900, admin :3903, https://frank.local:9443) and sign-in with SSO against a local OIDC stub at http://localhost:9400 (development only: it signs in anyone who picks a name). S3=0: the table on disk in ./data; SSO=0: tokens only
 	mkdir -p data participants && touch $(TOKENS)
