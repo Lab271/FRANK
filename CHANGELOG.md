@@ -15,6 +15,10 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 - SSO sign-in no longer provisions a new user when the store fails during the lookup of the e-mail's user; it refuses the sign-in with the store's error (#312).
 
+### Changed
+
+- `make check-assurance`: the spec box shows the version, and a version that disagrees between `Cargo.toml`, both `Cargo.lock`, the README and the CHANGELOG fails the gate; CI's separate `make version` step is gone.
+
 ## [0.51.2] - 2026-11-14
 
 ### Changed
