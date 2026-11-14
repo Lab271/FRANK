@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.51.0] - 2026-11-14
+
+### Added
+
+- Access log (#287): one INFO line per request under `frank::access` with request id, path and query, status, latency, caller and tier. `FRANK_LOG_FORMAT=json` writes one JSON object per line. Tokens, the `Authorization` header, the session cookie, bodies and the SSO callback's query are never logged.
+
 ## [0.50.0] - 2026-11-14
 
 ### Added
