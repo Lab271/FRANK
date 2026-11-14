@@ -117,6 +117,7 @@ pub(crate) fn require(app: &App, headers: &HeaderMap, tier: Tier) -> Result<Call
         _ => app.participants.caller(auth).map_err(internal)?,
     }
     .ok_or_else(|| ApiError(StatusCode::UNAUTHORIZED, "unknown token".into()))?;
+    crate::access::record(&caller);
     if caller.tier < tier {
         return Err(ApiError(
             StatusCode::FORBIDDEN,

@@ -3847,3 +3847,190 @@ async fn mcp_tool_calls_are_audited() {
     assert_eq!(calls[1]["ok"], false, "observer may not see a rule");
     assert!(!lines.contains("\"c\""), "no token in the audit");
 }
+
+/// The log lines written while a test runs (#287).
+#[derive(Clone, Default)]
+struct Captured(Arc<std::sync::Mutex<Vec<u8>>>);
+
+impl std::io::Write for Captured {
+    fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+        self.0.lock().unwrap().extend_from_slice(buf);
+        Ok(buf.len())
+    }
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+impl<'a> tracing_subscriber::fmt::MakeWriter<'a> for Captured {
+    type Writer = Captured;
+    fn make_writer(&'a self) -> Self::Writer {
+        self.clone()
+    }
+}
+
+impl Captured {
+    fn text(&self) -> String {
+        String::from_utf8(self.0.lock().unwrap().clone()).unwrap()
+    }
+    fn access(&self) -> Vec<String> {
+        self.text()
+            .lines()
+            .filter(|l| l.contains("frank::access"))
+            .map(str::to_string)
+            .collect()
+    }
+}
+
+/// The router with the access log, and the lines it writes; `json` as
+/// `FRANK_LOG_FORMAT=json`.
+fn logged(h: &Harness, json: bool) -> (axum::Router, Captured, tracing::subscriber::DefaultGuard) {
+    let cap = Captured::default();
+    let filter = tracing_subscriber::EnvFilter::new("frank=info");
+    let guard = tracing::subscriber::set_default(frank::access::subscriber(
+        json,
+        false,
+        filter,
+        cap.clone(),
+    ));
+    let app = h
+        .app
+        .clone()
+        .layer(axum::middleware::from_fn(frank::access::log));
+    (app, cap, guard)
+}
+
+async fn send(app: &axum::Router, req: Request<Body>) -> axum::response::Response {
+    app.clone().oneshot(req).await.unwrap()
+}
+
+#[tokio::test]
+async fn a_request_is_one_access_line_with_query_and_caller() {
+    let h = harness("access-line");
+    let (app, cap, _g) = logged(&h, false);
+    let res = send(
+        &app,
+        Request::get("/v1/iocs?value=evil.example&type=domain")
+            .header("authorization", "Bearer p")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(res.status(), StatusCode::OK);
+    let id = res.headers()["x-request-id"].to_str().unwrap().to_string();
+    assert_eq!(id.len(), 26);
+    let lines = cap.access();
+    assert_eq!(lines.len(), 1, "{lines:?}");
+    let l = &lines[0];
+    for want in [
+        format!("request_id={id}"),
+        "method=GET".into(),
+        "uri=/v1/iocs?value=evil.example&type=domain".into(),
+        "status=200".into(),
+        "latency_ms=".into(),
+        "caller=lab@lab".into(),
+        "tier=partner".into(),
+    ] {
+        assert!(l.contains(&want), "{want} not in {l}");
+    }
+}
+
+#[tokio::test]
+async fn refused_requests_are_logged_with_their_status() {
+    let h = harness("access-refused");
+    let (app, cap, _g) = logged(&h, false);
+    for (token, status) in [("nope", 401), ("o", 403)] {
+        let res = send(
+            &app,
+            Request::get("/v1/participants")
+                .header("authorization", format!("Bearer {token}"))
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await;
+        assert_eq!(res.status().as_u16(), status);
+    }
+    let lines = cap.access();
+    assert_eq!(lines.len(), 2, "{lines:?}");
+    assert!(lines[0].contains("status=401") && lines[0].contains("caller=unknown"));
+    assert!(lines[1].contains("status=403") && lines[1].contains("caller=obs@obs"));
+}
+
+#[tokio::test]
+async fn no_token_cookie_or_body_is_logged() {
+    let h = harness("access-secrets");
+    let (app, cap, _g) = logged(&h, false);
+    let token = "Secret-Token-287";
+    let body = json!({"marker": "Body-Marker-287"}).to_string();
+    send(
+        &app,
+        Request::post("/v1/sightings")
+            .header("authorization", format!("Bearer {token}"))
+            .header("cookie", "frank_session=Session-Cookie-287")
+            .header("content-type", "application/json")
+            .body(Body::from(body))
+            .unwrap(),
+    )
+    .await;
+    send(
+        &app,
+        Request::get("/v1/whoami")
+            .header("authorization", "Bearer p")
+            .header("cookie", "frank_session=Session-Cookie-287")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    send(
+        &app,
+        Request::get("/v1/sso/callback?code=Sso-Code-287&state=s")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    let text = cap.text();
+    assert_eq!(cap.access().len(), 3, "{text}");
+    for secret in [
+        token,
+        "Bearer",
+        "authorization",
+        "Session-Cookie-287",
+        "Body-Marker-287",
+        "Sso-Code-287",
+    ] {
+        assert!(!text.contains(secret), "{secret} logged: {text}");
+    }
+    assert!(text.contains("uri=/v1/sso/callback "), "{text}");
+}
+
+#[tokio::test]
+async fn json_format_is_one_object_per_line_with_target() {
+    let h = harness("access-json");
+    let (app, cap, _g) = logged(&h, true);
+    send(
+        &app,
+        Request::get("/v1/whoami?x=1")
+            .header("authorization", "Bearer c")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    let lines: Vec<Value> = cap
+        .text()
+        .lines()
+        .map(|l| serde_json::from_str(l).unwrap())
+        .collect();
+    let access: Vec<&Value> = lines
+        .iter()
+        .filter(|l| l["target"] == "frank::access")
+        .collect();
+    assert_eq!(access.len(), 1, "{lines:?}");
+    let a = access[0];
+    assert_eq!(a["level"], "INFO");
+    assert_eq!(a["uri"], "/v1/whoami?x=1");
+    assert_eq!(a["status"], 200);
+    assert_eq!(a["caller"], "mdr@mdr");
+    assert_eq!(a["tier"], "contributor");
+    assert!(a["latency_ms"].is_u64());
+    assert_eq!(a["request_id"].as_str().unwrap().len(), 26);
+}
