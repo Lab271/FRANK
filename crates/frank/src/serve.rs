@@ -114,16 +114,20 @@ pub fn limits(args: &ServeArgs) -> Result<api::Limits, String> {
 fn import_tokens(ctx: &Ctx, participants: &Participants, tokens: &Path) -> Result<(), String> {
     if participants.active_tokens()? == 0 && tokens.exists() {
         let created = parts::import_tokens_file(&ctx.db, tokens)?;
-        ctx.log(
-            "tokens_imported",
-            json!({ "file": tokens.display().to_string(), "organisations": created }),
-        )?;
-        tracing::warn!(
-            organisations = ?created,
-            "imported {} as one organisation per token; merge the ones that are one \
-             organisation, then delete the file",
-            tokens.display()
-        );
+        // An empty file (or comments only) imports nothing: no audit line
+        // and no warning on every start.
+        if !created.is_empty() {
+            ctx.log(
+                "tokens_imported",
+                json!({ "file": tokens.display().to_string(), "organisations": created }),
+            )?;
+            tracing::warn!(
+                organisations = ?created,
+                "imported {} as one organisation per token; merge the ones that are one \
+                 organisation, then delete the file",
+                tokens.display()
+            );
+        }
     }
     if participants.active_tokens()? == 0 {
         tracing::warn!(
