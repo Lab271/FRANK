@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.47.0
+## Version: 0.48.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -187,7 +187,12 @@ Each submission may carry `tlp_level` (default GREEN). Every query shows a tier 
 ```bash
 make test        # cargo test --workspace
 make lint        # fmt, clippy (native and wasm32)
+make check-assurance   # spec links and scores; the coverage and quality boxes; the checker's tests first
+make coverage    # test coverage (cargo llvm-cov) into target/assurance/, read by check-assurance
+make quality     # code quality (lizard: CCN, function and file length, approximate fan-in/out)
 ```
+
+`check-assurance` shows a coverage box and a code-quality box once `make coverage` and `make quality` have written their files, and says `not measured` until then. `COVERAGE_MIN=0.85` or `CCN_MAX=15` make them gates. See [spec 002](.openspec/specs/002-assurance/spec.md) and [ADR-023](.openspec/architecture/decisions/023-coverage-and-code-quality-next-to-spec-assurance.md).
 
 **Test tiers** ([ADR-018](.openspec/architecture/decisions/018-container-is-the-reference-and-test-tiers.md), #208). `make run` is for developing; the container image is what gets checked, because it is what gets deployed.
 
