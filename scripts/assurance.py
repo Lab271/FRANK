@@ -280,8 +280,8 @@ def report_quality(path, ccn_max=None):
     lines = [
         f"functions    {q['functions']} in {q['files']} files",
         f"CCN          avg {q['ccn_avg']:.1f}" + (f", max {top['ccn']} {short(top)}" if top else ""),
-        f"{f'over CCN {limit}':<13}{count(q['over_ccn'], 'functions')}",
-        f"{f'over {LENGTH_SHOWN} lines':<13}{count(q['over_length'], 'functions')}",
+        f"{f'CCN > {limit}':<13}{count(q['over_ccn'], 'functions')}",
+        f"{f'length > {LENGTH_SHOWN}':<13}{count(q['over_length'], 'functions')}",
     ]
     if q["longest_files"]:
         name, n = q["longest_files"][0]

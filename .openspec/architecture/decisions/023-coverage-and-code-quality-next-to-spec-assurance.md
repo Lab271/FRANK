@@ -3,7 +3,7 @@
 - **Status:** Accepted
 - **Date:** 2026-11-14
 - **Decision Makers:** Ilja Heitlager
-- **Related:** [ADR-021](021-spec-links-checked-in-ci.md), #293, #294
+- **Related:** [ADR-021](021-spec-links-checked-in-ci.md), [spec 002](../../specs/002-assurance/spec.md), #293, #294
 
 ## Context
 

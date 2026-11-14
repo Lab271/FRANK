@@ -12,7 +12,7 @@ What FRANK must do (specs) and why it is built the way it is (ADRs), for Phase 3
 
 | Range | Area |
 |---|---|
-| 001–009 | Data model: submission, sighting, observable, TLP |
+| 001–009 | Data model: submission, sighting, observable, TLP; 002 is assurance, which spans the tree |
 | 010–019 | HTTP API: sightings, management, authentication |
 | 020–029 | Storage: sightings table, IoC lookups, participants |
 | 030–039 | Clients and deployment: web, WASM, container |
@@ -20,6 +20,7 @@ What FRANK must do (specs) and why it is built the way it is (ADRs), for Phase 3
 | Spec | Scope |
 |---|---|
 | [001-data-model](specs/001-data-model/spec.md) | Submission formats and shapes, observables, TLP, sighting id and digest, rows, preview |
+| [002-assurance](specs/002-assurance/spec.md) | What FRANK must know about itself: spec links (specs), test coverage (testing), code quality with lizard (code), and their gates |
 | [010-sightings-api](specs/010-sightings-api/spec.md) | Bearer tokens, submitting, receipts and resends, listing, whoami, health, OpenAPI |
 | [011-management-api](specs/011-management-api/spec.md) | Organisations, users, roles, tokens, audit, files under `/v1/admin` |
 | [012-sso](specs/012-sso/spec.md) | Sign in with SSO over OpenID Connect: login, callback, logout, provisioning, the session cookie |

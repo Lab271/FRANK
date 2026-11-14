@@ -198,6 +198,12 @@ class Gates(unittest.TestCase):
         self.assertEqual(code, 1)
         self.assertIn("OVER CCN 20 src/a.rs::big", out)
 
+    def test_tested_scenarios_below_the_floor_fail(self):
+        self.assertEqual(self.run_main("--min", "0.0")[0], 0)
+        code, out = self.run_main("--min", "1.01")
+        self.assertEqual(code, 1)
+        self.assertIn("FAIL: tested", out)
+
     def test_an_unreadable_measurement_fails(self):
         self.lizard.write_text("1,2,3\n")
         code, out = self.run_main()
