@@ -133,6 +133,15 @@ def test_admin_tab_needs_a_role(page: Page, args) -> None:
     expect(page.locator('nav [data-tab="admin"]')).to_have_js_property("hidden", True)
 
 
+def test_public_sees_a_short_menu(page: Page, args) -> None:
+    page.goto(f"{args.url}/#submit")
+    expect(page.locator("#tier")).to_have_text("public", timeout=TIMEOUT_MS)
+    expect(page.locator("#stats")).to_have_js_property("hidden", False, timeout=TIMEOUT_MS)
+    expect(page.locator("#submit")).to_have_js_property("hidden", True)
+    shown = page.eval_on_selector_all("nav button", "bs => bs.filter(b => !b.hidden).map(b => b.dataset.tab)")
+    assert shown == ["stats", "lookup", "about", "api"], f"public menu: {shown}"
+
+
 def set_hidden(page: Page, hidden: bool) -> int:
     """Obscura has no CDP call that hides a page; the test sets what the
     page reads (document.hidden, visibilityState) and fires the event.
@@ -236,6 +245,7 @@ TESTS = [
     test_same_form_twice_is_a_resend,
     test_rejected_token_falls_back_to_public,
     test_admin_tab_needs_a_role,
+    test_public_sees_a_short_menu,
     test_live_view_stops_when_hidden,
     test_admin_sees_no_superadmin_controls,
     test_markup_ioc_stays_text,

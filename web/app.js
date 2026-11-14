@@ -65,6 +65,9 @@ const atLeast = (t) => TIERS.indexOf(tier) >= TIERS.indexOf(t);
 // A user's role (#175), apart from its status: null, "admin" or "superadmin".
 let role = null;
 const hasRole = (r) => role !== null && (role === r || role === "superadmin");
+// The lowest status that may open a tab: the server refuses its calls below it.
+const TAB_TIER = { explore: "observer", live: "contributor", submit: "contributor", analyse: "partner" };
+const tabAllowed = (t) => (t !== "admin" || role !== null) && atLeast(TAB_TIER[t] || "public");
 
 function showTab(name) {
   for (const b of document.querySelectorAll("nav button")) b.setAttribute("aria-selected", b.dataset.tab === name);
@@ -81,7 +84,7 @@ for (const b of document.querySelectorAll("nav button")) {
 function route() {
   const [name, qs] = location.hash.slice(1).split("?");
   let tab = document.getElementById(name || "stats") ? (name || "stats") : "stats";
-  if (tab === "admin" && !role) tab = "stats";
+  if (!tabAllowed(tab)) tab = "stats";
   showTab(tab);
   if (tab === "explore") {
     lastExplore = location.hash.slice(1);
@@ -127,7 +130,7 @@ async function whoami() {
   $("sso-in").hidden = !sso || user !== "";
   // Signed in by the session: no token is sent, yet whoami names a user.
   $("sso-out").hidden = !sso || token !== "" || user === "";
-  document.querySelector('nav [data-tab="admin"]').hidden = !role;
+  for (const b of document.querySelectorAll("nav button")) b.hidden = !tabAllowed(b.dataset.tab);
   adminOrg = "";
   apiDone = false;
   for (const o of $("ex-group").options) o.disabled = !atLeast(DIMENSION_TIER[o.value]);
