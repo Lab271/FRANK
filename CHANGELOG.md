@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.54.0] - 2026-11-14
+
+### Changed
+
+- The web menu hides explore, live, submit and analyse locally below the status each needs; the public sees statistics, lookup, about and api.
+
 ## [0.53.0] - 2026-11-14
 
 ### Added

@@ -161,7 +161,7 @@ The page MUST send the token as `Authorization: Bearer <token>` on every API cal
 
 ### Requirement 7: Tabs follow the URL and the tier [SHOULD]
 
-The URL hash SHOULD hold the view's state (`#explore?group=rule&sector=energy&pane=rule:r1`), so a view can be linked and reloaded; an unknown tab SHOULD open the statistics. The admin tab MUST be hidden and unreachable without a role. The live view MUST ask for a contributor token or higher, refresh every 15 s, and stop polling when it is paused, left, or the browser tab is hidden.
+The URL hash SHOULD hold the view's state (`#explore?group=rule&sector=energy&pane=rule:r1`), so a view can be linked and reloaded; an unknown tab SHOULD open the statistics. The admin tab MUST be hidden and unreachable without a role. A tab MUST be hidden and unreachable below the status its calls need: explore below observer, live and submit below contributor, analyse below partner; the public sees statistics, lookup, about and api only. The live view MUST ask for a contributor token or higher, refresh every 15 s, and stop polling when it is paused, left, or the browser tab is hidden.
 
 **Implementation:** `web/app.js::route`, `web/app.js::showTab`, `web/app.js::loadLive`, `web/app.js::stopLive`
 
@@ -172,6 +172,14 @@ The URL hash SHOULD hold the view's state (`#explore?group=rule&sector=energy&pa
 - THEN the statistics tab is shown instead
 
 **Tests:** `scripts/browser_test.py::test_admin_tab_needs_a_role`
+
+#### Scenario: The public sees a short menu
+
+- GIVEN no token
+- WHEN the page opens `#submit`
+- THEN the statistics tab is shown, and the menu holds statistics, lookup, about and api only
+
+**Tests:** `scripts/browser_test.py::test_public_sees_a_short_menu`
 
 #### Scenario: The live view stops when not seen
 

@@ -32,7 +32,8 @@ Phase 3 is the production build. Three things in the Phase 2 outcome drive the r
 5. **No SQL from callers.** The HTTP API runs fixed, typed queries. Explore (#157) groups by one dimension from a whitelist (rule, IoC, campaign, technique, sector, IoC type, severity) and filters by the others, under the same reporter threshold and TLP rules. Values reaching SQL are normalised IoCs, quoted by doubling quotes.
 6. **The browser runs FRANK code as WebAssembly** (`frank-wasm`, `wasm32-unknown-unknown`):
    - the submission preview runs the server's own parsing, so a contributor sees exactly what will be shared before sending it;
-   - partners download the Parquet files (`/v1/files`, listed files only) and query them in the browser on db-core's column engine. Counts, sums, minimums and maximums merge across files.
+   - partners download the Parquet files (`/v1/files`, listed files only) and query them in the browser on db-core's column engine. Counts, sums, minimums and maximums merge across files;
+   - the page shows a tab only from the status its calls need (explore observer, live and submit contributor, analyse partner), so the public sees statistics, lookup, about and api. The server still enforces every status; the menu only follows it.
 7. **Tokens instead of Cognito:** bearer tokens of users in `participants.db`, managed with `frank participant`, `frank user` and `frank token` (#159; the first version used a `sha256 tier label` tokens file, which is imported once). OIDC can replace tokens later without changing the statuses.
 8. **Three deployments, one image and one on-disk layout:** `frank serve` on a machine; `deploy/podman` (compose, data on a host bind mount); `deploy/stackit` (OpenTofu: a VM running the image with podman, data on a separate block volume, Caddy for TLS).
 
