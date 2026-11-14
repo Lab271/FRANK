@@ -87,7 +87,7 @@ text { fill: #e4e8ee; }
 
           <rect class="box cache" x="365" y="392" width="310" height="60" rx="6"/>
           <text class="mono" x="520" y="412" text-anchor="middle">RangeCache</text>
-          <text class="sub" x="520" y="428" text-anchor="middle">256 MiB · LRU · keyed by object, offset, length</text>
+          <text class="sub" x="520" y="428" text-anchor="middle">256 MiB · LRU · a held range answers reads inside it</text>
           <text class="sub" x="520" y="443" text-anchor="middle">hit: no request</text>
 
           <rect class="box" x="365" y="476" width="310" height="52" rx="6"/>
