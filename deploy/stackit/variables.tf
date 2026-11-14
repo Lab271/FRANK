@@ -82,3 +82,30 @@ variable "abuse_key" {
   default     = ""
   sensitive   = true
 }
+
+# SSO (ADR-020, test-frank#2): all four or none. Empty keeps sign-in by
+# token only. The redirect URL is https://<domain>/v1/sso/callback.
+variable "sso_issuer" {
+  description = "OIDC issuer, e.g. https://<org>.okta.com/oauth2/default (FRANK_SSO_ISSUER); empty turns SSO off."
+  type        = string
+  default     = ""
+}
+
+variable "sso_client_id" {
+  description = "The OIDC application's client id (FRANK_SSO_CLIENT_ID)."
+  type        = string
+  default     = ""
+}
+
+variable "sso_client_secret" {
+  description = "The OIDC application's client secret; reaches FRANK as a file (FRANK_SSO_CLIENT_SECRET_FILE), never as an environment variable."
+  type        = string
+  default     = ""
+  sensitive   = true
+}
+
+variable "sso_organisation" {
+  description = "The organisation (it must exist before SSO is turned on) that people signing in for the first time are created in (FRANK_SSO_ORGANISATION)."
+  type        = string
+  default     = ""
+}
