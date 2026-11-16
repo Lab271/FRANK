@@ -4,6 +4,8 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.58.2] - 2026-11-16
+
 ### Fixed
 
 - `make s3-column URL=…` (#330): `TABLE=audit` now reads `<prefix>/audit` of the given location, and with `URL` set the key must be in the environment: `s3/frank.env` is no longer read, so the local Garage key is never sent to AWS, STACKIT or another endpoint.
