@@ -15,14 +15,16 @@
 # is not on the PATH.
 #
 # Where it reads, in order of precedence:
-#   URL=s3://bucket/prefix?endpoint=https://…&region=…   any location (AWS, another Garage);
-#       the credentials in the environment are used as they are; AWS_CA_BUNDLE, when
-#       set, is the CA trusted for https (else the system roots)
+#   URL=s3://bucket/prefix?endpoint=https://…&region=…   any location (AWS, STACKIT, another
+#       Garage); TABLE=audit inserts /audit before the `?` (#330). The credentials must be
+#       in the environment (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY): s3/frank.env is
+#       never read, so the local Garage key never goes to another endpoint. AWS_CA_BUNDLE,
+#       when set, is the CA trusted for https (else the system roots)
 #   TLS=0   http://127.0.0.1:GARAGE_S3_PORT (3900), column-rs 0.45+
 #   default https://FRANK_HOST:GARAGE_TLS_PORT (frank.local:9443, #224), column-rs
 #       0.46+ built with `--features s3-tls`, trusting Caddy's CA from CA_CERT
 #       (target/frank-local-ca.crt, written by `make trust`)
-# The key comes from s3/frank.env (FRANK_S3_ENV) unless AWS_ACCESS_KEY_ID is set.
+# Without URL the key comes from s3/frank.env (FRANK_S3_ENV) unless AWS_ACCESS_KEY_ID is set.
 set -euo pipefail
 
 ENV_FILE=${FRANK_S3_ENV:-s3/frank.env}
@@ -52,7 +54,17 @@ version=$("$COLUMN_RS" --version | awk '{print $2}')
 [ "$(printf '%s\n%s\n' "$version" "$MIN" | sort -V | head -1)" = "$MIN" ] \
   || { echo "read-garage-column: column-rs $version cannot open this s3:// location; $MIN or later (https: built with --features s3-tls)" >&2; exit 1; }
 
-if [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
+if [ -n "$URL" ]; then
+  if [ -z "${AWS_ACCESS_KEY_ID:-}" ] || [ -z "${AWS_SECRET_ACCESS_KEY:-}" ]; then
+    {
+      echo "read-garage-column: URL is set, so the key must be in the environment (AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY); $ENV_FILE is not read for another endpoint. For example:"
+      echo "  AWS (SSO):  eval \"\$(aws configure export-credentials --profile <p> --format env)\""
+      echo "  1Password: op run --env-file <file> -- make s3-column URL=…"
+      echo "  STACKIT:    the deployment's own target (make stackit-query)"
+    } >&2
+    exit 1
+  fi
+elif [ -z "${AWS_ACCESS_KEY_ID:-}" ]; then
   [ -s "$ENV_FILE" ] || { echo "read-garage-column: no $ENV_FILE; run make up first (or set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY)" >&2; exit 1; }
   set -a
   # shellcheck disable=SC1090
@@ -62,6 +74,12 @@ fi
 
 if [ -n "$URL" ]; then
   table=$URL
+  if [ "$TABLE" = audit ]; then
+    base=${URL%%\?*}
+    base=${base%/}
+    case $base in */audit) ;; *) base=$base/audit ;; esac
+    case $URL in *\?*) table="$base?${URL#*\?}" ;; *) table=$base ;; esac
+  fi
 else
   endpoint=http://127.0.0.1:$PORT
   [ "$TLS" = 0 ] || endpoint=https://${FRANK_HOST:-frank.local}:${GARAGE_TLS_PORT:-9443}
@@ -74,7 +92,7 @@ query=${1:-${SQL:-}}
 if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
   b=$'\033[1m' c=$'\033[36m' g=$'\033[32m' y=$'\033[33m' z=$'\033[0m'
 else
-  b= c= g= y= z=
+  b='' c='' g='' y='' z=''
 fi
 case $table in *endpoint=https://*) scheme="${g}https${z}" ;; *) scheme="${y}http (no TLS)${z}" ;; esac
 printf '%s→ s3-column%s %s%s%s  [%s]\n' "$b" "$z" "$c" "$table" "$z" "$scheme" >&2
