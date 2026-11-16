@@ -19,7 +19,7 @@ tower-http = { version = "0.6", features = ["fs", "limit", "set-header", "timeou
 # GlobalConcurrencyLimitLayer: one limit for the whole server (#244).
 tower = { version = "0.5", features = ["limit"] }
 clap = { version = "4", features = ["derive", "env"] }
-sha2 = "0.10"
+sha2 = "0.11"
 getrandom = "0.3"
 tracing = "0.1"
 mvl-manifest = { workspace = true, features = ["log"] }
