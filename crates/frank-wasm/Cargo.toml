@@ -15,7 +15,7 @@ frank-core.workspace = true
 db-core = { workspace = true, features = ["engine-column"] }
 serde.workspace = true
 serde_json.workspace = true
-wasm-bindgen = "=0.2.129"  # must equal the wasm-bindgen CLI (Makefile, Containerfile)
+wasm-bindgen = "=0.2.130"  # must equal the wasm-bindgen CLI (Makefile, Containerfile)
 
 [dev-dependencies]
 db-core = { workspace = true, features = ["engine-column", "storage-column-write"] }
