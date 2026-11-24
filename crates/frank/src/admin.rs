@@ -857,6 +857,7 @@ mod tests {
             sso: None,
             submit_lock: std::sync::Mutex::new(()),
             now,
+            started: now(),
         });
         Fixture {
             app,

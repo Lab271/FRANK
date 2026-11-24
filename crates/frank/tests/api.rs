@@ -97,6 +97,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
         sso: None,
         submit_lock: std::sync::Mutex::new(()),
         now,
+        started: now(),
     }));
     Harness {
         app,
@@ -194,6 +195,15 @@ async fn tiers_gate_the_routes() {
         call(&h.app, "GET", "/health", None, None).await.0,
         StatusCode::OK
     );
+    // When the server started: an RFC 3339 time that stays put between calls.
+    let (_, health) = call(&h.app, "GET", "/health", None, None).await;
+    let started = health["started"].as_str().unwrap_or_default().to_owned();
+    assert!(
+        started.starts_with("20") && started.ends_with('Z'),
+        "{health}"
+    );
+    let (_, again) = call(&h.app, "GET", "/health", None, None).await;
+    assert_eq!(again["started"], health["started"]);
     let (st, who) = call(&h.app, "GET", "/v1/whoami", Some("p"), None).await;
     assert_eq!(
         (st, who["tier"].as_str()),
