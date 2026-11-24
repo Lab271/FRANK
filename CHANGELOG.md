@@ -4,6 +4,16 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.59.1] - 2026-11-24
+
+### Changed
+
+- UI text another 1px larger.
+
+### Fixed
+
+- `deploy/stackit`: a new image, cloud-init or Debian release no longer replaces the VM; images roll in place, cloud-init changes need `tofu apply -replace` (#338).
+
 ## [0.59.0] - 2026-11-24
 
 ### Added
