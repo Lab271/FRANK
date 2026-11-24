@@ -81,6 +81,8 @@ pub struct App {
     pub now: fn() -> i64,
     /// When the server started, in ns since the epoch: `/health` shows it.
     pub started: i64,
+    /// The deployment's label (`--instance`, #340): `/health` shows it.
+    pub instance: Option<String>,
 }
 
 pub type Shared = Arc<App>;
@@ -205,15 +207,19 @@ pub fn harden(router: Router, limits: Limits) -> Router {
 }
 
 /// Up, its version and when it started (a restart shows as a new time). The geo databases' state is information only: FRANK is
-/// healthy without it (#191).
+/// healthy without it (#191). `instance` only when the deployment set one (#340).
 async fn health(State(app): State<Shared>) -> Json<Value> {
-    Json(json!({
+    let mut health = json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
         "started": crate::records::rfc3339(app.started),
         "geoip": app.geo.status(),
         "lists": app.lists.status(),
-    }))
+    });
+    if let Some(instance) = &app.instance {
+        health["instance"] = json!(instance);
+    }
+    Json(health)
 }
 
 pub(crate) async fn whoami(

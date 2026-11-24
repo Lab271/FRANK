@@ -87,7 +87,7 @@ Every error MUST be a JSON body `{"error": "<reason>"}` with the status code tha
 
 ### Requirement 3: Health [MUST]
 
-`GET /health` MUST answer without a token with `status: ok`, the server version, when the server started (RFC 3339, so a restart shows), and the state of the geo databases and the IoC lists. Missing geo databases or lists MUST NOT make the server unhealthy.
+`GET /health` MUST answer without a token with `status: ok`, the server version, when the server started (RFC 3339, so a restart shows), the deployment's `instance` label when one is set, and the state of the geo databases and the IoC lists. Missing geo databases or lists MUST NOT make the server unhealthy.
 
 **Implementation:** `crates/frank/src/api.rs::health`
 

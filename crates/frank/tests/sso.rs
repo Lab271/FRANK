@@ -225,6 +225,7 @@ fn harness_with(name: &str, off: bool, organisation: &str, admin: Option<AdminGr
         submit_lock: std::sync::Mutex::new(()),
         now,
         started: now(),
+        instance: None,
     }));
     Harness {
         app,
@@ -738,4 +739,13 @@ async fn logout_still_clears_the_cookie_when_the_store_fails() {
     assert_eq!(r.status, StatusCode::OK);
     assert!(r.set_cookie("frank_session").contains("Max-Age=0"));
     assert!(!audit_actions(&h).iter().any(|a| a == "sso_logout"));
+}
+
+#[tokio::test]
+async fn health_leaves_out_an_unset_instance() {
+    // #340: `instance` only when the deployment set one.
+    let h = harness("health", true);
+    let r = send(&h.app, get("/health").body(Body::empty()).unwrap()).await;
+    assert_eq!(r.status, StatusCode::OK);
+    assert!(r.body.get("instance").is_none(), "{}", r.body);
 }

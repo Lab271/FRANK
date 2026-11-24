@@ -26,6 +26,7 @@ write_files:
     permissions: "0644"
     content: |
       FRANK_IMAGE=${image}
+      FRANK_INSTANCE=${instance}
       FRANK_RETENTION_DAYS=${retention_days}
       FRANK_AUDIT_RETENTION_DAYS=${audit_retention_days}
 %{ if store != "" ~}
@@ -84,6 +85,7 @@ write_files:
         -v /srv/frank/data:/data:Z \
         -v /srv/frank/participants:/participants:Z \
         -v /srv/frank/tokens:/etc/frank/tokens:ro,Z \
+        -e FRANK_INSTANCE=$${FRANK_INSTANCE} \
         -e FRANK_RETENTION_DAYS=$${FRANK_RETENTION_DAYS} \
         -e FRANK_AUDIT_RETENTION_DAYS=$${FRANK_AUDIT_RETENTION_DAYS} \
 %{ if store != "" ~}

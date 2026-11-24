@@ -2,7 +2,7 @@
 
 Feedbackinfrastructuur voor cyberRisico Analyse en netwerk Kennisdeling: a neutral platform where known participants (security teams and their organisations) share **sighting statistics** for SIGMA rules and IoCs: how often, where and when a threat was seen. What a participant shares about its customers is its own choice; FRANK passes it on and does not judge it.
 
-## Version: 0.59.1
+## Version: 0.60.0
 
 Phase 3 (production) is a Rust rewrite on [db-core](https://github.com/t-rust-db/db-core); see [ADR-016](.openspec/architecture/decisions/016-phase3-rust-on-db-core.md). Phase 2 (Python/FastAPI) is no longer in the tree: its final state is tagged [`phase2-final`](https://github.com/Lab271/FRANK/tree/phase2-final).
 
@@ -129,6 +129,7 @@ The issuer and the redirect URL must be `https://`; only `localhost` may be `htt
 
 **On STACKIT** (OpenTofu, see [`deploy/stackit/`](deploy/stackit/)): a VM runs the same image, pinned by commit, with podman. Its data sits on a separate block volume that outlives the VM, and Caddy serves TLS. Options:
 
+- `instance` (default `stackit`): the label `/health` shows as `instance` (`FRANK_INSTANCE`, #340), to tell deployments apart. Like the rest of the user data it reaches the VM only when the VM is rebuilt.
 - `store_bucket`: the sightings and the audit log go to that Object Storage bucket (`FRANK_STORE`, ADR-019); the WAL and the SQLite files stay on the volume. OpenTofu makes the bucket and a credential for it. The credential's keys reach the VM through its user data, which anyone who can read the project's servers can see. Turn on versioning once, as on AWS, with the credential's keys: `aws s3api put-bucket-versioning --endpoint-url https://object.storage.eu01.onstackit.cloud --bucket <bucket> --versioning-configuration Status=Enabled` (the provider has no resource for it), and let old versions expire with `put-bucket-lifecycle-configuration` (`NoncurrentVersionExpiration`; STACKIT refuses an `AbortIncompleteMultipartUpload` rule). The writer lease leaves an old version every few seconds. Like the volume, the bucket is protected (`prevent_destroy`, #286): a plan that would replace it (another name) or remove it (`store_bucket` emptied) fails. To drop it on purpose, take it out of the state first, `tofu state rm 'stackit_objectstorage_bucket.frank[0]'` (from a deployment that uses the directory as a module: `'module.<name>.stackit_objectstorage_bucket.frank[0]'`), apply, and delete the bucket in STACKIT yourself; the volume the same way, `stackit_volume.data`.
 - `abuse_key`: the abuse.ch Auth-Key for the URLhaus and ThreatFox lists. The VM fetches the GeoIP databases monthly and the IoC lists daily (#276), first right after boot, with the same scripts as `make geoip` and `make lists` (`scripts/fetch-geoip.sh`, `scripts/fetch-lists.sh`; systemd timers `frank-geoip` and `frank-lists`). Without the key the other lists are still fetched. It reaches the VM through its user data, like the bucket's keys; it is kept in `/etc/frank/lists.env` (0600). A failed download keeps the previous files; `journalctl -u frank-geoip -u frank-lists` shows the runs.
 - `sso_issuer`, `sso_client_id`, `sso_client_secret`, `sso_organisation`: sign in with SSO (ADR-020), all four or none (the plan refuses a partial set). The redirect URL is `https://<domain>/v1/sso/callback`; register it in the identity provider. The settings go to `/etc/frank/sso.env`, the secret to `/etc/frank/sso-client-secret` (0600, FRANK's uid), mounted into the container as the file `FRANK_SSO_CLIENT_SECRET_FILE` names; like the bucket's keys it travels in the user data. Create `sso_organisation` first (`frank participant add …` through `stackit server command create`), and your own human user with its e-mail if it should keep a role: FRANK refuses to start while the organisation is missing. Changes to these, and to anything else in the user data, reach the VM only when it is rebuilt: `tofu apply -replace=stackit_server.frank` (`module.<name>.stackit_server.frank` from a module); the data volume stays. A new `image` does not rebuild the VM (#338): roll it in place by setting `FRANK_IMAGE` in `/etc/frank/frank.env` and restarting `frank.service`, which pulls it.
@@ -156,7 +157,7 @@ tofu init && tofu apply -var project_id=… -var domain=frank.example.nl \
 
 | Route | Tier | What |
 |---|---|---|
-| `GET /health` | none | liveness |
+| `GET /health` | none | liveness; `instance` is the deployment's own label, `FRANK_INSTANCE` (#340) |
 | `GET /v1/whoami` | any | status, user, role and participant (id, name) |
 | `POST /v1/preview` | any | the rows a submission would share, nothing stored |
 | `GET /v1/statistics?days=30` | any | totals; breakdowns from observer up |

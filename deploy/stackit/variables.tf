@@ -65,6 +65,12 @@ variable "registry_token" {
   sensitive   = true
 }
 
+variable "instance" {
+  description = "The label /health shows as instance (FRANK_INSTANCE, #340)."
+  type        = string
+  default     = "stackit"
+}
+
 variable "retention_days" {
   type    = number
   default = 400

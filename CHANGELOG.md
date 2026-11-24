@@ -4,6 +4,12 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.60.0] - 2026-11-24
+
+### Added
+
+- `/health` shows `instance`, a label the deployment sets with `FRANK_INSTANCE` (`--instance`), to tell deployments apart; `deploy/stackit` sets it to `stackit` (variable `instance`) (#340).
+
 ## [0.59.1] - 2026-11-24
 
 ### Changed

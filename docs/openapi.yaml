@@ -59,7 +59,7 @@ paths:
       x-min-status: public
       responses:
         "200":
-          description: "The server is up. `started` is when this server process started (RFC 3339 UTC), so a restart shows as a new time. `geoip` says whether the DB-IP geo databases are loaded (`ok` with their build day) or `missing`, and `lists` the entries per imported warning and reference list; FRANK is healthy either way (#191, #192)."
+          description: "The server is up. `started` is when this server process started (RFC 3339 UTC), so a restart shows as a new time. `instance` is the label the deployment gave this server (`FRANK_INSTANCE`), absent when it gave none (#340). `geoip` says whether the DB-IP geo databases are loaded (`ok` with their build day) or `missing`, and `lists` the entries per imported warning and reference list; FRANK is healthy either way (#191, #192)."
           content:
             application/json:
               schema:
@@ -68,6 +68,7 @@ paths:
                   status: { const: ok }
                   version: { type: string }
                   started: { type: string, format: date-time }
+                  instance: { type: string }
 
   /v1/openapi.json:
     get:
