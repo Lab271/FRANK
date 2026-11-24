@@ -4,6 +4,13 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.58.3] - 2026-11-24
+
+### Security
+
+- `deploy/stackit` (MCQF quick wins, #333): the VM installs security updates daily with `unattended-upgrades` (reboots are left to the patching runs); the container runs `--read-only --cap-drop=ALL --security-opt no-new-privileges`; Caddy serves `/.well-known/security.txt` (RFC 9116); the backup timer runs at 03:15 UTC.
+- CI pushes and signs the image only after `cargo deny` passes too; Dependabot waits 7 days before proposing a new release.
+
 ## [0.58.2] - 2026-11-16
 
 ### Fixed
