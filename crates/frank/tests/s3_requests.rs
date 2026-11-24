@@ -108,6 +108,7 @@ fn server(dir: &std::path::Path, s3: &Arc<FakeS3>) -> (axum::Router, Sightings) 
         submit_lock: std::sync::Mutex::new(()),
         now,
         started: now(),
+        instance: None,
     }));
     (app, sightings)
 }

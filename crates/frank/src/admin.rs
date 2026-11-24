@@ -858,6 +858,7 @@ mod tests {
             submit_lock: std::sync::Mutex::new(()),
             now,
             started: now(),
+            instance: None,
         });
         Fixture {
             app,

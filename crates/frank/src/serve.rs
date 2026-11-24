@@ -72,6 +72,7 @@ pub fn start_until(
         submit_lock: std::sync::Mutex::new(()),
         now: now_ns,
         started: now_ns(),
+        instance: args.instance.clone().filter(|s| !s.is_empty()),
     });
     tokio::runtime::Runtime::new()
         .map_err(|e| e.to_string())?

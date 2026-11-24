@@ -110,6 +110,7 @@ resource "stackit_server" "frank" {
     registry             = split("/", var.image)[0]
     registry_user        = var.registry_user
     registry_token       = var.registry_token
+    instance             = var.instance
     retention_days       = var.retention_days
     audit_retention_days = var.audit_retention_days
     store                = local.store

@@ -135,6 +135,10 @@ pub struct ServeArgs {
     /// Requests handled at once; the rest wait (#244).
     #[arg(long, env = "FRANK_MAX_CONCURRENCY", default_value_t = 64)]
     pub max_concurrency: usize,
+    /// A label for this deployment, e.g. `stackit` or `aws`, which
+    /// `/health` shows as `instance` (#340). FRANK gives it no meaning.
+    #[arg(long, env = "FRANK_INSTANCE")]
+    pub instance: Option<String>,
 }
 
 #[derive(Subcommand)]

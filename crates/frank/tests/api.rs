@@ -98,6 +98,7 @@ fn harness_setup(name: &str, setup: impl FnOnce(&std::path::Path)) -> Harness {
         submit_lock: std::sync::Mutex::new(()),
         now,
         started: now(),
+        instance: Some("test".into()),
     }));
     Harness {
         app,
@@ -204,6 +205,8 @@ async fn tiers_gate_the_routes() {
     );
     let (_, again) = call(&h.app, "GET", "/health", None, None).await;
     assert_eq!(again["started"], health["started"]);
+    // The deployment's label (#340).
+    assert_eq!(health["instance"], "test");
     let (st, who) = call(&h.app, "GET", "/v1/whoami", Some("p"), None).await;
     assert_eq!(
         (st, who["tier"].as_str()),
