@@ -4,6 +4,20 @@ All notable changes to FRANK. Format follows [Keep a Changelog](https://keepacha
 
 ## [Unreleased]
 
+## [0.59.0] - 2026-11-24
+
+### Added
+
+- `/health` shows `started`, when the server started (RFC 3339), so a restart shows as a new time.
+
+### Changed
+
+- UI text about 1px larger.
+
+### Fixed
+
+- `deploy/stackit`: the VM creates an account for the container user (65532), so the GeoIP and IoC list timers run (#336).
+
 ## [0.58.3] - 2026-11-24
 
 ### Security
