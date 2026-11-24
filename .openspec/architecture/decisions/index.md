@@ -32,3 +32,4 @@ Status is one of Accepted, Proposed, Superseded by ADR-NNN, Deprecated, written 
 | [024](024-log-streams.md) | Three log streams: web (Caddy) and app as regular streams, the audit as a striped table | Accepted | 2026-11-14 |
 | [025](025-mcdc-with-tagged-tests.md) | MC/DC with tagged tests (cargo-mvl-mcdc), as in db-core | Accepted | 2026-11-14 |
 | [026](026-sso-admin-group.md) | The SSO admin group makes its members admins in one organisation | Accepted | 2026-11-14 |
+| [027](027-no-wasi-server.md) | The server stays a native binary; no WASI build | Accepted | 2026-11-24 |
