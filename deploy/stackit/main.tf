@@ -83,6 +83,12 @@ resource "stackit_server" "frank" {
     provisioning_policy = "ALWAYS"
   }
   lifecycle {
+    # The user data (image, cloud-init) and the boot image only shape a new VM.
+    # Without this, a new FRANK image or Debian release replaces the VM (#338).
+    # Images roll in place: FRANK_IMAGE in /etc/frank/frank.env, then restart
+    # frank.service. A cloud-init change reaches a VM only when it is rebuilt:
+    # tofu apply -replace=stackit_server.frank (the data volume stays).
+    ignore_changes = [user_data, boot_volume]
     precondition {
       condition     = length(distinct([for v in [var.sso_issuer, var.sso_client_id, var.sso_client_secret, var.sso_organisation] : v == ""])) == 1
       error_message = "SSO is partly configured: set sso_issuer, sso_client_id, sso_client_secret and sso_organisation together, or none of them."
