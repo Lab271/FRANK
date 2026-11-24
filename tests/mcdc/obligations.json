@@ -1602,7 +1602,7 @@
   {
     "id": "api_require_41a18e13",
     "file": "crates/frank/src/api.rs",
-    "line": 111,
+    "line": 113,
     "decision": "match (auth, crate::sso::session_value(app, headers)) {\n        (None, Some(value)) => Some(\n            app.participants\n                .session_caller(&value, (app.now)() / 1_000_000_000)\n                .map_err(internal)?\n                .unwrap_or_else(Caller::public),\n        ),\n        _ => app.participants.caller(auth).map_err(internal)?,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1612,7 +1612,7 @@
   {
     "id": "api_require_d11e9d81",
     "file": "crates/frank/src/api.rs",
-    "line": 122,
+    "line": 124,
     "decision": "caller.tier < tier",
     "conditions": 1,
     "vectors_required": 2,
@@ -1622,7 +1622,7 @@
   {
     "id": "api_whoami_2faa40a9",
     "file": "crates/frank/src/api.rs",
-    "line": 221,
+    "line": 224,
     "decision": "c.user.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1632,7 +1632,7 @@
   {
     "id": "api_submissions_f9cab8f1",
     "file": "crates/frank/src/api.rs",
-    "line": 236,
+    "line": 239,
     "decision": "match headers.get(header::CONTENT_TYPE) {\n        None => Format::Json,\n        Some(ct) => ct\n            .to_str()\n            .ok()\n            .and_then(Format::from_content_type)\n            .ok_or_else(|| {\n                ApiError(\n                    StatusCode::UNSUPPORTED_MEDIA_TYPE,\n                    \"send application/json, application/yaml or application/stix+json\".into(),\n                )\n            })?,\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1642,7 +1642,7 @@
   {
     "id": "api_submissions_126d7e19",
     "file": "crates/frank/src/api.rs",
-    "line": 250,
+    "line": 253,
     "decision": "subs.len() > MAX_BATCH",
     "conditions": 1,
     "vectors_required": 2,
@@ -1652,7 +1652,7 @@
   {
     "id": "api_submit_0fe978f6",
     "file": "crates/frank/src/api.rs",
-    "line": 290,
+    "line": 293,
     "decision": "created > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -1662,7 +1662,7 @@
   {
     "id": "api_batch_items_d92f8add",
     "file": "crates/frank/src/api.rs",
-    "line": 316,
+    "line": 319,
     "decision": "match items.iter().find(|(other, _, _)| *other == id) {\n            Some((_, d, _)) if *d == digest => {}\n            Some(_) => {\n                return Err(unprocessable(format!(\n                    \"[{i}] {id} appears twice in the batch with different content\"\n                )))\n            }\n            None => items.push((id, digest, s)),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1672,7 +1672,7 @@
   {
     "id": "api_batch_items_fae4408b",
     "file": "crates/frank/src/api.rs",
-    "line": 317,
+    "line": 320,
     "decision": "*d == digest",
     "conditions": 1,
     "vectors_required": 2,
@@ -1682,7 +1682,7 @@
   {
     "id": "api_store_batch_e96014b5",
     "file": "crates/frank/src/api.rs",
-    "line": 345,
+    "line": 348,
     "decision": "!fresh.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1692,7 +1692,7 @@
   {
     "id": "api_refuse_conflicts_2cac7543",
     "file": "crates/frank/src/api.rs",
-    "line": 376,
+    "line": 379,
     "decision": "conflicts.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1702,7 +1702,7 @@
   {
     "id": "api_stage_ce7b1338",
     "file": "crates/frank/src/api.rs",
-    "line": 408,
+    "line": 411,
     "decision": "let Some((_, received)) = known.get(&id)",
     "conditions": 1,
     "vectors_required": 2,
@@ -1712,7 +1712,7 @@
   {
     "id": "api_breakdown_0371c252",
     "file": "crates/frank/src/api.rs",
-    "line": 463,
+    "line": 466,
     "decision": "match column {\n        \"technique\" => (\n            TECH,\n            BY_TECHNIQUE,\n            format!(\" AND {FIRST_ROW} AND {TECH_SET}\"),\n        ),\n        \"ioc_type\" => (column, SIGHTINGS, String::new()),\n        _ => (column, SIGHTINGS, format!(\" AND {FIRST_ROW}\")),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1722,7 +1722,7 @@
   {
     "id": "api_breakdown_ca19ee22",
     "file": "crates/frank/src/api.rs",
-    "line": 478,
+    "line": 481,
     "decision": "match (&row[0], &row[1], &row[2]) {\n            (Cell::Text(k), Cell::Int(n), Cell::Int(r)) if exact || *r >= MIN_CELL => {\n                Some(json!({ \"key\": k, \"count\": n, \"reporters\": r }))\n            }\n            _ => None,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1732,7 +1732,7 @@
   {
     "id": "api_breakdown_7a9eeb03",
     "file": "crates/frank/src/api.rs",
-    "line": 479,
+    "line": 482,
     "decision": "exact || *r >= MIN_CELL",
     "conditions": 2,
     "vectors_required": 3,
@@ -1742,7 +1742,7 @@
   {
     "id": "api_statistics_93142de0",
     "file": "crates/frank/src/api.rs",
-    "line": 495,
+    "line": 498,
     "decision": "!(1..=3650).contains(&days)",
     "conditions": 1,
     "vectors_required": 2,
@@ -1752,7 +1752,7 @@
   {
     "id": "api_statistics_82822409",
     "file": "crates/frank/src/api.rs",
-    "line": 512,
+    "line": 515,
     "decision": "caller.tier >= Tier::Observer",
     "conditions": 1,
     "vectors_required": 2,
@@ -1762,7 +1762,7 @@
   {
     "id": "api_statistics_7ebfdb9a",
     "file": "crates/frank/src/api.rs",
-    "line": 518,
+    "line": 521,
     "decision": "caller.tier >= Tier::Contributor",
     "conditions": 1,
     "vectors_required": 2,
@@ -1772,7 +1772,7 @@
   {
     "id": "api_include_common_44eb0a7e",
     "file": "crates/frank/src/api.rs",
-    "line": 538,
+    "line": 541,
     "decision": "match v {\n        None | Some(\"exclude\") => Ok(false),\n        Some(\"include\") => Ok(true),\n        Some(_) => Err(unprocessable(\"common: expected include or exclude\")),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1782,7 +1782,7 @@
   {
     "id": "api_live_view_45661886",
     "file": "crates/frank/src/api.rs",
-    "line": 585,
+    "line": 588,
     "decision": "!exact",
     "conditions": 1,
     "vectors_required": 2,
@@ -1792,7 +1792,7 @@
   {
     "id": "api_live_view_cbacc2b2",
     "file": "crates/frank/src/api.rs",
-    "line": 588,
+    "line": 591,
     "decision": "!common",
     "conditions": 1,
     "vectors_required": 2,
@@ -1802,7 +1802,7 @@
   {
     "id": "api_mark_common_d87f1fbf",
     "file": "crates/frank/src/api.rs",
-    "line": 645,
+    "line": 648,
     "decision": "warned.contains(&(i.ioc_type.clone(), i.value.clone()))",
     "conditions": 1,
     "vectors_required": 2,
@@ -1812,7 +1812,7 @@
   {
     "id": "api_live_places_cbacc2b2",
     "file": "crates/frank/src/api.rs",
-    "line": 685,
+    "line": 688,
     "decision": "!common",
     "conditions": 1,
     "vectors_required": 2,
@@ -1822,7 +1822,7 @@
   {
     "id": "api_live_places_517ea0e7",
     "file": "crates/frank/src/api.rs",
-    "line": 689,
+    "line": 692,
     "decision": "ip.contains(':')",
     "conditions": 1,
     "vectors_required": 2,
@@ -1832,7 +1832,7 @@
   {
     "id": "api_live_places_17bf5b36",
     "file": "crates/frank/src/api.rs",
-    "line": 701,
+    "line": 704,
     "decision": "exact",
     "conditions": 1,
     "vectors_required": 2,
@@ -1842,7 +1842,7 @@
   {
     "id": "api_ioc_panels_0d0593ff",
     "file": "crates/frank/src/api.rs",
-    "line": 735,
+    "line": 738,
     "decision": "match until {\n        Some(u) => format!(\"{} AND ts < {u}\", tlp_visible(tier)),\n        None => tlp_visible(tier),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1852,7 +1852,7 @@
   {
     "id": "api_ioc_lookup_2ad8d037",
     "file": "crates/frank/src/api.rs",
-    "line": 784,
+    "line": 787,
     "decision": "days.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -1862,7 +1862,7 @@
   {
     "id": "api_ioc_lookup_c19b0efa",
     "file": "crates/frank/src/api.rs",
-    "line": 790,
+    "line": 793,
     "decision": "match (window, first_ts) {\n            (Some((from, to)), _) => ioc_panels(&app.sightings, &ioc, from, Some(to), caller.tier)?,\n            (None, Some(from)) => ioc_panels(&app.sightings, &ioc, from, None, caller.tier)?,\n            (None, None) => Value::Null,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1872,7 +1872,7 @@
   {
     "id": "api_ioc_history_66d1ff1f",
     "file": "crates/frank/src/api.rs",
-    "line": 855,
+    "line": 858,
     "decision": "match (&row[0], &row[1], &row[2]) {\n            (Cell::Text(k), Cell::Int(n), Cell::Int(r)) if exact || *r >= MIN_CELL => {\n                Some(json!({ \"rule_id\": k, \"count\": n }))\n            }\n            _ => None,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1882,7 +1882,7 @@
   {
     "id": "api_ioc_history_7a9eeb03",
     "file": "crates/frank/src/api.rs",
-    "line": 856,
+    "line": 859,
     "decision": "exact || *r >= MIN_CELL",
     "conditions": 2,
     "vectors_required": 3,
@@ -1892,7 +1892,7 @@
   {
     "id": "api_grouped_7cc8acb3",
     "file": "crates/frank/src/api.rs",
-    "line": 902,
+    "line": 905,
     "decision": "match c {\n                    Cell::Text(t) => Some(t.as_str()),\n                    _ => None,\n                }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1902,7 +1902,7 @@
   {
     "id": "api_grouped_4e67d1dc",
     "file": "crates/frank/src/api.rs",
-    "line": 907,
+    "line": 910,
     "decision": "match (\n                key,\n                &row[k],\n                &row[k + 1],\n                nanos(&row[k + 2]),\n                nanos(&row[k + 3]),\n            ) {\n                (Some(key), Cell::Int(n), Cell::Int(r), Some(first), Some(last))\n                    if exact || *r >= MIN_CELL =>\n                {\n                    Some(json!({\n                        \"key\": key.join(\":\"),\n                        \"count\": n,\n                        \"reporters\": r,\n                        \"first_seen\": first,\n                        \"last_seen\": last,\n                    }))\n                }\n                _ => None,\n            }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1912,7 +1912,7 @@
   {
     "id": "api_grouped_7a9eeb03",
     "file": "crates/frank/src/api.rs",
-    "line": 915,
+    "line": 918,
     "decision": "exact || *r >= MIN_CELL",
     "conditions": 2,
     "vectors_required": 3,
@@ -1922,7 +1922,7 @@
   {
     "id": "api_explore_48ea94ac",
     "file": "crates/frank/src/api.rs",
-    "line": 951,
+    "line": 954,
     "decision": "by_ioc",
     "conditions": 1,
     "vectors_required": 2,
@@ -1932,7 +1932,7 @@
   {
     "id": "api_explore_48ea94ac_2",
     "file": "crates/frank/src/api.rs",
-    "line": 953,
+    "line": 956,
     "decision": "by_ioc",
     "conditions": 1,
     "vectors_required": 2,
@@ -1942,7 +1942,7 @@
   {
     "id": "api_explore_params_e70c7cc2",
     "file": "crates/frank/src/api.rs",
-    "line": 978,
+    "line": 981,
     "decision": "listed_by.is_some() && q.group != Dimension::Ioc",
     "conditions": 2,
     "vectors_required": 3,
@@ -1952,7 +1952,7 @@
   {
     "id": "api_explore_params_e148882c",
     "file": "crates/frank/src/api.rs",
-    "line": 981,
+    "line": 984,
     "decision": "listed_by\n        .as_deref()\n        .is_some_and(|l| l.is_empty() || l.len() > 200)",
     "conditions": 1,
     "vectors_required": 2,
@@ -1962,7 +1962,7 @@
   {
     "id": "api_annotate_ioc_rows_e2578fbc",
     "file": "crates/frank/src/api.rs",
-    "line": 1007,
+    "line": 1010,
     "decision": "match listed_by {\n            None => true,\n            Some(\"any\") => !refs.is_empty(),\n            Some(\"none\") => refs.is_empty(),\n            Some(name) => refs.contains(&name),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1972,7 +1972,7 @@
   {
     "id": "api_rule_detail_93142de0",
     "file": "crates/frank/src/api.rs",
-    "line": 1033,
+    "line": 1036,
     "decision": "!(1..=3650).contains(&days)",
     "conditions": 1,
     "vectors_required": 2,
@@ -1982,7 +1982,7 @@
   {
     "id": "api_cidr_bounds_ff4876cf",
     "file": "crates/frank/src/api.rs",
-    "line": 1088,
+    "line": 1091,
     "decision": "match ip {\n        IpAddr::V4(v4) => (u128::from(v4.to_ipv6_mapped()), 32),\n        IpAddr::V6(v6) => (u128::from(v6), 128),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -1992,7 +1992,7 @@
   {
     "id": "api_cidr_bounds_e5805400",
     "file": "crates/frank/src/api.rs",
-    "line": 1092,
+    "line": 1095,
     "decision": "len > bits",
     "conditions": 1,
     "vectors_required": 2,
@@ -2002,7 +2002,7 @@
   {
     "id": "api_cidr_bounds_b9da86e0",
     "file": "crates/frank/src/api.rs",
-    "line": 1096,
+    "line": 1099,
     "decision": "host == 128",
     "conditions": 1,
     "vectors_required": 2,
@@ -2012,7 +2012,7 @@
   {
     "id": "api_participants_15b279e5",
     "file": "crates/frank/src/api.rs",
-    "line": 1140,
+    "line": 1143,
     "decision": "caller.tier >= Tier::Core",
     "conditions": 1,
     "vectors_required": 2,
@@ -2022,7 +2022,7 @@
   {
     "id": "api_files_f59b0c4e",
     "file": "crates/frank/src/api.rs",
-    "line": 1161,
+    "line": 1164,
     "decision": "open > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -2032,7 +2032,7 @@
   {
     "id": "api_file_2ac6e74d",
     "file": "crates/frank/src/api.rs",
-    "line": 1186,
+    "line": 1189,
     "decision": "!safe",
     "conditions": 1,
     "vectors_required": 2,
@@ -2042,7 +2042,7 @@
   {
     "id": "api_file_13980321",
     "file": "crates/frank/src/api.rs",
-    "line": 1190,
+    "line": 1193,
     "decision": "path == GEO_FILE",
     "conditions": 1,
     "vectors_required": 2,
@@ -2052,7 +2052,7 @@
   {
     "id": "api_file_110662f7",
     "file": "crates/frank/src/api.rs",
-    "line": 1193,
+    "line": 1196,
     "decision": "rows.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -2062,7 +2062,7 @@
   {
     "id": "api_file_e73420b3",
     "file": "crates/frank/src/api.rs",
-    "line": 1206,
+    "line": 1209,
     "decision": "path == OPEN_FILE",
     "conditions": 1,
     "vectors_required": 2,
@@ -2072,7 +2072,7 @@
   {
     "id": "api_file_f7906ab4",
     "file": "crates/frank/src/api.rs",
-    "line": 1223,
+    "line": 1226,
     "decision": "!listed",
     "conditions": 1,
     "vectors_required": 2,
@@ -2082,7 +2082,7 @@
   {
     "id": "api_geo_parquet_1c99f19c",
     "file": "crates/frank/src/api.rs",
-    "line": 1263,
+    "line": 1266,
     "decision": "!rows.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -2092,7 +2092,7 @@
   {
     "id": "api_list_2ccc32ae",
     "file": "crates/frank/src/api.rs",
-    "line": 1295,
+    "line": 1298,
     "decision": "caller.tier < Tier::Partner && !q.mine",
     "conditions": 2,
     "vectors_required": 3,
@@ -2102,7 +2102,7 @@
   {
     "id": "api_list_4429ccb4",
     "file": "crates/frank/src/api.rs",
-    "line": 1306,
+    "line": 1309,
     "decision": "match q.ioc_sql(&visible, r) {\n            None => list_page(s, &q, &visible, r)?,\n            Some(ids_sql) => list_by_ioc(s, &q, &visible, r, &ids_sql)?,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2112,7 +2112,7 @@
   {
     "id": "api_list_page_c91b2722",
     "file": "crates/frank/src/api.rs",
-    "line": 1330,
+    "line": 1333,
     "decision": "more",
     "conditions": 1,
     "vectors_required": 2,
@@ -2122,7 +2122,7 @@
   {
     "id": "api_list_by_ioc_b1c72d61",
     "file": "crates/frank/src/api.rs",
-    "line": 1354,
+    "line": 1357,
     "decision": "match (row.first(), row.get(1)) {\n            (Some(ts), Some(Cell::Blob(id))) => {\n                Some((nanos(ts)?, SightingId(id.as_slice().try_into().ok()?)))\n            }\n            _ => None,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2132,7 +2132,7 @@
   {
     "id": "api_list_by_ioc_c91b2722",
     "file": "crates/frank/src/api.rs",
-    "line": 1370,
+    "line": 1373,
     "decision": "more",
     "conditions": 1,
     "vectors_required": 2,
@@ -2142,7 +2142,7 @@
   {
     "id": "api_records_of_a9875670",
     "file": "crates/frank/src/api.rs",
-    "line": 1389,
+    "line": 1392,
     "decision": "let Some((cursor, v)) = records::item(&row)",
     "conditions": 1,
     "vectors_required": 2,
@@ -2152,7 +2152,7 @@
   {
     "id": "api_sighting_e4006635",
     "file": "crates/frank/src/api.rs",
-    "line": 1411,
+    "line": 1414,
     "decision": "caller.tier < Tier::Partner",
     "conditions": 1,
     "vectors_required": 2,
@@ -2162,7 +2162,7 @@
   {
     "id": "api_summary_93142de0",
     "file": "crates/frank/src/api.rs",
-    "line": 1451,
+    "line": 1454,
     "decision": "!(1..=3650).contains(&days)",
     "conditions": 1,
     "vectors_required": 2,
@@ -2172,7 +2172,7 @@
   {
     "id": "api_summary_5c1d48a5",
     "file": "crates/frank/src/api.rs",
-    "line": 1468,
+    "line": 1471,
     "decision": "match row.map(|r| &r[i]) {\n            Some(Cell::Int(n)) => Some(*n),\n            _ => None,\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -2182,7 +2182,7 @@
   {
     "id": "api_explore_status_f28b1f26",
     "file": "crates/frank/src/api.rs",
-    "line": 1565,
+    "line": 1568,
     "decision": "let Some(l) = listed",
     "conditions": 1,
     "vectors_required": 2,
@@ -3902,7 +3902,7 @@
   {
     "id": "serve_sso_config_18b03b41",
     "file": "crates/frank/src/serve.rs",
-    "line": 98,
+    "line": 99,
     "decision": "let Some(sso) = &sso",
     "conditions": 1,
     "vectors_required": 2,
@@ -3912,7 +3912,7 @@
   {
     "id": "serve_sso_config_6b1e882a",
     "file": "crates/frank/src/serve.rs",
-    "line": 101,
+    "line": 102,
     "decision": "let Some(admin) = &sso.admin",
     "conditions": 1,
     "vectors_required": 2,
@@ -3922,7 +3922,7 @@
   {
     "id": "serve_limits_cb1ba987",
     "file": "crates/frank/src/serve.rs",
-    "line": 122,
+    "line": 123,
     "decision": "args.request_timeout == 0 || args.max_concurrency == 0",
     "conditions": 2,
     "vectors_required": 3,
@@ -3932,7 +3932,7 @@
   {
     "id": "serve_import_tokens_400d7164",
     "file": "crates/frank/src/serve.rs",
-    "line": 134,
+    "line": 135,
     "decision": "participants.active_tokens()? == 0 && tokens.exists()",
     "conditions": 2,
     "vectors_required": 3,
@@ -3942,7 +3942,7 @@
   {
     "id": "serve_import_tokens_454975ca",
     "file": "crates/frank/src/serve.rs",
-    "line": 138,
+    "line": 139,
     "decision": "!created.is_empty()",
     "conditions": 1,
     "vectors_required": 2,
@@ -3952,7 +3952,7 @@
   {
     "id": "serve_import_tokens_e4a772de",
     "file": "crates/frank/src/serve.rs",
-    "line": 151,
+    "line": 152,
     "decision": "participants.active_tokens()? == 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3962,7 +3962,7 @@
   {
     "id": "serve_maintain_17a5a747",
     "file": "crates/frank/src/serve.rs",
-    "line": 226,
+    "line": 227,
     "decision": "let Err(e) = app.geo.backfill(&app.sightings, now_ns())",
     "conditions": 1,
     "vectors_required": 2,
@@ -3972,7 +3972,7 @@
   {
     "id": "serve_maintain_2f261125",
     "file": "crates/frank/src/serve.rs",
-    "line": 230,
+    "line": 231,
     "decision": "flushed > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -3982,7 +3982,7 @@
   {
     "id": "serve_maintain_f768d81b",
     "file": "crates/frank/src/serve.rs",
-    "line": 234,
+    "line": 235,
     "decision": "n % 60 == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -3992,7 +3992,7 @@
   {
     "id": "serve_maintain_8aaeab4c",
     "file": "crates/frank/src/serve.rs",
-    "line": 239,
+    "line": 240,
     "decision": "merged > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -4002,7 +4002,7 @@
   {
     "id": "serve_maintain_01b7c705",
     "file": "crates/frank/src/serve.rs",
-    "line": 245,
+    "line": 246,
     "decision": "n == 1",
     "conditions": 1,
     "vectors_required": 2,
@@ -4012,7 +4012,7 @@
   {
     "id": "serve_maintain_9a822e22",
     "file": "crates/frank/src/serve.rs",
-    "line": 251,
+    "line": 252,
     "decision": "match result {\n            Ok(Ok(())) => {}\n            Ok(Err(e)) => tracing::error!(\"maintenance: {e}\"),\n            Err(e) => tracing::error!(\"maintenance task: {e}\"),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4022,7 +4022,7 @@
   {
     "id": "serve_maintain_audit_16f811c3",
     "file": "crates/frank/src/serve.rs",
-    "line": 264,
+    "line": 265,
     "decision": "spooled > 0",
     "conditions": 1,
     "vectors_required": 2,
@@ -4032,7 +4032,7 @@
   {
     "id": "serve_maintain_audit_d1567926",
     "file": "crates/frank/src/serve.rs",
-    "line": 268,
+    "line": 269,
     "decision": "compact",
     "conditions": 1,
     "vectors_required": 2,
@@ -4042,7 +4042,7 @@
   {
     "id": "serve_warm_cache_c1998cdd",
     "file": "crates/frank/src/serve.rs",
-    "line": 278,
+    "line": 279,
     "decision": "match sightings.warm() {\n        Ok(Some(files)) => {\n            let ms = started.elapsed().as_millis();\n            tracing::info!(files, ms, \"read cache warmed\");\n        }\n        Ok(None) => {}\n        Err(e) => tracing::warn!(\"read cache warm-up: {e}\"),\n    }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4052,7 +4052,7 @@
   {
     "id": "serve_shutdown_642a0cd3",
     "file": "crates/frank/src/serve.rs",
-    "line": 294,
+    "line": 295,
     "decision": "let Ok(mut s) = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())",
     "conditions": 1,
     "vectors_required": 2,
@@ -4062,7 +4062,7 @@
   {
     "id": "serve_serve_args_8574ccac",
     "file": "crates/frank/src/serve.rs",
-    "line": 314,
+    "line": 315,
     "decision": "match cli.command {\n            Command::Serve(a) => a,\n            _ => unreachable!(),\n        }",
     "conditions": 0,
     "vectors_required": 0,
@@ -4072,7 +4072,7 @@
   {
     "id": "serve_tokens_after_import_6d884e63",
     "file": "crates/frank/src/serve.rs",
-    "line": 372,
+    "line": 373,
     "decision": "existing",
     "conditions": 1,
     "vectors_required": 2,
@@ -4082,7 +4082,7 @@
   {
     "id": "serve_tokens_after_import_5afa7b5b",
     "file": "crates/frank/src/serve.rs",
-    "line": 379,
+    "line": 380,
     "decision": "file",
     "conditions": 1,
     "vectors_required": 2,
