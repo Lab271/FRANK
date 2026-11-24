@@ -224,6 +224,7 @@ fn harness_with(name: &str, off: bool, organisation: &str, admin: Option<AdminGr
         sso,
         submit_lock: std::sync::Mutex::new(()),
         now,
+        started: now(),
     }));
     Harness {
         app,

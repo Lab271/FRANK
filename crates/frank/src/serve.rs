@@ -71,6 +71,7 @@ pub fn start_until(
         sso: sso.map(|c| crate::sso::Sso::new(c, Arc::new(crate::sso::Ureq::new()))),
         submit_lock: std::sync::Mutex::new(()),
         now: now_ns,
+        started: now_ns(),
     });
     tokio::runtime::Runtime::new()
         .map_err(|e| e.to_string())?

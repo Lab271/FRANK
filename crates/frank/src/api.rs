@@ -79,6 +79,8 @@ pub struct App {
     pub submit_lock: std::sync::Mutex<()>,
     /// Wall clock in ns; tests set their own.
     pub now: fn() -> i64,
+    /// When the server started, in ns since the epoch: `/health` shows it.
+    pub started: i64,
 }
 
 pub type Shared = Arc<App>;
@@ -202,12 +204,13 @@ pub fn harden(router: Router, limits: Limits) -> Router {
         .layer(set(header::REFERRER_POLICY, "no-referrer"))
 }
 
-/// Up and its version. The geo databases' state is information only: FRANK is
+/// Up, its version and when it started (a restart shows as a new time). The geo databases' state is information only: FRANK is
 /// healthy without it (#191).
 async fn health(State(app): State<Shared>) -> Json<Value> {
     Json(json!({
         "status": "ok",
         "version": env!("CARGO_PKG_VERSION"),
+        "started": crate::records::rfc3339(app.started),
         "geoip": app.geo.status(),
         "lists": app.lists.status(),
     }))
