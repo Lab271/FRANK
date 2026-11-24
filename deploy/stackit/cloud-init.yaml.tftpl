@@ -12,8 +12,16 @@ packages:
   - caddy
   - sqlite3
   - curl
+  - unattended-upgrades
 
 write_files:
+  # Security updates daily, as test-frank does on AWS; reboots are left to
+  # the patching runs.
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    permissions: "0644"
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Unattended-Upgrade "1";
   - path: /etc/frank/frank.env
     permissions: "0644"
     content: |
@@ -69,6 +77,7 @@ write_files:
       # and an attached `podman run` would log every line a second time.
       ExecStart=/usr/bin/podman run --name frank --rm \
         --log-driver passthrough \
+        --read-only --cap-drop=ALL --security-opt no-new-privileges \
         -e RUST_LOG=frank=info,mvl_manifest=info \
         -e FRANK_LOG_FORMAT=json \
         -p 127.0.0.1:8080:8080 \
@@ -127,7 +136,7 @@ write_files:
       Description=Nightly backup of FRANK's participants
 
       [Timer]
-      OnCalendar=*-*-* 03:15:00
+      OnCalendar=*-*-* 03:15:00 UTC
       Persistent=true
 
       [Install]
@@ -212,6 +221,11 @@ write_files:
         # HSTS (#244): a public certificate, so a year; FRANK sets the
         # other security headers itself.
         header Strict-Transport-Security "max-age=31536000"
+        # RFC 9116; renew Expires every year.
+        respond /.well-known/security.txt `Contact: https://schubergphilis.com/security
+      Expires: 2027-11-24T00:00:00Z
+      Policy: https://schubergphilis.com/security
+      `
         reverse_proxy 127.0.0.1:8080
       }
 
