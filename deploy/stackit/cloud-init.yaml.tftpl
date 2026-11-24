@@ -249,6 +249,10 @@ runcmd:
     else
       echo '{}' > /etc/frank/auth.json
     fi
+  # The container's user (65532) as a system account without a login, so
+  # systemd can run frank-geoip and frank-lists as it: User= needs an account.
+  - getent group 65532 >/dev/null || groupadd -r -g 65532 frank
+  - getent passwd 65532 >/dev/null || useradd -r -u 65532 -g 65532 -d /nonexistent -s /usr/sbin/nologin frank
   - systemctl daemon-reload
   # The 30-day journal (journald.conf.d/frank.conf) before anything logs.
   - systemctl restart systemd-journald
