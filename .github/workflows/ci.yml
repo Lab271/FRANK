@@ -125,8 +125,9 @@ jobs:
   image:
     name: container image
     runs-on: ubuntu-latest
-    # Both test jobs: main pushes and signs only what passed every test.
-    needs: [rust, slow]
+    # Both test jobs and cargo deny: main pushes and signs only what passed
+    # every test and has no known advisory (MCQF vulnerability management T4).
+    needs: [rust, slow, deny]
     # id-token and attestations: the keyless signature and the attestations
     # of the pushed image (#213). Only the main-only steps below use them.
     permissions:

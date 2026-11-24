@@ -4,11 +4,20 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    # A new release waits a week: most malicious releases are pulled by then.
+    cooldown:
+      default-days: 7
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:
       interval: "weekly"
+    # A new release waits a week: most malicious releases are pulled by then.
+    cooldown:
+      default-days: 7
   - package-ecosystem: "docker"
     directory: "/"
     schedule:
       interval: "weekly"
+    # A new release waits a week: most malicious releases are pulled by then.
+    cooldown:
+      default-days: 7
