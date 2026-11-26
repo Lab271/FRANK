@@ -5,10 +5,10 @@
   --lab-type-tracking-tight:-0.04em;
   --lab-type-size-display:clamp(40px, 5vw, 68px);
   --lab-type-size-h2:clamp(26px, 2.8vw, 36px);
-  --lab-type-size-h3:23px;
-  --lab-type-size-body:18px;
-  --lab-type-size-small:15px;
-  --lab-type-size-micro:12px;
+  --lab-type-size-h3:25px;
+  --lab-type-size-body:20px;
+  --lab-type-size-small:17px;
+  --lab-type-size-micro:14px;
   --lab-type-leading-display:1.09;
   --lab-type-leading-body:1.5;
 }
